@@ -200,7 +200,7 @@ for_window [window_type="menu"] floating enable
 # {{{ Startup
 exec_always $nsi $HOME/.config/polybar/launch.sh
 # Lanuguages and hot key to change them
-exec $nsi "setxkbmap -layout us,ir -option grp:alt_shift_toggle"
+exec_always $nsi "setxkbmap -layout us,ir -option grp:alt_shift_toggle"
 # Wallpaper
 exec_always feh --bg-scale /home/mahdi/Pictures/Wallpapers/wallpaper.png
 # Network manager applet
