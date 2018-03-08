@@ -42,7 +42,7 @@ client.urgent           $urgent-bg-color    $urgent-bg-color   $text-color      
 # is used in the bar {} block below.
 font pango:SourceCodePro 12
 
-gaps inner 10
+gaps inner 5
 gaps outer 0
 
 new_window pixel 0
