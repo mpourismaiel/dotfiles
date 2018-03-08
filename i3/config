@@ -202,7 +202,7 @@ exec_always $nsi $HOME/.config/polybar/launch.sh
 # Lanuguages and hot key to change them
 exec $nsi "setxkbmap -layout us,ir -option grp:alt_shift_toggle"
 # Wallpaper
-exec_always feh --bg-scale /home/mahdi/Pictures/Wallpapers/wallpaper.jpg
+exec_always feh --bg-scale /home/mahdi/Pictures/Wallpapers/wallpaper.png
 # Network manager applet
 exec_always $nsi nm-applet
 # Animations
