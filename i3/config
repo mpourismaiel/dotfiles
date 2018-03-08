@@ -44,7 +44,11 @@ font pango:SourceCodePro 12
 
 gaps inner 10
 gaps outer 0
-smart_gaps on
+
+new_window pixel 0
+smart_borders on
+
+hide_edge_borders both
 
 # Use Mouse+$mod to drag floating windows to their wanted position
 floating_modifier $mod
@@ -134,9 +138,9 @@ bindsym $mod+$ctrl+r restart
 
 # {{{ Custom hotkeys
 # Pulse Audio controls
-bindsym XF86AudioRaiseVolume exec --no-startup-id pactl set-sink-volume 0 +5% #increase sound volume
-bindsym XF86AudioLowerVolume exec --no-startup-id pactl set-sink-volume 0 -5% #decrease sound volume
-bindsym XF86AudioMute exec --no-startup-id pactl set-sink-mute 0 toggle # mute sound
+bindsym XF86AudioRaiseVolume exec $nsi pactl set-sink-volume 0 +5% #increase sound volume
+bindsym XF86AudioLowerVolume exec $nsi pactl set-sink-volume 0 -5% #decrease sound volume
+bindsym XF86AudioMute exec $nsi pactl set-sink-mute 0 toggle # mute sound
 
 # Sreen brightness controls
 bindsym XF86MonBrightnessUp exec xbacklight + 10 # increase screen brightness
@@ -154,8 +158,8 @@ bindsym $mod+$alt+s exec sh /home/mahdi/.screenlayout/single-screen-full-hd.sh
 bindsym $mod+$alt+d exec sh /home/mahdi/.screenlayout/dual-screen-full-hd.sh
 
 # Screenshot
-bindsym --release Print exec --no-startup-id "maim -p 0 -c 0.96,0.5,0.09 $HOME/Pictures/screenshot-$(date +%Y-%m-%d_%H-%M-%S).png"
-bindsym --release Shift+Print exec --no-startup-id "maim -s -p 0 -c 0.96,0.5,0.09 $HOME/Pictures/screenshot-$(date +%Y-%m-%d_%H-%M-%S).png"
+bindsym --release Print exec $nsi "maim -p 0 -c 0.96,0.5,0.09 $HOME/Pictures/screenshot-$(date +%Y-%m-%d_%H-%M-%S).png"
+bindsym --release Shift+Print exec $nsi "maim -s -p 0 -c 0.96,0.5,0.09 $HOME/Pictures/screenshot-$(date +%Y-%m-%d_%H-%M-%S).png"
 # }}}
 
 # {{{ Rules
@@ -174,32 +178,33 @@ for_window [window_type="menu"] floating enable
 # {{{ Bar
 # Start i3bar to display a workspace bar (plus the system information i3status
 # finds out, if available)
-bar {
-    i3bar_command i3bar
-    status_command i3blocks -c /home/mahdi/.config/i3/i3blocks.conf
-    position top
-    font pango:SourceCodePro, Awesome, fontello
-    separator_symbol "■"
-    tray_padding 0
+# bar {
+#     i3bar_command i3bar
+#     status_command i3blocks -c /home/mahdi/.config/i3/i3blocks.conf
+#     position top
+#     font pango:SourceCodePro, Awesome, fontello
+#     separator_symbol "■"
+#     tray_padding 0
 
-    colors {
-        background $bg-color
-        separator #757575
-        #                  border             background         text
-        focused_workspace  $bg-color          $bg-color          $text-color
-        inactive_workspace $inactive-bg-color $inactive-bg-color $inactive-text-color
-        urgent_workspace   $urgent-bg-color   $urgent-bg-color   $text-color
-    }
-}
+#     colors {
+#         background $bg-color
+#         separator #757575
+#         #                  border             background         text
+#         focused_workspace  $bg-color          $bg-color          $text-color
+#         inactive_workspace $inactive-bg-color $inactive-bg-color $inactive-text-color
+#         urgent_workspace   $urgent-bg-color   $urgent-bg-color   $text-color
+#     }
+# }
 # }}}
 
 # {{{ Startup
+exec_always $nsi $HOME/.config/polybar/launch.sh
 # Lanuguages and hot key to change them
-exec --no-startup-id "setxkbmap -layout us,ir -option grp:alt_shift_toggle"
+exec $nsi "setxkbmap -layout us,ir -option grp:alt_shift_toggle"
 # Wallpaper
 exec_always feh --bg-scale /home/mahdi/Pictures/Wallpapers/wallpaper.jpg
 # Network manager applet
-exec_always --no-startup-id nm-applet
+exec_always $nsi nm-applet
 # Animations
 exec compton -f
 # Startup applications
