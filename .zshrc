@@ -1,12 +1,12 @@
 export GDK_SCALE=1
 
-export GOPATH     =$HOME/Documents/projects/go-projects
-export GOBIN      =$GOPATH/bin
-export ZSH        =/home/mahdi/.oh-my-zsh
+export GOPATH=$HOME/Documents/projects/go-projects
+export GOBIN=$GOPATH/bin
+export ZSH=/home/mahdi/.oh-my-zsh
 
-export BIN_PATH   =/usr/local/bin
-export BIN_FOLDER =$HOME/.bin
-export GO_BIN     =/usr/local/go/bin
+export BIN_PATH=/usr/local/bin
+export BIN_FOLDER=$HOME/.bin
+export GO_BIN=/usr/local/go/bin
 export PATH=$BIN_PATH:$BIN_FOLDER:$GO_BIN:$PATH
 
 ZSH_THEME="sobole"
