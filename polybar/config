@@ -25,7 +25,7 @@ height = 32
 ;offset-x = 1%
 ;offset-y = 1%
 radius = 0
-fixed-center = false
+fixed-center = true
 
 background = ${colors.background}
 foreground = ${colors.foreground}
@@ -271,7 +271,6 @@ screenchange-reload = true
 ;compositing-border = over
 
 [global/wm]
-margin-top = 10
-margin-bottom = 10
+margin-top = 0
 
 ; vim:ft=dosini
