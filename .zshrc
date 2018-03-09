@@ -18,7 +18,7 @@ plugins=(git)
 
 source $ZSH/oh-my-zsh.sh
 
-Preferred editor for local and remote sessions
+# Preferred editor for local and remote sessions
 if [[ -n $SSH_CONNECTION ]]; then
   export VISUAL='vim'
   export EDITOR='vim'
@@ -38,8 +38,8 @@ export NVM_DIR="$HOME/.nvm"
 source $BIN_FOLDER/git-extras//etc/git-extras-completion.zsh
 
 . /etc/bash.command-not-found
-. BIN_FOLDER/z/z.sh
-. BIN_FOLDER/colored-man-pages.plugin.zsh
+. $BIN_FOLDER/z/z.sh
+. $BIN_FOLDER/colored-man-pages.plugin.zsh
 
 alias res="source ~/.zshrc"
 alias run_miare="API_HOST=staging.ws.miare.ir DJANGO_HOST=staging.miare.ir WEBSOCKET_HOST=staging.ws.miare.ir API_SAFE=true HOST=0.0.0.0 yarn start"
