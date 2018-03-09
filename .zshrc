@@ -7,7 +7,7 @@ export ZSH=/home/mahdi/.oh-my-zsh
 export BIN_PATH=/usr/local/bin
 export BIN_FOLDER=$HOME/.bin
 export GO_BIN=/usr/local/go/bin
-export PATH=$BIN_PATH:$BIN_FOLDER:$GO_BIN:$PATH
+export PATH=$BIN_PATH:$BIN_FOLDER:$GO_BIN:$GOBIN:$PATH
 
 ZSH_THEME="sobole"
 ENABLE_CORRECTION="true"
