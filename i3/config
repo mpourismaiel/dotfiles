@@ -14,7 +14,7 @@
 set $alt Mod1
 set $ctrl Control
 set $mod Mod4
-set $scripts /home/mahdi/.config/i3/scripts
+set $scripts $HOME/.config/i3/scripts
 set $nsi --no-startup-id
 
 set $workspace1 "1: "
@@ -42,7 +42,7 @@ client.urgent           $urgent-bg-color    $urgent-bg-color   $text-color      
 # is used in the bar {} block below.
 font pango:SourceCodePro 12
 
-gaps inner 5
+gaps inner 20
 gaps outer 0
 
 new_window pixel 0
@@ -154,8 +154,8 @@ bindsym $mod+period workspace next
 bindsym $mod+Shift+x exec betterlockscreen --lock blur
 
 # Monitor setup
-bindsym $mod+$alt+s exec sh /home/mahdi/.screenlayout/single-screen-full-hd.sh
-bindsym $mod+$alt+d exec sh /home/mahdi/.screenlayout/dual-screen-full-hd.sh
+bindsym $mod+$alt+s exec sh $HOME/.screenlayout/single-screen-full-hd.sh
+bindsym $mod+$alt+d exec sh $HOME/.screenlayout/dual-screen-full-hd.sh
 
 # Screenshot
 bindsym --release Print exec $nsi "maim -p 0 -c 0.96,0.5,0.09 $HOME/Pictures/screenshot-$(date +%Y-%m-%d_%H-%M-%S).png"
@@ -180,7 +180,7 @@ for_window [window_type="menu"] floating enable
 # finds out, if available)
 # bar {
 #     i3bar_command i3bar
-#     status_command i3blocks -c /home/mahdi/.config/i3/i3blocks.conf
+#     status_command i3blocks -c $HOME/.config/i3/i3blocks.conf
 #     position top
 #     font pango:SourceCodePro, Awesome, fontello
 #     separator_symbol "■"
@@ -202,14 +202,15 @@ exec_always $nsi $HOME/.config/polybar/launch.sh
 # Lanuguages and hot key to change them
 exec_always $nsi "setxkbmap -layout us,ir -option grp:alt_shift_toggle"
 # Wallpaper
-exec_always feh --bg-scale /home/mahdi/Pictures/Wallpapers/wallpaper.png
+exec_always feh --bg-scale $HOME/Pictures/Wallpapers/wallpaper.png
 # Network manager applet
 exec_always $nsi nm-applet
 # Animations
 exec compton -f
 # Startup applications
+exec_always sh $HOME/.config/conky/start_conky_maia
 exec google-chrome-beta
-exec code /home/mahdi/Documents/projects/miare
+exec code $HOME/Documents/projects/miare
 exec terminator
 exec telegram-desktop
 # }}}
@@ -245,10 +246,10 @@ mode "resize" {
 bindsym $mod+Shift+p mode "$mode_nautilus"
 set $mode_nautilus Places (H)ome (P)rojects (D)ownloads Pi(c)tures
 mode "$mode_nautilus" {
-    bindsym h exec nautilus /home/mahdi, mode "default"
-    bindsym p exec nautilus /home/mahdi/Documents/projects, mode "default"
-    bindsym d exec nautilus /home/mahdi/Downloads, mode "default"
-    bindsym c exec nautilus /home/mahdi/Pictures, mode "default"
+    bindsym h exec nautilus $HOME, mode "default"
+    bindsym p exec nautilus $HOME/Documents/projects, mode "default"
+    bindsym d exec nautilus $HOME/Downloads, mode "default"
+    bindsym c exec nautilus $HOME/Pictures, mode "default"
     bindsym Return mode "default"
     bindsym Escape mode "default"
 }
@@ -316,3 +317,6 @@ assign [class="Slack"] $workspace4
 assign [class="TelegramDesktop"] $workspace5
 assign [class="Totem"] $workspace7
 # }}}
+
+# run the merge for good colors
+exec xrdb -merge $HOME/.Xresources
