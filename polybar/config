@@ -8,10 +8,8 @@
 ;=====================================================
 
 [colors]
-;background = ${xrdb:color0:#222}
 background = #2f343f
 background-alt = #2f343f
-;foreground = ${xrdb:color7:#222}
 foreground = #f3f4f5
 foreground-alt = #f3f4f5
 primary = #ffb52a
@@ -21,7 +19,7 @@ alert = #bd2c40
 [bar/main]
 monitor = ${env:MONITOR:}
 width = 100%
-height = 32
+height = 40
 override-redirect = false
 radius = 0
 fixed-center = true
@@ -43,7 +41,7 @@ padding-right = 2
 module-margin-left = 2
 module-margin-right = 2
 
-font-0 = fixed:pixelsize=10;1
+font-0 = SourceCodePro:pixelsize=10:antialias=true;1
 font-1 = unifont:fontformat=truetype:size=8:antialias=false;0
 font-2 = siji:pixelsize=10;1
 font-3 = Font Awesome 5 Brands:pixelsize=10;1
@@ -62,7 +60,11 @@ cursor-scroll = ns-resize
 
 [module/xwindow]
 type = internal/xwindow
-label = %title:0:30:...%
+format-prefix=" |      "
+format-prefix-foreground=#556064
+label = %title:0:60:...%
+format-suffix=" "
+format-underline=#55aa55
 
 [module/xkeyboard]
 type = internal/xkeyboard
@@ -224,8 +226,8 @@ interval = 5
 [module/volume]
 type = internal/volume
 
-format-volume = <label-volume> <bar-volume>
-label-volume = 
+format-volume = <label-volume>
+label-volume = " %percentage:2%%"
 label-volume-foreground = ${root.foreground}
 
 format-muted-prefix = " "
