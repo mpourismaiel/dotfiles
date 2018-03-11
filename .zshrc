@@ -9,7 +9,7 @@ export BIN_FOLDER=$HOME/.bin
 export GO_BIN=/usr/local/go/bin
 export PATH=$BIN_PATH:$BIN_FOLDER:$GO_BIN:$GOBIN:$PATH
 
-ZSH_THEME="sobole"
+ZSH_THEME="avit"
 ENABLE_CORRECTION="true"
 COMPLETION_WAITING_DOTS="true"
 
