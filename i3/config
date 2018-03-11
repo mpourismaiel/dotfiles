@@ -158,8 +158,8 @@ bindsym $mod+$alt+s exec sh $HOME/.screenlayout/single-screen-full-hd.sh
 bindsym $mod+$alt+d exec sh $HOME/.screenlayout/dual-screen-full-hd.sh
 
 # Screenshot
-bindsym --release Print exec $nsi "maim -p 0 -c 0.96,0.5,0.09 $HOME/Pictures/screenshot-$(date +%Y-%m-%d_%H-%M-%S).png"
-bindsym --release Shift+Print exec $nsi "maim -s -p 0 -c 0.96,0.5,0.09 $HOME/Pictures/screenshot-$(date +%Y-%m-%d_%H-%M-%S).png"
+bindsym --release Print exec $nsi "import -window root ~/Pictures/screenshot-$(date +%Y-%m-%d_%H-%M-%S).png"
+bindsym --release Shift+Print exec $nsi "import ~/Pictures/screenshot-$(date +%Y-%m-%d_%H-%M-%S).png"
 # }}}
 
 # {{{ Rules
@@ -198,6 +198,7 @@ for_window [window_type="menu"] floating enable
 # }}}
 
 # {{{ Startup
+exec sh $HOME/.screenlayout/single-screen-full-hd.sh
 exec_always $nsi $HOME/.config/polybar/launch.sh
 # Lanuguages and hot key to change them
 exec_always $nsi "setxkbmap -layout us,ir -option grp:alt_shift_toggle"
