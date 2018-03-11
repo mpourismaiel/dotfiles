@@ -60,7 +60,7 @@ cursor-scroll = ns-resize
 
 [module/xwindow]
 type = internal/xwindow
-format-prefix=" |      "
+format-prefix="    "
 format-prefix-foreground=#556064
 label = %title:0:60:...%
 format-suffix=" "
