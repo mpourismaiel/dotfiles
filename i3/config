@@ -148,8 +148,8 @@ bindsym XF86MonBrightnessUp exec xbacklight + 10 # increase screen brightness
 bindsym XF86MonBrightnessDown exec xbacklight - 10 # decrease screen brightness
 
 # Workspace
-bindsym $mod+comma workspace prev
-bindsym $mod+period workspace next
+bindsym $mod+comma move workspace to output right
+bindsym $mod+period move workspace to output left
 
 # Lockscreen
 bindsym $mod+Shift+x exec betterlockscreen --lock blur
