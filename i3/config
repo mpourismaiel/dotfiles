@@ -159,8 +159,8 @@ bindsym $mod+$alt+s exec sh $HOME/.screenlayout/single-screen-full-hd.sh
 bindsym $mod+$alt+d exec sh $HOME/.screenlayout/dual-screen-full-hd.sh
 
 # Screenshot
-bindsym --release Print exec $nsi "import -window root ~/Pictures/Screenshots/screenshot-$(date +%Y-%m-%d_%H-%M-%S).png"
-bindsym --release Shift+Print exec $nsi "import ~/Pictures/Screenshots/screenshot-$(date +%Y-%m-%d_%H-%M-%S).png"
+bindsym --release Print exec $nsi "filepath=~/Pictures/Screenshots/screenshot-$(date +%Y-%m-%d_%H-%M-%S).png && import -window root $filepath && xclip -selection clipboard -t image/png -i $filepath"
+bindsym --release Shift+Print exec $nsi "filepath=~/Pictures/Screenshots/screenshot-$(date +%Y-%m-%d_%H-%M-%S).png && import ~/Pictures/Screenshots/screenshot-$(date +%Y-%m-%d_%H-%M-%S).png && xclip -selection clipboard -t image/png -i $filepath"
 # }}}
 
 # {{{ Rules
