@@ -159,13 +159,15 @@ bindsym $mod+$alt+s exec sh $HOME/.screenlayout/single-screen-full-hd.sh
 bindsym $mod+$alt+d exec sh $HOME/.screenlayout/dual-screen-full-hd.sh
 
 # Screenshot
-bindsym --release Print exec $nsi "import -window root ~/Pictures/screenshot-$(date +%Y-%m-%d_%H-%M-%S).png"
-bindsym --release Shift+Print exec $nsi "import ~/Pictures/screenshot-$(date +%Y-%m-%d_%H-%M-%S).png"
+bindsym --release Print exec $nsi "import -window root ~/Pictures/Screenshots/screenshot-$(date +%Y-%m-%d_%H-%M-%S).png"
+bindsym --release Shift+Print exec $nsi "import ~/Pictures/Screenshots/screenshot-$(date +%Y-%m-%d_%H-%M-%S).png"
 # }}}
 
 # {{{ Rules
 # fix graphics glitch
 new_window none
+
+for_window [class="^.*"] border pixel 0
 
 for_window [window_role="pop-up"] floating enable
 for_window [window_role="bubble"] floating enable
