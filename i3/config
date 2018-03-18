@@ -132,7 +132,7 @@ bindsym $mod+Shift+9 move container to workspace 9
 bindsym $mod+Shift+0 move container to workspace 10
 
 # reload the configuration file
-bindsym $mod+Shift+c reload
+bindsym $mod+ctrl+c reload
 # restart i3 inplace (preserves your layout/session, can be used to upgrade i3)
 bindsym $mod+$ctrl+r restart
 # }}}
@@ -202,21 +202,22 @@ for_window [window_type="menu"] floating enable
 
 # {{{ Startup
 exec sh $HOME/.screenlayout/single-screen-full-hd.sh
+exec $nsi redshift -c ~/.config/redshift.conf
 exec_always $nsi $HOME/.config/polybar/launch.sh
+exec_always $nsi sh $HOME/.config/conky/start_conky_maia
 # Lanuguages and hot key to change them
 exec_always $nsi "setxkbmap -layout us,ir -option grp:alt_shift_toggle"
 # Wallpaper
 exec_always feh --bg-scale --randomize --bg-fill $HOME/Pictures/Wallpapers/
 # Network manager applet
-exec_always $nsi nm-applet
+exec_always $nsi $nsi nm-applet
 # Animations
-exec compton -f
+exec $nsi compton -f
 # Startup applications
-exec_always sh $HOME/.config/conky/start_conky_maia
-exec google-chrome-beta
-exec code $HOME/Documents/projects/miare
-exec terminator
-exec telegram-desktop
+exec $nsi google-chrome-beta
+exec $nsi code $HOME/Documents/projects/miare
+exec $nsi terminator
+exec $nsi telegram-desktop
 # }}}
 
 # in case of layout change event - send signal to i3blocks

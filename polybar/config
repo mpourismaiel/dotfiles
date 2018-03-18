@@ -22,6 +22,7 @@ monitor = ${env:MONITOR:}
 override-redirect = false
 fixed-center = true
 # radius = 8.0
+width = 100%
 height = 40
 wm-name = bar
 
@@ -55,7 +56,7 @@ font-3 = Font Awesome 5 Brands:pixelsize=10;1
 font-4 = Font Awesome 5 Free:pixelsize=10;1
 font-5 = fontello:pixelsize=10;1
 
-modules-right = mpd terminal inbox-reddit inbox-github volume xkeyboard wlan eth memory cpu
+modules-right = mpd inbox-reddit inbox-github volume backlight xkeyboard redshift wlan memory cpu
 modules-center = date-ust time-label date
 modules-left = i3 xwindow
 
@@ -77,14 +78,29 @@ modules-center = i3 xwindow
 width = 30%
 offset-x = 0
 
+[module/backlight]
+type = custom/script
+exec = $HOME/.bin/scripts/backlight.sh
+scroll-up = echo $($HOME/.bin/scripts/backlight.sh up-toggle)
+scroll-down = echo $($HOME/.bin/scripts/backlight.sh down-toggle)
+cursor-scroll = pointer
+interval = 1
+
+[module/redshift]
+type = custom/script
+exec = $HOME/.config/polybar/scripts/redshift.sh
+interval = 5
+
 [module/inbox-reddit]
 type = custom/script
 exec = $HOME/.config/polybar/scripts/inbox-reddit.sh
+click-left = google-chrome-beta https://reddit.com/message/inbox
 interval = 60
 
 [module/inbox-github]
 type = custom/script
 exec = $HOME/.config/polybar/scripts/inbox-github.sh
+click-left = google-chrome-beta https://github.com/notifications
 interval = 60
 
 [module/xwindow]
@@ -97,7 +113,6 @@ format-underline=#55aa55
 
 [module/xkeyboard]
 type = internal/xkeyboard
-blacklist-0 = num lock
 
 format-prefix = " "
 format-prefix-foreground = ${colors.foreground-alt}
