@@ -5,8 +5,30 @@ Since a week before this commit I've been enjoying i3 and I don't think I'm ever
 ## Requirements
 - i3, of course!
 - i3-gaps
+- compton
 - betterlockscreen
 - i3lock-color
 - polybar
 - rofi
 - feh
+- redshift
+- jq
+
+### Commands to run
+After installing the above requirements (in arch, most of them are found in AUR) run the following commands in a terminal
+
+```
+cp ~/.config/i3/config ~/.config/i3/config.backup
+ln i3/config ~/.config
+mkdir -p ~/.config/polybar/scripts
+ln polybar/{config,launch.sh} ~/.config/polybar/
+ln polybar/scripts/{inbox-github,inbox-reddit,redshift}.sh ~/.config/polybar/scripts
+mkdir ~/.config/rofi
+ln rofi/config ~/.config/rofi/
+mkdir ~/.config/conky
+ln conky/{shortcuts,start_conky_maia,usage} ~/.config/conky
+cp .Xresources ~/.Xresources.backup
+ln .Xresources ~/.Xresources
+ln compton.conf ~/.config/compton.conf
+ln redshift.conf ~/.config/redshift.conf
+```

@@ -49,14 +49,10 @@ tray-padding = 2
 cursor-click = pointer
 cursor-scroll = ns-resize
 
-font-0 = SourceCodePro:pixelsize=10:antialias=true;1
-font-1 = unifont:fontformat=truetype:size=8:antialias=false;0
-font-2 = siji:pixelsize=10;1
-font-3 = Font Awesome 5 Brands:pixelsize=10;1
-font-4 = Font Awesome 5 Free:pixelsize=10;1
-font-5 = fontello:pixelsize=10;1
+font-0 = "Fira Code":pixelsize=10:antialias=true;1
+font-1 = icomoon:pixelsize=10;1
 
-modules-right = mpd inbox-reddit inbox-github volume backlight xkeyboard redshift wlan memory cpu
+modules-right = mpd inbox-reddit inbox-github volume xkeyboard redshift wlan memory cpu
 modules-center = date-ust time-label date
 modules-left = i3 xwindow
 
@@ -78,14 +74,6 @@ modules-center = i3 xwindow
 width = 30%
 offset-x = 0
 
-[module/backlight]
-type = custom/script
-exec = $HOME/.bin/scripts/backlight.sh
-scroll-up = echo $($HOME/.bin/scripts/backlight.sh up-toggle)
-scroll-down = echo $($HOME/.bin/scripts/backlight.sh down-toggle)
-cursor-scroll = pointer
-interval = 1
-
 [module/redshift]
 type = custom/script
 exec = $HOME/.config/polybar/scripts/redshift.sh
@@ -105,7 +93,7 @@ interval = 60
 
 [module/xwindow]
 type = internal/xwindow
-format-prefix="    "
+format-prefix="    "
 format-prefix-foreground=#556064
 label = %title:0:60:...%
 format-suffix=" "
@@ -114,7 +102,7 @@ format-underline=#55aa55
 [module/xkeyboard]
 type = internal/xkeyboard
 
-format-prefix = " "
+format-prefix = " "
 format-prefix-foreground = ${colors.foreground-alt}
 
 label-layout = %layout%
@@ -193,14 +181,14 @@ label-song-ellipsis = true
 [module/cpu]
 type = internal/cpu
 interval = 2
-format-prefix = " "
+format-prefix = " "
 format-prefix-foreground = ${colors.foreground-alt}
 label = %percentage:2%%
 
 [module/memory]
 type = internal/memory
 interval = 2
-format-prefix = " "
+format-prefix = " "
 format-prefix-foreground = ${colors.foreground-alt}
 label = %percentage_used%%
 
@@ -271,10 +259,10 @@ interval = 5
 type = internal/volume
 
 format-volume = <label-volume>
-label-volume = " %percentage:2%%"
+label-volume = " %percentage:2%%"
 label-volume-foreground = ${root.foreground}
 
-format-muted-prefix = " "
+format-muted-prefix = " "
 format-muted-foreground = ${colors.foreground-alt}
 label-muted = 
 
