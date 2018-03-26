@@ -246,7 +246,7 @@ label = %date% %time%
 
 [module/time-label]
 type = custom/text
-content = 
+content = "  "
 content-foreground = #556064
 
 [module/date-ust]
