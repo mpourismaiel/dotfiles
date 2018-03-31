@@ -56,24 +56,6 @@ modules-right = mpd inbox-reddit inbox-github volume xkeyboard redshift wlan mem
 modules-center = date-ust time-label date
 modules-left = i3 xwindow
 
-[bar/everything]
-inherit = bar/main
-width = 30%
-offset-x = 70%
-modules-right = mpd inbox-reddit inbox-reddit volume xkeyboard wlan eth memory cpu
-
-[bar/time]
-inherit = bar/main
-modules-center = date-ust time-label date
-width = 20%
-offset-x = 40%
-
-[bar/i3]
-inherit = bar/main
-modules-center = i3 xwindow
-width = 30%
-offset-x = 0
-
 [module/redshift]
 type = custom/script
 exec = $HOME/.config/polybar/scripts/redshift.sh

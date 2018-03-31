@@ -1,11 +1,12 @@
 rofi.color-enabled: true
-rofi.color-window: #141021, #c16772, #9568a1
-rofi.color-normal: #141021, #ffeefc, #312842, #c16772, #ffeefc
-rofi.color-active: #141021, #c05c47, #312842, #c05c47, #ffeefc
-rofi.color-urgent: #141021, #e4b226, #312842, #e4b226, #ffeefc
-rofi.width: 600
-rofi.padding: 50
+rofi.color-window: argb:ce141021, argb:00c16772, #9568a1
+rofi.color-normal: argb:ce141021, #ffeefc, #312842, #c16772, #ffeefc
+rofi.color-active: argb:ce141021, #c05c47, #312842, #c05c47, #ffeefc
+rofi.color-urgent: argb:ce141021, #e4b226, #312842, #e4b226, #ffeefc
+rofi.padding: 350
+rofi.fullscreen: true
 rofi.font: SourceCodePro Font 16
 rofi.bw: 3
 rofi.separator-style: solid
 rofi.hide-scrollbar: true
+rofi.sidebar-mode: true
