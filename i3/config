@@ -212,7 +212,7 @@ exec_always feh --bg-scale --randomize --bg-fill $HOME/Pictures/Wallpapers/
 # Network manager applet
 exec_always $nsi $nsi nm-applet
 # Animations
-exec $nsi compton -f
+exec compton
 # Startup applications
 exec $nsi google-chrome-beta
 exec $nsi code
