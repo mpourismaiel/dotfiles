@@ -208,16 +208,19 @@ exec_always $nsi sh $HOME/.config/conky/start_conky_maia
 # Lanuguages and hot key to change them
 exec_always $nsi "setxkbmap -layout us,ir -option grp:alt_shift_toggle"
 # Wallpaper
-exec_always feh --bg-scale --randomize --bg-fill $HOME/Pictures/Wallpapers/
+exec_always $nsi feh --bg-scale --randomize --bg-fill $HOME/Pictures/Wallpapers/
 # Network manager applet
-exec_always $nsi $nsi nm-applet
+exec_always $nsi nm-applet
 # Animations
-exec compton
+exec $nsi killall compton
+exec $nsi compton
 # Startup applications
 exec $nsi google-chrome-beta
 exec $nsi code
 exec $nsi terminator
 exec $nsi telegram-desktop
+# Some configuration
+exec $nsi xbacklight -set 100%
 # }}}
 
 # in case of layout change event - send signal to i3blocks
@@ -249,10 +252,10 @@ mode "resize" {
 
 # {{{ Nautilus Mode
 bindsym $mod+Shift+p mode "$mode_nautilus"
-set $mode_nautilus Places (H)ome (P)rojects (D)ownloads Pi(c)tures
+set $mode_nautilus Places (H)ome Do(c)uments (D)ownloads Pi(c)tures
 mode "$mode_nautilus" {
     bindsym h exec nautilus $HOME, mode "default"
-    bindsym p exec nautilus $HOME/Documents/projects, mode "default"
+    bindsym p exec nautilus $HOME/Documents, mode "default"
     bindsym d exec nautilus $HOME/Downloads, mode "default"
     bindsym c exec nautilus $HOME/Pictures, mode "default"
     bindsym Return mode "default"
