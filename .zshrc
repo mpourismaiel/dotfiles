@@ -25,6 +25,7 @@ zstyle ':completion:*' cache-path ~/.zsh/cache
 HISTFILE=~/.zhistory
 HISTSIZE=100000
 SAVEHIST=50000
+export SUDO_EDITOR=/usr/bin/vim
 export EDITOR=/usr/bin/vim
 export VISUAL=/usr/bin/vim
 WORDCHARS=${WORDCHARS//\/[&.;]}                                 # Don't consider certain characters part of the word
