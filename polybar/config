@@ -52,7 +52,7 @@ cursor-scroll = ns-resize
 font-0 = "Fira Code":pixelsize=10:antialias=true;1
 font-1 = icomoon:pixelsize=10;1
 
-modules-right = mpd inbox-reddit inbox-github volume backlight xkeyboard redshift wlan memory cpu
+modules-right = inbox-reddit inbox-github toggl volume backlight xkeyboard redshift wlan memory cpu
 modules-center = date-ust time-label date
 modules-left = i3 xwindow
 
@@ -241,6 +241,13 @@ type = custom/script
 exec = TZ=UST date +"%H:%M"
 format-foreground = #fff
 interval = 5
+
+[module/toggl]
+type = custom/script
+exec = sh $HOME/.config/polybar/scripts/toggl.sh
+click-left = google-chrome-beta https://www.toggl.com/app/timer
+format-foreground = #fff
+interval = 1
 
 [module/volume]
 type = internal/volume
