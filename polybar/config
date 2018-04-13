@@ -52,7 +52,7 @@ cursor-scroll = ns-resize
 font-0 = "Fira Code":pixelsize=10:antialias=true;1
 font-1 = icomoon:pixelsize=10;1
 
-modules-right = inbox-reddit inbox-github toggl volume backlight xkeyboard redshift
+modules-right = inbox-reddit inbox-github toggl volume backlight kbd-backlight xkeyboard redshift
 modules-center = date
 modules-left = i3
 
@@ -90,6 +90,11 @@ type = custom/script
 exec = $HOME/.config/polybar/scripts/inbox-github.sh
 click-left = google-chrome-beta https://github.com/notifications
 interval = 60
+
+[module/kbd-backlight]
+type = custom/script
+exec = sh $HOME/.config/polybar/scripts/kbd-backlight.sh
+click-left = sh $HOME/.config/polybar/scripts/kbd-backlight.sh true
 
 [module/xwindow]
 type = internal/xwindow
