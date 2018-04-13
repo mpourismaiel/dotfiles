@@ -54,7 +54,7 @@ font-1 = icomoon:pixelsize=10;1
 
 modules-right = inbox-reddit inbox-github toggl volume backlight kbd-backlight xkeyboard redshift
 modules-center = date
-modules-left = i3
+modules-left = host i3
 
 [bar/secondary]
 inherits = bar/main
@@ -73,6 +73,11 @@ modules-left = xwindow
 type = internal/xbacklight
 format = <label>
 label =  %percentage%%
+
+[module/host]
+type = custom/script
+exec = echo  $(whoami)/$(hostname)
+label-foreground = #b2bbbd
 
 [module/redshift]
 type = custom/script
@@ -202,6 +207,7 @@ interface = wlp2s0
 interval = 3.0
 
 format-connected =  <ramp-signal> <label-connected>
+format-connected-foreground = #b2bbbd
 label-connected = %essid%
 label-connected-foreground = #b2bbbd
 
