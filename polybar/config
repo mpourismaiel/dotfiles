@@ -23,7 +23,7 @@ override-redirect = false
 fixed-center = true
 # radius = 8.0
 width = 100%
-height = 40
+height = 32
 wm-name = bar
 
 background = ${colors.background}
@@ -32,8 +32,8 @@ foreground = ${colors.foreground}
 line-size = 3
 line-color = #f00
 
-border-size = 20
-border-top-size = 20
+border-size = 0
+border-top-size = 0
 border-bottom-size = 0
 border-color = #00000000
 
@@ -52,9 +52,22 @@ cursor-scroll = ns-resize
 font-0 = "Fira Code":pixelsize=10:antialias=true;1
 font-1 = icomoon:pixelsize=10;1
 
-modules-right = inbox-reddit inbox-github toggl volume backlight xkeyboard redshift wlan memory cpu
-modules-center = date-ust time-label date
-modules-left = i3 xwindow
+modules-right = inbox-reddit inbox-github toggl volume backlight xkeyboard redshift
+modules-center = date
+modules-left = i3
+
+[bar/secondary]
+inherits = bar/main
+
+border-top-size = 0
+height = 28
+
+font-0 = "Fira Code":pixelsize=9:antialias=true;1
+font-1 = icomoon:pixelsize=9;1
+
+modules-right = cpu memory wlan
+modules-center = date-ust time-label date-pst
+modules-left = xwindow
 
 [module/backlight]
 type = internal/xbacklight
@@ -80,11 +93,8 @@ interval = 60
 
 [module/xwindow]
 type = internal/xwindow
-format-prefix="    "
-format-prefix-foreground=#556064
-label = %title:0:60:...%
-format-suffix=" "
-format-underline=#55aa55
+label =   %title:0:100:...%
+label-foreground = #b2bbbd
 
 [module/xkeyboard]
 type = internal/xkeyboard
@@ -169,14 +179,16 @@ label-song-ellipsis = true
 type = internal/cpu
 interval = 2
 format-prefix = " "
-format-prefix-foreground = ${colors.foreground-alt}
+format-prefix-foreground = #b2bbbd
+label-foreground = #b2bbbd
 label = %percentage:2%%
 
 [module/memory]
 type = internal/memory
 interval = 2
 format-prefix = " "
-format-prefix-foreground = ${colors.foreground-alt}
+format-prefix-foreground = #b2bbbd
+label-foreground = #b2bbbd
 label = %percentage_used%%
 
 [module/wlan]
@@ -184,9 +196,9 @@ type = internal/network
 interface = wlp2s0
 interval = 3.0
 
-format-connected = <ramp-signal> <label-connected>
-format-connected-underline = #9f78e1
+format-connected =  <ramp-signal> <label-connected>
 label-connected = %essid%
+label-connected-foreground = #b2bbbd
 
 format-disconnected =
 ;format-disconnected = <label-disconnected>
@@ -221,8 +233,7 @@ format-disconnected =
 type = internal/date
 interval = 5
 
-date =
-date-alt = "%Y %B %d, %A "
+date = "%Y %B %d, %A "
 
 time = %H:%M
 time-alt = %H:%M
@@ -233,13 +244,19 @@ label = %date% %time%
 
 [module/time-label]
 type = custom/text
-content = "  "
+content = "UST    PST"
 content-foreground = #556064
 
 [module/date-ust]
 type = custom/script
-exec = TZ=UST date +"%H:%M"
-format-foreground = #fff
+exec = TZ=UST date +"%B %d, %H:%M"
+format-foreground = #b2bbbd
+interval = 5
+
+[module/date-pst]
+type = custom/script
+exec = TZ=":America/Creston" date +"%B %d, %H:%M"
+format-foreground = #b2bbbd
 interval = 5
 
 [module/toggl]
@@ -257,7 +274,7 @@ label-volume = " %percentage:2%%"
 label-volume-foreground = ${root.foreground}
 
 format-muted-prefix = " "
-format-muted-foreground = ${colors.foreground-alt}
+format-muted-foreground = #b2bbbd
 label-muted = 
 
 [settings]
