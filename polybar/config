@@ -247,7 +247,7 @@ type = custom/script
 exec = sh $HOME/.config/polybar/scripts/toggl.sh
 click-left = google-chrome-beta https://www.toggl.com/app/timer
 format-foreground = #fff
-interval = 1
+interval = 60
 
 [module/volume]
 type = internal/volume
