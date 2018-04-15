@@ -152,7 +152,7 @@ bindsym $mod+comma move workspace to output right
 bindsym $mod+period move workspace to output left
 
 # Lockscreen
-bindsym $mod+Shift+x exec screenshot_current=/tmp/current-screen.jpg && import -window root $screenshot_current && convert -blur 20x8 $screenshot_current $screenshot_current && i3lock -i $screenshot_current
+bindsym $mod+Shift+x exec sh $HOME/.config/i3/i3lock $HOME/Pictures/Lockscreen/wallpaper.jpg
 
 # Monitor setup
 bindsym $mod+$alt+s exec sh $HOME/.screenlayout/single-screen-full-hd.sh
