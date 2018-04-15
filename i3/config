@@ -235,12 +235,12 @@ mode "resize" {
 
 # {{{ Nautilus Mode
 bindsym $mod+Shift+p mode "$mode_nautilus"
-set $mode_nautilus Places (H)ome Do(c)uments (D)ownloads Pi(c)tures
+set $mode_nautilus Places (H)ome (P)rojects (D)ownloads Pi(c)tures
 mode "$mode_nautilus" {
-    bindsym h exec nautilus $HOME, mode "default"
-    bindsym p exec nautilus $HOME/Documents, mode "default"
-    bindsym d exec nautilus $HOME/Downloads, mode "default"
-    bindsym c exec nautilus $HOME/Pictures, mode "default"
+    bindsym h exec $nsi terminator -x ranger ~, workspace $workspace3, mode "default"
+    bindsym p exec $nsi terminator -x ranger ~/Documents/Projects, workspace $workspace3, mode "default"
+    bindsym d exec $nsi terminator -x ranger ~/Downloads, workspace $workspace3, mode "default"
+    bindsym c exec $nsi terminator -x ranger ~/Pictures, workspace $workspace3, mode "default"
     bindsym Return mode "default"
     bindsym Escape mode "default"
 }
