@@ -1,7 +1,6 @@
 ## PATHs
 export GOPATH="$HOME/go/bin"
-export PATH="$PATH:$GOPATH"
-
+export PATH="$PATH:$GOPATH:$HOME/bin"
 
 ## Options section
 setopt correct                                                  # Auto correct mistakes

@@ -77,7 +77,7 @@ label =  %percentage%%
 [module/host]
 type = custom/script
 exec = echo  $(whoami)/$(hostname)
-click-left = pcmanfm $HOME
+click-left = terminator -x ranger $HOME && i3-msg "workspace 3: "
 label-foreground = #b2bbbd
 
 [module/redshift]

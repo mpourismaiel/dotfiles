@@ -73,6 +73,14 @@ if [ -f $HOME/.zshrc ]; then
 fi
 ln .zshrc $HOME/.zshrc
 
+echo "Installing command line tools and commands"
+mkdir -p ~/bin
+TARGET=~/bin/tldr && curl -o $TARGET https://raw.githubusercontent.com/raylee/tldr/master/tldr && chmod +x $TARGET && unset TARGET
+TARGET=~/bin/hr && curl -o $TARGET https://raw.githubusercontent.com/LuRsT/hr/master/hr && chmod +x $TARGET && unset TARGET
+TARGET=/usr/local/bin/ad && sudo curl -o $TARGET https://raw.githubusercontent.com/tanrax/terminal-AdvancedNewFile/master/bin/advance && sudo chmod +x $TARGET && unset TARGET
+git clone --depth 1 https://github.com/junegunn/fzf.git ~/.fzf
+~/.fzf/install
+
 echo "Done"
 echo "Please install fonts Feather icons as icomoon and Fira code yourself. (Simply copy ttf/otf files to $HOME/.local/share/fonts)"
 cd $CURRENT_DIR
