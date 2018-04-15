@@ -1,0 +1,82 @@
+{
+    "editor.fontSize": 14,
+    "editor.renderWhitespace": "boundary",
+    "editor.tabCompletion": true,
+    "editor.fontFamily": "'Fira Code', 'Source Code Pro', 'GanjNamehSans', 'Droid Sans Mono', 'Courier New', monospace, 'Droid Sans Fallback'",
+    "editor.fontWeight": "500",
+    "editor.lineHeight": 30,
+    "editor.rulers": [
+        80
+    ],
+    "editor.tabSize": 2,
+    "editor.smoothScrolling": true,
+    "editor.minimap.enabled": false,
+    "editor.fontLigatures": true,
+    "window.newWindowDimensions": "maximized",
+    "files.trimTrailingWhitespace": true,
+    "files.insertFinalNewline": true,
+    "files.trimFinalNewlines": true,
+    "workbench.iconTheme": "vscode-great-icons",
+    "git.confirmSync": false,
+    "explorer.confirmDragAndDrop": false,
+    "path-intellisense.mappings": {
+        "@": "${workspaceRoot}/realtime/"
+    },
+    "git.autofetch": true,
+    "explorer.confirmDelete": false,
+    "window.zoomLevel": 0,
+    "gitlens.advanced.messages": {
+        "suppressCommitHasNoPreviousCommitWarning": false,
+        "suppressCommitNotFoundWarning": false,
+        "suppressFileNotUnderSourceControlWarning": false,
+        "suppressGitVersionWarning": false,
+        "suppressLineUncommittedWarning": false,
+        "suppressNoRepositoryWarning": false,
+        "suppressResultsExplorerNotice": true,
+        "suppressShowKeyBindingsNotice": true,
+        "suppressUpdateNotice": true,
+        "suppressWelcomeNotice": false
+    },
+    "gitlens.codeLens.authors.enabled": false,
+    "emmet.includeLanguages": {
+        "javascript": "javascriptreact"
+    },
+    "git.inputValidation": "warn",
+    "diffEditor.ignoreTrimWhitespace": false,
+    "stylelint.enable": true,
+    "css.validate": false,
+    "scss.validate": false,
+    "files.exclude": {
+        "**/.git": true,
+        "**/.svn": true,
+        "**/.hg": true,
+        "**/CVS": true,
+        "**/.DS_Store": true,
+        "**/*.pyc": true
+    },
+    "window.menuBarVisibility": "toggle",
+    "workbench.colorTheme": "Hopscotch",
+    "markdown.preview.fontFamily": "'Fira Code', 'Source Code Pro', 'GanjNamehSans', 'Droid Sans Mono', 'Courier New', monospace, 'Droid Sans Fallback'",
+    "gitlens.historyExplorer.enabled": false,
+    "gitlens.codeLens.enabled": false,
+    "gitlens.hovers.currentLine.over": "line",
+    "gitlens.statusBar.reduceFlicker": true,
+    "workbench.list.multiSelectModifier": "ctrlCmd",
+    "workbench.colorCustomizations": {
+        "[Hopscotch]": {
+            "statusBar.background": "#24171e",
+            "panel.background": "#291a22",
+            "panel.border": "#1f1319",
+            "panelTitle.activeBorder": "#4b313e",
+            "sideBar.background": "#291a22",
+            "activityBar.background": "#24171e",
+            "editor.background": "#301f28",
+            "tab.inactiveBackground": "#291a22",
+            "tab.activeBorder": "#4b313e",
+            "terminal.background": "#291a22",
+            "editorGroupHeader.tabsBackground": "#1f1319",
+            "input.background": "#1f131954",
+            "input.border": "#4b313e"
+        }
+    }
+}
