@@ -8,10 +8,10 @@
 ;=====================================================
 
 [colors]
-background = #2f343f
-background-alt = #2f343f
-foreground = #f3f4f5
-foreground-alt = #f3f4f5
+background = #24171e
+background-alt = #24171e
+foreground = #ffffe6
+foreground-alt = #ffffe6
 primary = #ffb52a
 secondary = #e60053
 alert = #bd2c40
@@ -76,7 +76,8 @@ label =  %percentage%%
 
 [module/host]
 type = custom/script
-exec = echo  $(whoami)/$(hostname)
+exec = echo  $(whoami)/$(hostname)
+click-left = pcmanfm $HOME
 label-foreground = #b2bbbd
 
 [module/redshift]
