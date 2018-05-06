@@ -4,7 +4,7 @@
     "editor.tabCompletion": true,
     "editor.fontFamily": "'Fira Code', 'Source Code Pro', 'GanjNamehSans', 'Droid Sans Mono', 'Courier New', monospace, 'Droid Sans Fallback'",
     "editor.fontWeight": "500",
-    "editor.lineHeight": 30,
+    "editor.lineHeight": 36,
     "editor.rulers": [
         80
     ],
@@ -78,5 +78,6 @@
             "input.background": "#1f131954",
             "input.border": "#4b313e"
         }
-    }
+    },
+    "jest.showCoverageOnLoad": true
 }
