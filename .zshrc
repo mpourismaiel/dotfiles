@@ -68,6 +68,7 @@ paclist() {
 
 
 ## Alias section
+alias init-ping="ping 8.8.8.8 >> /tmp/ping-log &"
 alias cp="cp -i"                                                # Confirm before overwriting something
 alias df='df -h'                                                # Human-readable sizes
 alias free='free -m'                                            # Show sizes in MB
@@ -103,15 +104,6 @@ alias gp='git push'
 alias gl='git pull'
 
 alias _='sudo'
-
-alias pc='pacman'
-alias pci='pacman -S'
-alias pciy='pacman -Sy'
-alias pcu='pacman -Syu'
-alias yo='yaourt'
-alias yoi='yaourt -S'
-alias yoiy='yaourt -Sy'
-alias you='yaourt -Syu'
 
 # Theming section
 autoload -U compinit colors zcalc

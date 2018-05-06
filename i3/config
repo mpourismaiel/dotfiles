@@ -45,9 +45,11 @@ bindsym $mod+Shift+Return exec gnome-terminal
 
 # kill focused window
 bindsym $mod+q kill
+bindsym $alt+F4 kill
 
 # start rofi (a program launcher)
 bindsym $mod+d exec $nsi "rofi -combi-modi drun,run -show combi"
+bindsym $mod+space exec $nsi "rofi -combi-modi drun,run -show combi"
 bindsym $mod+Shift+d exec $nsi rofi -show window
 bindsym $alt+Tab exec $nsi rofi -show window
 bindsym $mod+Tab exec $nsi rofi -show window
@@ -80,9 +82,6 @@ bindsym $mod+e layout toggle split
 
 # toggle tiling / floating
 bindsym $mod+Shift+space floating toggle
-
-# change focus between tiling / floating windows
-bindsym $mod+space focus mode_toggle
 
 # focus the parent container
 bindsym $mod+a focus parent
@@ -185,6 +184,7 @@ for_window [window_type="menu"] floating enable
 # }}}
 
 # {{{ Startup
+exec_always sh $HOME/bin/ping.sh
 exec sh $HOME/.screenlayout/single-screen-full-hd.sh
 exec $nsi redshift -c ~/.config/redshift.conf
 exec_always $nsi $HOME/.config/polybar/launch.sh
@@ -199,9 +199,8 @@ exec $nsi killall compton
 exec $nsi compton
 # Startup applications
 exec $nsi google-chrome-beta
-exec $nsi code
 exec $nsi terminator
-exec $nsi telegram-desktop
+exec $nsi proxychains telegram-desktop
 # Some configuration
 exec $nsi xbacklight -set 100%
 # }}}

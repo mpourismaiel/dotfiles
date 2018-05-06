@@ -1,0 +1,19 @@
+#!/bin/sh
+
+if [ -z $1 ]; then
+  echo "Enter a partition"
+  exit 1
+fi
+
+if [ -z $2 ]; then
+  echo "Enter a directory to mount on"
+  exit 1
+fi
+
+if [ ! -d $2 ]; then
+  mkdir $2
+else
+  umount $2
+fi
+
+mount $1 $2

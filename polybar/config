@@ -65,7 +65,7 @@ height = 28
 font-0 = "Fira Code":pixelsize=9:antialias=true;1
 font-1 = icomoon:pixelsize=9;1
 
-modules-right = cpu memory wlan
+modules-right = showping cpu memory wlan
 modules-center = date-ust time-label date-pst
 modules-left = xwindow
 
@@ -73,6 +73,12 @@ modules-left = xwindow
 type = internal/xbacklight
 format = <label>
 label =  %percentage%%
+
+[module/showping]
+type = custom/script
+exec = tail -n 1 /tmp/ping-log | tee | sed s/.*time\=//g
+label-foreground = #b2bbbd
+interval = 1
 
 [module/host]
 type = custom/script
