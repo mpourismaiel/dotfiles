@@ -52,7 +52,7 @@ cursor-scroll = ns-resize
 font-0 = "Fira Code":pixelsize=10:antialias=true;1
 font-1 = icomoon:pixelsize=10;1
 
-modules-right = inbox-reddit inbox-github toggl volume backlight kbd-backlight xkeyboard redshift
+modules-right = toggl inbox-github volume backlight kbd-backlight xkeyboard redshift
 modules-center = date
 modules-left = host i3
 
@@ -90,12 +90,6 @@ label-foreground = #b2bbbd
 type = custom/script
 exec = $HOME/.config/polybar/scripts/redshift.sh
 interval = 5
-
-[module/inbox-reddit]
-type = custom/script
-exec = $HOME/.config/polybar/scripts/inbox-reddit.sh
-click-left = google-chrome-beta https://reddit.com/message/inbox
-interval = 60
 
 [module/inbox-github]
 type = custom/script
