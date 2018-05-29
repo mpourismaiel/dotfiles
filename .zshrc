@@ -110,12 +110,10 @@ colors
 # enable substitution for prompt
 setopt prompt_subst
 
-# Prompt (on left side) similar to default bash prompt, or redhat zsh prompt with colors
- #PROMPT="%(!.%{$fg[red]%}[%n@%m %1~]%{$reset_color%}# .%{$fg[green]%}[%n@%m %1~]%{$reset_color%}$ "
-# Maia prompt
-PROMPT="%B%{$fg[cyan]%}%(4~|%-1~/.../%2~|%~)%u%b >%{$fg[cyan]%}>%B%(?.%{$fg[cyan]%}.%{$fg[red]%})>%{$reset_color%}%b " # Print some system information when the shell is first started
 # Print a greeting message when shell is started
 echo  $USER@$HOST -  $(uname -srm)  $(lsb_release -rcs)
+# Prompt (on left side)
+PROMPT="%B%{$fg[cyan]%}%(4~|%-1~/.../%2~|%~)%u%b >%{$fg[cyan]%}>%B%(?.%{$fg[cyan]%}.%{$fg[red]%})>%{$reset_color%}%b " # Print some system information when the shell is first started
 ## Prompt on right side:
 #  - shows status of git when in git repository (code adapted from https://techanic.net/2012/12/30/my_git_prompt_for_zsh.html)
 #  - shows exit status of previous command (if previous command finished with an error)
@@ -163,55 +161,15 @@ bindkey "$terminfo[kcud1]" history-substring-search-down
 bindkey '^[[A' history-substring-search-up
 bindkey '^[[B' history-substring-search-down
 
-case $(basename "$(cat "/proc/$PPID/comm")") in
-  login)
-    	RPROMPT="%{$fg[red]%} %(?..[%?])"
-    	alias x='startx ~/.xinitrc'      # Type name of desired desktop after x, xinitrc is configured for it
-    ;;
-  urxvt)
-    	RPROMPT='$(git_prompt_string)'
-    	# Use autosuggestion
-    	source /usr/share/zsh/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh
-    	ZSH_AUTOSUGGEST_BUFFER_MAX_SIZE=20
-    	ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE='fg=8'
-    ;;
-  konsole|qterminal)
-    	RPROMPT='$(git_prompt_string)'
-    ;;
-  'tmux: server')
-  	if $(ps -p$PPID| grep -q -e konsole -e qterminal); then
-    	RPROMPT='$(git_prompt_string)'
-    else
-        RPROMPT='$(git_prompt_string)'
-		## Base16 Shell color themes.
-		#possible themes: 3024, apathy, ashes, atelierdune, atelierforest, atelierhearth,
-		#atelierseaside, bespin, brewer, chalk, codeschool, colors, default, eighties,
-		#embers, flat, google, grayscale, greenscreen, harmonic16, isotope, londontube,
-		#marrakesh, mocha, monokai, ocean, paraiso, pop (dark only), railscasts, shapesifter,
-		#solarized, summerfruit, tomorrow, twilight
-		#theme="eighties"
-		#Possible variants: dark and light
-		#shade="dark"
-		#BASE16_SHELL="/usr/share/zsh/scripts/base16-shell/base16-$theme.$shade.sh"
-		#[[ -s $BASE16_SHELL ]] && source $BASE16_SHELL
-		# Use autosuggestion
-		source /usr/share/zsh/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh
-		ZSH_AUTOSUGGEST_BUFFER_MAX_SIZE=20
-  		ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE='fg=8'
-  	fi
-    ;;
-  *)
-  	if $(ps -p$PPID| grep -q -e konsole -e qterminal); then
-    	RPROMPT='$(git_prompt_string)'
-    else
-        RPROMPT='$(git_prompt_string)'
-		# Use autosuggestion
-		source /usr/share/zsh/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh
-		ZSH_AUTOSUGGEST_BUFFER_MAX_SIZE=20
-  		ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE='fg=8'
-  	fi
-    ;;
-esac
+if $(ps -p$PPID| grep -q -e konsole -e qterminal); then
+  RPROMPT='$(git_prompt_string)'
+else
+  RPROMPT='$(git_prompt_string)'
+  # Use autosuggestion
+  source /usr/share/zsh/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh
+  ZSH_AUTOSUGGEST_BUFFER_MAX_SIZE=20
+  ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE='fg=8'
+fi
 
 ## sources
 source /usr/share/nvm/init-nvm.sh
