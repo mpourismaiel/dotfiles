@@ -79,5 +79,10 @@
             "input.border": "#4b313e"
         }
     },
-    "jest.showCoverageOnLoad": true
+    "jest.showCoverageOnLoad": true,
+    "remark.format": {
+        "plugins": [
+            "github"
+        ]
+    }
 }

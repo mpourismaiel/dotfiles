@@ -80,6 +80,12 @@ exec = tail -n 1 /tmp/ping-log | tee | sed s/.*time\=//g
 label-foreground = #b2bbbd
 interval = 1
 
+[module/vpn-toggle]
+type = custom/script
+exec = $HOME/bin/vpn.sh
+click-left = "VPNCONFIG=$HOME/.vpn/cisco/vpnmakers/uk.info $HOME/.config/polybar/scripts/vpn.sh toggle"
+interval = 5
+
 [module/host]
 type = custom/script
 exec = echo  $(whoami)/$(hostname)
