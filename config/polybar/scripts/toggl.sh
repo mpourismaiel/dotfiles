@@ -20,7 +20,7 @@ if [ "$duration" != 'null' ]; then
     echo  $duration
   else
     if [ ${#description} -gt 50 ]; then
-      string=${description:0:50}
+      string=${description:0:20}
       echo  ${string/\"}... - $duration
     else
       echo  ${description/\"} - $duration
