@@ -52,7 +52,7 @@ cursor-scroll = ns-resize
 font-0 = "Fira Code":pixelsize=10:antialias=true;1
 font-1 = icomoon:pixelsize=10;1
 
-modules-right = toggl inbox-github volume backlight kbd-backlight xkeyboard redshift
+modules-right = toggl toggl-report inbox-github volume backlight kbd-backlight xkeyboard redshift
 modules-center = date
 modules-left = host i3
 
@@ -262,12 +262,12 @@ label = %date% %time%
 
 [module/time-label]
 type = custom/text
-content = "UST    PST"
+content = "UTC    PST"
 content-foreground = #556064
 
 [module/date-ust]
 type = custom/script
-exec = TZ=UST date +"%B %d, %H:%M"
+exec = TZ=UTC date +"%B %d, %H:%M"
 format-foreground = #b2bbbd
 interval = 5
 
@@ -281,6 +281,12 @@ interval = 5
 type = custom/script
 exec = sh $HOME/.config/polybar/scripts/toggl.sh
 click-left = google-chrome-beta https://www.toggl.com/app/timer
+format-foreground = #fff
+interval = 60
+
+[module/toggl-report]
+type = custom/script
+exec = sh $HOME/.config/polybar/scripts/toggl-report.sh
 format-foreground = #fff
 interval = 60
 
