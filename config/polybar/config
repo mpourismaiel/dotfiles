@@ -52,7 +52,7 @@ cursor-scroll = ns-resize
 font-0 = "Fira Code":pixelsize=10:antialias=true;1
 font-1 = icomoon:pixelsize=10;1
 
-modules-right = toggl toggl-report inbox-github volume backlight kbd-backlight xkeyboard redshift
+modules-right = toggl toggl-report inbox-github volume backlight kbd-backlight battery xkeyboard
 modules-center = date
 modules-left = host i3
 
@@ -68,6 +68,17 @@ font-1 = icomoon:pixelsize=9;1
 modules-right = showping cpu memory wlan
 modules-center = date-ust time-label date-pst
 modules-left = xwindow
+
+[module/battery]
+type = internal/battery
+full-at = 99
+battery = BAT0
+adapter = AC0
+poll-interval = 5
+format-charging = <label-charging>
+format-discharging = <label-discharging>
+label-charging =  %percentage%%
+label-discharging =  %percentage%%
 
 [module/backlight]
 type = internal/xbacklight
@@ -286,7 +297,8 @@ interval = 60
 
 [module/toggl-report]
 type = custom/script
-exec = sh $HOME/.config/polybar/scripts/toggl-report.sh
+exec = sh $HOME/.config/polybar/scripts/toggl-report.sh hide
+click-left = sh $HOME/.config/polybar/scripts/toggl-report.sh show
 format-foreground = #fff
 interval = 60
 
