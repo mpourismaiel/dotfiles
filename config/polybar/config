@@ -52,7 +52,7 @@ cursor-scroll = ns-resize
 font-0 = "Fira Code":pixelsize=10:antialias=true;1
 font-1 = icomoon:pixelsize=10;1
 
-modules-right = toggl toggl-report inbox-github volume backlight kbd-backlight battery xkeyboard
+modules-right = toggl toggl-report inbox-github volume backlight kbd-backlight xkeyboard
 modules-center = date
 modules-left = host i3
 
@@ -65,20 +65,9 @@ height = 28
 font-0 = "Fira Code":pixelsize=9:antialias=true;1
 font-1 = icomoon:pixelsize=9;1
 
-modules-right = showping cpu memory wlan
+modules-right = showping cpu memory battery wlan
 modules-center = date-ust time-label date-pst
 modules-left = xwindow
-
-[module/battery]
-type = internal/battery
-full-at = 99
-battery = BAT0
-adapter = AC0
-poll-interval = 5
-format-charging = <label-charging>
-format-discharging = <label-discharging>
-label-charging =  %percentage%%
-label-discharging =  %percentage%%
 
 [module/backlight]
 type = internal/xbacklight
@@ -219,6 +208,13 @@ format-prefix-foreground = #b2bbbd
 label-foreground = #b2bbbd
 label = %percentage_used%%
 
+[module/battery]
+type = custom/script
+exec = sh $HOME/.config/polybar/scripts/battery.sh
+click-left = sh $HOME/.config/polybar/scripts/battery.sh notify
+format-foreground = #b2bbbd
+interval = 5
+
 [module/wlan]
 type = internal/network
 interface = wlp2s0
@@ -300,7 +296,6 @@ type = custom/script
 exec = sh $HOME/.config/polybar/scripts/toggl-report.sh hide
 click-left = sh $HOME/.config/polybar/scripts/toggl-report.sh show
 format-foreground = #fff
-interval = 60
 
 [module/volume]
 type = internal/volume
