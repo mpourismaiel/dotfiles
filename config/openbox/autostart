@@ -1,0 +1,6 @@
+sh $HOME/.config/polybar/launch.sh &
+sh $HOME/.screenlayout/single-screen-full-hd.sh &
+sh $HOME/bin/ping.sh &
+setxkbmap -layout us,ir -option grp:alt_shift_toggle &
+feh --bg-scale --randomize --bg-fill $HOME/Pictures/Wallpapers/ &
+nm-applet &
