@@ -27,11 +27,7 @@ client.urgent           $urgent-bg-color    $urgent-bg-color   $text-color      
 
 font pango:"Fira Code" 9
 
-gaps inner 0
-gaps outer 0
-
 new_window pixel 0
-smart_borders on
 
 hide_edge_borders both
 
@@ -139,8 +135,8 @@ bindsym $mod+Shift+x exec sh $HOME/.config/i3/i3lock $HOME/Pictures/Lockscreen/w
 bindsym $mod+l exec sh $HOME/.config/i3/i3lock $HOME/Pictures/Lockscreen/wallpaper.jpg
 
 # Monitor setup
-bindsym $mod+$alt+s exec sh $HOME/.screenlayout/single-screen-full-hd.sh
-bindsym $mod+$alt+d exec sh $HOME/.screenlayout/dual-screen-full-hd.sh
+bindsym $mod+$alt+s exec sh $HOME/.screenlayout/single-screen-full-hd.sh && restart
+bindsym $mod+$alt+d exec sh $HOME/.screenlayout/dual-screen-full-hd.sh && restart
 
 # Screenshot
 bindsym --release Print exec $nsi "filepath=~/Pictures/Screenshots/screenshot-$(date +%Y-%m-%d_%H-%M-%S).png && import -window root $filepath && xclip -selection clipboard -t image/png -i $filepath"
