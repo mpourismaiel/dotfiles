@@ -181,6 +181,7 @@ for_window [window_type="menu"] floating enable
 # }}}
 
 # {{{ Startup
+exec xss-lock -- sh $HOME/.config/i3/i3lock $HOME/Pictures/Lockscreen/wallpaper.jpg
 exec_always sh $HOME/bin/ping.sh
 exec sh $HOME/.screenlayout/single-screen-full-hd.sh
 exec_always $nsi $HOME/.config/polybar/launch.sh
@@ -265,7 +266,7 @@ mode "$mode_shutdown_sure" {
 
 set $mode_suspend_sure Suspending? (y)es, (n)o
 mode "$mode_suspend_sure" {
-    bindsym y exec betterlockscreen --lock blur && systemctl suspend, mode "default"
+    bindsym y exec sh $HOME/.config/i3/i3lock $HOME/Pictures/Lockscreen/wallpaper.jpg && systemctl suspend, mode "default"
     bindsym n mode "default"
     bindsym Return mode "default"
     bindsym Escape mode "default"
@@ -273,7 +274,7 @@ mode "$mode_suspend_sure" {
 
 set $mode_hibernate_sure Hibernating? (y)es, (n)o
 mode "$mode_hibernate_sure" {
-    bindsym y exec betterlockscreen --lock blur && systemctl hibernate, mode "default"
+    bindsym y exec sh $HOME/.config/i3/i3lock $HOME/Pictures/Lockscreen/wallpaper.jpg && systemctl hibernate, mode "default"
     bindsym n mode "default"
     bindsym Return mode "default"
     bindsym Escape mode "default"
@@ -282,7 +283,7 @@ mode "$mode_hibernate_sure" {
 bindsym $mod+Shift+e mode "$mode_system"
 set $mode_system (l)ock, log(o)ut, (r)eboot, (s)hut down, s(u)spend, (h)ibernate
 mode "$mode_system" {
-    bindsym l exec betterlockscreen --lock blur, mode "default"
+    bindsym l exec sh $HOME/.config/i3/i3lock $HOME/Pictures/Lockscreen/wallpaper.jpg, mode "default"
     bindsym o mode "$mode_logout_sure"
     bindsym r mode "$mode_reboot_sure"
     bindsym s mode "$mode_shutdown_sure"
