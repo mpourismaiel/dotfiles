@@ -1,0 +1,42 @@
+#!/bin/bash
+
+state=$(upower -i /org/freedesktop/UPower/devices/battery_BAT0 2> /dev/null | grep "state" | sed s/"state:"// | sed s/" "//g)
+percentage=$(upower -i /org/freedesktop/UPower/devices/battery_BAT0 2> /dev/null | grep "percentage" | sed s/"percentage:"// | sed s/" "//g | sed s/"%"//)
+time_to_full=$(upower -i /org/freedesktop/UPower/devices/battery_BAT0 2> /dev/null | grep "time to full" | sed s/"time to full:"// | sed s/" "//g)
+time_to_empty=$(upower -i /org/freedesktop/UPower/devices/battery_BAT0 2> /dev/null | grep "time to empty" | sed s/"time to empty:"// | sed s/" "//g)
+
+data_dir=$HOME/.log/battery
+
+if [ ! -d data_dir ]
+then
+  mkdir -p $data_dir
+fi
+
+time_to=$time_to_empty
+if [ "$state" = "charging" ]
+then
+  time_to=$time_to_full
+fi
+
+echo "$(date +%s),$state,$percentage,$time_to" >> "${data_dir}/consumption"
+
+if [ $(cat "${data_dir}/consumption" | wc -l) -gt 500 ]
+then
+  sed -e "1d" "${data_dir}/consumption"
+fi
+
+if [ $(echo $percentage 2> /dev/null | sed s/"%"//) -lt 10 ] && [ ! -f "${data_dir}/notify10" ]
+then
+  touch "${data_dir}/notify10"
+  notify-send --urgency critical "Critical Battery" "Battery level at 10%\nPlease charge your laptop before it shuts down!"
+elif [ $(echo $percentage 2> /dev/null | sed s/"%"//) -lt 5 ] && [ ! -f "${data_dir}/notify5" ]
+then
+  touch "${data_dir}/notify5"
+  notify-send --urgency critical "Critical Battery" "Battery level at 5%\nSeriously, CHARGE YOUR LAPTOP!!!"
+elif [ $(echo $percentage 2> /dev/null | sed s/"%"//) -ge 10 ] && [ -f "${data_dir}/notify" ]
+then
+  rm "${data_dir}/notify10"
+elif [ $(echo $percentage 2> /dev/null | sed s/"%"//) -ge 5 ] && [ -f "${data_dir}/notify5" ]
+then
+  rm "${data_dir}/notify5"
+fi
