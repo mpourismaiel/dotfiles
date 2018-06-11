@@ -181,6 +181,7 @@ for_window [window_type="menu"] floating enable
 # }}}
 
 # {{{ Startup
+exec_always $nsi watch -n30 $HOME/bin/battery
 exec xss-lock -- sh $HOME/.config/i3/i3lock $HOME/Pictures/Lockscreen/wallpaper.jpg
 exec_always sh $HOME/bin/ping.sh
 exec sh $HOME/.screenlayout/single-screen-full-hd.sh
