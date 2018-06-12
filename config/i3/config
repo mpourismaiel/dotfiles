@@ -1,7 +1,6 @@
 set $alt Mod1
 set $ctrl Control
 set $mod Mod4
-set $scripts $HOME/.config/i3/scripts
 set $nsi --no-startup-id
 
 set $workspace1 "1: "
@@ -47,8 +46,10 @@ bindsym $alt+F4 kill
 bindsym $mod+d exec $nsi "rofi -combi-modi drun,run -show combi"
 bindsym $mod+space exec $nsi "rofi -combi-modi drun,run -show combi"
 bindsym $mod+Shift+d exec $nsi rofi -show window
-bindsym $alt+Tab exec $nsi rofi -show window
-bindsym $mod+Tab exec $nsi rofi -show window
+bindsym $alt+Tab exec i3-alt-tab --next
+bindsym $alt+Shift+Tab exec i3-alt-tab --prev
+bindsym $mod+Tab exec i3-alt-tab --next
+bindsym $mod+Shift+Tab exec i3-alt-tab --prev
 
 # change focus
 bindsym $mod+Left focus left
@@ -89,7 +90,6 @@ bindsym $mod+z focus child
 bindsym $mod+1 workspace $workspace1
 bindsym $mod+2 workspace $workspace2
 bindsym $mod+3 workspace $workspace3
-bindsym F3 workspace $workspace3
 bindsym $mod+4 workspace $workspace4
 bindsym $mod+5 workspace $workspace5
 bindsym $mod+6 workspace $workspace6
@@ -111,7 +111,7 @@ bindsym $mod+Shift+9 move container to workspace 9
 bindsym $mod+Shift+0 move container to workspace 10
 
 # reload the configuration file
-bindsym $mod+ctrl+c reload
+bindsym $mod+$ctrl+c reload
 # restart i3 inplace (preserves your layout/session, can be used to upgrade i3)
 bindsym $mod+$ctrl+r restart
 # }}}
@@ -267,29 +267,20 @@ mode "$mode_shutdown_sure" {
 
 set $mode_suspend_sure Suspending? (y)es, (n)o
 mode "$mode_suspend_sure" {
-    bindsym y exec sh $HOME/.config/i3/i3lock $HOME/Pictures/Lockscreen/wallpaper.jpg && systemctl suspend, mode "default"
-    bindsym n mode "default"
-    bindsym Return mode "default"
-    bindsym Escape mode "default"
-}
-
-set $mode_hibernate_sure Hibernating? (y)es, (n)o
-mode "$mode_hibernate_sure" {
-    bindsym y exec sh $HOME/.config/i3/i3lock $HOME/Pictures/Lockscreen/wallpaper.jpg && systemctl hibernate, mode "default"
+    bindsym y exec systemctl suspend, mode "default"
     bindsym n mode "default"
     bindsym Return mode "default"
     bindsym Escape mode "default"
 }
 
 bindsym $mod+Shift+e mode "$mode_system"
-set $mode_system (l)ock, log(o)ut, (r)eboot, (s)hut down, s(u)spend, (h)ibernate
+set $mode_system (l)ock, log(o)ut, (r)eboot, (s)hut down, s(u)spend
 mode "$mode_system" {
     bindsym l exec sh $HOME/.config/i3/i3lock $HOME/Pictures/Lockscreen/wallpaper.jpg, mode "default"
     bindsym o mode "$mode_logout_sure"
     bindsym r mode "$mode_reboot_sure"
     bindsym s mode "$mode_shutdown_sure"
     bindsym u mode "$mode_suspend_sure"
-    bindsym h mode "$mode_hibernate_sure"
     bindsym Return mode "default"
     bindsym Escape mode "default"
 }
