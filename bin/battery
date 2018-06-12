@@ -25,18 +25,18 @@ then
   sed -e "1d" "${data_dir}/consumption"
 fi
 
-if [ $(echo $percentage 2> /dev/null | sed s/"%"//) -lt 10 ] && [ ! -f "${data_dir}/notify10" ]
+if [ $(echo $percentage 2> /dev/null | sed s/"%"//) -le 10 ] && [ ! -f "${data_dir}/notify10" ]
 then
   touch "${data_dir}/notify10"
   notify-send --urgency critical "Critical Battery" "Battery level at 10%\nPlease charge your laptop before it shuts down!"
-elif [ $(echo $percentage 2> /dev/null | sed s/"%"//) -lt 5 ] && [ ! -f "${data_dir}/notify5" ]
+elif [ $(echo $percentage 2> /dev/null | sed s/"%"//) -le 5 ] && [ ! -f "${data_dir}/notify5" ]
 then
   touch "${data_dir}/notify5"
   notify-send --urgency critical "Critical Battery" "Battery level at 5%\nSeriously, CHARGE YOUR LAPTOP!!!"
-elif [ $(echo $percentage 2> /dev/null | sed s/"%"//) -ge 10 ] && [ -f "${data_dir}/notify" ]
+elif [ $(echo $percentage 2> /dev/null | sed s/"%"//) -gt 10 ] && [ -f "${data_dir}/notify10" ]
 then
   rm "${data_dir}/notify10"
-elif [ $(echo $percentage 2> /dev/null | sed s/"%"//) -ge 5 ] && [ -f "${data_dir}/notify5" ]
+elif [ $(echo $percentage 2> /dev/null | sed s/"%"//) -gt 5 ] && [ -f "${data_dir}/notify5" ]
 then
   rm "${data_dir}/notify5"
 fi
