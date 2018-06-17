@@ -84,5 +84,6 @@
         "plugins": [
             "github"
         ]
-    }
+    },
+    "typescript.updateImportsOnFileMove.enabled": "always"
 }
