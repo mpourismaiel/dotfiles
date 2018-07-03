@@ -54,7 +54,7 @@
         "**/.DS_Store": true,
         "**/*.pyc": true
     },
-    "window.menuBarVisibility": "toggle",
+    "window.menuBarVisibility": "hidden",
     "workbench.colorTheme": "Hopscotch",
     "markdown.preview.fontFamily": "'Fira Code', 'Source Code Pro', 'GanjNamehSans', 'Droid Sans Mono', 'Courier New', monospace, 'Droid Sans Fallback'",
     "gitlens.historyExplorer.enabled": false,
@@ -85,5 +85,6 @@
             "github"
         ]
     },
-    "typescript.updateImportsOnFileMove.enabled": "always"
+    "typescript.updateImportsOnFileMove.enabled": "always",
+    "vim.disableExtension": true
 }
