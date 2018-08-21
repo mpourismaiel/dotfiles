@@ -3,12 +3,7 @@ rofi.color-window: argb:cc24171e, argb:cc24171e, argb:cc24171e
 rofi.color-normal: argb:cc24171e, #ffffe6, argb:cc24171e, argb:11ff0000, #ffffe6
 rofi.color-active: argb:cc24171e, #ffffe6, argb:cc24171e, argb:11ff0000, #ffffe6
 rofi.color-urgent: argb:cc24171e, #ffffe6, argb:cc24171e, argb:11ff0000, #ffffe6
-rofi.padding: 350
-rofi.fullscreen: true
-rofi.font: SourceCodePro Font 16
-rofi.bw: 3
+rofi.font: FireCode Font 16
 rofi.separator-style: solid
-rofi.hide-scrollbar: true
-rofi.sidebar-mode: true
 rofi.show-icons: true
-rofi.fzf: true
+rofi.theme: /home/mahdi/Documents/Projects/dotfiles/config/rofi/theme.rasi

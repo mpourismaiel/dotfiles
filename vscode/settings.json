@@ -16,7 +16,7 @@
     "files.trimTrailingWhitespace": true,
     "files.insertFinalNewline": true,
     "files.trimFinalNewlines": true,
-    "workbench.iconTheme": "vscode-great-icons",
+    "workbench.iconTheme": "eq-material-theme-icons-palenight",
     "git.confirmSync": false,
     "explorer.confirmDragAndDrop": false,
     "path-intellisense.mappings": {
@@ -57,7 +57,7 @@
     "window.menuBarVisibility": "hidden",
     "workbench.colorTheme": "Hopscotch",
     "markdown.preview.fontFamily": "'Fira Code', 'Source Code Pro', 'GanjNamehSans', 'Droid Sans Mono', 'Courier New', monospace, 'Droid Sans Fallback'",
-    "gitlens.historyExplorer.enabled": false,
+    "gitlens.historyExplorer.enabled": true,
     "gitlens.codeLens.enabled": false,
     "gitlens.hovers.currentLine.over": "line",
     "gitlens.statusBar.reduceFlicker": true,
@@ -86,5 +86,10 @@
         ]
     },
     "typescript.updateImportsOnFileMove.enabled": "always",
-    "vim.disableExtension": true
+    "vim.disableExtension": true,
+    "gitlens.gitExplorer.files.layout": "tree",
+    "rewrap.wrappingColumn": 80,
+    "materialTheme.fixIconsRunning": false,
+    "breadcrumbs.enabled": true,
+    "breadcrumbs.filePath": "off"
 }
