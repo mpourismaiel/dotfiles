@@ -54,7 +54,7 @@ font-1 = icomoon:pixelsize=10;1
 
 modules-right = toggl toggl-report inbox-github volume backlight kbd-backlight xkeyboard
 modules-center = date
-modules-left = host i3
+modules-left = launcher host i3
 
 [bar/secondary]
 inherits = bar/main
@@ -88,8 +88,14 @@ interval = 5
 
 [module/host]
 type = custom/script
-exec = echo  $(whoami)/$(hostname)
+exec = echo $(whoami)/$(hostname)
 click-left = i3-msg "exec --no-startup-id terminator -x ranger $HOME; workspace 3: "
+label-foreground = #b2bbbd
+
+[module/launcher]
+type = custom/script
+exec = echo 
+click-left = rofi -show drun
 label-foreground = #b2bbbd
 
 [module/redshift]
