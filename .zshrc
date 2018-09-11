@@ -66,6 +66,8 @@ paclist() {
 }
 
 ## Alias section
+alias du="ncdu --color dark -rr --exclude .git --exclude node_modules"
+alias cat="bat"
 alias init-ping="ping 8.8.8.8 >> /tmp/ping-log &"
 alias cp="cp -i"                                                # Confirm before overwriting something
 alias df='df -h'                                                # Human-readable sizes
