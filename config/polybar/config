@@ -23,9 +23,9 @@ override-redirect = false
 fixed-center = true
 # radius = 8.0
 width = 100%
-height = 32
+height = 40
 wm-name = bar
-
+bottom = true
 background = ${colors.background}
 foreground = ${colors.foreground}
 
@@ -51,23 +51,53 @@ cursor-scroll = ns-resize
 
 font-0 = "Fira Code":pixelsize=10:antialias=true;1
 font-1 = icomoon:pixelsize=10;1
+font-2 = feather-icons:pixelsize=10;1
 
-modules-right = toggl toggl-report inbox-github volume backlight kbd-backlight xkeyboard
-modules-center = date
-modules-left = launcher host i3
+modules-right = volume backlight kbd-backlight xkeyboard wlan
+modules-center = mpd
+modules-left = launcher host
 
 [bar/secondary]
 inherits = bar/main
+bottom = false
 
-border-top-size = 0
-height = 28
+modules-right = toggl toggl-report inbox-github showping cpu memory battery
+modules-center = date
+modules-left = i3 xwindow
 
-font-0 = "Fira Code":pixelsize=9:antialias=true;1
-font-1 = icomoon:pixelsize=9;1
+[module/menu-apps]
+type = custom/menu
 
-modules-right = showping cpu memory battery wlan
-modules-center = date-ust time-label date-pst
-modules-left = xwindow
+; If true, <label-toggle> will be to the left of the menu items (default).
+; If false, it will be on the right of all the items.
+expand-right = true
+format = <label-toggle> <menu>
+
+label-open = Apps
+label-close = 
+
+label-separator = 
+
+; "menu-LEVEL-N" has the same properties as "label-NAME" with
+; the additional "exec" property
+;
+; Available exec commands:
+;   menu-open-LEVEL
+;   menu-close
+; Other commands will be executed using "/usr/bin/env sh -c $COMMAND"
+
+menu-0-0 = Browsers
+menu-0-0-exec = menu-open-1
+menu-0-1 = Chat
+menu-0-1-exec = menu-open-2
+
+menu-1-0 = Firefox
+menu-1-0-exec = firefox &
+menu-1-1 = Chrome
+menu-1-1-exec = google-chrome-beta &
+
+menu-2-0 = Telegram
+menu-2-0-exec = telegram-desktop &
 
 [module/backlight]
 type = internal/xbacklight
@@ -187,16 +217,21 @@ label-urgent-padding = ${module/bspwm.label-urgent-padding}
 
 [module/mpd]
 type = internal/mpd
-format-online = <label-song>  <icon-prev> <icon-stop> <toggle> <icon-next>
+format-online =  <label-time>  <icon-prev> <toggle> <icon-stop> <icon-next>
+label-song = %artist% - %title%
 
-icon-prev = 
-icon-stop = 
-icon-play = 
-icon-pause = 
-icon-next = 
+icon-prev = 
+icon-stop = 
+icon-play = 
+icon-pause = 
+icon-next = 
+icon-seekb = ⏪
+icon-seekf = ⏩
 
-label-song-maxlen = 25
+label-song-maxlen = 50
 label-song-ellipsis = true
+
+interval = 1
 
 [module/cpu]
 type = internal/cpu

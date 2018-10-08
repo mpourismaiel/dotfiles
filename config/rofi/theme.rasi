@@ -79,7 +79,7 @@ entry {
   text-color:       @normal-foreground;
   background-color: #24171e;
   vertical-align:   1;
-  padding:          18px;
+  padding:          8px;
 }
 
 element normal.normal {
