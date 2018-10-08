@@ -73,6 +73,15 @@ alias cp="cp -i"                                                # Confirm before
 alias df='df -h'                                                # Human-readable sizes
 alias free='free -m'                                            # Show sizes in MB
 
+alias docker="sudo docker"
+alias dc="sudo docker container"
+alias dcls="dc ls --all"
+alias dcrm="dc rm"
+alias dcri="dc run --interactive --tty"
+alias drun="sudo docker run"
+alias dat="sudo docker attach"
+alias ds="sudo docker start"
+
 alias g='git'
 alias gst='git status'
 alias ga='git add'
