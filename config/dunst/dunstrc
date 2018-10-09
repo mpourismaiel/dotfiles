@@ -19,15 +19,15 @@
     separator_height = 2
     padding = 8
     horizontal_padding = 8
-    separator_color = "#585858"
+    separator_color = "#151515"
     startup_notification = false
     # https://github.com/knopwob/dunst/issues/26#issuecomment-36159395
     #icon_position = left
     #icon_folders = /usr/share/icons/elementary/actions/16/
 
 [frame]
-    width = 2
-    color = "#151515"
+    width = 1
+    color = "#fc4384"
 
 [shortcuts]
     close = ctrl+space
@@ -37,12 +37,12 @@
 
 [urgency_low]
     background = "#1c1c1c"
-    foreground = "#E3C7AF"
+    foreground = "#ffffff"
     timeout = 5
 
 [urgency_normal]
     background = "#1c1c1c"
-    foreground = "#e59335"
+    foreground = "#ffffff"
     timeout = 10
 
 [urgency_critical]
