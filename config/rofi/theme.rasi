@@ -12,12 +12,12 @@ configuration {
 }
 
 * {
-  background-color:            #301f28;
+  background-color:            #1c1c1c;
   text-color:                  #ffffe6;
-  selbg:                       #ffb52a;
+  selbg:                       #fc4384;
   actbg:                       #262626;
   urgbg:                       #e53935;
-  winbg:                       #ffb52a;
+  winbg:                       #fc4384;
 
   selected-normal-foreground:  @winbg;
   normal-foreground:           @text-color;
@@ -77,7 +77,7 @@ element { padding: 10px; }
 entry {
   expand:           false;
   text-color:       @normal-foreground;
-  background-color: #24171e;
+  background-color: #151515;
   vertical-align:   1;
   padding:          8px;
 }
