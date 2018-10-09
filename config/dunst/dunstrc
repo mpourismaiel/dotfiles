@@ -1,7 +1,7 @@
 [global]
     font = "FiraCode 10"
     allow_markup = yes
-    format = "<b>%s</b>\n%b"
+    format = "<b><span foreground="#fc4384">%s</span></b>\n%b"
     sort = yes
     indicate_hidden = yes
     alignment = center
@@ -27,7 +27,7 @@
 
 [frame]
     width = 2
-    color = "#1c1c1c"
+    color = "#151515"
 
 [shortcuts]
     close = ctrl+space
@@ -36,13 +36,13 @@
     context = ctrl+shift+period
 
 [urgency_low]
-    background = "#151515"
+    background = "#1c1c1c"
     foreground = "#E3C7AF"
     timeout = 5
 
 [urgency_normal]
-    background = "#151515"
-    foreground = "#E3C7AF"
+    background = "#1c1c1c"
+    foreground = "#e59335"
     timeout = 10
 
 [urgency_critical]
