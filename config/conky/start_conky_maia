@@ -1,6 +1,0 @@
-#!/bin/bash
-
-conky -c $HOME/.config/conky/shortcuts &&
-conky -c $HOME/.config/conky/usage &&
-
-exit 0
