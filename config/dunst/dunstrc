@@ -1,5 +1,5 @@
 [global]
-    font = "SourceCodePro 10"
+    font = "FiraCode 10"
     allow_markup = yes
     format = "<b>%s</b>\n%b"
     sort = yes
@@ -26,8 +26,8 @@
     #icon_folders = /usr/share/icons/elementary/actions/16/
 
 [frame]
-    width = 1
-    color = "#383838"
+    width = 2
+    color = "#1c1c1c"
 
 [shortcuts]
     close = ctrl+space
@@ -36,16 +36,16 @@
     context = ctrl+shift+period
 
 [urgency_low]
-    background = "#181818"
+    background = "#151515"
     foreground = "#E3C7AF"
     timeout = 5
 
 [urgency_normal]
-    background = "#181818"
+    background = "#151515"
     foreground = "#E3C7AF"
     timeout = 10
 
 [urgency_critical]
-    background = "#181818"
-    foreground = "#E3C7AF"
+    background = "#472330"
+    foreground = "#ffffff"
     timeout = 0
