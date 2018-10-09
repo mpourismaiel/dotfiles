@@ -8,11 +8,11 @@
 ;=====================================================
 
 [colors]
-background = #24171e
-background-alt = #24171e
+background = #151515
+background-alt = #151515
 foreground = #ffffe6
 foreground-alt = #ffffe6
-primary = #ffb52a
+primary = #fc4384
 secondary = #e60053
 alert = #bd2c40
 
@@ -53,16 +53,16 @@ font-0 = "Fira Code":pixelsize=10:antialias=true;1
 font-1 = icomoon:pixelsize=10;1
 font-2 = feather-icons:pixelsize=10;1
 
-modules-right = volume backlight kbd-backlight xkeyboard wlan
+modules-right = volume backlight kbd-backlight xkeyboard date
 modules-center = mpd
-modules-left = launcher host
+modules-left = launcher menu-apps
 
 [bar/secondary]
 inherits = bar/main
 bottom = false
 
-modules-right = toggl toggl-report inbox-github showping cpu memory battery
-modules-center = date
+modules-right = toggl toggl-report inbox-github showping cpu memory battery wlan
+modules-center =
 modules-left = i3 xwindow
 
 [module/menu-apps]
@@ -73,10 +73,8 @@ type = custom/menu
 expand-right = true
 format = <label-toggle> <menu>
 
-label-open = Apps
-label-close = 
-
-label-separator = 
+label-open = " "
+label-close = " "
 
 ; "menu-LEVEL-N" has the same properties as "label-NAME" with
 ; the additional "exec" property
@@ -86,18 +84,14 @@ label-separator = 
 ;   menu-close
 ; Other commands will be executed using "/usr/bin/env sh -c $COMMAND"
 
-menu-0-0 = Browsers
-menu-0-0-exec = menu-open-1
-menu-0-1 = Chat
-menu-0-1-exec = menu-open-2
-
-menu-1-0 = Firefox
-menu-1-0-exec = firefox &
-menu-1-1 = Chrome
-menu-1-1-exec = google-chrome-beta &
-
-menu-2-0 = Telegram
-menu-2-0-exec = telegram-desktop &
+menu-0-0 = "        "
+menu-0-0-exec = nautilus $HOME
+menu-0-1 = "     "
+menu-0-1-exec = google-chrome-beta --new-window
+menu-0-2 = "     "
+menu-0-2-exec = code
+menu-0-3 = "     "
+menu-0-3-exec = terminator
 
 [module/backlight]
 type = internal/xbacklight
@@ -116,15 +110,9 @@ exec = $HOME/bin/vpn.sh
 click-left = "VPNCONFIG=$HOME/.vpn/cisco/vpnmakers/uk.info $HOME/.config/polybar/scripts/vpn.sh toggle"
 interval = 5
 
-[module/host]
-type = custom/script
-exec = echo $(whoami)/$(hostname)
-click-left = i3-msg "exec --no-startup-id terminator -x ranger $HOME; workspace 3: "
-label-foreground = #b2bbbd
-
 [module/launcher]
 type = custom/script
-exec = echo 
+exec = echo 
 click-left = rofi -show drun
 label-foreground = #b2bbbd
 
@@ -299,44 +287,27 @@ format-disconnected =
 type = internal/date
 interval = 5
 
-date = "%Y %B %d, %A "
+date-alt = "%Y %B %d, %A "
 
-time = %H:%M
-time-alt = %H:%M
+time =  %H:%M
+time-alt =  %H:%M
 
 format-foreground = #fff
 
 label = %date% %time%
 
-[module/time-label]
-type = custom/text
-content = "UTC    PST"
-content-foreground = #556064
-
-[module/date-ust]
-type = custom/script
-exec = TZ=UTC date +"%B %d, %H:%M"
-format-foreground = #b2bbbd
-interval = 5
-
-[module/date-pst]
-type = custom/script
-exec = TZ=":America/Creston" date +"%B %d, %H:%M"
-format-foreground = #b2bbbd
-interval = 5
-
 [module/toggl]
 type = custom/script
 exec = sh $HOME/.config/polybar/scripts/toggl.sh
 click-left = google-chrome-beta https://www.toggl.com/app/timer
-format-foreground = #fff
+format-foreground = #b2bbbd
 interval = 60
 
 [module/toggl-report]
 type = custom/script
 exec = sh $HOME/.config/polybar/scripts/toggl-report.sh hide
 click-left = sh $HOME/.config/polybar/scripts/toggl-report.sh show
-format-foreground = #fff
+format-foreground = #b2bbbd
 
 [module/volume]
 type = internal/volume
