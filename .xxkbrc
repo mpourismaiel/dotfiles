@@ -1,0 +1,12 @@
+XXkb.controls.two_state: no
+XXkb*label.text.1: US
+XXkb*label.text.2: IR
+XXkb.mainwindow.type: tray
+XXkb.mainwindow.label.enable: no
+XXkb.mainwindow.enable: no
+XXkb.mainwindow.appicon: yes
+XXkb.mainwindow.geometry: 10x10+0+0
+XXkb.mainwindow.label.background: black
+XXkb.mainwindow.label.foreground: white
+XXkb.mainwindow.label.font: xft:Monospace-11
+XXkb.button.enable: no
