@@ -157,11 +157,22 @@ export LESS_TERMCAP_ue=$'\E[0m'
 export LESS_TERMCAP_us=$'\E[01;36m'
 export LESS=-r
 
+# Color ls and grep
+if [ -x /usr/bin/dircolors ]; then
+  # shellcheck disable=SC2015
+  test -r ~/.dircolors && eval "$(dircolors -b ~/.dircolors)" || eval "$(dircolors -b)"
+  alias ls="ls --color=auto"
+
+  alias grep='grep --color=auto'
+  alias fgrep='fgrep --color=auto'
+  alias egrep='egrep --color=auto'
+fi
 
 ## Plugins section
 source /usr/share/zsh/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
 source /usr/share/zsh/plugins/zsh-history-substring-search/zsh-history-substring-search.zsh
 
+source $HOME/.zsh/functions/general.zsh
 source $HOME/.zsh/functions/git.zsh
 source $HOME/.zsh/functions/npm.zsh
 source $HOME/.zsh/functions/laptop.zsh

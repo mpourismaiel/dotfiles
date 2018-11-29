@@ -19,7 +19,6 @@ syntax enable
 set number
 set hidden
 set colorcolumn=80
-set mouse=a
 set splitbelow
 set splitright
 set tabstop=8

@@ -1,0 +1,1 @@
+/home/mahdi/.zsh/functions/general.zsh

@@ -1,5 +1,13 @@
 #!/bin/bash
 sleep 0.5
-xrandr --output HDMI2 --off --output HDMI1 --off --output DP1 --off --output eDP1 --primary --mode 1920x1080 --pos 0x0 --rotate normal --output VIRTUAL1 --off
+MONITOR_COUNT=$(xrandr --query | grep " connected" | cut -d" " -f1 | wc -l)
+
+if [ $MONITOR_COUNT -eq 1 ]
+then
+  sh $HOME/.screenlayout/single-screen-full-hd.sh
+else
+  sh $HOME/.screenlayout/single-screen-second-full-hd.sh
+fi
+
 sleep 0.5
 i3-msg "restart"
