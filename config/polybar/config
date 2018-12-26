@@ -51,11 +51,12 @@ cursor-scroll = ns-resize
 
 font-0 = "Fira Code":pixelsize=10:antialias=true;1
 font-1 = icomoon:pixelsize=10;1
-font-2 = feather-icons:pixelsize=10;1
+font-2 = new-feathers:pixelsize=10;1
+font-3 = feather-icons:pixelsize=10;1
 
 modules-right = volume backlight kbd-backlight xkeyboard date
 modules-center = mpd
-modules-left = launcher menu-apps
+modules-left = launcher tasks-prev tasks-check tasks-next tasks
 
 [bar/secondary]
 inherits = bar/main
@@ -65,33 +66,46 @@ modules-right = toggl toggl-report inbox-github showping cpu memory battery wlan
 modules-center =
 modules-left = i3 xwindow
 
-[module/menu-apps]
-type = custom/menu
+[module/tasks]
+type = custom/script
+exec = node $HOME/Documents/Projects/cli-todo/index.js show-active
+interval = 1
 
-; If true, <label-toggle> will be to the left of the menu items (default).
-; If false, it will be on the right of all the items.
-expand-right = true
-format = <label-toggle> <menu>
+[module/tasks-next]
+type = custom/script
+exec = echo 
+click-left = node $HOME/Documents/Projects/cli-todo/index.js next-daily
+interval = 1
 
-label-open = " "
-label-close = " "
+[module/tasks-prev]
+type = custom/script
+exec = echo 
+click-left = node $HOME/Documents/Projects/cli-todo/index.js prev-daily
+interval = 1
 
-; "menu-LEVEL-N" has the same properties as "label-NAME" with
-; the additional "exec" property
-;
-; Available exec commands:
-;   menu-open-LEVEL
-;   menu-close
-; Other commands will be executed using "/usr/bin/env sh -c $COMMAND"
+[module/tasks-pause]
+type = custom/script
+exec = echo 
+click-left = node $HOME/Documents/Projects/cli-todo/index.js pause-active
+interval = 1
 
-menu-0-0 = "        "
-menu-0-0-exec = nautilus $HOME
-menu-0-1 = "     "
-menu-0-1-exec = google-chrome-beta --new-window
-menu-0-2 = "     "
-menu-0-2-exec = code
-menu-0-3 = "     "
-menu-0-3-exec = terminator
+[module/tasks-play]
+type = custom/script
+exec = echo 
+click-left = node $HOME/Documents/Projects/cli-todo/index.js play-active
+interval = 1
+
+[module/tasks-check]
+type = custom/script
+exec = echo 
+click-left = node $HOME/Documents/Projects/cli-todo/index.js check-active
+interval = 1
+
+[module/tasks-remove]
+type = custom/script
+exec = echo 
+click-left = node $HOME/Documents/Projects/cli-todo/index.js remove-active
+interval = 1
 
 [module/backlight]
 type = internal/xbacklight

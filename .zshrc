@@ -1,7 +1,7 @@
 ## PATHs
 export GOPATH="$HOME/go"
 export GOBIN="$GOPATH/bin"
-export PATH="$PATH:$GOPATH:$HOME/bin:$GOBIN"
+export PATH="$PATH:$GOPATH:$HOME/bin:$GOBIN:$HOME/.gem/ruby/2.5.0/bin"
 
 ## Options section
 setopt correct                                                  # Auto correct mistakes
@@ -72,6 +72,8 @@ alias init-ping="ping 8.8.8.8 >> /tmp/ping-log &"
 alias cp="cp -i"                                                # Confirm before overwriting something
 alias df='df -h'                                                # Human-readable sizes
 alias free='free -m'                                            # Show sizes in MB
+
+alias ncmpc='ncmpc -p 6600 -h 127.0.0.1'
 
 alias docker="sudo docker"
 alias dc="sudo docker container"
