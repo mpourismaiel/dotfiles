@@ -56,7 +56,8 @@ font-3 = feather-icons:pixelsize=10;1
 
 modules-right = volume backlight kbd-backlight xkeyboard date
 modules-center = mpd
-modules-left = launcher tasks-prev tasks-check tasks-next tasks
+modules-left = launcher
+#modules-left = launcher tasks-prev tasks-check tasks-next tasks
 
 [bar/secondary]
 inherits = bar/main
