@@ -4,8 +4,8 @@ out_to_console false
 own_window_hints undecorated,below,skip_taskbar
 background no
 max_text_width 0
-alignment bottom_middle
-update_interval 1.0
+alignment top_middle
+update_interval 60.0
 total_run_times 0
 if_up_strictness address
 use_spacer left
@@ -15,4 +15,4 @@ xftfont Fira Code:bold:size=48
 xftalpha 0.8
 
 TEXT
-${execp node $HOME/Projects/dotfiles/bin/time.js}
+${color #301f28}F R E E  D I S K  S P A C E   ${color #fc4384}${exec df -h | grep /home | awk '{print $5}'}

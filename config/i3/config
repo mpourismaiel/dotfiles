@@ -168,6 +168,7 @@ exec xss-lock -- sh $HOME/.config/i3/i3lock $HOME/Pictures/Lockscreen/wallpaper.
 exec_always sh $HOME/bin/ping.sh
 exec sh $HOME/.screenlayout/single-screen-full-hd.sh
 exec_always $nsi $HOME/.config/polybar/launch.sh
+# exec_always $nsi $HOME/Documents/Projects/dotfiles/config/conky/launch.sh
 # Lanuguages and hot key to change them
 exec_always $nsi "setxkbmap -layout us,ir -option grp:alt_shift_toggle"
 # Wallpaper
