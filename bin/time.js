@@ -1,24 +1,44 @@
-const [ scope, digit, level ] = process.argv.slice(2)
-const fn = {
-  year: 'getFullYear',
-  month: 'getMonth',
-  day: 'getDate',
-  hour: 'getHours',
-  minute: 'getMinutes',
-  second: 'getSeconds',
-}
-const time = (new Date())[fn[scope.toLowerCase()]]() + (scope.toLowerCase() === 'month' ? 1 : 0).toString()
-const str = time.length === 1 ? `0${time}` : time
-const num = parseInt(time[parseInt(digit, 10)])
-const ret = toLength4(num.toString(2))[level]
-if (ret === '1') {
-  console.log('${color #fc4384}•')
-} else {
-  console.log('${color #301f28}•')
+const fn = [
+  'getFullYear',
+  'getMonth',
+  'getDate',
+  'getHours',
+  'getMinutes',
+  'getSeconds',
+]
+let time = ''
+let ret = ''
+const mem = {}
+
+for (let i = 0; i < fn.length; i++) {
+  time += toLength(((new Date())[fn[i]]() + (fn[i] === 'getMonth' ? 1 : 0)).toString(), 2) + ' '
 }
 
-function toLength4(str) {
-  while(str.length < 4) {
+time = time.trim()
+
+for (let j = 0; j < 4; j++) {
+  for (let i = 0; i < time.length; i++) {
+    if (time[i] === ' ') {
+      ret += '  '
+      continue
+    }
+    if (mem[i] === undefined) {
+      mem[i] = toLength(parseInt(time[i]).toString(2), 4)
+    }
+    ret += (mem[i][j] === '1' ? '${color #fc4384}•' : '${color #301f28}•') + ' '
+  }
+  ret = ret.trim() + '\n'
+}
+
+ret += '${color #fc4384}'
+for (let i = 0; i < time.length; i++) {
+  ret += time[i] + ' '
+}
+
+console.log(ret)
+
+function toLength(str, length) {
+  while(str.length < length) {
     str = `0${str}`
   }
   return str
