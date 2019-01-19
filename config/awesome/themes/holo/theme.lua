@@ -1,0 +1,1 @@
+/home/mahdi/.config/awesome/themes/holo/theme.lua
