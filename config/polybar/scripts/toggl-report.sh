@@ -48,6 +48,4 @@ then
     echo $report >> /tmp/toggl-report.log
     notify-send 'Income' "Unable to fetch data\nCheck out the log /tmp/toggl-report.log"
   fi
-else
-  echo 
 fi
