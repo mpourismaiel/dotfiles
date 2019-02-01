@@ -1,1 +1,0 @@
-/home/mahdi/.config/awesome/rc.lua

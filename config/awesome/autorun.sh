@@ -1,1 +1,0 @@
-/home/mahdi/.config/awesome/autorun.sh

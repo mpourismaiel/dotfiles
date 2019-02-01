@@ -125,7 +125,7 @@ colors
 setopt prompt_subst
 
 # Print a greeting message when shell is started
-echo  $USER@$HOST -  $(uname -srm)  $(lsb_release -rcs)
+echo $USER@$HOST -  $(uname -srm)  $(lsb_release -rcs)
 # Prompt (on left side)
 PROMPT="%B%{$fg[cyan]%}%(4~|%-1~/.../%2~|%~)%u%b >%{$fg[cyan]%}>%B%(?.%{$fg[cyan]%}.%{$fg[red]%})>%{$reset_color%}%b " # Print some system information when the shell is first started
 ## Prompt on right side:
