@@ -1,0 +1,18 @@
+The XKEYBOARD keymap compiler (xkbcomp) reports:
+> Warning:          Unsupported high keycode 372 for name <I372> ignored
+>                   X11 cannot support keycodes above 255.
+>                   This warning only shows for the first high keycode.
+Errors from xkbcomp are not fatal to the X server
+The XKEYBOARD keymap compiler (xkbcomp) reports:
+> Warning:          Unsupported high keycode 372 for name <I372> ignored
+>                   X11 cannot support keycodes above 255.
+>                   This warning only shows for the first high keycode.
+Errors from xkbcomp are not fatal to the X server
+(EE) 
+Fatal server error:
+(EE) X11 error
+Error code: 9
+Sequence number: 357
+Major code: 130	Minor code: 3
+Error value: 41943041
+(EE) 

@@ -47,6 +47,9 @@ Xcursor.size: 16
 
 ! XTerm settings
 xterm*saveLines:                16384
+xterm*jumpScroll:               true
+xterm*multiScroll:              true
+xterm*scrollKey:                true
 xterm*faceName:                 xft:Fire Code
 xterm*faceSize:                 10
 xterm*scrollTtyOutput:          false

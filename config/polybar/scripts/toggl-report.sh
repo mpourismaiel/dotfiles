@@ -5,8 +5,7 @@
 # fixed numbers for day and hourly rate received from a file (for privacy).
 # MAYBE YOU DO NOT NEED THIS SCRIPT. If not, remove it from polybar.
 
-if [ $1 == 'show' ]
-then
+if [ "$1" == 'show' ]; then
   hourly=$(sed 1d $HOME/.secrets/okkur)
   first_day=$(sed 2d $HOME/.secrets/okkur)
 
@@ -14,12 +13,10 @@ then
   next_month=$(date +%m)
   current_year=$(date +%Y)
   next_year=$(date +%Y)
-  if [ $(date +%d) -gt $first_day ]
-  then
+  if [ $(date +%d) -gt $first_day ]; then
     current_month=$(expr $current_month + 1)
     next_month=$(expr $next_month + 1)
-    if [ $current_month -gt 12 ]
-    then
+    if [ $current_month -gt 12 ]; then
       current_month=1
       next_year=$(expr $current_year + 1)
     fi

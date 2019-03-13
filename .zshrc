@@ -2,6 +2,11 @@
 export GOPATH="$HOME/go"
 export GOBIN="$GOPATH/bin"
 export PATH="$PATH:$GOPATH:$HOME/bin:$GOBIN:$HOME/.gem/ruby/2.5.0/bin"
+export ANDROID_HOME=$HOME/Android/Sdk
+export PATH=$PATH:$ANDROID_HOME/emulator
+export PATH=$PATH:$ANDROID_HOME/tools
+export PATH=$PATH:$ANDROID_HOME/tools/bin
+export PATH=$PATH:$ANDROID_HOME/platform-tools
 
 ## Options section
 setopt correct                                                  # Auto correct mistakes
@@ -28,6 +33,7 @@ SAVEHIST=50000
 export SUDO_EDITOR=/usr/bin/vim
 export EDITOR=/usr/bin/vim
 export VISUAL=/usr/bin/vim
+export REACT_EDITOR=/usr/bin/code
 WORDCHARS=${WORDCHARS//\/[&.;]}                                 # Don't consider certain characters part of the word
 
 ## Keybindings section

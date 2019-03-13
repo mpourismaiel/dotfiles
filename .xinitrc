@@ -40,10 +40,8 @@ fi
 
 #exec dbus-launch --sh-syntax --exit-with-session awesome --shmlog-size 10000
 #exec dbus-launch --sh-syntax --exit-with-session i3 --shmlog-size 10000
-exec awesome
+#exec awesome
+exec /usr/bin/awesome >> ~/.cache/awesome/stdout 2>> ~/.cache/awesome/stderr
 xrdb ~/.Xresources
 xrandr --addmode eDP1 1920x1080
 xxkb
-google-chrome-beta
-code
-terminator

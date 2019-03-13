@@ -10,26 +10,26 @@ if ! [ -e $CACHE_FOLDER ]; then
     mkdir $CACHE_FOLDER
 fi
 
-if [ $(xrandr --query | grep " connected" | wc -l) -gt 1 ]; then
-  echo "Multi Monitor Lockscreen"
+# if [ $(xrandr --query | grep " connected" | wc -l) -gt 1 ]; then
+#   echo "Multi Monitor Lockscreen"
   BKG_IMG="$1"
 
   if ! [ -e "$BKG_IMG" ]; then
       echo "No background image! Exiting..."
       exit 2
   fi
-else
-  echo "Single Monitor Lockscreen"
-  SCREENSHOT_CURRENT=/tmp/current-screen.jpg
-  import -window root $SCREENSHOT_CURRENT
-  convert -blur 20x8 $SCREENSHOT_CURRENT $SCREENSHOT_CURRENT
-  BKG_IMG="$SCREENSHOT_CURRENT"
+# else
+#   echo "Single Monitor Lockscreen"
+#   SCREENSHOT_CURRENT=/tmp/current-screen.jpg
+#   import -window root $SCREENSHOT_CURRENT
+#   convert -blur 20x8 $SCREENSHOT_CURRENT $SCREENSHOT_CURRENT
+#   BKG_IMG="$SCREENSHOT_CURRENT"
 
-  if ! [ -e "$BKG_IMG" ]; then
-      echo "No background image! Exiting..."
-      exit 2
-  fi
-fi
+#   if ! [ -e "$BKG_IMG" ]; then
+#       echo "No background image! Exiting..."
+#       exit 2
+#   fi
+# fi
 
 MD5_BKG_IMG=$(md5sum $BKG_IMG | cut -c 1-10)
 MD5_SCREEN_CONFIG=$(xrandr | md5sum - | cut -c 1-32) # Hash of xrandr output
