@@ -21,6 +21,14 @@ require("awful.hotkeys_popup.keys")
 local my_table = awful.util.table or gears.table -- 4.{0,1} compatibility
 -- }}}
 
+naughty.connect_signal("request::preset", function(notification)
+    if awful.util.disable_notification == 1 and notification.timeout == 5 and notification.title ~= "Mehrnoosh" then
+        notification.ignore = true
+    elseif awful.util.disable_notification == 2 and notification.timeout == 5 then
+        notification.ignore = true
+    end
+end)
+
 -- {{{ Error handling
 -- Check if awesome encountered an error during startup and fell back to
 -- another config (This code will only ever execute for the fallback config)
@@ -200,7 +208,7 @@ require("dock")
 naughty.config.padding = 20
 naughty.config.defaults.icon_size = 36
 naughty.config.defaults.margin = 10
-naughty.config.defaults.position = "top_right"
+naughty.config.defaults.position = "bottom_right"
 
 -- {{{ Screen
 -- Re-set wallpaper when a screen's geometry changes (e.g. different resolution)
@@ -289,7 +297,7 @@ globalkeys =
         {description = "lock screen", group = "hotkeys"}
     ),
     -- Hotkeys
-    awful.key({modkey}, "s", hotkeys_popup.show_help, {description = "show help", group = "awesome"}),
+    awful.key({modkey}, "/", hotkeys_popup.show_help, {description = "show help", group = "awesome"}),
     -- Tag browsing
     awful.key({modkey}, "Escape", awful.tag.history.restore, {description = "go back", group = "tag"}),
     -- Default client focus
@@ -422,10 +430,9 @@ globalkeys =
         "b",
         function()
             for s in screen do
+                s.mytagbar.visible = not s.mytagbar.visible
+                s.mytasklistbar.visible = not s.mytasklistbar.visible
                 s.mywibox.visible = not s.mywibox.visible
-                if s.mybottomwibox then
-                    s.mybottomwibox.visible = not s.mybottomwibox.visible
-                end
             end
         end,
         {description = "toggle wibox", group = "awesome"}
@@ -474,12 +481,11 @@ globalkeys =
         {description = "quit awesome", group = "awesome"}
     ),
     awful.key(
-        {modkey, "Shift"},
-        "i",
+        {modkey},
+        "s",
         function()
             info_screen_show()
-        end,
-        {description = "quit awesome", group = "awesome"}
+        end
     ),
     awful.key(
         {altkey, "Shift"},
@@ -984,27 +990,33 @@ awful.rules.rules = {
     },
     {
         rule_any = {type = {"normal"}},
-        properties = {titlebars_enabled = false}
+        except_any = { class = { "Code", "jetbrains-studio" } },
+        properties = {titlebars_enabled = true}
     },
     -- Set Firefox to always map on the first tag on screen 1.
     {
         rule = {class = "Google-chrome-beta"},
-        properties = {screen = screen:count() == 2 and 2 or 1, tag = awful.util.tagnames[1]}
+        properties = {
+            screen = 1,
+            tag = awful.util.tagnames[1],
+            maximized = true
+        }
     },
     {
         rule = {class = "Code"},
         properties = {
-            screen = screen:count() == 2 and 2 or 1,
-            tag = awful.util.tagnames[2]
+            screen = 1,
+            tag = awful.util.tagnames[2],
+            maximized = true
         }
     },
     {
-        rule = {class = "XTerm" },
+        rule = {class = "XTerm"},
         properties = {screen = 1, tag = awful.util.tagnames[3]}
     },
     {
         rule = {class = "TelegramDesktop"},
-        properties = {screen = screen:count() == 2 and 2 or 1, tag = awful.util.tagnames[5]}
+        properties = {screen = 1, tag = awful.util.tagnames[5]}
     }
 }
 -- }}}
@@ -1063,7 +1075,6 @@ client.connect_signal(
     "unfocus",
     function(c)
         c.border_color = beautiful.border_normal
-        c.border_width = 2
     end
 )
 
