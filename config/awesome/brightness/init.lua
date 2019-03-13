@@ -60,6 +60,10 @@ function vcontrol:init(args)
     self.cmd = "xbacklight"
     self.step = args.step or "5"
     self.markup = args.markup
+    self.level1 = args.level1
+    self.level2 = args.level2
+    self.level3 = args.level3
+    self.level4 = args.level4
 
     self.widget = wibox.widget.textbox()
     self.widget.set_align("right")
@@ -97,12 +101,22 @@ end
 function vcontrol:get()
     if timer then timer:stop() end
     local brightness = math.floor(0.5 + tonumber(self:exec("-get") or "0"))
-    self.widget:set_markup(string.format(self.markup, string.format("%3d", brightness)))
+    local icon = ""
+    if brightness <= 25 then
+        icon = self.level1
+    elseif brightness <= 50 then
+        icon = self.level2
+    elseif brightness <= 75 then
+        icon = self.level3
+    elseif brightness <= 100 then
+        icon = self.level4
+    end
+    self.widget:set_markup(icon .. string.format(self.markup, string.format("%d", brightness) .. "%"))
     timer = gears.timer({
         timeout   = 5,
         autostart = true,
         callback  = function()
-            self.widget:set_markup(string.format(self.markup, ""))
+            self.widget:set_markup(icon)
             timer:stop()
         end
     })

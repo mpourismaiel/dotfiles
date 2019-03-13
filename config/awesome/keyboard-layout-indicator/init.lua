@@ -125,11 +125,11 @@ local function update_status(self)
         -- is lower by one than the group numbers reported by xkb_get_group_names.
         local name = self._layout[self._current + 1]
         if name then
-            text = "  " .. name .. " "
+            text = name
         end
     end
     self.widget:set_markup(
-        markup("#FFFFFF", markup.font("Font Awesome 5 Free 10", "") .. markup.font("Roboto Bold 10", text))
+        markup("#FFFFFF", (self.icon or "") .. markup.font("Roboto Bold 10", string.upper(text)))
     )
 end
 
@@ -259,11 +259,12 @@ end
 
 --- Create a keyboard layout widget. It shows current keyboard layout name in a textbox.
 -- @return A keyboard layout widget.
-function keyboardlayout.new()
+function keyboardlayout.new(args)
     local widget = textbox()
     local self = widget_base.make_widget(widget)
 
     self.widget = widget
+    self.icon = (args or {}).icon
 
     self.layout_name = function(v)
         local name = v.file

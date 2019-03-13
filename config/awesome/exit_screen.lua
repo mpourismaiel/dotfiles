@@ -248,8 +248,8 @@ function exit_screen_show()
     wibox({x = 0, y = 0, visible = false, ontop = true, screen = s, type = "dock", height = screen_height, width = screen_width})
 
   -- Set widget colors
-  exit_screen.bg = beautiful.exit_screen_bg or beautiful.wibar_bg or "#111111"
-  exit_screen.fg = beautiful.exit_screen_fg or beautiful.wibar_fg or "#FEFEFE"
+  exit_screen.bg = "#151515d6"
+  exit_screen.fg = "#FEFEFE"
 
   exit_screen_setup()
 
