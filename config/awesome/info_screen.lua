@@ -194,10 +194,11 @@ local disable_notification =
 )
 
 local github_icon = icon("", 10, true, true)
-local github_text = text(markup("#FFFFFF", theme_pad(3) .. "Loading notifications"))
+local github_text = text(markup("#FFFFFF", theme_pad(3) .. "Github Notifications"))
+local github_notifications = text(markup("#FFFFFF", theme_pad(3) .. "Loading notifications"))
 local github =
   widget_button(
-  widget_info(github_icon, github_text, nil),
+  widget_info(github_icon, github_text, github_notifications),
   function()
     awful.spawn.with_shell("google-chrome-beta https://github.com/notifications")
   end
@@ -207,7 +208,33 @@ awful.widget.watch(
   string.format("sh %s/.config/polybar/scripts/inbox-github.sh", os.getenv("HOME")),
   60,
   function(widget, stdout)
-    github_text:set_markup(markup("#FFFFFF", theme_pad(3) .. string.gsub(stdout, "^%s*(.-)%s*$", "%1")))
+    github_notifications:set_markup(markup("#FFFFFF", theme_pad(3) .. string.gsub(stdout, "^%s*(.-)%s*$", "%1")))
+  end
+)
+
+local toggl_icon = icon("", 10, true, true)
+local toggl_text = text(markup("#FFFFFF", theme_pad(3) .. "Toggl"))
+local toggl_active = text(markup("#FFFFFF", theme_pad(3) .. "Loading active task"))
+local toggl = widget_button(
+  widget_info(toggl_icon, toggl_text, toggl_active),
+  function()
+    awful.spawn.with_shell("google-chrome-beta https://www.toggl.com/app/timer")
+  end
+)
+
+awful.widget.watch(
+  string.format("sh %s/.config/polybar/scripts/toggl.sh description", os.getenv("HOME")),
+  60,
+  function(widget, stdout)
+    toggl_text:set_markup(markup("#FFFFFF", theme_pad(3) .. string.gsub(stdout, "^%s*(.-)%s*$", "%1")))
+  end
+)
+
+awful.widget.watch(
+  string.format("sh %s/.config/polybar/scripts/toggl.sh duration", os.getenv("HOME")),
+  60,
+  function(widget, stdout)
+    toggl_active:set_markup(markup("#FFFFFF", theme_pad(3) .. string.gsub(stdout, "^%s*(.-)%s*$", "%1")))
   end
 )
 
@@ -218,6 +245,7 @@ function info_screen_setup()
     margin(date_text, 40, 40, 0, 20),
     background(margin(title("Information"), 40, 40, 10, 10), "#1c1c1c94"),
     margin(pad(0), 0, 0, 0, 16),
+    toggl,
     github,
     margin(pad(0), 0, 0, 0, 32),
     background(margin(title("System Information"), 40, 40, 10, 10), "#1c1c1c94"),
