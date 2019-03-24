@@ -6,7 +6,7 @@ TOKEN=$(cat $HOME/.tokens/github)
 notifications=$(curl -fs https://api.github.com/notifications?access_token=$TOKEN | jq ".[].unread" | grep -c true)
 
 if [ ! -z $notifications ] && [ "$notifications" -gt 0 ]; then
-  echo "$notifications notifications"
+  echo "$notifications"
 elif [ ! -z $notifications ] && [ "$notifications" -eq 0 ]; then
-  echo "No notifications"
+  echo ""
 fi
