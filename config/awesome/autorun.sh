@@ -23,5 +23,7 @@ run xterm
 run telegram-desktop
 run nm-applet
 run mpd
+run compton
+run show-ping.sh
 
 touch /tmp/started

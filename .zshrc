@@ -1,12 +1,10 @@
 ## PATHs
 export GOPATH="$HOME/go"
 export GOBIN="$GOPATH/bin"
-export PATH="$PATH:$GOPATH:$HOME/bin:$GOBIN:$HOME/.gem/ruby/2.5.0/bin"
 export ANDROID_HOME=$HOME/Android/Sdk
-export PATH=$PATH:$ANDROID_HOME/emulator
-export PATH=$PATH:$ANDROID_HOME/tools
-export PATH=$PATH:$ANDROID_HOME/tools/bin
-export PATH=$PATH:$ANDROID_HOME/platform-tools
+export YARN_BIN=$HOME/.config/yarn/global/node_modules/.bin
+
+export PATH="$PATH:$YARN_BIN:$ANDROID_HOME/emulator:$ANDROID_HOME/tools:$ANDROID_HOME/tools/bin:$ANDROID_HOME/platform-tools:$GOPATH:$HOME/bin:$GOBIN:$HOME/.gem/ruby/2.5.0/bin"
 
 ## Options section
 setopt correct                                                  # Auto correct mistakes
@@ -119,6 +117,9 @@ alias gm='git merge'
 alias gma='git merge --abort'
 alias gp='git push'
 alias gl='git pull'
+alias download='aria2c'
+alias dl='aria2c'
+alias got='go get'
 
 alias _='sudo'
 
@@ -181,6 +182,7 @@ source /usr/share/zsh/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zs
 source /usr/share/zsh/plugins/zsh-history-substring-search/zsh-history-substring-search.zsh
 
 source $HOME/.zsh/functions/general.zsh
+source $HOME/.zsh/functions/hugo.zsh
 source $HOME/.zsh/functions/git.zsh
 source $HOME/.zsh/functions/npm.zsh
 source $HOME/.zsh/functions/laptop.zsh

@@ -24,7 +24,7 @@ local icon_dir = os.getenv("HOME") .. "/.config/awesome/themes/holo/icons"
 local theme = {
   default_dir = default_dir,
   icon_dir = icon_dir,
-  wallpaper = os.getenv("HOME") .. "/Pictures/Wallpapers/firewatch-1.jpg",
+  wallpaper = os.getenv("HOME") .. "/Pictures/Wallpapers/jonah_dinges_elephant.jpg",
   font = "FiraCode Bold 10",
   hotkeys_font = "FiraCode 10",
   font_icon = "fontello",
@@ -120,7 +120,7 @@ function pad(size)
 end
 
 function bar_widget(w)
-  return margin(background(margin(w, 8, 8, 4, 4), theme.widget_bg, gears.shape.rectangle), 0, 0, 5, 5)
+  return background(margin(w, 8, 8, 4, 4), theme.widget_bg, gears.shape.rectangle)
 end
 
 function titlebar_widget(w)
@@ -323,6 +323,71 @@ local backlight =
   )
 )
 
+theme.myswitcher = awful.popup {
+  widget = {
+    awful.widget.tasklist {
+      screen   = awful.screen.focused(),
+      filter   = awful.widget.tasklist.filter.allscreen,
+      buttons  = my_table.join(
+        awful.button({}, 1, function(c)
+          c.minimized = false
+
+          if not c:isvisible() and c.first_tag then
+            c.first_tag:view_only()
+          end
+
+          client.focus = c
+          c:raise()
+
+          theme.myswitcher.visible = false
+          awful.keygrabber.stop(awful.util.switcher_keygrabber)
+        end)
+      ),
+      layout   = {
+        layout = wibox.layout.fixed.horizontal
+      },
+      widget_template = {
+        {
+          {
+            {
+              {
+                id     = 'clienticon',
+                widget = awful.widget.clienticon,
+              },
+              widget = margin,
+              bottom = 5
+            },
+            {
+              id = 'text_role',
+              widget = wibox.widget.textbox,
+              align = 'center',
+              forced_width = 80
+            },
+            layout = wibox.layout.fixed.vertical,
+          },
+          widget  = wibox.container.margin,
+          top = 10,
+          bottom = 10,
+          left = 20,
+          right = 20
+        },
+        forced_width    = 120,
+        forced_height   = 120,
+        widget          = wibox.container.background,
+        create_callback = function(self, c, index, objects)
+          self:get_children_by_id('clienticon')[1].client = c
+        end,
+      },
+    },
+    layout = wibox.layout.fixed.horizontal,
+  },
+  bg = theme.widget_bg .. "d6",
+  ontop        = true,
+  placement    = awful.placement.centered,
+  shape = gears.shape.rectangle,
+  visible = false
+}
+
 function theme.at_screen_connect(s)
   -- If wallpaper is a function, call it with the screen
   local wallpaper = theme.wallpaper
@@ -376,7 +441,7 @@ function theme.at_screen_connect(s)
 
   -- Layout Box
   local layoutbox = awful.widget.layoutbox(s)
-  s.mylayoutbox = margin(background(margin(layoutbox, 4, 4, 0, 0), theme.widget_bg, gears.shape.rectangle), 0, 0, 0, 5)
+  s.mylayoutbox = margin(background(margin(layoutbox, 4, 4, 0, 0), theme.widget_bg, gears.shape.rectangle), 1, 0, 0, 5)
   s.mylayoutbox:buttons(
     my_table.join(
       awful.button(
@@ -429,33 +494,24 @@ function theme.at_screen_connect(s)
           {
             {
               {
-                {
-                  {id = "icon_role", widget = wibox.widget.imagebox},
-                  widget = margin,
-                  top = 8,
-                  bottom = 8,
-                  left = 5,
-                  right = 30
-                },
-                {
-                  id = "text_role",
-                  widget = wibox.widget.textbox
-                },
-                layout = wibox.layout.align.horizontal
+                id = "text_role",
+                widget = wibox.widget.textbox
               },
               widget = margin,
-              left = 8,
+              left = 10,
               right = 10
             },
             id = "background_role",
-            widget = background
+            widget = background,
+            shape = function(cr, width, height)
+              gears.shape.partially_rounded_rect(cr, width, height, false, true, true, false, 7)
+            end
           },
           layout = wibox.layout.align.horizontal
         },
         widget = margin,
         right = 15,
-        top = 5,
-        bottom = 5
+        top = 5
       },
       layout = wibox.layout.align.horizontal
     }
@@ -482,7 +538,7 @@ function theme.at_screen_connect(s)
     }
   }
 
-  s.mytasklistbar = awful.wibar({position = "top", screen = s, height = 50})
+  s.mytasklistbar = awful.wibar({position = "top", screen = s, height = 45})
   s.mytasklistbar:setup {
     layout = wibox.layout.align.horizontal,
     {
@@ -499,17 +555,24 @@ function theme.at_screen_connect(s)
     {
       {
         {
-          systray,
-          layout = wibox.layout.align.horizontal
+          {
+            systray,
+            layout = wibox.layout.align.horizontal
+          },
+          widget = background,
+          shape = function(cr, width, height)
+            gears.shape.partially_rounded_rect(cr, width, height, true, false, false, true, 7)
+          end
         },
         bottom = 10,
+        top = 5,
         widget = margin
       },
       layout = wibox.layout.align.horizontal
     }
   }
 
-  s.mywibox = awful.wibar({position = "bottom", screen = s, height = 50})
+  s.mywibox = awful.wibar({position = "bottom", screen = s, height = 45})
   s.mywibox:setup {
     layout = wibox.layout.align.horizontal,
     {
@@ -530,18 +593,25 @@ function theme.at_screen_connect(s)
       layout = wibox.layout.fixed.horizontal,
       {
         {
-          -- toggl,
-          -- toggl_report,
-          ping,
-          volume,
-          supports_backlight,
-          bat,
-          keyboard,
-          clock,
-          layout = wibox.layout.fixed.horizontal
+          {
+            -- toggl,
+            -- toggl_report,
+            ping,
+            volume,
+            supports_backlight,
+            bat,
+            keyboard,
+            clock,
+            layout = wibox.layout.fixed.horizontal
+          },
+          widget = background,
+          shape = function(cr, width, height)
+            gears.shape.partially_rounded_rect(cr, width, height, true, false, false, true, 7)
+          end
         },
         widget = margin,
-        top = 10
+        top = 10,
+        bottom = 5
       }
     }
   }
@@ -624,6 +694,25 @@ theme.titlebar_fun = function(c)
     },
     layout = wibox.layout.align.horizontal
   }
+end
+
+
+
+theme.zen_mode = function(c)
+  local s = awful.screen.focused()
+  if s.mytagbar.visible == true then
+      s.mytagbar.visible = false
+      s.mywibox.bg = "#242424"
+      s.mytasklistbar.bg = "#242424"
+      awful.screen.focused().selected_tag.gap = 0
+      awful.layout.arrange(scr)
+  else
+      s.mytagbar.visible = true
+      s.mywibox.bg = "#00000000"
+      s.mytasklistbar.bg = "#00000000"
+      awful.screen.focused().selected_tag.gap = 10
+      awful.layout.arrange(scr)
+  end
 end
 
 return theme
