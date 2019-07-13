@@ -20,16 +20,6 @@ Plug 'terryma/vim-multiple-cursors'
 Plug 'elzr/vim-json'
 Plug 'mhinz/vim-sayonara', { 'on': 'Sayonara' }
 
-" == Autocomplete plugins ==
-Plug 'ervandew/supertab'
-if has('nvim')
-  Plug 'Shougo/deoplete.nvim', { 'do': ':UpdateRemotePlugins'  }
-  Plug 'carlitux/deoplete-ternjs', { 'do': 'npm install -g tern' }
-  Plug 'steelsojka/deoplete-flow'
-else
-  Plug 'Valloric/YouCompleteMe', { 'do': './install.py --tern-completer' }
-endif
-
 " == JavaScript syntax highlighting ==
 Plug 'othree/yajs.vim'
 Plug 'othree/es.next.syntax.vim'

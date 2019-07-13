@@ -1,10 +1,3 @@
---[[
-
-     Awesome WM configuration template
-     github.com/lcpz
-
---]]
--- {{{ Required libraries
 local awesome, client, mouse, screen, tag = awesome, client, mouse, screen, tag
 local ipairs, string, os, table, tostring, tonumber, type = ipairs, string, os, table, tostring, tonumber, type
 
@@ -18,8 +11,7 @@ local lain = require("lain")
 local helpers = require("helpers")
 local hotkeys_popup = require("awful.hotkeys_popup").widget
 require("awful.hotkeys_popup.keys")
-local my_table = awful.util.table or gears.table -- 4.{0,1} compatibility
--- }}}
+local my_table = gears.table
 
 naughty.connect_signal("request::preset", function(notification)
     if awful.util.disable_notification == 1 and notification.timeout == 5 and notification.title ~= "Mehrnoosh" then
@@ -71,15 +63,25 @@ awful.spawn.with_shell(string.format("sh %s/.config/awesome/autorun.sh", os.gete
 -- }}}
 
 -- {{{ Variable definitions
-local modkey = "Mod4"
-local altkey = "Mod1"
-local terminal = "xterm"
+awful.util.modkey = "Mod4"
+awful.util.altkey = "Mod1"
+awful.util.terminal = "xterm"
+awful.util.myaudio = {}
+local modkey = awful.util.modkey
+local altkey = awful.util.altkey
+local terminal = awful.util.terminal
 local editor = os.getenv("EDITOR") or "vim"
 local gui_editor = "code"
 local browser = "google-chrome-beta"
 local guieditor = "code"
 
-awful.util.terminal = terminal
+awful.util.myaudio.mute = function()
+    os.execute(
+        string.format("amixer -q set %s toggle", beautiful.volume.togglechannel or beautiful.volume.channel)
+    )
+    beautiful.volume.update()
+end
+
 awful.util.tagnames = {"  ", "  ", "  ", "  ", "  ", " 6 ", " 7 ", " 8 ", " 9 "}
 awful.layout.layouts = {
     awful.layout.suit.tile,
@@ -202,6 +204,7 @@ beautiful.init(string.format("%s/.config/awesome/themes/holo/theme.lua", os.gete
 
 local exit_screen = require("exit_screen")
 local info_screen = require("info_screen")
+local lock_screen = require("lock_screen")
 require("dock")
 -- }}}
 
@@ -291,9 +294,7 @@ globalkeys =
     awful.key(
         {modkey, "Shift"},
         "x",
-        function()
-            awful.spawn.with_shell(beautiful.lock_cmd)
-        end,
+        lock_screen_show,
         {description = "lock screen", group = "hotkeys"}
     ),
     -- Hotkeys
@@ -413,16 +414,35 @@ globalkeys =
         {description = "focus the previous screen", group = "screen"}
     ),
     awful.key({modkey}, "u", awful.client.urgent.jumpto, {description = "jump to urgent client", group = "client"}),
+    awful.key({altkey}, "Tab", function()
+        beautiful.myswitcher.visible = not beautiful.myswitcher.visible
+
+        awful.util.switcher_keygrabber = awful.keygrabber.run(function(mod, key, event)
+            if event == "release" then
+                return
+            end
+
+            if key == "Escape" or key == "q" or key == "x" then
+                beautiful.myswitcher.visible = false
+                awful.keygrabber.stop(awful.util.switcher_keygrabber)
+            end
+        end)
+    end),
     awful.key(
         {modkey},
         "Tab",
         function()
-            awful.client.focus.history.previous()
-            if client.focus then
-                client.focus:raise()
-            end
+            awful.client.focus.byidx(1)
         end,
-        {description = "go back", group = "client"}
+        {description = "go to next client", group = "client"}
+    ),
+    awful.key(
+        {modkey, "Shift"},
+        "Tab",
+        function()
+            awful.client.focus.byidx(-1)
+        end,
+        {description = "go to previous client", group = "client"}
     ),
     -- Show/Hide Wibox
     awful.key(
@@ -634,12 +654,7 @@ globalkeys =
     awful.key(
         {altkey},
         "m",
-        function()
-            os.execute(
-                string.format("amixer -q set %s toggle", beautiful.volume.togglechannel or beautiful.volume.channel)
-            )
-            beautiful.volume.update()
-        end,
+        awful.util.myaudio.mute,
         {description = "toggle mute", group = "hotkeys"}
     ),
     awful.key(
@@ -739,24 +754,24 @@ globalkeys =
             awful.screen.focused().mypromptbox:run()
         end,
         {description = "run prompt", group = "launcher"}
-    ),
-    awful.key(
-        {modkey},
-        "x",
-        function()
-            awful.prompt.run {
-                prompt = "Add reminder: ",
-                textbox = awful.screen.focused().mypromptbox.widget,
-                exe_callback = function(input)
-                    local txt = helpers.split(input, "@")
-                    awful.spawn.with_shell(
-                        string.format('echo \'notify-send -u critical Reminder "%s"\' | at %s', txt[1], txt[2])
-                    )
-                end
-            }
-        end,
-        {description = "set reminder", group = "utility"}
     )
+    -- awful.key(
+    --     {modkey},
+    --     "x",
+    --     function()
+    --         awful.prompt.run {
+    --             prompt = "Add reminder: ",
+    --             textbox = awful.screen.focused().mypromptbox.widget,
+    --             exe_callback = function(input)
+    --                 local txt = helpers.split(input, "@")
+    --                 awful.spawn.with_shell(
+    --                     string.format('echo \'notify-send -u critical Reminder "%s"\' | at %s', txt[1], txt[2])
+    --                 )
+    --             end
+    --         }
+    --     end,
+    --     {description = "set reminder", group = "utility"}
+    -- )
     --]]
 )
 
@@ -798,7 +813,7 @@ clientkeys =
         {modkey},
         "o",
         function(c)
-            c:move_to_screen()
+            c: f()
         end,
         {description = "move to screen", group = "client"}
     ),
@@ -828,6 +843,18 @@ clientkeys =
             c:raise()
         end,
         {description = "maximize", group = "client"}
+    ),
+    awful.key(
+        {modkey},
+        "z",
+        beautiful.zen_mode,
+        {description = "zen mode", group = "client"}
+    ),
+    awful.key(
+        {modkey},
+        "x",
+        awful.titlebar.toggle,
+        {description = "zen mode", group = "client"}
     )
 )
 
@@ -990,8 +1017,8 @@ awful.rules.rules = {
     },
     {
         rule_any = {type = {"normal"}},
-        except_any = { class = { "Code", "jetbrains-studio" } },
-        properties = {titlebars_enabled = true}
+        except_any = { class = { "jetbrains-studio" } },
+        properties = {titlebars_enabled = false}
     },
     -- Set Firefox to always map on the first tag on screen 1.
     {
@@ -1069,7 +1096,10 @@ function border_adjust(c)
     end
 end
 
-client.connect_signal("property::maximized", border_adjust)
+client.connect_signal("property::maximized", function(c)
+    border_adjust(c)
+end)
+
 client.connect_signal("focus", border_adjust)
 client.connect_signal(
     "unfocus",
