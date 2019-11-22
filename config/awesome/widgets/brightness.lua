@@ -68,7 +68,12 @@ function vcontrol:init(args)
     self.widget = wibox.widget.textbox()
     self.widget.set_align("right")
 
-    self.widget:connect_signal("mouse::enter", function() self:get() end)
+    self.widget:connect_signal(
+        "mouse::enter",
+        function()
+            self:get()
+        end
+    )
     self.widget:buttons(
         awful.util.table.join(
             awful.button(
@@ -99,7 +104,9 @@ function vcontrol:exec(...)
 end
 
 function vcontrol:get()
-    if timer then timer:stop() end
+    if timer then
+        timer:stop()
+    end
     local brightness = math.floor(0.5 + tonumber(self:exec("-get") or "0"))
     local icon = ""
     if brightness <= 25 then
@@ -112,14 +119,17 @@ function vcontrol:get()
         icon = self.level4
     end
     self.widget:set_markup(icon .. string.format(self.markup, string.format("%d", brightness) .. "%"))
-    timer = gears.timer({
-        timeout   = 5,
-        autostart = true,
-        callback  = function()
-            self.widget:set_markup(icon)
-            timer:stop()
-        end
-    })
+    timer =
+        gears.timer(
+        {
+            timeout = 5,
+            autostart = true,
+            callback = function()
+                self.widget:set_markup(icon)
+                timer:stop()
+            end
+        }
+    )
     return brightness
 end
 
