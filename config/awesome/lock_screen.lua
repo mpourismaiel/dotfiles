@@ -69,6 +69,8 @@ local reset_indicator_timer = gears.timer {
   callback = reset_indicator
 }
 
+local password = text()
+
 local has_extra_char = true
 
 local lock_screen_grabber = awful.keygrabber {
@@ -114,6 +116,8 @@ lock_screen_grabber:add_keybinding({}, 'Return', authenticate)
 lock_screen_grabber:add_keybinding({}, 'Escape', function()
   lock_screen_grabber.sequence = ""
   has_extra_char = false
+  -- lock_screen_grabber:stop()
+  -- lock_screen_hide()
 end)
 lock_screen_grabber:add_keybinding({ awful.util.altkey }, "m", awful.util.myaudio.mute)
 
@@ -124,6 +128,12 @@ lock_screen_grabber.keyreleased_callback = function()
   if (lock_screen_grabber.sequence == "") then
     has_extra_char = false
   end
+end
+
+lock_screen_grabber.keypressed_callback = function()
+  password:set_markup(markup("#FFFFFF", markup.font("SourceCodePro 12",
+    string.gsub(string.sub(lock_screen_grabber.sequence, has_extra_char and 2 or 1), ".", "*")
+  )))
 end
 
 function lock_screen_show()
@@ -141,7 +151,7 @@ function lock_screen_show()
       type = "dock",
       height = screen_height,
       width = screen_width,
-      bgimage = os.getenv("HOME") .. "/Pictures/Wallpapers/jonah_dinges_elephant.jpg"
+      bgimage = os.getenv("HOME") .. "/Pictures/Wallpapers/vaporwave.png"
     }
   )
   lock_screen_grabber:start()
@@ -271,7 +281,7 @@ local widgets = {
           }, 40, 40, 20, 20), "#000000", function(cr, width, height)
             gears.shape.rounded_rect(cr, width, height, 8)
           end),
-        }
+        },
       },
       "center",
       "center"

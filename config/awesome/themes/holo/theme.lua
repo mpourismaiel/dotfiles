@@ -3,7 +3,9 @@
      Holo Awesome WM theme 3.0
      github.com/lcpz
 
---]] local gears = require("gears")
+--]]
+local json = require("json")
+local gears = require("gears")
 local lain = require("lain")
 local awful = require("awful")
 local naughty = require("naughty")
@@ -24,7 +26,8 @@ local icon_dir = os.getenv("HOME") .. "/.config/awesome/themes/holo/icons"
 local theme = {
   default_dir = default_dir,
   icon_dir = icon_dir,
-  wallpaper = os.getenv("HOME") .. "/Pictures/Wallpapers/jonah_dinges_elephant.jpg",
+  wallpaper = os.getenv("HOME") .. "/Pictures/Wallpapers/vaporwave-blue.png",
+  font_only = "FiraCode Bold",
   font = "FiraCode Bold 10",
   hotkeys_font = "FiraCode 10",
   font_icon = "fontello",
@@ -104,7 +107,15 @@ local theme = {
 }
 
 function icon(ic, size, solid, font_awesome)
-  return markup.font(string.format("%s %s%s", font_awesome and "Font Awesome 5 Free" or theme.font_icon, solid and "solid " or "", size or 10), ic)
+  return markup.font(
+    string.format(
+      "%s %s%s",
+      font_awesome and "Font Awesome 5 Free" or theme.font_icon,
+      solid and "solid " or "",
+      size or 10
+    ),
+    ic
+  )
 end
 
 function font(text)
@@ -286,7 +297,8 @@ local cpu = function(format)
     {
       settings = function()
         widget:set_markup(
-          format and format(icon("", 9, true, true), cpu_now.usage) or (icon("") .. pad(1) .. font(cpu_now.usage .. "%"))
+          format and format(icon("", 9, true, true), cpu_now.usage) or
+            (icon("") .. pad(1) .. font(cpu_now.usage .. "%"))
         )
       end
     }
@@ -301,7 +313,8 @@ local mem = function(format)
       timeout = 1,
       settings = function()
         widget:set_markup(
-          format and format(icon("", 9, true, true), mem_now.perc) or (icon("", 9, true, true) .. pad(1) .. font(mem_now.perc .. "%"))
+          format and format(icon("", 9, true, true), mem_now.perc) or
+            (icon("", 9, true, true) .. pad(1) .. font(mem_now.perc .. "%"))
         )
       end
     }
@@ -318,32 +331,37 @@ local backlight =
       level1 = icon("", 10),
       level2 = icon("", 10),
       level3 = icon("", 10),
-      level4 = icon("", 10),
+      level4 = icon("", 10)
     }
   )
 )
 
-theme.myswitcher = awful.popup {
+theme.myswitcher =
+  awful.popup {
   widget = {
     awful.widget.tasklist {
-      screen   = awful.screen.focused(),
-      filter   = awful.widget.tasklist.filter.allscreen,
-      buttons  = my_table.join(
-        awful.button({}, 1, function(c)
-          c.minimized = false
+      screen = awful.screen.focused(),
+      filter = awful.widget.tasklist.filter.allscreen,
+      buttons = my_table.join(
+        awful.button(
+          {},
+          1,
+          function(c)
+            c.minimized = false
 
-          if not c:isvisible() and c.first_tag then
-            c.first_tag:view_only()
+            if not c:isvisible() and c.first_tag then
+              c.first_tag:view_only()
+            end
+
+            client.focus = c
+            c:raise()
+
+            theme.myswitcher.visible = false
+            awful.keygrabber.stop(awful.util.switcher_keygrabber)
           end
-
-          client.focus = c
-          c:raise()
-
-          theme.myswitcher.visible = false
-          awful.keygrabber.stop(awful.util.switcher_keygrabber)
-        end)
+        )
       ),
-      layout   = {
+      layout = {
         layout = wibox.layout.fixed.horizontal
       },
       widget_template = {
@@ -351,50 +369,193 @@ theme.myswitcher = awful.popup {
           {
             {
               {
-                id     = 'clienticon',
-                widget = awful.widget.clienticon,
+                id = "clienticon",
+                widget = awful.widget.clienticon
               },
               widget = margin,
               bottom = 5
             },
             {
-              id = 'text_role',
+              id = "text_role",
               widget = wibox.widget.textbox,
-              align = 'center',
+              align = "center",
               forced_width = 80
             },
-            layout = wibox.layout.fixed.vertical,
+            layout = wibox.layout.fixed.vertical
           },
-          widget  = wibox.container.margin,
+          widget = wibox.container.margin,
           top = 10,
           bottom = 10,
           left = 20,
           right = 20
         },
-        forced_width    = 120,
-        forced_height   = 120,
-        widget          = wibox.container.background,
+        forced_width = 120,
+        forced_height = 120,
+        widget = wibox.container.background,
         create_callback = function(self, c, index, objects)
-          self:get_children_by_id('clienticon')[1].client = c
-        end,
-      },
+          self:get_children_by_id("clienticon")[1].client = c
+        end
+      }
     },
-    layout = wibox.layout.fixed.horizontal,
+    layout = wibox.layout.fixed.horizontal
   },
   bg = theme.widget_bg .. "d6",
-  ontop        = true,
-  placement    = awful.placement.centered,
+  ontop = true,
+  placement = awful.placement.centered,
   shape = gears.shape.rectangle,
   visible = false
 }
 
+function set_github_listener(fn)
+  awful.widget.watch(
+    string.format("sh %s/.config/polybar/scripts/inbox-github.sh", os.getenv("HOME")),
+    60,
+    function(widget, stdout)
+      fn(string.gsub(stdout, "^%s*(.-)%s*$", "%1"))
+    end
+  )
+end
+
+theme.set_github_listener = set_github_listener
+
+local music_box =
+  wibox {
+  visible = false,
+  screen = nil
+}
+local margin = wibox.container.margin
+local background = wibox.container.background
+local text = wibox.widget.textbox
+
+function widget_button(w, action)
+  local bg_normal = theme.widget_bg .. "00"
+  local bg_hover = "#1c1c1c"
+
+  w = background(margin(w, 5, 5, 5, 5), bg_normal)
+  w:connect_signal(
+    "mouse::enter",
+    function()
+      w.bg = bg_hover
+    end
+  )
+
+  w:connect_signal(
+    "mouse::leave",
+    function()
+      w.bg = bg_normal
+    end
+  )
+
+  w:buttons(my_table.join(awful.button({}, 1, action)))
+
+  return wibox.container.place({widget = w, forced_height = 50, forced_width = 50})
+end
+
+function music_action(action)
+  awful.spawn.with_shell(string.format("node %s/bin/headset-track-info.js %s", os.getenv("HOME"), action))
+end
+
 function theme.at_screen_connect(s)
+  local screen_width = s.geometry.width
+  local screen_height = s.geometry.height
+
+  music_box =
+    wibox {
+    x = 50,
+    y = screen_height - 135,
+    width = 400,
+    height = 130,
+    visible = false,
+    ontop = true,
+    screen = s,
+    bg = theme.widget_bg .. "d6",
+    opacity = 0,
+    type = "desktop",
+    shape = function(cr, width, height)
+      gears.shape.rounded_rect(cr, width, height, 5)
+    end
+  }
+  local music_artist = text("")
+  local music_title = text("")
+  music_box:setup {
+    {
+      layout = wibox.layout.fixed.vertical,
+      {
+        layout = wibox.layout.fixed.horizontal,
+        music_title,
+        music_artist
+      },
+      margin(text(""), 0, 0, 10, 0),
+      {
+        layout = wibox.layout.flex.horizontal,
+        spacing = 25,
+        widget_button(
+          text(icon("")),
+          function()
+            music_action("prev")
+          end
+        ),
+        widget_button(
+          text(icon("")),
+          function()
+            music_action("stop")
+          end
+        ),
+        widget_button(
+          text(icon("")),
+          function()
+            music_action("pause")
+          end
+        ),
+        widget_button(
+          text(icon("")),
+          function()
+            music_action("play")
+          end
+        ),
+        widget_button(
+          text(icon("")),
+          function()
+            music_action("next")
+          end
+        )
+      }
+    },
+    widget = margin,
+    left = 15,
+    right = 15,
+    top = 15,
+    bottom = 15
+  }
+
   -- If wallpaper is a function, call it with the screen
   local wallpaper = theme.wallpaper
   if type(wallpaper) == "function" then
     wallpaper = wallpaper(s)
   end
   gears.wallpaper.maximized(wallpaper, s, true)
+
+  awful.spawn.with_line_callback(
+    string.format("node %s/bin/headset-track-info.js", os.getenv("HOME")),
+    {
+      stdout = function(info)
+        resp_json = json.decode(info)
+        music_title:set_markup(
+          markup.font(theme.font, resp_json.title) .. markup.font(theme.hotkeys_font, " - " .. resp_json.artist)
+        )
+        music_box.opacity = 1
+        music_box.visible = true
+        gears.timer {
+          timeout = 5,
+          autostart = true,
+          callback = function()
+            music_box.opacity = 0
+            music_box.visible = false
+          end
+        }
+      end
+    }
+  )
 
   -- Tag List
   awful.tag(awful.util.tagnames, s, awful.layout.layouts[1])
@@ -696,22 +857,20 @@ theme.titlebar_fun = function(c)
   }
 end
 
-
-
 theme.zen_mode = function(c)
   local s = awful.screen.focused()
   if s.mytagbar.visible == true then
-      s.mytagbar.visible = false
-      s.mywibox.bg = "#242424"
-      s.mytasklistbar.bg = "#242424"
-      awful.screen.focused().selected_tag.gap = 0
-      awful.layout.arrange(scr)
+    s.mytagbar.visible = false
+    s.mywibox.bg = "#242424"
+    s.mytasklistbar.bg = "#242424"
+    awful.screen.focused().selected_tag.gap = 0
+    awful.layout.arrange(scr)
   else
-      s.mytagbar.visible = true
-      s.mywibox.bg = "#00000000"
-      s.mytasklistbar.bg = "#00000000"
-      awful.screen.focused().selected_tag.gap = 10
-      awful.layout.arrange(scr)
+    s.mytagbar.visible = true
+    s.mywibox.bg = "#00000000"
+    s.mytasklistbar.bg = "#00000000"
+    awful.screen.focused().selected_tag.gap = 10
+    awful.layout.arrange(scr)
   end
 end
 
