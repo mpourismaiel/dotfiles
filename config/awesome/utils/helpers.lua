@@ -3,7 +3,10 @@ local gears = require("gears")
 local beautiful = require("beautiful")
 local wibox = require("wibox")
 
-local helpers = {}
+local helpers = {
+    client = {},
+    audio = {}
+}
 
 -- Create rounded rectangle shape
 helpers.rrect = function(radius)
@@ -148,6 +151,22 @@ function helpers.split(inputstr, sep)
         i = i + 1
     end
     return t
+end
+
+function helpers.audio.mute()
+    os.execute(string.format("amixer -q set %s toggle", beautiful.volume.togglechannel or beautiful.volume.channel))
+    beautiful.volume.update()
+end
+
+function helpers.client.border_adjust(c)
+    if c.maximized then
+        c.border_width = 0
+    elseif #awful.screen.focused().clients > 1 then
+        c.border_width = beautiful.border_width
+        c.border_color = beautiful.border_focus
+    else
+        c.border_width = 0
+    end
 end
 
 return helpers
