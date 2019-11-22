@@ -7,6 +7,7 @@ local markup = require("lain.util.markup")
 local helpers = require("helpers")
 local pad = helpers.pad
 local keygrabber = require("awful.keygrabber")
+local createAnimObject = require("anim-object")
 
 -- Appearance
 local icon_size = beautiful.exit_screen_icon_size or 80
@@ -245,7 +246,18 @@ function exit_screen_show()
 
   -- Create the widget
   exit_screen =
-    wibox({x = 0, y = 0, visible = false, ontop = true, screen = s, type = "dock", height = screen_height, width = screen_width})
+    wibox(
+    {
+      x = 0,
+      y = 0,
+      visible = false,
+      ontop = true,
+      screen = s,
+      type = "dock",
+      height = screen_height,
+      width = screen_width
+    }
+  )
 
   -- Set widget colors
   exit_screen.bg = "#151515d6"

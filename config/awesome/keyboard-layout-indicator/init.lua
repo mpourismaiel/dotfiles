@@ -128,9 +128,14 @@ local function update_status(self)
             text = name
         end
     end
-    self.widget:set_markup(
-        markup("#FFFFFF", (self.icon or "") .. markup.font("Roboto Bold 10", string.upper(text)))
-    )
+
+    if self.markup ~= nil then
+        self.widget:set_markup(self.markup(self, text .. "asdf"))
+    else
+        self.widget:set_markup(
+            markup("#FFFFFF", (self.icon or "") .. markup.font("Roboto Bold 10", string.upper(text)))
+        )
+    end
 end
 
 --- Auxiliary function for the local function update_layout().
@@ -260,11 +265,12 @@ end
 --- Create a keyboard layout widget. It shows current keyboard layout name in a textbox.
 -- @return A keyboard layout widget.
 function keyboardlayout.new(args)
+    local args = args or {}
     local widget = textbox()
     local self = widget_base.make_widget(widget)
 
     self.widget = widget
-    self.icon = (args or {}).icon
+    gtable.crush(self, args)
 
     self.layout_name = function(v)
         local name = v.file

@@ -5,7 +5,7 @@ local beautiful = require("beautiful")
 local naughty = require("naughty")
 local http = require("socket.http")
 local json = require("json")
-local ltn12 = require("ltn12");
+local ltn12 = require("ltn12")
 local secrets = require("secrets")
 local markup = require("lain.util.markup")
 local helpers = require("helpers")
@@ -27,9 +27,10 @@ local icon = function(ic, size, solid, fontawesome, string)
 end
 local font = beautiful.font_fn
 
-local info_screen = wibox {
+local info_screen =
+  wibox {
   visible = false,
-  screen = nil,
+  screen = nil
 }
 local info_screen_grabber
 
@@ -40,7 +41,7 @@ function info_screen_show()
   info_screen =
     wibox(
     {
-      x = screen_width - 400,
+      x = screen_width,
       y = 0,
       visible = true,
       ontop = true,
@@ -48,9 +49,11 @@ function info_screen_show()
       type = "dock",
       height = screen_height,
       width = 400,
+      opacity = 0,
       bg = beautiful.widget_bg .. "d6"
     }
   )
+  createAnimObject(0.6, info_screen, {x = screen_width - 400, opacity = 1}, "outCubic")
   info_screen_grabber =
     awful.keygrabber.run(
     function(_, key, event)
@@ -66,7 +69,16 @@ function info_screen_show()
 end
 
 function info_screen_hide()
-  info_screen.visible = false
+  local s = awful.screen.focused()
+  createAnimObject(
+    0.6,
+    info_screen,
+    {x = screen_width, opacity = 0},
+    "outCubic",
+    function()
+      info_screen.visible = false
+    end
+  )
   awful.keygrabber.stop(info_screen_grabber)
 end
 
@@ -79,7 +91,8 @@ end
 
 function widget_info(w1, w2, w3)
   local marginalizedW2 = margin(w2)
-  local ret = wibox.widget {
+  local ret =
+    wibox.widget {
     {
       {
         w1,
@@ -99,13 +112,13 @@ function widget_info(w1, w2, w3)
   ret:connect_signal(
     "mouse::enter",
     function()
-      createAnimObject(1, marginalizedW2, { left = 10 }, "outCubic")
+      createAnimObject(1, marginalizedW2, {left = 10}, "outCubic")
     end
   )
   ret:connect_signal(
     "mouse::leave",
     function()
-      createAnimObject(1, marginalizedW2, { left = 0 }, "outCubic")
+      createAnimObject(1, marginalizedW2, {left = 0}, "outCubic")
     end
   )
   return ret
@@ -215,6 +228,31 @@ local disable_notification =
   end
 )
 
+local sound_output_icon = icon("", 10, true, true)
+local sound_output_text = text(markup("#FFFFFF", theme_pad(3) .. "Output: Local"))
+local sound_output =
+  widget_button(
+  widget_info(sound_output_icon, sound_output_text, nil),
+  function()
+    awful.spawn.easy_async(
+      "bash /home/mahdi/bin/sound_toggle toggle",
+      function(stdout)
+        sound_output_text:set_markup(
+          markup("#FFFFFF", theme_pad(3) .. "Output: " .. string.gsub(stdout, "^%s*(.-)%s*$", "%1"))
+        )
+      end
+    )
+  end
+)
+awful.spawn.easy_async(
+  "bash /home/mahdi/bin/sound_toggle toggle",
+  function(stdout)
+    sound_output_text:set_markup(
+      markup("#FFFFFF", theme_pad(3) .. "Output: " .. string.gsub(stdout, "^%s*(.-)%s*$", "%1"))
+    )
+  end
+)
+
 local github_icon = icon("", 10, true, true)
 local github_text = text(markup("#FFFFFF", theme_pad(3) .. "Github Notifications"))
 local github_notifications = text(markup("#FFFFFF", theme_pad(3) .. "Loading notifications"))
@@ -226,14 +264,17 @@ local github =
   end
 )
 
-beautiful.set_github_listener(function(text)
-  github_notifications:set_markup(markup("#FFFFFF", theme_pad(3) .. text))
-end)
+beautiful.set_github_listener(
+  function(text)
+    github_notifications:set_markup(markup("#FFFFFF", theme_pad(3) .. text))
+  end
+)
 
 local toggl_icon = icon("", 10, true, true)
 local toggl_text = text(markup("#FFFFFF", theme_pad(3) .. "Toggl"))
 local toggl_active = text(markup("#FFFFFF", theme_pad(3) .. "Loading active task"))
-local toggl = widget_button(
+local toggl =
+  widget_button(
   widget_info(toggl_icon, toggl_text, toggl_active),
   function()
     awful.spawn.with_shell("google-chrome-beta https://www.toggl.com/app/timer")
@@ -263,7 +304,8 @@ local toggl_reports = widget_info(toggl_reports_icon, toggl_reports_text, text()
 local toggl_syna_icon = icon("", 10, true, true)
 local toggl_syna_text = text(markup("#FFFFFF", theme_pad(3) .. "Syna"))
 local toggl_syna_active = text(markup("#FFFFFF", theme_pad(3) .. "Loading Report"))
-local toggl_syna = widget_button(
+local toggl_syna =
+  widget_button(
   widget_info(toggl_syna_icon, toggl_syna_text, toggl_syna_active),
   function()
     awful.spawn.with_shell("google-chrome-beta https://www.toggl.com/app/reports/summary/2623050")
@@ -279,27 +321,32 @@ awful.widget.watch(
 )
 
 local feedly = text()
-local feedly_timer = gears.timer({ timeout = 3600 })
+local feedly_timer = gears.timer({timeout = 3600})
 
 local resp = {}
-feedly_timer:connect_signal("timeout", function ()
-  local result, status = http.request{
-    method = 'GET',
-    url = 'https://cloud.feedly.com/v3/streams/contents?streamId=' .. secrets.feedly_stream .. '&count=20&unreadOnly=true&ranked=newest',
-    headers = {
-      Authorization = 'Bearer ' .. secrets.feedly
-    },
-    sink = ltn12.sink.table(resp)
-  }
-  if (status == 200) then
-    resp_json = json.decode(table.concat(resp))
-    gears.debug.dump(resp_json)
+feedly_timer:connect_signal(
+  "timeout",
+  function()
+    local result, status =
+      http.request {
+      method = "GET",
+      url = "https://cloud.feedly.com/v3/streams/contents?streamId=" ..
+        secrets.feedly_stream .. "&count=20&unreadOnly=true&ranked=newest",
+      headers = {
+        Authorization = "Bearer " .. secrets.feedly
+      },
+      sink = ltn12.sink.table(resp)
+    }
+    if (status == 200) then
+      resp_json = json.decode(table.concat(resp))
+      gears.debug.dump(resp_json)
+    end
   end
-end)
+)
 -- feedly_timer:start()
 -- feedly_timer:emit_signal("timeout")
 
-local clipboard_timer = gears.timer({ timeout = 5 })
+local clipboard_timer = gears.timer({timeout = 5})
 local clipboard_items_widget = {
   layout = wibox.layout.fixed.vertical
 }
@@ -339,6 +386,7 @@ local widgets = {
   background(margin(title("Settings"), 40, 40, 10, 10), "#1c1c1c94"),
   margin(pad(0), 0, 0, 0, 16),
   disable_notification,
+  sound_output,
   clipboard
 }
 
@@ -347,24 +395,28 @@ function info_screen_setup()
 end
 
 local resp = {}
-clipboard_timer:connect_signal("timeout", function ()
-  local result, status = http.request{
-    method = 'GET',
-    url = 'http://localhost:9102/read',
-    sink = ltn12.sink.table(resp)
-  }
-  if (status == 200) then
-    resp_json = json.decode(table.concat(resp))
-    gears.debug.dump(resp_json)
+clipboard_timer:connect_signal(
+  "timeout",
+  function()
+    local result, status =
+      http.request {
+      method = "GET",
+      url = "http://localhost:9102/read",
+      sink = ltn12.sink.table(resp)
+    }
+    if (status == 200) then
+      resp_json = json.decode(table.concat(resp))
+      gears.debug.dump(resp_json)
 
-    clipboard_items_widget = { layout = wibox.layout.fixed.vertical }
-    for _, item in ipairs(resp_json) do
-      clipboard_items_widget[#clipboard_items_widget + 1] = widget_info(text(), text(item.input), text())
+      clipboard_items_widget = {layout = wibox.layout.fixed.vertical}
+      for _, item in ipairs(resp_json) do
+        clipboard_items_widget[#clipboard_items_widget + 1] = widget_info(text(), text(item.input), text())
+      end
+      clipboard:setup({})
+      info_screen_setup()
     end
-    clipboard:setup({})
-    info_screen_setup()
   end
-end)
+)
 
 -- clipboard_timer:start()
 -- clipboard_timer:emit_signal("timeout")
