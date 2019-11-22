@@ -207,3 +207,5 @@ fi
 ## sources
 source /usr/share/nvm/init-nvm.sh
 [ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
+
+export GO111MODULE=on

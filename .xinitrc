@@ -45,3 +45,4 @@ exec /usr/bin/awesome >> ~/.cache/awesome/stdout 2>> ~/.cache/awesome/stderr
 xrdb ~/.Xresources
 xrandr --addmode eDP1 1920x1080
 xxkb
+
