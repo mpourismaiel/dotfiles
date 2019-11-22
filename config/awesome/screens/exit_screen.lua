@@ -4,10 +4,10 @@ local wibox = require("wibox")
 local beautiful = require("beautiful")
 local naughty = require("naughty")
 local markup = require("lain.util.markup")
-local helpers = require("helpers")
+local helpers = require("utils.helpers")
 local pad = helpers.pad
 local keygrabber = require("awful.keygrabber")
-local createAnimObject = require("anim-object")
+local createAnimObject = require("utils.animation").createAnimObject
 
 -- Appearance
 local icon_size = beautiful.exit_screen_icon_size or 80

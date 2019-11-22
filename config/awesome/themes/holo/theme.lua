@@ -10,8 +10,8 @@ local lain = require("lain")
 local awful = require("awful")
 local naughty = require("naughty")
 local wibox = require("wibox")
-local layout_indicator = require("keyboard-layout-indicator")
-local brightness = require("brightness")
+local layout_indicator = require("widgets.layout-indicator")
+local brightness = require("widgets.brightness")
 local string, os = string, os
 
 -- Helpers

@@ -8,12 +8,12 @@ local json = require("json")
 local ltn12 = require("ltn12")
 local secrets = require("secrets")
 local markup = require("lain.util.markup")
-local helpers = require("helpers")
+local helpers = require("utils.helpers")
 local my_table = awful.util.table or gears.table
 local pad = helpers.pad
 local theme_pad = beautiful.pad_fn
 local keygrabber = require("awful.keygrabber")
-local createAnimObject = require("anim-object")
+local createAnimObject = require("utils.animation").createAnimObject
 
 local margin = wibox.container.margin
 local background = wibox.container.background
