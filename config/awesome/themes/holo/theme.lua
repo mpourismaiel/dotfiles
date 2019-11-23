@@ -450,6 +450,68 @@ function music_action(action)
   awful.spawn.with_shell(string.format("node %s/bin/headset-track-info.js %s", os.getenv("HOME"), action))
 end
 
+theme.statusbar = function(s, display_systray, top_widget)
+  return wibox.container.constraint(
+    wibox.widget(
+      {
+        layout = wibox.layout.align.vertical,
+        {
+          {
+            top_widget or nil,
+            s.mytaglist,
+            layout = wibox.layout.align.vertical
+          },
+          layout = wibox.layout.align.vertical
+        },
+        nil,
+        {
+          layout = wibox.layout.fixed.vertical,
+          {
+            {
+              display_systray and systray or nil,
+              volume,
+              supports_backlight,
+              bat,
+              keyboard,
+              clock,
+              layout = wibox.layout.fixed.vertical
+            },
+            widget = background
+          }
+        }
+      }
+    ),
+    "exact",
+    50
+  )
+end
+
+function create_button(w, action, higher_color)
+  local bg_normal = theme.widget_bg .. (higher_color and "ee" or "00")
+  local bg_hover = (higher_color and theme.widget_bg .. "ff" or theme.widget_bg .. "ff")
+
+  w = background(w, bg_normal)
+  w:connect_signal(
+    "mouse::enter",
+    function()
+      w.bg = bg_hover
+    end
+  )
+
+  w:connect_signal(
+    "mouse::leave",
+    function()
+      w.bg = bg_normal
+    end
+  )
+
+  if type(action) == "function" then
+    w:buttons(my_table.join(awful.button({}, 1, action)))
+  end
+
+  return w
+end
+
 function theme.at_screen_connect(s)
   local screen_width = s.geometry.width
   local screen_height = s.geometry.height
@@ -588,8 +650,7 @@ function theme.at_screen_connect(s)
   local layoutbox = awful.widget.layoutbox(s)
   layoutbox.forced_height = 16
   layoutbox.forced_width = 16
-  s.mylayoutbox =
-    background(margin(wibox.container.place(layoutbox), 18, 16, 0, 0), theme.widget_bg, gears.shape.rectangle)
+  s.mylayoutbox = margin(wibox.container.place(layoutbox), 18, 16, 0, 0)
   s.mylayoutbox:buttons(
     my_table.join(
       awful.button(
@@ -630,6 +691,15 @@ function theme.at_screen_connect(s)
     )
   )
 
+  -- Bar
+  s.mytagbar = awful.wibar({position = "left", screen = s, width = 50, bg = theme.wibar_bg})
+  s.mytagbar:setup {
+    layout = wibox.layout.align.horizontal,
+    nil,
+    nil,
+    theme.statusbar(s, true)
+  }
+
   -- Task List
   s.mytasklist =
     awful.widget.tasklist {
@@ -639,48 +709,21 @@ function theme.at_screen_connect(s)
     update_function = require("widgets.tasklist")(theme)
   }
 
-  -- Bar
-  s.mytagbar = awful.wibar({position = "left", screen = s, width = 50, bg = theme.wibar_bg})
-  s.mytagbar:setup {
-    layout = wibox.layout.align.vertical,
-    {
-      {
-        s.mytaglist,
-        layout = wibox.layout.align.vertical
-      },
-      layout = wibox.layout.align.vertical
-    },
-    nil,
-    {
-      layout = wibox.layout.fixed.vertical,
-      {
-        {
-          systray,
-          volume,
-          supports_backlight,
-          bat,
-          keyboard,
-          clock,
-          layout = wibox.layout.fixed.vertical
-        },
-        widget = background
-      }
-    }
-  }
-
   s.mytasklistbar = awful.wibar({position = "top", screen = s, height = 45, bg = theme.wibar_bg})
   s.mytasklistbar:setup {
     layout = wibox.layout.align.horizontal,
     {
-      {
-        s.mylayoutbox,
-        s.mytasklist,
-        layout = wibox.layout.align.horizontal
-      },
+      create_button(
+        wibox.container.constraint(wibox.container.place(text(icon("", 12, true, true))), "exact", 50),
+        function()
+          info_screen_show()
+        end
+      ),
+      s.mytasklist,
       layout = wibox.layout.align.horizontal
     },
     nil,
-    nil
+    create_button(s.mylayoutbox, nil, true)
   }
 
   s.mywibox = awful.wibar({position = "bottom", screen = s, height = 45, bg = theme.wibar_bg, visible = false})

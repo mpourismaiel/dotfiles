@@ -1,6 +1,7 @@
 local awful = require("awful")
 local gears = require("gears")
 local beautiful = require("beautiful")
+local naughty = require("naughty")
 local hotkeys_popup = require("awful.hotkeys_popup").widget
 local lain = require("lain")
 local helpers = require("utils.helpers")
@@ -246,7 +247,7 @@ local globalkeys =
     {modkey},
     "d",
     function()
-      awful.spawn.with_shell("rofi -show drun")
+      _G.awesome.spawn("rofi -show drun")
     end,
     {description = "show launcher", group = "awesome"}
   ),
@@ -323,6 +324,12 @@ local globalkeys =
       exit_screen_show()
     end,
     {description = "show exit screen", group = "awesome"}
+  ),
+  awful.key(
+    {modkey, "Shift"},
+    "w",
+    workstation_show,
+    {description = "show workstation selector screen", group = "awesome"}
   ),
   awful.key(
     {modkey},
