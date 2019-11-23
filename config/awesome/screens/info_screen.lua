@@ -32,28 +32,58 @@ local info_screen =
   visible = false,
   screen = nil
 }
+local backdrop = wibox {type = "dock", x = 0, y = 0}
 local info_screen_grabber
 
 function info_screen_show()
   local s = awful.screen.focused()
   local screen_width = s.geometry.width
   local screen_height = s.geometry.height
+  backdrop =
+    wibox(
+    {
+      type = "dock",
+      height = screen_height,
+      width = screen_width,
+      x = 0,
+      y = 0,
+      screen = s,
+      ontop = true,
+      visible = true,
+      opacity = 0,
+      bg = beautiful.wibar_bg .. "cc"
+    }
+  )
   info_screen =
     wibox(
     {
-      x = screen_width,
+      x = -400,
       y = 0,
       visible = true,
       ontop = true,
       screen = s,
       type = "dock",
       height = screen_height,
-      width = 400,
+      width = 450,
       opacity = 0,
-      bg = beautiful.widget_bg .. "d6"
+      bg = beautiful.wibar_bg
     }
   )
-  createAnimObject(0.6, info_screen, {x = screen_width - 400, opacity = 1}, "outCubic")
+  createAnimObject(0.6, info_screen, {x = 0, opacity = 1}, "outCubic")
+  createAnimObject(0.6, backdrop, {opacity = 1}, "outCubic")
+
+  backdrop:buttons(
+    awful.util.table.join(
+      awful.button(
+        {},
+        1,
+        function()
+          info_screen_hide()
+        end
+      )
+    )
+  )
+
   info_screen_grabber =
     awful.keygrabber.run(
     function(_, key, event)
@@ -65,15 +95,16 @@ function info_screen_show()
       end
     end
   )
-  info_screen_setup()
+  info_screen_setup(s)
 end
 
 function info_screen_hide()
   local s = awful.screen.focused()
+  backdrop.visible = false
   createAnimObject(
     0.6,
     info_screen,
-    {x = screen_width, opacity = 0},
+    {x = -400, opacity = 0},
     "outCubic",
     function()
       info_screen.visible = false
@@ -126,7 +157,7 @@ end
 
 function widget_button(w, action)
   local bg_normal = beautiful.widget_bg .. "00"
-  local bg_hover = "#1c1c1c"
+  local bg_hover = beautiful.widget_bg .. "ff"
 
   w = background(w, bg_normal)
   w:connect_signal(
@@ -353,45 +384,100 @@ local clipboard_items_widget = {
 local clipboard_widgets = {
   layout = wibox.layout.fixed.vertical,
   margin(pad(0), 0, 0, 0, 16),
-  background(margin(title("Clipboard"), 40, 40, 10, 10), "#1c1c1c94"),
+  background(margin(title("Clipboard"), 40, 40, 10, 10), beautiful.widget_bg),
   margin(pad(0), 0, 0, 0, 16),
   wibox.widget(clipboard_items_widget)
 }
 local clipboard = wibox.widget(clipboard_widgets)
 
+local power_button =
+  background(margin(title(icon("", 12, true, true, true) .. " Power"), 40, 40, 20, 20), beautiful.wibar_bg)
+
+power_button:connect_signal(
+  "mouse::enter",
+  function()
+    power_button.bg = beautiful.widget_bg
+  end
+)
+
+power_button:connect_signal(
+  "mouse::leave",
+  function()
+    power_button.bg = beautiful.wibar_bg
+  end
+)
+
+power_button:buttons(
+  awful.util.table.join(
+    awful.button(
+      {},
+      1,
+      function()
+        info_screen_hide()
+        exit_screen_show()
+      end
+    )
+  )
+)
+
 local widgets = {
-  layout = wibox.layout.fixed.vertical,
-  margin(pad(0), 0, 0, 32),
-  margin(time_text, 40, 40),
-  margin(date_text, 40, 40, 0, 20),
-  background(margin(title("Notifications"), 40, 40, 10, 10), "#1c1c1c94"),
-  margin(pad(0), 0, 0, 0, 16),
-  toggl,
-  github,
-  toggl_reports,
-  toggl_syna,
-  margin(pad(0), 0, 0, 0, 32),
-  background(margin(title("Information"), 40, 40, 10, 10), "#1c1c1c94"),
-  margin(pad(0), 0, 0, 0, 16),
-  uptime_widget,
-  cpu,
-  mem,
-  fs_root_used,
-  fs_home_used,
-  margin(pad(0), 0, 0, 0, 32),
-  -- background(margin(title("Feed"), 40, 40, 10, 10), "#1c1c1c94"),
-  -- margin(pad(0), 0, 0, 0, 16),
-  -- feedly,
-  -- margin(pad(0), 0, 0, 0, 32),
-  background(margin(title("Settings"), 40, 40, 10, 10), "#1c1c1c94"),
-  margin(pad(0), 0, 0, 0, 16),
-  disable_notification,
-  sound_output,
-  clipboard
+  {
+    layout = wibox.layout.fixed.vertical,
+    margin(pad(0), 0, 0, 32),
+    margin(time_text, 40, 40),
+    margin(date_text, 40, 40, 0, 20),
+    background(margin(title("Notifications"), 40, 40, 10, 10), beautiful.widget_bg),
+    margin(pad(0), 0, 0, 0, 16),
+    toggl,
+    github,
+    toggl_reports,
+    toggl_syna,
+    margin(pad(0), 0, 0, 0, 32),
+    background(margin(title("Information"), 40, 40, 10, 10), beautiful.widget_bg),
+    margin(pad(0), 0, 0, 0, 16),
+    uptime_widget,
+    cpu,
+    mem,
+    fs_root_used,
+    fs_home_used,
+    margin(pad(0), 0, 0, 0, 32),
+    -- background(margin(title("Feed"), 40, 40, 10, 10), beautiful.widget_bg),
+    -- margin(pad(0), 0, 0, 0, 16),
+    -- feedly,
+    -- margin(pad(0), 0, 0, 0, 32),
+    background(margin(title("Settings"), 40, 40, 10, 10), beautiful.widget_bg),
+    margin(pad(0), 0, 0, 0, 16),
+    disable_notification,
+    sound_output,
+    clipboard
+  },
+  nil,
+  power_button,
+  layout = wibox.layout.align.vertical
 }
 
-function info_screen_setup()
-  info_screen:setup(widgets)
+local close_button = widget_button(wibox.container.constraint(wibox.container.place(icon("", 12)), "exact", 50, 50))
+close_button:buttons(
+  awful.util.table.join(
+    awful.button(
+      {},
+      1,
+      function()
+        info_screen_hide()
+      end
+    )
+  )
+)
+
+function info_screen_setup(s)
+  info_screen:setup(
+    {
+      layout = wibox.layout.align.horizontal,
+      nil,
+      widgets,
+      beautiful.statusbar(s, false, close_button)
+    }
+  )
 end
 
 local resp = {}

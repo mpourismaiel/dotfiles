@@ -2,6 +2,7 @@ local wibox = require("wibox")
 local awful = require("awful")
 local gears = require("gears")
 local lain = require("lain")
+local helpers = require("utils.helpers")
 local clickable_container = require("widgets.clickable-container")
 local markup = lain.util.markup
 local capi = {button = _G.button}

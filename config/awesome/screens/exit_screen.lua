@@ -235,7 +235,15 @@ local exit_screen_grabber
 local exit_screen
 function exit_screen_hide()
   awful.keygrabber.stop(exit_screen_grabber)
-  exit_screen.visible = false
+  createAnimObject(
+    0.6,
+    exit_screen,
+    {opacity = 0},
+    "outCubic",
+    function()
+      exit_screen.visible = false
+    end
+  )
 end
 function exit_screen_show()
   local s = awful.screen.focused()
@@ -250,7 +258,8 @@ function exit_screen_show()
     {
       x = 0,
       y = 0,
-      visible = false,
+      visible = true,
+      opacity = 0,
       ontop = true,
       screen = s,
       type = "dock",
@@ -260,10 +269,12 @@ function exit_screen_show()
   )
 
   -- Set widget colors
-  exit_screen.bg = "#151515d6"
+  exit_screen.bg = beautiful.wibar_bg .. "ee"
   exit_screen.fg = "#FEFEFE"
 
   exit_screen_setup()
+
+  createAnimObject(0.6, exit_screen, {opacity = 1}, "outCubic")
 
   -- naughty.notify({text = "starting the keygrabber"})
   exit_screen_grabber =
@@ -289,7 +300,6 @@ function exit_screen_show()
       end
     end
   )
-  exit_screen.visible = true
 end
 
 function exit_screen_setup()

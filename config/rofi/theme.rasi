@@ -12,7 +12,7 @@ configuration {
 }
 
 * {
-  background-color:            argb:8f1c1c1c;
+  background-color:            argb:ff171520;
   input-background:            argb:8f151515;
   text-color:                  #ffffe6;
   selbg:                       #fc4384;

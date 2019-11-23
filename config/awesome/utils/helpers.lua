@@ -2,6 +2,7 @@ local awful = require("awful")
 local gears = require("gears")
 local beautiful = require("beautiful")
 local wibox = require("wibox")
+local markup = require("lain.util.markup")
 
 local helpers = {
     client = {},
@@ -68,6 +69,18 @@ function helpers.pad(size)
     end
     local pad = wibox.widget.textbox(str)
     return pad
+end
+
+function helpers.icon(ic, size, solid, fontawesome, string)
+    if string == true then
+        return beautiful.icon_fn(ic, size, solid, fontawesome)
+    end
+
+    return wibox.widget.textbox(markup("#FFFFFF", beautiful.icon_fn(ic, size, solid, fontawesome)))
+end
+
+function helpers.font(text, font)
+    return markup.font(font or beautiful.font, text)
 end
 
 function helpers.move_to_edge(c, direction)
