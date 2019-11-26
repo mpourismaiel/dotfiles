@@ -1,11 +1,15 @@
 local wibox = require("wibox")
 local awful = require("awful")
+local naughty = require("naughty")
 local gears = require("gears")
 local lain = require("lain")
 local helpers = require("utils.helpers")
 local clickable_container = require("widgets.clickable-container")
 local markup = lain.util.markup
-local capi = {button = _G.button}
+local capi = {
+  button = _G.button,
+  client = client
+}
 
 local function create_buttons(buttons, object)
   if buttons then
@@ -143,7 +147,29 @@ local function tasklist(theme)
       bg_clickable_background.shape_border_width = args.shape_border_width
       bg_clickable_background.shape_border_color = args.shape_border_color
 
-      widget:add(bg_clickable_background)
+      local focused = capi.client.focus == object
+      if
+        not focused and capi.client.focus and capi.client.focus.skip_taskbar and
+          capi.client.focus:get_transient_for_matching(
+            function(cl)
+              return not cl.skip_taskbar
+            end
+          ) == object
+       then
+        focused = true
+      end
+
+      local widget_children = wibox.layout.fixed.vertical()
+      local indicator =
+        wibox.container.background(wibox.container.margin(wibox.widget.textbox(), 0, 0, 3), theme.border_normal)
+      widget_children:add(indicator)
+
+      if focused then
+        indicator.bg = theme.primary
+      end
+
+      widget_children:add(bg_clickable_background)
+      widget:add(widget_children)
     end
   end
 end
