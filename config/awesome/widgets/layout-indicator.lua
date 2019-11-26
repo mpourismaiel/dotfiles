@@ -133,7 +133,10 @@ local function update_status(self)
         self.widget:set_markup(self.markup(self, text .. "asdf"))
     else
         self.widget:set_markup(
-            markup("#FFFFFF", (self.icon or "") .. markup.font("FiraCode Bold 12", string.upper(text)))
+            markup(
+                "#ffffff33",
+                (self.icon or "") .. markup.font("FiraCode Bold 12", string.upper(text == "ir" and "fa" or text))
+            )
         )
     end
 end

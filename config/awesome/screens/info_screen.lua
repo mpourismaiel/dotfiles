@@ -183,7 +183,7 @@ local cpu =
   widget_info(
   beautiful.cpu(
     function(ic, usage)
-      return ic .. theme_pad(3) .. "CPU"
+      return markup(beautiful.white, ic .. theme_pad(3) .. "CPU")
     end
   ),
   nil,
@@ -198,7 +198,7 @@ local mem =
   widget_info(
   beautiful.mem(
     function(ic, usage)
-      return ic .. theme_pad(3) .. "Memory"
+      return markup(beautiful.white, ic .. theme_pad(3) .. "Memory")
     end
   ),
   nil,
@@ -384,14 +384,13 @@ local clipboard_items_widget = {
 local clipboard_widgets = {
   layout = wibox.layout.fixed.vertical,
   margin(pad(0), 0, 0, 0, 16),
-  background(margin(title("Clipboard"), 40, 40, 10, 10), beautiful.widget_bg),
+  background(margin(title("Clipboard"), 40, 40, 10, 10), "#1c1c1c"),
   margin(pad(0), 0, 0, 0, 16),
   wibox.widget(clipboard_items_widget)
 }
 local clipboard = wibox.widget(clipboard_widgets)
 
-local power_button =
-  background(margin(title(icon("", 12, true, true, true) .. " Power"), 40, 40, 20, 20), beautiful.wibar_bg)
+local power_button = background(margin(title(icon("", 12, true, true, true) .. " Power"), 40, 40, 20, 20), "#1c1c1c")
 
 power_button:connect_signal(
   "mouse::enter",
@@ -422,38 +421,42 @@ power_button:buttons(
 
 local widgets = {
   {
-    layout = wibox.layout.fixed.vertical,
-    margin(pad(0), 0, 0, 32),
-    margin(time_text, 40, 40),
-    margin(date_text, 40, 40, 0, 20),
-    background(margin(title("Notifications"), 40, 40, 10, 10), beautiful.widget_bg),
-    margin(pad(0), 0, 0, 0, 16),
-    toggl,
-    github,
-    toggl_reports,
-    toggl_syna,
-    margin(pad(0), 0, 0, 0, 32),
-    background(margin(title("Information"), 40, 40, 10, 10), beautiful.widget_bg),
-    margin(pad(0), 0, 0, 0, 16),
-    uptime_widget,
-    cpu,
-    mem,
-    fs_root_used,
-    fs_home_used,
-    margin(pad(0), 0, 0, 0, 32),
-    -- background(margin(title("Feed"), 40, 40, 10, 10), beautiful.widget_bg),
-    -- margin(pad(0), 0, 0, 0, 16),
-    -- feedly,
-    -- margin(pad(0), 0, 0, 0, 32),
-    background(margin(title("Settings"), 40, 40, 10, 10), beautiful.widget_bg),
-    margin(pad(0), 0, 0, 0, 16),
-    disable_notification,
-    sound_output,
-    clipboard
+    {
+      layout = wibox.layout.fixed.vertical,
+      margin(pad(0), 0, 0, 32),
+      margin(time_text, 40, 40),
+      margin(date_text, 40, 40, 0, 20),
+      background(margin(title("Notifications"), 40, 40, 10, 10), "#1c1c1c"),
+      margin(pad(0), 0, 0, 0, 16),
+      toggl,
+      github,
+      toggl_reports,
+      toggl_syna,
+      margin(pad(0), 0, 0, 0, 32),
+      background(margin(title("Information"), 40, 40, 10, 10), "#1c1c1c"),
+      margin(pad(0), 0, 0, 0, 16),
+      uptime_widget,
+      cpu,
+      mem,
+      fs_root_used,
+      fs_home_used,
+      margin(pad(0), 0, 0, 0, 32),
+      -- background(margin(title("Feed"), 40, 40, 10, 10), '#050505'),
+      -- margin(pad(0), 0, 0, 0, 16),
+      -- feedly,
+      -- margin(pad(0), 0, 0, 0, 32),
+      background(margin(title("Settings"), 40, 40, 10, 10), "#1c1c1c"),
+      margin(pad(0), 0, 0, 0, 16),
+      disable_notification,
+      sound_output,
+      clipboard
+    },
+    nil,
+    power_button,
+    layout = wibox.layout.align.vertical
   },
-  nil,
-  power_button,
-  layout = wibox.layout.align.vertical
+  widget = wibox.container.background,
+  bg = "#1a1a1a"
 }
 
 local close_button = widget_button(wibox.container.constraint(wibox.container.place(icon("", 12)), "exact", 50, 50))
@@ -475,7 +478,19 @@ function info_screen_setup(s)
       layout = wibox.layout.align.horizontal,
       nil,
       widgets,
-      beautiful.statusbar(s, false, close_button)
+      beautiful.statusbar(
+        s,
+        false,
+        close_button,
+        gears.color(
+          {
+            type = "linear",
+            from = {20, 0},
+            to = {70, 0},
+            stops = {{0, "#1a1a1a"}, {1, "#050505"}}
+          }
+        )
+      )
     }
   )
 end

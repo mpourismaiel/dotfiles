@@ -28,13 +28,22 @@ local theme = {
   font_icon = "fontello",
   useless_gap = 0,
   primary = "#FC4384",
+  white = "#ffffff",
+  sidebar_bg = gears.color(
+    {
+      type = "linear",
+      from = {20, 0},
+      to = {70, 0},
+      stops = {{0, "#1a1a1a"}, {1, "#050505"}}
+    }
+  ),
   -- boxes
   exit_screen_font = "FiraCode Bold 14",
   exit_screen_goodbye_font = "FiraCode Bold 50",
   -- colors
   bg_systray = "#171520",
-  fg_normal = "#FFFFFF",
-  fg_focus = "#FFFFFF",
+  fg_normal = "#ffffff33",
+  fg_focus = "#86848a",
   bg_focus = "#151515",
   bg_normal = "#151515",
   fg_urgent = "#CC9393",
@@ -48,10 +57,17 @@ local theme = {
   hotkeys_border_width = 3,
   hotkeys_border_color = "#252525",
   -- tag list styles
-  taglist_fg_focus = "#FFFFFF",
-  taglist_bg_focus = "#241b2f",
+  taglist_fg_focus = "#86848a",
+  taglist_bg_focus = gears.color(
+    {
+      type = "linear",
+      from = {20, 0},
+      to = {70, 0},
+      stops = {{0, "#241b2f66"}, {1, "#050505"}}
+    }
+  ),
   taglist_bg_urgent = "#FC4384",
-  taglist_fg_urgent = "#FFFFFF",
+  taglist_fg_urgent = "#86848a",
   taglist_font = "Font Awesome 5 Free Solid 12",
   -- wibar styles
   widget_bg = "#241b2f",
@@ -71,14 +87,21 @@ local theme = {
   layout_floating = clean_icons .. "/float.svg",
   -- task list styles
   tasklist_bg_normal = "#171520",
-  tasklist_bg_focus = "#241b2f",
-  tasklist_fg_focus = "#FFFFFF",
+  tasklist_bg_focus = gears.color(
+    {
+      type = "linear",
+      from = {0, 20},
+      to = {0, 70},
+      stops = {{0, "#241b2f66"}, {1, "#050505"}}
+    }
+  ),
+  tasklist_fg_focus = "#86848a",
   tasklist_plain_task_name = true,
   tasklist_disable_icon = false,
   -- title bar styles
   titlebar_bg = "#171520",
-  titlebar_fg = "#ffffff",
-  titlebar_fg_focus = "#FFFFFF",
+  titlebar_fg = "#86848a",
+  titlebar_fg_focus = "#86848a",
   titlebar_height = 32,
   titlebar_close_button_normal = default_dir .. "/titlebar/close_normal.png",
   titlebar_close_button_focus = default_dir .. "/titlebar/close_focus.png",
@@ -123,7 +146,7 @@ function pad(size)
 end
 
 function bar_widget(w)
-  return background(margin(wibox.container.place(w), 0, 0, 10, 10), theme.wibar_bg, gears.shape.rectangle)
+  return background(margin(wibox.container.place(w), 0, 0, 10, 10), theme.sidebar_bg, gears.shape.rectangle)
 end
 
 function titlebar_widget(w)
@@ -151,7 +174,7 @@ local toggl =
   string.format("sh %s/.config/polybar/scripts/toggl.sh", os.getenv("HOME")),
   60,
   function(widget, stdout)
-    widget:set_markup(markup("#FFFFFF", pad(1) .. font(stdout)))
+    widget:set_markup(markup(theme.fg_normal, pad(1) .. font(stdout)))
   end
 )
 
@@ -160,7 +183,7 @@ local toggl_report =
   string.format("sh %s/.config/polybar/scripts/toggl-report.sh hide", os.getenv("HOME")),
   99999,
   function(widget, stdout)
-    widget:set_markup(markup("#FFFFFF", icon("")))
+    widget:set_markup(markup(theme.fg_normal, icon("")))
   end
 )
 
@@ -174,7 +197,7 @@ local ping =
       if stdout == "" then
         widget:set_markup("")
       else
-        widget:set_markup(markup("#FFFFFF", icon("", 9, true, true) .. pad(1) .. font(stdout)))
+        widget:set_markup(markup(theme.fg_normal, icon("", 9, true, true) .. pad(1) .. font(stdout)))
       end
     end
   )
@@ -187,7 +210,7 @@ systray_widget:set_base_size(16)
 local systray = margin(wibox.container.place(systray_widget), 5, 0, 10, 25)
 
 -- Clock
-local clock = bar_widget(wibox.widget.textclock(markup("#ffffff", markup.font("FiraCode Bold 16", "%H\n%M"))))
+local clock = bar_widget(wibox.widget.textclock(markup(theme.fg_normal, markup.font("FiraCode Bold 16", "%H\n%M"))))
 
 -- Keyboard
 local keyboard = bar_widget(layout_indicator())
@@ -250,7 +273,7 @@ theme.volume =
       else
         vlevel = icon("", 12)
       end
-      widget:set_markup(markup("#FFFFFF", vlevel))
+      widget:set_markup(markup(theme.fg_normal, vlevel))
     end
   }
 )
@@ -450,23 +473,25 @@ function music_action(action)
   awful.spawn.with_shell(string.format("node %s/bin/headset-track-info.js %s", os.getenv("HOME"), action))
 end
 
-theme.statusbar = function(s, display_systray, top_widget)
+theme.statusbar = function(s, display_systray, top_widget, bg_color)
   return wibox.container.constraint(
     wibox.widget(
       {
-        layout = wibox.layout.align.vertical,
+        widget = wibox.container.background,
+        bg = bg_color or theme.sidebar_bg,
         {
+          layout = wibox.layout.align.vertical,
           {
-            top_widget or nil,
-            s.mytaglist,
+            {
+              top_widget or nil,
+              s.mytaglist,
+              layout = wibox.layout.align.vertical
+            },
             layout = wibox.layout.align.vertical
           },
-          layout = wibox.layout.align.vertical
-        },
-        nil,
-        {
-          layout = wibox.layout.fixed.vertical,
+          nil,
           {
+            layout = wibox.layout.fixed.vertical,
             {
               display_systray and systray or nil,
               volume,
@@ -475,8 +500,7 @@ theme.statusbar = function(s, display_systray, top_widget)
               keyboard,
               clock,
               layout = wibox.layout.fixed.vertical
-            },
-            widget = background
+            }
           }
         }
       }
@@ -486,8 +510,8 @@ theme.statusbar = function(s, display_systray, top_widget)
   )
 end
 
-function create_button(w, action, higher_color)
-  local bg_normal = theme.widget_bg .. (higher_color and "ee" or "00")
+function create_button(w, action, higher_color, color)
+  local bg_normal = color and color or theme.widget_bg .. (higher_color and "ee" or "00")
   local bg_hover = (higher_color and theme.widget_bg .. "ff" or theme.widget_bg .. "ff")
 
   w = background(w, bg_normal)
@@ -694,6 +718,7 @@ function theme.at_screen_connect(s)
   -- Bar
   s.mytagbar = awful.wibar({position = "left", screen = s, width = 50, bg = theme.wibar_bg})
   s.mytagbar:setup {
+    bg = theme.wibar_bg,
     layout = wibox.layout.align.horizontal,
     nil,
     nil,
@@ -709,7 +734,7 @@ function theme.at_screen_connect(s)
     update_function = require("widgets.tasklist")(theme)
   }
 
-  s.mytasklistbar = awful.wibar({position = "top", screen = s, height = 45, bg = theme.wibar_bg})
+  s.mytasklistbar = awful.wibar({position = "top", screen = s, height = 45, bg = "#1a1a1a"})
   s.mytasklistbar:setup {
     layout = wibox.layout.align.horizontal,
     {
@@ -717,7 +742,9 @@ function theme.at_screen_connect(s)
         wibox.container.constraint(wibox.container.place(text(icon("", 12, true, true))), "exact", 50),
         function()
           info_screen_show()
-        end
+        end,
+        nil,
+        theme.sidebar_bg
       ),
       s.mytasklist,
       layout = wibox.layout.align.horizontal
