@@ -247,7 +247,7 @@ local globalkeys =
     {modkey},
     "d",
     function()
-      _G.awesome.spawn("rofi -show drun")
+      info_screen_show(true)
     end,
     {description = "show launcher", group = "awesome"}
   ),

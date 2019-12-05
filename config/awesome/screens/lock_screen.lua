@@ -178,7 +178,7 @@ function lock_screen_show()
       type = "dock",
       height = screen_height,
       width = screen_width,
-      bgimage = os.getenv("HOME") .. "/Pictures/Wallpapers/vaporwave.png"
+      bgimage = os.getenv("HOME") .. "/Pictures/Wallpapers/world-of-warcraft-battle-for-azeroth-teldrassil-tree-burning.jpg"
     }
   )
   lock_screen_grabber:start()
@@ -229,7 +229,7 @@ local battery_text =
   {
     notify = "off",
     settings = function()
-      widget:set_markup(markup.font("SourceCodePro 12", bat_now.perc .. "%"))
+      widget:set_markup(markup("#FFFFFF", markup.font("SourceCodePro 12", bat_now.perc .. "%")))
     end
   }
 ).widget
@@ -275,7 +275,7 @@ local cpu =
   lain.widget.cpu(
   {
     settings = function()
-      widget:set_markup(markup.font("SourceCodePro 12", cpu_now.usage .. "%"))
+      widget:set_markup(markup("#FFFFFF", markup.font("SourceCodePro 12", cpu_now.usage .. "%")))
     end
   }
 )
@@ -292,7 +292,7 @@ local mem =
   {
     timeout = 1,
     settings = function()
-      widget:set_markup(markup.font("SourceCodePro 12", mem_now.perc .. "%"))
+      widget:set_markup(markup("#FFFFFF", markup.font("SourceCodePro 12", mem_now.perc .. "%")))
     end
   }
 )
