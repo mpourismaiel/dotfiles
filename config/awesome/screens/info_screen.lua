@@ -35,7 +35,7 @@ local info_screen =
 local backdrop = wibox {type = "dock", x = 0, y = 0}
 local info_screen_grabber
 
-function info_screen_show()
+function info_screen_show(show_rofi)
   local s = awful.screen.focused()
   local screen_width = s.geometry.width
   local screen_height = s.geometry.height
@@ -84,18 +84,7 @@ function info_screen_show()
     )
   )
 
-  info_screen_grabber =
-    awful.keygrabber.run(
-    function(_, key, event)
-      if event == "release" then
-        return
-      end
-      if key == "Escape" or key == "q" or key == "x" then
-        info_screen_hide()
-      end
-    end
-  )
-  info_screen_setup(s)
+  info_screen_setup(s, show_rofi)
 end
 
 function info_screen_hide()
@@ -472,12 +461,52 @@ close_button:buttons(
   )
 )
 
-function info_screen_setup(s)
+function info_screen_setup(s, show_rofi)
+  if show_rofi ~= true then
+    info_screen_grabber =
+      awful.keygrabber.run(
+      function(_, key, event)
+        if event == "release" then
+          return
+        end
+        if key == "Escape" or key == "q" or key == "x" then
+          info_screen_hide()
+        end
+      end
+    )
+
+    info_screen:setup(
+      {
+        layout = wibox.layout.align.horizontal,
+        nil,
+        widgets,
+        beautiful.statusbar(
+          s,
+          false,
+          close_button,
+          gears.color(
+            {
+              type = "linear",
+              from = {20, 0},
+              to = {70, 0},
+              stops = {{0, "#1a1a1a"}, {1, "#050505"}}
+            }
+          )
+        )
+      }
+    )
+    return
+  end
+
+  awful.spawn.easy_async("rofi -show drun", function(stdout, stderr, reason, exit_code)
+    info_screen_hide()
+  end)
+
   info_screen:setup(
     {
       layout = wibox.layout.align.horizontal,
       nil,
-      widgets,
+      nil,
       beautiful.statusbar(
         s,
         false,
