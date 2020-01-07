@@ -15,6 +15,7 @@ local pad = helpers.pad
 local theme_pad = beautiful.pad_fn
 local keygrabber = require("awful.keygrabber")
 local layout_indicator = require("widgets.layout-indicator")
+local createAnimObject = require("utils.animation").createAnimObject
 
 local margin = wibox.container.margin
 local background = wibox.container.background
@@ -61,16 +62,6 @@ local info_screen =
   screen = nil
 }
 
-local press_indicator = function()
-  if lock_icon.bg == "#000000" then
-    -- lock_image.image = beautiful.icon_dir .. '/lock-press.svg'
-    lock_icon.bg = "#ffffff"
-  else
-    -- lock_image.image = beautiful.icon_dir .. '/lock.svg'
-    lock_icon.bg = "#000000"
-  end
-end
-
 function reset_indicator()
   lock_image.image = beautiful.icon_dir .. "/lock.svg"
   lock_icon.bg = "#000000"
@@ -78,18 +69,15 @@ end
 
 local reset_indicator_timer =
   gears.timer {
-  timeout = 2,
+  timeout = 0.1,
   callback = reset_indicator
 }
 
-local password = text()
-
-local has_extra_char = true
+local password_display = text()
 
 local lock_screen_grabber =
   awful.keygrabber {
   start_callback = function()
-    has_extra_char = true
     reset_indicator()
   end
 }
@@ -99,31 +87,37 @@ function authenticate()
   local username = os.getenv("USER")
 
   reset_indicator_timer:stop()
+  lock_screen_grabber.sequence = ""
 
-  -- lock_screen_hide()
   if string.len(sequence) <= 1 then
-    lock_screen_grabber.sequence = ""
-    has_extra_char = false
     return
   end
 
-  local password = string.sub(sequence, has_extra_char and 2 or 1)
+  lock_icon.bg = "#ffffff22"
+
+  local password = sequence
   local cmd = os.getenv("HOME") .. "/bin/auth " .. username .. " " .. password
 
-  lock_icon.bg = "#ffffff44"
   awful.spawn.with_line_callback(
     cmd,
     {
       exit = function(_, code)
-        if code == 0 then
-          lock_screen_grabber:stop()
-          lock_screen_hide()
-        else
+        if code ~= 0 then
           lock_screen_grabber.sequence = ""
-          has_extra_char = false
-          reset_indicator_timer:again()
-          lock_icon.bg = "#000000"
+          lock_icon.bg = "#ff000088"
+          gears.timer {
+            timeout = 0.5,
+            autostart = true,
+            single_shot = true,
+            callback = function()
+              lock_icon.bg = "#000000"
+            end
+          }
+          return
         end
+
+        lock_screen_grabber:stop()
+        lock_screen_hide()
       end
     }
   )
@@ -135,94 +129,19 @@ lock_screen_grabber:add_keybinding(
   "Escape",
   function()
     lock_screen_grabber.sequence = ""
-    has_extra_char = false
-    -- lock_screen_grabber:stop()
-    -- lock_screen_hide()
   end
 )
 lock_screen_grabber:add_keybinding({awful.util.altkey}, "m", helpers.audio.mute)
 
 lock_screen_grabber.keyreleased_callback = function()
+  lock_icon.bg = "#ffffff22"
   reset_indicator_timer:again()
-  press_indicator()
-
-  if (lock_screen_grabber.sequence == "") then
-    has_extra_char = false
-  end
-end
-
-lock_screen_grabber.keypressed_callback = function()
-  password:set_markup(
-    markup(
-      "#FFFFFF",
-      markup.font(
-        "SourceCodePro 12",
-        string.gsub(string.sub(lock_screen_grabber.sequence, has_extra_char and 2 or 1), ".", "*")
-      )
-    )
-  )
-end
-
-function lock_screen_show()
-  local s = awful.screen.focused()
-  local screen_width = s.geometry.width
-  local screen_height = s.geometry.height
-  info_screen =
-    wibox(
-    {
-      x = 0,
-      y = 0,
-      visible = true,
-      ontop = true,
-      screen = s,
-      type = "dock",
-      height = screen_height,
-      width = screen_width,
-      bgimage = os.getenv("HOME") .. "/Pictures/Wallpapers/world-of-warcraft-battle-for-azeroth-teldrassil-tree-burning.jpg"
-    }
-  )
-  lock_screen_grabber:start()
-
-  lock_screen_setup()
-end
-
-function lock_screen_hide()
-  info_screen.visible = false
 end
 
 local time_text = textclock(markup("#000000", markup.font("SourceCodePro Semibold 110", "%H:%M")))
-local date_text = textclock(markup("#000000", markup.font("SourceCodePro 21", "%a\n%B %d\n%Y")))
+local date_text = textclock(markup("#000000", markup.font("SourceCodePro 21", "%a\n%b %d\n%Y")))
 
-local time =
-  wibox.widget {
-  layout = wibox.layout.stack,
-  margin(
-    background(
-      margin(pad(0), 400, 0, 137),
-      "#ffffff",
-      function(cr, width, height)
-        gears.shape.rounded_rect(cr, width, 137, 8)
-      end
-    ),
-    0,
-    0,
-    40
-  ),
-  {
-    layout = wibox.layout.align.horizontal,
-    margin(
-      wibox.widget {
-        layout = wibox.layout.align.horizontal,
-        time_text,
-        margin(date_text, 10, 0, 10)
-      },
-      25,
-      25,
-      10,
-      0
-    )
-  }
-}
+local time = nil
 
 local battery_text =
   lain.widget.bat(
@@ -245,22 +164,14 @@ local keyboard_layout =
   wibox.widget {
   layout = wibox.layout.align.vertical,
   info_image("keyboard.svg"),
-  place(
-    layout_indicator:new(
-      {
-        markup = function(text)
-          markup("#FFFFFF", markup.font("SourceCodePro 12", string.upper(text)))
-        end
-      }
-    )
-  )
+  place(layout_indicator())
 }
 
 local github_notification_count = text(markup("#FFFFFF", markup.font("SourceCodePro 12", "...")))
 
 beautiful.set_github_listener(
   function(text)
-    github_notification_count:set_markup(markup("#FFFFFF", markup.font("SourceCodePro 12", text)))
+    github_notification_count:set_markup(markup("#FFFFFF", markup.font("SourceCodePro 12", text == "" and "0" or text)))
   end
 )
 
@@ -328,49 +239,126 @@ local audio =
 
 audio:connect_signal("button::press", helpers.audio.mute)
 
-local widgets = {
-  layout = wibox.layout.flex.vertical,
-  background(
-    wibox.widget {
-      layout = wibox.layout.flex.horizontal,
-      place(
-        wibox.widget {
-          layout = wibox.layout.align.vertical,
-          time,
-          {
-            layout = wibox.layout.align.horizontal,
-            margin(lock_icon, 0, 10),
-            background(
-              margin(
-                wibox.widget {
-                  layout = wibox.layout.flex.horizontal,
-                  battery,
-                  keyboard_layout,
-                  github_notifications,
-                  audio,
-                  cpu_info,
-                  mem_info
-                },
-                40,
-                40,
-                20,
-                20
-              ),
-              "#000000",
-              function(cr, width, height)
-                gears.shape.rounded_rect(cr, width, height, 8)
-              end
-            )
-          }
-        },
-        "center",
-        "center"
-      )
-    },
-    "#000000b3"
-  )
-}
+function lock_screen_hide()
+  info_screen.visible = false
+end
 
 function lock_screen_setup()
-  info_screen:setup(widgets)
+  time =
+    margin(
+    wibox.widget {
+      layout = wibox.layout.stack,
+      margin(
+        background(
+          margin(pad(0), 400, 0, 137),
+          "#ffffff",
+          function(cr, width, height)
+            gears.shape.rounded_rect(cr, width, 137, 8)
+          end
+        ),
+        0,
+        0,
+        40
+      ),
+      {
+        layout = wibox.layout.align.horizontal,
+        margin(
+          wibox.widget {
+            layout = wibox.layout.align.horizontal,
+            time_text,
+            margin(date_text, 10, 0, 10)
+          },
+          25,
+          25,
+          10,
+          0
+        )
+      }
+    }
+  )
+
+  info_screen:setup(
+    {
+      layout = wibox.layout.flex.vertical,
+      background(
+        wibox.widget {
+          layout = wibox.layout.flex.horizontal,
+          place(
+            wibox.widget {
+              layout = wibox.layout.align.vertical,
+              time,
+              {
+                layout = wibox.layout.align.horizontal,
+                margin(lock_icon, 0, 10),
+                background(
+                  margin(
+                    wibox.widget {
+                      layout = wibox.layout.flex.horizontal,
+                      battery,
+                      keyboard_layout,
+                      github_notifications,
+                      audio,
+                      cpu_info,
+                      mem_info
+                    },
+                    40,
+                    40,
+                    20,
+                    20
+                  ),
+                  "#000000",
+                  function(cr, width, height)
+                    gears.shape.rounded_rect(cr, width, height, 8)
+                  end
+                )
+              }
+            },
+            "center",
+            "center"
+          )
+        },
+        "#000000b3"
+      )
+    }
+  )
+end
+
+function lock_screen_show()
+  local s = awful.screen.focused()
+  local screen_width = s.geometry.width
+  local screen_height = s.geometry.height
+
+  info_screen =
+    wibox(
+    {
+      x = 0,
+      y = 0,
+      opacity = 0,
+      visible = true,
+      ontop = true,
+      screen = s,
+      type = "dock",
+      height = screen_height,
+      width = screen_width,
+      bgimage = os.getenv("HOME") ..
+        "/Pictures/Wallpapers/world-of-warcraft-battle-for-azeroth-teldrassil-tree-burning.jpg"
+    }
+  )
+
+  lock_icon.bg = "#ff000088"
+  gears.timer {
+    timeout = 0.5,
+    autostart = true,
+    single_shot = true,
+    callback = function()
+      lock_screen_grabber.sequence = ""
+      lock_screen_grabber:start()
+      lock_icon.bg = "#000000"
+    end
+  }
+
+  lock_screen_setup()
+  time.bottom = 100
+  createAnimObject(3, time, {bottom = 0}, "outCubic")
+  createAnimObject(3, info_screen, {opacity = 1}, "outCubic")
 end

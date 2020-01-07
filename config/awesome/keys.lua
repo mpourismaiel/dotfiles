@@ -252,6 +252,14 @@ local globalkeys =
     {description = "show launcher", group = "awesome"}
   ),
   awful.key(
+    {},
+    "XF86Calculator",
+    function()
+      calc_screen_show()
+    end,
+    {description = "show launcher", group = "awesome"}
+  ),
+  awful.key(
     {altkey},
     "Tab",
     function()
