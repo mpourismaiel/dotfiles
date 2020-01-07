@@ -7,6 +7,7 @@
 local capi = {awesome = awesome}
 local setmetatable = setmetatable
 local awful = require("awful")
+local naughty = require("naughty")
 local textbox = require("wibox.widget.textbox")
 local button = require("awful.button")
 local gtable = require("gears.table")
@@ -130,7 +131,7 @@ local function update_status(self)
     end
 
     if self.markup ~= nil then
-        self.widget:set_markup(self.markup(self, text .. "asdf"))
+        self.widget:set_markup(self.markup(string.upper(text == "ir" and "fa" or text)))
     else
         self.widget:set_markup(
             markup(

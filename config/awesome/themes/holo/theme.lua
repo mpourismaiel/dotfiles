@@ -22,6 +22,7 @@ local theme = {
   default_dir = default_dir,
   icon_dir = icon_dir,
   wallpaper = os.getenv("HOME") .. "/Pictures/Wallpapers/world-of-warcraft-battle-for-azeroth-teldrassil.jpg",
+  font_base = "FiraCode",
   font_only = "FiraCode Bold",
   font = "FiraCode Bold 10",
   hotkeys_font = "FiraCode 10",
@@ -47,7 +48,7 @@ local theme = {
   bg_focus = "#151515",
   bg_normal = "#151515",
   fg_urgent = "#CC9393",
-  bg_urgent = "#006B8E",
+  bg_urgent = "#151515",
   -- systray
   systray_icon_spacing = 15,
   -- border styles
@@ -66,8 +67,8 @@ local theme = {
       stops = {{0, "#241b2f66"}, {1, "#050505"}}
     }
   ),
-  taglist_bg_urgent = "#FC4384",
-  taglist_fg_urgent = "#86848a",
+  taglist_bg_urgent = "#15151500",
+  taglist_fg_urgent = "#ffffff33",
   taglist_font = "Font Awesome 5 Free Solid 12",
   -- wibar styles
   widget_bg = "#241b2f",

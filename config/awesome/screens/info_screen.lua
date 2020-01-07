@@ -225,6 +225,30 @@ awful.widget.watch(
   end
 )
 
+local packages_number =
+  awful.widget.watch(
+  string.format("sh %s/bin/get_packages_with_update.sh", os.getenv("HOME")),
+  3600,
+  function(widget, stdout, stderr)
+    widget:set_markup(string.gsub(stdout, "^%s*(.-)%s*$", "%1"))
+  end,
+  text()
+)
+
+local packages =
+  widget_info(icon("", 10, true, true), text(markup("#FFFFFF", theme_pad(3) .. "New Updates")), packages_number)
+packages:buttons(
+  awful.util.table.join(
+    awful.button(
+      {},
+      1,
+      function()
+        awful.spawn("xterm -e 'yay -Syyu'")
+      end
+    )
+  )
+)
+
 awful.util.disable_notification = 0
 local disable_notification_icon = icon("", 10, true, true)
 local disable_notification_text = text(markup("#FFFFFF", theme_pad(3) .. "Disable Notifications"))
@@ -248,7 +272,7 @@ local disable_notification =
   end
 )
 
-local sound_output_icon = icon("", 10, true, true)
+local sound_output_icon = icon("", 10, true, true)
 local sound_output_text = text(markup("#FFFFFF", theme_pad(3) .. "Output: Local"))
 local sound_output =
   widget_button(
@@ -367,17 +391,63 @@ feedly_timer:connect_signal(
 -- feedly_timer:emit_signal("timeout")
 
 local clipboard_timer = gears.timer({timeout = 5})
-local clipboard_items_widget = {
+local clipboard_table = {
   layout = wibox.layout.fixed.vertical
 }
+local clipboard_items_widget = wibox.widget(clipboard_table)
 local clipboard_widgets = {
   layout = wibox.layout.fixed.vertical,
   margin(pad(0), 0, 0, 0, 16),
   background(margin(title("Clipboard"), 40, 40, 10, 10), "#1c1c1c"),
   margin(pad(0), 0, 0, 0, 16),
-  wibox.widget(clipboard_items_widget)
+  clipboard_items_widget
 }
 local clipboard = wibox.widget(clipboard_widgets)
+
+local resp = {}
+clipboard_timer:connect_signal(
+  "timeout",
+  function()
+    local result, status =
+      http.request {
+      method = "GET",
+      url = "http://localhost:9102/read/3/40",
+      sink = ltn12.sink.table(resp)
+    }
+    if (status == 200) then
+      resp_json = json.decode(table.concat(resp))
+
+      local clipboard_table = {layout = wibox.layout.fixed.vertical}
+      clipboard_items_widget:setup({layout = wibox.layout.fixed.vertical, text("shit")})
+      for _, item in ipairs(resp_json) do
+        local w = widget_info(text(), text(string.gsub(item.input, "^%s*(.-)%s*$", "%1")), text())
+        w.id = item.id
+        w:buttons(
+          awful.util.table.join(
+            awful.button(
+              {},
+              1,
+              function()
+                awful.spawn.easy_async(
+                  string.format("curl http://localhost:9102/copy/%s", item.id),
+                  function(stdout, stderr, reason, exit_code)
+                    naughty.notification {message = "Copied to clipboard!"}
+                  end
+                )
+                info_screen_hide()
+              end
+            )
+          )
+        )
+        table.insert(clipboard_table, w)
+      end
+      clipboard_items_widget:setup(clipboard_table)
+    end
+  end
+)
+
+-- clipboard_timer:start()
+-- clipboard_timer:emit_signal("timeout")
 
 local power_button = background(margin(title(icon("", 12, true, true, true) .. " Power"), 40, 40, 20, 20), "#1c1c1c")
 
@@ -425,6 +495,7 @@ local widgets = {
       background(margin(title("Information"), 40, 40, 10, 10), "#1c1c1c"),
       margin(pad(0), 0, 0, 0, 16),
       uptime_widget,
+      packages,
       cpu,
       mem,
       fs_root_used,
@@ -498,9 +569,12 @@ function info_screen_setup(s, show_rofi)
     return
   end
 
-  awful.spawn.easy_async("rofi -show drun", function(stdout, stderr, reason, exit_code)
-    info_screen_hide()
-  end)
+  awful.spawn.easy_async(
+    "rofi -show drun",
+    function(stdout, stderr, reason, exit_code)
+      info_screen_hide()
+    end
+  )
 
   info_screen:setup(
     {
@@ -523,30 +597,3 @@ function info_screen_setup(s, show_rofi)
     }
   )
 end
-
-local resp = {}
-clipboard_timer:connect_signal(
-  "timeout",
-  function()
-    local result, status =
-      http.request {
-      method = "GET",
-      url = "http://localhost:9102/read",
-      sink = ltn12.sink.table(resp)
-    }
-    if (status == 200) then
-      resp_json = json.decode(table.concat(resp))
-      gears.debug.dump(resp_json)
-
-      clipboard_items_widget = {layout = wibox.layout.fixed.vertical}
-      for _, item in ipairs(resp_json) do
-        clipboard_items_widget[#clipboard_items_widget + 1] = widget_info(text(), text(item.input), text())
-      end
-      clipboard:setup({})
-      info_screen_setup()
-    end
-  end
-)
-
--- clipboard_timer:start()
--- clipboard_timer:emit_signal("timeout")

@@ -245,6 +245,22 @@ function exit_screen_hide()
     end
   )
 end
+
+local spacing = wibox.container.margin(wibox.widget.textbox(), 0, 0)
+local buttons = {
+  -- {
+  poweroff,
+  spacing,
+  reboot,
+  spacing,
+  suspend,
+  spacing,
+  exit,
+  spacing,
+  lock,
+  layout = wibox.layout.fixed.horizontal
+}
+
 function exit_screen_show()
   local s = awful.screen.focused()
 
@@ -274,7 +290,9 @@ function exit_screen_show()
 
   exit_screen_setup()
 
+  goodbye_widget.bottom = 150
   createAnimObject(0.6, exit_screen, {opacity = 1}, "outCubic")
+  createAnimObject(3, goodbye_widget, {bottom = 0}, "outCubic")
 
   -- naughty.notify({text = "starting the keygrabber"})
   exit_screen_grabber =
@@ -337,21 +355,7 @@ function exit_screen_setup()
       },
       {
         pad(0),
-        {
-          -- {
-          poweroff,
-          pad(3),
-          reboot,
-          pad(3),
-          suspend,
-          pad(3),
-          exit,
-          pad(3),
-          lock,
-          layout = wibox.layout.fixed.horizontal
-          -- },
-          -- widget = exit_screen_box
-        },
+        buttons,
         pad(0),
         expand = "none",
         layout = wibox.layout.align.horizontal
