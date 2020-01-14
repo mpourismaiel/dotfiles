@@ -46,7 +46,7 @@ end
 
 awful.spawn.with_shell(string.format("sh %s/.config/awesome/autorun.sh", os.getenv("HOME")))
 
-beautiful.init(string.format("%s/.config/awesome/themes/holo/theme.lua", os.getenv("HOME")))
+beautiful.init(string.format("%s/.config/awesome/themes/damn/theme.lua", os.getenv("HOME")))
 
 require("screens")
 
