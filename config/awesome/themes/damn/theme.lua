@@ -15,7 +15,7 @@ local background = wibox.container.background
 local markup = lain.util.markup
 
 local default_dir = require("awful.util").get_themes_dir() .. "default"
-local icon_dir = os.getenv("HOME") .. "/.config/awesome/themes/holo/icons"
+local icon_dir = os.getenv("HOME") .. "/.config/awesome/themes/damn/icons"
 local clean_icons = os.getenv("HOME") .. "/.config/awesome/themes/icons"
 
 local theme = {
@@ -437,11 +437,6 @@ end
 
 theme.set_github_listener = set_github_listener
 
-local music_box =
-  wibox {
-  visible = false,
-  screen = nil
-}
 local margin = wibox.container.margin
 local background = wibox.container.background
 local text = wibox.widget.textbox
@@ -468,10 +463,6 @@ function widget_button(w, action)
   w:buttons(my_table.join(awful.button({}, 1, action)))
 
   return wibox.container.place({widget = w, forced_height = 50, forced_width = 50})
-end
-
-function music_action(action)
-  awful.spawn.with_shell(string.format("node %s/bin/headset-track-info.js %s", os.getenv("HOME"), action))
 end
 
 theme.statusbar = function(s, display_systray, top_widget, bg_color)
@@ -541,103 +532,12 @@ function theme.at_screen_connect(s)
   local screen_width = s.geometry.width
   local screen_height = s.geometry.height
 
-  music_box =
-    wibox {
-    x = 50,
-    y = screen_height - 135,
-    width = 400,
-    height = 130,
-    visible = false,
-    ontop = true,
-    screen = s,
-    bg = theme.widget_bg .. "d6",
-    opacity = 0,
-    type = "desktop",
-    shape = function(cr, width, height)
-      gears.shape.rounded_rect(cr, width, height, 5)
-    end
-  }
-  local music_artist = text("")
-  local music_title = text("")
-  music_box:setup {
-    {
-      layout = wibox.layout.fixed.vertical,
-      {
-        layout = wibox.layout.fixed.horizontal,
-        music_title,
-        music_artist
-      },
-      margin(text(""), 0, 0, 10, 0),
-      {
-        layout = wibox.layout.flex.horizontal,
-        spacing = 25,
-        widget_button(
-          text(icon("")),
-          function()
-            music_action("prev")
-          end
-        ),
-        widget_button(
-          text(icon("")),
-          function()
-            music_action("stop")
-          end
-        ),
-        widget_button(
-          text(icon("")),
-          function()
-            music_action("pause")
-          end
-        ),
-        widget_button(
-          text(icon("")),
-          function()
-            music_action("play")
-          end
-        ),
-        widget_button(
-          text(icon("")),
-          function()
-            music_action("next")
-          end
-        )
-      }
-    },
-    widget = margin,
-    left = 15,
-    right = 15,
-    top = 15,
-    bottom = 15
-  }
-
   -- If wallpaper is a function, call it with the screen
   local wallpaper = theme.wallpaper
   if type(wallpaper) == "function" then
     wallpaper = wallpaper(s)
   end
   gears.wallpaper.maximized(wallpaper, s, true)
-
-  awful.spawn.with_line_callback(
-    string.format("node %s/bin/headset-track-info.js", os.getenv("HOME")),
-    {
-      stdout = function(info)
-        resp_json = json.decode(info)
-        music_title:set_markup(
-          markup.font(theme.font, resp_json.title) .. markup.font(theme.hotkeys_font, " - " .. resp_json.artist)
-        )
-        music_box.opacity = 1
-        music_box.visible = true
-        gears.timer {
-          timeout = 5,
-          autostart = true,
-          callback = function()
-            music_box.opacity = 0
-            music_box.visible = false
-          end
-        }
-      end
-    }
-  )
 
   -- Tag List
   for index, tag in pairs(awful.util.tags) do

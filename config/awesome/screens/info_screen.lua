@@ -251,7 +251,7 @@ packages:buttons(
 
 awful.util.disable_notification = 0
 local disable_notification_icon = icon("", 10, true, true)
-local disable_notification_text = text(markup("#FFFFFF", theme_pad(3) .. "Disable Notifications"))
+local disable_notification_text = text(markup("#FFFFFF", theme_pad(2) .. "Disable Notifications"))
 local disable_notification =
   widget_button(
   widget_info(disable_notification_icon, disable_notification_text, nil),
@@ -259,15 +259,15 @@ local disable_notification =
     if awful.util.disable_notification == 0 then
       awful.util.disable_notification = 1
       disable_notification_icon:set_markup(icon("", 10, true, true, true))
-      disable_notification_text:set_markup(markup("#FFFFFF", theme_pad(3) .. "Disable All Notifications"))
+      disable_notification_text:set_markup(markup("#FFFFFF", theme_pad(2) .. "Disable All Notifications"))
     elseif awful.util.disable_notification == 1 then
       awful.util.disable_notification = 2
       disable_notification_icon:set_markup(icon("", 10, true, true, true))
-      disable_notification_text:set_markup(markup("#FFFFFF", theme_pad(3) .. "Enable Notifications"))
+      disable_notification_text:set_markup(markup("#FFFFFF", theme_pad(2) .. "Enable Notifications"))
     elseif awful.util.disable_notification == 2 then
       awful.util.disable_notification = 0
       disable_notification_icon:set_markup(icon("", 10, true, true, true))
-      disable_notification_text:set_markup(markup("#FFFFFF", theme_pad(3) .. "Disable Notifications"))
+      disable_notification_text:set_markup(markup("#FFFFFF", theme_pad(2) .. "Disable Notifications"))
     end
   end
 )
@@ -281,8 +281,9 @@ local sound_output =
     awful.spawn.easy_async(
       "bash /home/mahdi/bin/sound_toggle toggle",
       function(stdout)
+        local text = string.gsub(stdout, "^%s*(.-)%s*$", "%1")
         sound_output_text:set_markup(
-          markup("#FFFFFF", theme_pad(3) .. "Output: " .. string.gsub(stdout, "^%s*(.-)%s*$", "%1"))
+          markup("#FFFFFF", theme_pad(3) .. "Output: " .. (text == "" and "Local" or text))
         )
       end
     )
@@ -291,8 +292,9 @@ local sound_output =
 awful.spawn.easy_async(
   "bash /home/mahdi/bin/sound_toggle toggle",
   function(stdout)
+    local text = string.gsub(stdout, "^%s*(.-)%s*$", "%1")
     sound_output_text:set_markup(
-      markup("#FFFFFF", theme_pad(3) .. "Output: " .. string.gsub(stdout, "^%s*(.-)%s*$", "%1"))
+      markup("#FFFFFF", theme_pad(3) .. "Output: " .. (text == "" and "Local" or text))
     )
   end
 )
@@ -310,7 +312,7 @@ local github =
 
 beautiful.set_github_listener(
   function(text)
-    github_notifications:set_markup(markup("#FFFFFF", theme_pad(3) .. text))
+    github_notifications:set_markup(markup("#FFFFFF", theme_pad(3) .. (text == "" and "0" or text)))
   end
 )
 
@@ -329,7 +331,8 @@ awful.widget.watch(
   string.format("sh %s/.config/polybar/scripts/toggl.sh description", os.getenv("HOME")),
   60,
   function(widget, stdout)
-    toggl_text:set_markup(markup("#FFFFFF", theme_pad(3) .. string.gsub(stdout, "^%s*(.-)%s*$", "%1")))
+    local text = string.gsub(stdout, "^%s*(.-)%s*$", "%1")
+    toggl_text:set_markup(markup("#FFFFFF", theme_pad(3) .. (text == "" and "No Task" or text)))
   end
 )
 
@@ -337,7 +340,8 @@ awful.widget.watch(
   string.format("sh %s/.config/polybar/scripts/toggl.sh duration", os.getenv("HOME")),
   60,
   function(widget, stdout)
-    toggl_active:set_markup(markup("#FFFFFF", theme_pad(3) .. string.gsub(stdout, "^%s*(.-)%s*$", "%1")))
+    local text = string.gsub(stdout, "^%s*(.-)%s*$", "%1")
+    toggl_active:set_markup(markup("#FFFFFF", theme_pad(3) .. (text == "-m" and "" or text)))
   end
 )
 
@@ -360,7 +364,8 @@ awful.widget.watch(
   string.format("sh %s/bin/toggl-report", os.getenv("HOME")),
   60,
   function(widget, stdout)
-    toggl_syna_active:set_markup(markup("#FFFFFF", theme_pad(3) .. string.gsub(stdout, "^%s*(.-)%s*$", "%1")))
+    local text = string.gsub(stdout, "^%s*(.-)%s*$", "%1")
+    toggl_syna_active:set_markup(markup("#FFFFFF", theme_pad(3) .. (text == "m" and "" or text)))
   end
 )
 
