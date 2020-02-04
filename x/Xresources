@@ -1,0 +1,64 @@
+! special
+*.foreground:   #ffffe6
+*.background:   #1c1c1c
+*.cursorColor:  #ffffe6
+
+! black
+*.color0:       #2e3436
+*.color8:       #555753
+
+! red
+*.color1:       #cc0000
+*.color9:       #ef2929
+
+! green
+*.color2:       #4e9a06
+*.color10:      #8ae234
+
+! yellow
+*.color3:       #c4a000
+*.color11:      #fce94f
+
+! blue
+*.color4:       #3465a4
+*.color12:      #729fcf
+
+! magenta
+*.color5:       #75507b
+*.color13:      #ad7fa8
+
+! cyan
+*.color6:       #06989a
+*.color14:      #34e2e2
+
+! white
+*.color7:       #d3d7cf
+*.color15:      #eeeeec
+
+
+! Xclock colors.
+XClock*majorColor:  rgba:01/01/01/ff
+XClock*minorColor:  rgba:01/01/01/ff
+XClock*hourColor:   rgba:01/01/01/ff
+XClock*minuteColor: rgba:01/01/01/ff
+XClock*secondColor: rgba:01/01/01/ff
+
+Xcursor.size: 16
+
+! XTerm settings
+xterm*saveLines:                16384
+xterm*jumpScroll:               true
+xterm*multiScroll:              true
+xterm*scrollKey:                true
+xterm*faceName:                 DejaVu Sans Mono for Powerline
+xterm*faceSize:                 10
+xterm*scrollTtyOutput:          false
+XTerm.termName:                 xterm-256color
+XTerm.vt100.locale:             true
+XTerm.vt100.metaSendsEscape:    true
+XTerm.vt100.backarrowKey:       false
+XTerm.ttyModes:                 erase ^?
+XTerm.vt100.translations: #override \n\
+  Ctrl Shift <Key>C: copy-selection(CLIPBOARD) \n\
+  Ctrl Shift <Key>V: insert-selection(CLIPBOARD)
+

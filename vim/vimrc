@@ -1,0 +1,334 @@
+set nocompatible
+
+filetype off
+
+filetype plugin indent on
+
+set modelines=0
+set laststatus=2
+
+set wrap
+set formatoptions=tcqrn1
+set tabstop=2
+set shiftwidth=2
+set softtabstop=2
+set expandtab
+set noshiftround
+
+set nobackup
+set nowritebackup
+set noswapfile
+
+set ruler
+
+set scrolloff=5
+set backspace=indent,eol,start
+
+set ttyfast
+
+set matchpairs+=<:>
+
+set list
+set listchars=tab:›\ ,trail:•,extends:#,nbsp:.
+
+set number relativenumber
+
+set encoding=utf-8
+
+set showmode
+set showcmd
+set showmatch
+
+set ignorecase
+set smartcase
+
+set hlsearch
+set incsearch
+
+set autowrite
+
+set hidden
+
+set viminfo='100,<9999,s100
+
+set splitbelow
+set splitright
+
+if (has("termguicolors"))
+  set termguicolors
+endif
+
+if filereadable(expand("~/.vim.d/plug.vim"))
+  source ~/.vim.d/plug.vim
+endif
+
+if filereadable(expand('~/.vim.d/nerdtree.vim'))
+  source ~/.vim.d/nerdtree.vim
+endif
+
+syntax on
+colorscheme dracula
+let s:bg = "#1c1c1c"
+
+set rtp+=~/.fzf
+
+" ale
+let g:ale_fixers = {
+\ 'javascript': [
+\    'eslint',
+\    'prettier'
+\  ]
+\}
+
+let g:ale_linters_explicit = 1
+let g:ale_fix_on_save = 1
+
+" air-line
+let g:airline_powerline_fonts = 1
+set t_Co=256
+let g:airline#extensions#tabline#enabled = 1
+let g:airline#extensions#tabline#formatter = 'unique_tail_improved'
+let g:airline_theme="base16_spacemacs"
+
+if !exists('g:airline_symbols')
+  let g:airline_symbols = {}
+endif
+
+let g:airline_left_sep = '»'
+let g:airline_left_sep = '▶'
+let g:airline_right_sep = '«'
+let g:airline_right_sep = '◀'
+let g:airline_symbols.crypt = '🔒'
+let g:airline_symbols.linenr = '☰'
+let g:airline_symbols.linenr = '␊'
+let g:airline_symbols.linenr = '␤'
+let g:airline_symbols.linenr = '¶'
+let g:airline_symbols.maxlinenr = ''
+let g:airline_symbols.maxlinenr = '㏑'
+let g:airline_symbols.branch = '⎇'
+let g:airline_symbols.paste = 'ρ'
+let g:airline_symbols.paste = 'Þ'
+let g:airline_symbols.paste = '∥'
+let g:airline_symbols.spell = 'Ꞩ'
+let g:airline_symbols.notexists = 'Ɇ'
+let g:airline_symbols.whitespace = 'Ξ'
+
+" powerline symbols
+let g:airline_left_sep = ''
+let g:airline_left_alt_sep = ''
+let g:airline_right_sep = ''
+let g:airline_right_alt_sep = ''
+let g:airline_symbols.branch = ''
+let g:airline_symbols.readonly = ''
+let g:airline_symbols.linenr = '☰'
+let g:airline_symbols.maxlinenr = ''
+
+" let g:indentLine_setColors = 0
+let g:bufferline_echo = 0
+
+let g:is_posix = 1
+
+let g:html_indent_tags = 'li\|p'
+
+if executable('ag')
+  " Use Ag over Grep
+  set grepprg=ag\ --nogroup\ --nocolor
+
+  " Use ag in fzf for listing files. Lightning fast and respects .gitignore
+  let $FZF_DEFAULT_COMMAND = 'ag --literal --files-with-matches --nocolor --hidden -g ""'
+
+  if !exists(":Ag")
+    command -nargs=+ -complete=file -bar Ag silent! grep! <args>|cwindow|redraw!
+    nnoremap \ :Ag<SPACE>
+  endif
+endif
+
+" Autos
+autocmd StdinReadPre * let s:std_in=1
+
+autocmd bufenter * if (winnr("$") == 1 && exists("b:NERDTree") && b:NERDTree.isTabTree()) | q | endif
+
+autocmd BufRead,BufNewFile *.md setlocal textwidth=80
+
+autocmd BufWinLeave *.* mkview
+
+autocmd BufWinEnter *.* silent! loadview
+
+augroup vimrcEx
+  autocmd!
+
+  autocmd BufReadPost *
+    \ if &ft != 'gitcommit' && line("'\"") > 0 && line("'\"") <= line("$") |
+    \   exe "normal g`\"" |
+    \ endif
+
+  autocmd BufRead,BufNewFile *.md set filetype=markdown
+  autocmd BufRead,BufNewFile .{jscs,jshint,eslint}rc set filetype=json
+  autocmd BufRead,BufNewFile .{prettier}rc set filetype=yaml
+  autocmd BufRead,BufNewFile aliases.local,zshrc.local,*/zsh/configs/* set filetype=sh
+  autocmd BufRead,BufNewFile gitconfig.local set filetype=gitconfig
+  autocmd BufRead,BufNewFile vimrc.local set filetype=vim
+augroup END
+
+augroup ale
+  autocmd!
+
+  autocmd VimEnter *
+    \ set updatetime=1000 |
+    \ let g:ale_lint_on_text_changed = 0
+  autocmd CursorHold * call ale#Queue(0)
+  autocmd CursorHoldI * call ale#Queue(0)
+  autocmd InsertEnter * call ale#Queue(0)
+  autocmd InsertLeave * call ale#Queue(0)
+augroup END
+
+" Maps
+let mapleader=" "
+
+nnoremap <silent> <C-n> :tabnew<CR>
+nnoremap <silent> <F3> :nohlsearch<CR>
+nnoremap <silent> <C-s> :w<CR>
+
+nnoremap <silent> <Leader>q :Bdelete this<CR>
+nnoremap <silent> <Leader>w :w<CR>
+
+cmap w!! %!sudo tee > /dev/null %
+
+map <C-e> :NERDTreeToggle<CR>
+
+nnoremap <silent> <Leader>hf :History<CR>
+
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+" Code Debugging maps
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+
+nnoremap <silent><F4> :NodeInspectStart<cr>
+nnoremap <silent><F5> :NodeInspectRun<cr>
+nnoremap <silent><F6> :NodeInspectConnect("127.0.0.1:9229")<cr>
+nnoremap <silent><F7> :NodeInspectStepInto<cr>
+nnoremap <silent><F8> :NodeInspectStepOver<cr>
+nnoremap <silent><F9> :NodeInspectToggleBreakpoint<cr>
+nnoremap <silent><F10> :NodeInspectStop<cr>
+
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+" Insert mode maps
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+
+" Complete line using fzf
+imap <c-x><c-l> <plug>(fzf-complete-line)
+
+" Exit insert mode
+inoremap jj <ESC>
+
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+" Visual mode maps
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+
+vnoremap < <gv
+vnoremap > >gv
+
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+" Leader V is for vim related mappings
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+nnoremap <silent> <Leader>vv :source ~/.vimrc<CR>
+nnoremap <silent> <Leader>vqq :q<CR>
+nnoremap <silent> <Leader>vm :Maps<CR>
+nnoremap <silent> <Leader>vii :IndentLinesToggle<CR>
+
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+" Leader W is for window related mappings
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+nnoremap <silent> <Leader>wj <C-W><C-J>
+nnoremap <silent> <Leader>wk <C-W><C-k>
+nnoremap <silent> <Leader>wl <C-W><C-l>
+nnoremap <silent> <Leader>wh <C-W><C-h>
+nnoremap <silent> <Leader>w= <C-W>=
+nnoremap <silent> <Leader>w<Shift--> <C-W>_
+nnoremap <silent> <Leader>w<Shift-\> <C-W>|
+nnoremap <silent> <Leader>wt <C-W>t
+nnoremap <silent> <Leader>ws :split<CR>
+nnoremap <silent> <Leader>wv :vsplit<CR>
+nnoremap <silent> <Leader>wf :Windows<CR>
+
+" Leader C is the prefix for code related mappîngs
+noremap <silent> <Leader>cc :TComment<CR>
+
+" Leader F is for file related mappîngs (open, browse...)
+nnoremap <silent> <Leader>f :GFiles<CR>
+nnoremap <silent> <Leader>ff :Files<CR>
+
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+" Leader G is for git related mappings
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+nnoremap <silent> <Leader>gl :Commits<CR>
+nnoremap <silent> <Leader>gf :BCommits<CR>
+nnoremap <silent> <Leader>gs :Gstatus<CR>
+nnoremap <silent> <Leader>gd :Gdiffsplit<CR>
+nnoremap <silent> <Leader>gb :Gblame<CR>
+nnoremap <silent> <Leader>gcc :Gcommit<CR>
+nnoremap <silent> <Leader>gmm :Gmerge<CR>
+nnoremap <silent> <Leader>ghs <Plug>(GitGutterStageHunk)
+nnoremap <silent> <Leader>ghu <Plug>(GitGutterUndoHunk)
+nnoremap <silent> <Leader>ghp <Plug>(GitGutterPreviewHunk)
+nnoremap <silent> <Leader>gda :GHActivity<CR>
+nnoremap <silent> <Leader>gdd :GHDashboard<CR>
+
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+" Leader K for code related mappings
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+nnoremap <silent> <Leader>kk :YcmCompleter GoTo<CR>
+nnoremap <silent> <Leader>ki :YcmCompleter GoToImplementation<CR>
+nnoremap <silent> <Leader>kt :YcmCompleter GoToType<CR>
+nnoremap <silent> <Leader>kr :YcmCompleter GoToReferences<CR>
+nnoremap <silent> <Leader>kfi :FixIt<CR>
+nnoremap <silent> <Leader>kff :Format<CR>
+
+nnoremap <silent> <F2> :RefactorRename
+
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+" Leader B for buffer related mappings
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+nnoremap <silent> <Leader>b :Buffers<CR>
+nnoremap <silent> <Leader>bb :bn<CR>
+nnoremap <silent> <Leader>bp :bp<CR>
+nnoremap <silent> <Leader>bn :enew<CR>
+nnoremap <silent> <Leader>bdd :Bdelete this<CR>
+nnoremap <silent> <Leader>bdn :Bdelete nameless<CR>
+nnoremap <silent> <Leader>bds :Bdelete select<CR>
+nnoremap <silent> <Leader>bda :Bdelete all<CR>
+nnoremap <silent> <Leader>bdo :Bdelete other<CR>
+nnoremap <silent> <Leader>bu :bunload<CR>
+nnoremap <silent> <Leader>bl :set nomodifiable<CR>
+nnoremap <silent> <Leader>bll :set modifiable<CR>
+
+nnoremap <silent> <Leader>bss :set syntax=
+nnoremap <silent> <Leader>bsghtml :set syntax=gohtmltmpl<CR>
+nnoremap <silent> <Leader>bshtml :set syntax=html<CR>
+nnoremap <silent> <Leader>bsjs :set syntax=javascript<CR>
+
+nnoremap <silent> <Leader>bz :Goyo<CR>
+
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+" Brackets for sections
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+nnoremap ]r :ALENextWrap<CR>
+nnoremap [r :ALEPreviousWrap<CR>
+nmap ]h <Plug>(GitGutterNextHunk)
+nmap [h <Plug>(GitGutterPrevHunk)
+
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+" Leader Z for fold related mappings
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+"""
+" zr: reduces fold level throughout the buffer
+" zR: opens all folds
+" zm: increases fold level throughout the buffer
+" zM: folds everything all the way
+" za: open a fold your cursor is on
+" zA: open a fold your cursor is on recursively
+" zc: close a fold your cursor is on
+" zC: close a fold your cursor is on recursively
+"""
+
+" Similar to my vscode config
+nnoremap <silent> <C-t> :GFiles<CR>

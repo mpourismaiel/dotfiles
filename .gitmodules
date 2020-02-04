@@ -1,0 +1,3 @@
+[submodule "zsh/zsh.d/themes/powerlevel10k"]
+	path = zsh/zsh.d/themes/powerlevel10k
+	url = https://github.com/romkatv/powerlevel10k.git

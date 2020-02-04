@@ -1,0 +1,21 @@
+#!/bin/sh
+
+report=$(https_proxy=socks5://localhost:1080 curl -u $(cat $HOME/.tokens/toggl):api_token -X GET "https://toggl.com/reports/api/v2/summary?workspace_id=2623050&since=$(awk '/./{line=$0} END{print line}' $HOME/.secrets/toggl-last-invoice)&user_agent=api_test" 2> /dev/null 2> /dev/null)
+duration=$(echo $report | jq '.total_grand')
+
+if [ "$duration" != 'null' ]; then
+  total_minutes=$(bc <<< "$duration / 1000 / 60")
+  hours=$(bc <<< "$total_minutes / 60")
+  minutes=$(bc <<< "$total_minutes - $hours * 60")
+
+  if [ $hours -gt 0 ]; then
+    total=$(echo "$hours"h "$minutes"m 2> /dev/null)
+  else
+    total=$(echo "$minutes"m 2> /dev/null)
+  fi
+
+  echo $total
+else
+  echo $report >> /tmp/toggl-report.log
+  echo "Could not fetch data"
+fi

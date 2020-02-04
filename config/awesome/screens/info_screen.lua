@@ -279,7 +279,7 @@ local sound_output =
   widget_info(sound_output_icon, sound_output_text, nil),
   function()
     awful.spawn.easy_async(
-      "bash /home/mahdi/bin/sound_toggle toggle",
+      string.format("bash %s/bin/sound_toggle toggle", os.getenv("HOME")),
       function(stdout)
         local text = string.gsub(stdout, "^%s*(.-)%s*$", "%1")
         sound_output_text:set_markup(
@@ -290,7 +290,7 @@ local sound_output =
   end
 )
 awful.spawn.easy_async(
-  "bash /home/mahdi/bin/sound_toggle toggle",
+  string.format("bash %s/bin/sound_toggle toggle", os.getenv("HOME")),
   function(stdout)
     local text = string.gsub(stdout, "^%s*(.-)%s*$", "%1")
     sound_output_text:set_markup(
@@ -483,6 +483,91 @@ power_button:buttons(
   )
 )
 
+local notification_list = naughty.list.notifications {
+  base_layout = wibox.widget {
+    -- spacing_widget = wibox.widget {
+      -- orientation = 'horizontal',
+      -- span_ratio  = 0.5,
+      -- widget      = wibox.widget.separator,
+    -- },
+    forced_height = screen_height,
+    spacing       = 3,
+    layout        = wibox.layout.fixed.vertical
+  },
+  widget_template = {
+    {
+      {
+        {
+          widget = naughty.widget.icon
+        },
+        widget = wibox.container.constraint,
+        strategy = "exact",
+        width = 48,
+        height = 48
+      },
+      {
+        {
+          naughty.widget.title,
+          margin(text(''), 0, 0, 10),
+          naughty.widget.message,
+          {
+            layout = wibox.widget {
+              -- Adding the wibox.widget allows to share a
+              -- single instance for all spacers.
+              spacing_widget = wibox.widget {
+                orientation = 'vertical',
+                span_ratio  = 0.9,
+                widget      = wibox.widget.separator,
+              },
+              spacing = 3,
+              layout  = wibox.layout.flex.vertical
+            },
+            widget = naughty.list.widgets,
+          },
+          layout = wibox.layout.fixed.vertical
+        },
+        widget = wibox.container.constraint,
+        strategy = "exact",
+        width = 259,
+        height = 48
+      },
+      {
+        {
+          {
+            widget = icon("", 10, true, true)
+          },
+          widget = wibox.container.place,
+          valign = "center",
+          halign = "center"
+        },
+        widget = wibox.container.constraint,
+        strategy = "exact",
+        width = 20,
+        height = 48
+      },
+      spacing = 10,
+      fill_space = true,
+      layout  = wibox.layout.fixed.horizontal
+    },
+    widget = margin,
+    left = 40,
+    right = 20,
+    top = 0,
+    bottom = 0
+  }
+}
+
+local notification_list_with_title = wibox.widget {
+  visible  = #naughty.active > 0,
+  layout = wibox.layout.fixed.vertical,
+  background(margin(title("Notifications"), 40, 40, 10, 10), "#1c1c1c"),
+  notification_list,
+}
+
+naughty.connect_signal('property::active', function()
+  notification_list_with_title.visible = #naughty.active > 0
+end)
+
 local widgets = {
   {
     {
@@ -490,7 +575,9 @@ local widgets = {
       margin(pad(0), 0, 0, 32),
       margin(time_text, 40, 40),
       margin(date_text, 40, 40, 0, 20),
-      background(margin(title("Notifications"), 40, 40, 10, 10), "#1c1c1c"),
+      notification_list_with_title,
+      margin(pad(0), 0, 0, 0, 32),
+      background(margin(title("Work Information"), 40, 40, 10, 10), "#1c1c1c"),
       margin(pad(0), 0, 0, 0, 16),
       toggl,
       github,

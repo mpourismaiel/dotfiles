@@ -173,7 +173,7 @@ function calc_screen_setup(s)
         return
       end
 
-      for index, value in ipairs({"0", "1", "2", "3", "4", "5", "6", "7", "8", "9"}) do
+      for index, value in ipairs({"0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "."}) do
         if value == key then
           append_number(value)
           return
@@ -296,10 +296,9 @@ function calc_screen_setup(s)
                   end
                 ),
                 button(
-                  "+/-",
+                  ".",
                   function()
-                    input_value = tonumber(input_value) * -1
-                    input:set_markup(input_markup(input_value))
+                    append_number(".")
                   end
                 ),
                 button(
