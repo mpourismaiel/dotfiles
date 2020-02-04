@@ -4,7 +4,13 @@ local os = os
 
 awful.util.modkey = "Mod4"
 awful.util.altkey = "Mod1"
-awful.util.terminal = "xterm"
+awful.util.terminal = "kitty"
+
+awful.util.wallpaper = {
+  desktop = os.getenv("HOME") .. "/Pictures/Wallpapers/world-of-warcraft-battle-for-azeroth-teldrassil.jpg",
+  lockscreen = os.getenv("HOME") ..
+    "/Pictures/Wallpapers/world-of-warcraft-battle-for-azeroth-teldrassil-tree-burning.jpg"
+}
 
 naughty.config.padding = 20
 naughty.config.defaults.icon_size = 36

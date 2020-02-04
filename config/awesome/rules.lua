@@ -70,7 +70,7 @@ return function(keys)
       }
     },
     {
-      rule_any = {class = {"Terminator", "XTerm", "Hyper"}},
+      rule_any = {class = {"Terminator", "XTerm", "kitty", "Hyper"}},
       properties = {screen = 1, tag = awful.util.tagnames[3]}
     },
     {

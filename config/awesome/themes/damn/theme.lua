@@ -21,7 +21,7 @@ local clean_icons = os.getenv("HOME") .. "/.config/awesome/themes/icons"
 local theme = {
   default_dir = default_dir,
   icon_dir = icon_dir,
-  wallpaper = os.getenv("HOME") .. "/Pictures/Wallpapers/world-of-warcraft-battle-for-azeroth-teldrassil.jpg",
+  wallpaper = awful.util.wallpaper.desktop,
   font_base = "FiraCode",
   font_only = "FiraCode Bold",
   font = "FiraCode Bold 10",
@@ -82,6 +82,8 @@ local theme = {
   notification_border_width = 2,
   notification_width = 300,
   notification_margin = 16,
+  notification_fg = "#ffffff",
+  notification_font = "FiraCode Bold 10",
   -- layout box styles
   layout_tile = clean_icons .. "/tiled.svg",
   layout_max = clean_icons .. "/maximized.svg",
@@ -186,22 +188,6 @@ local toggl_report =
   function(widget, stdout)
     widget:set_markup(markup(theme.fg_normal, icon("")))
   end
-)
-
--- Ping
-local ping =
-  bar_widget(
-  awful.widget.watch(
-    string.format("sh %s/bin/show-ping.sh", os.getenv("HOME")),
-    1,
-    function(widget, stdout)
-      if stdout == "" then
-        widget:set_markup("")
-      else
-        widget:set_markup(markup(theme.fg_normal, icon("", 9, true, true) .. pad(1) .. font(stdout)))
-      end
-    end
-  )
 )
 
 -- System Tray - Systray

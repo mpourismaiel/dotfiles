@@ -340,8 +340,7 @@ function lock_screen_show()
       type = "dock",
       height = screen_height,
       width = screen_width,
-      bgimage = os.getenv("HOME") ..
-        "/Pictures/Wallpapers/world-of-warcraft-battle-for-azeroth-teldrassil-tree-burning.jpg"
+      bgimage = awful.util.wallpaper.lockscreen
     }
   )
 

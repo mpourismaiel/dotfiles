@@ -19,7 +19,7 @@ run xss-lock -- sh $HOME/.config/i3/i3lock $HOME/Pictures/Lockscreen/wallpaper.j
 run xxkb
 run code
 run google-chrome-beta
-run xterm
+run kitty
 run telegram-desktop
 run nm-applet
 run mpd
