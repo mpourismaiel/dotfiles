@@ -1,6 +1,7 @@
 ## PATHs
 export GOPATH="$HOME/go"
 export GOBIN="$GOPATH/bin"
+export GO111MODULE=on
 export ANDROID_HOME=$HOME/Android/Sdk
 export YARN_BIN=$HOME/.config/yarn/global/node_modules/.bin
 
@@ -163,15 +164,37 @@ if [ -x /usr/bin/dircolors ]; then
   alias egrep='egrep --color=auto'
 fi
 
+forgit_log=fgl
+forgit_diff=fgd
+forgit_add=fga
+forgit_reset_head=fgrh
+forgit_ignore=fgi
+forgit_restore=fgcf
+forgit_clean=fgclean
+forgit_stash_show=fgss
+
+## sources
+source /usr/share/nvm/init-nvm.sh
+
 ## Plugins section
 source /usr/share/zsh/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
 source /usr/share/zsh/plugins/zsh-history-substring-search/zsh-history-substring-search.zsh
+
+source $HOME/.zsh.d/plugins/cdc/cdc.plugin.zsh
+source $HOME/.zsh.d/plugins/zsh-ing/ing.plugin.zsh
+source $HOME/.zsh.d/plugins/zsh-tab-title/title.plugin.zsh
+source $HOME/.zsh.d/plugins/forgit/forgit.plugin.zsh
 
 source $HOME/.zsh.d/functions/general.zsh
 source $HOME/.zsh.d/functions/hugo.zsh
 source $HOME/.zsh.d/functions/git.zsh
 source $HOME/.zsh.d/functions/npm.zsh
 source $HOME/.zsh.d/functions/laptop.zsh
+source $HOME/.zsh.d/functions/cd-reminder.zsh
+
+[ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
+
+## Plugin variables
 
 # bind UP and DOWN arrow keys to history substring search
 zmodload zsh/terminfo
@@ -188,14 +211,8 @@ else
   ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE='fg=8'
 fi
 
-## sources
-source /usr/share/nvm/init-nvm.sh
+CDC_DIRS=$HOME/Documents/Projects
 
-export GO111MODULE=on
-
-[ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
-
+## Theme
 source ~/.zsh.d/themes/powerlevel10k/powerlevel10k.zsh-theme
-
-# To customize prompt, run `p10k configure` or edit ~/.p10k.zsh.
 [[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh

@@ -95,7 +95,3 @@ openimage() {
     --start-at "$file"
 }
 
-project() {
-  cd $HOME/Documents/Projects/$1
-}
-

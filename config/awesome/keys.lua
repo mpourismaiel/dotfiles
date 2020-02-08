@@ -245,6 +245,14 @@ local globalkeys =
   ),
   awful.key(
     {modkey},
+    "v",
+    function()
+      notification_screen_show(true)
+    end,
+    {description = "show launcher", group = "awesome"}
+  ),
+  awful.key(
+    {modkey},
     "d",
     function()
       info_screen_show(true)

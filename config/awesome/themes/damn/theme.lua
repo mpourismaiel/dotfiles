@@ -84,6 +84,7 @@ local theme = {
   notification_margin = 16,
   notification_fg = "#ffffff",
   notification_font = "FiraCode Bold 10",
+  notification_message_font = "FiraCode 10",
   -- layout box styles
   layout_tile = clean_icons .. "/tiled.svg",
   layout_max = clean_icons .. "/maximized.svg",
@@ -621,6 +622,49 @@ function theme.at_screen_connect(s)
     update_function = require("widgets.tasklist")(theme)
   }
 
+  local notification_count_text = text(markup("#ffffff", font(string.format("%d", #naughty.active))))
+  local notification_count = create_button(
+    wibox.widget {
+      {
+        {
+          {
+            {
+              {
+                widget = notification_count_text
+              },
+              widget = wibox.container.place
+            },
+            widget = wibox.container.constraint,
+            strategy = "exact",
+            width = 20,
+            height = 20
+          },
+          widget = wibox.container.background,
+          bg = theme.primary,
+          shape = function(cb, width, height)
+            return gears.shape.circle(cb, width, height)
+          end
+        },
+        widget = wibox.container.constraint,
+        strategy = "exact",
+        width = 20
+      },
+      widget = margin,
+      left = 15,
+      right = 15
+    },
+    notification_screen_show,
+    theme.sidebar_bg,
+    theme.sidebar_bg
+  )
+
+  notification_count.visible = #naughty.active > 0
+
+  naughty.connect_signal('property::active', function()
+    notification_count_text:set_markup(markup("#ffffff", font(string.format("%d", #naughty.active))))
+    notification_count.visible = #naughty.active > 0
+  end)
+
   s.mytasklistbar = awful.wibar({position = "top", screen = s, height = 45, bg = "#1a1a1a"})
   s.mytasklistbar:setup {
     layout = wibox.layout.align.horizontal,
@@ -637,7 +681,11 @@ function theme.at_screen_connect(s)
       layout = wibox.layout.align.horizontal
     },
     nil,
-    create_button(s.mylayoutbox, nil, true)
+    {
+      create_button(s.mylayoutbox, nil, true),
+      notification_count,
+      layout = wibox.layout.fixed.horizontal
+    }
   }
 
   s.mywibox = awful.wibar({position = "bottom", screen = s, height = 45, bg = theme.wibar_bg, visible = false})
