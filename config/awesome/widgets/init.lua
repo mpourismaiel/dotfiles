@@ -1,4 +1,7 @@
 return {
-  brightness = require("brightness"),
-  layout_indicator = reuqire("layout-indicator")
+  brightness = require("widgets.brightness"),
+  layout_indicator = require("widgets.layout-indicator"),
+  notification = {
+    message = require("widgets.notification.message")
+  }
 }

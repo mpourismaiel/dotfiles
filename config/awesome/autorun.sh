@@ -17,7 +17,6 @@ run watch -n30 $HOME/bin/battery
 #run xautolock -time 10 -locker "sh $HOME/.config/i3/i3lock $HOME/Pictures/Lockscreen/wallpaper.jpg"
 run xss-lock -- sh $HOME/.config/i3/i3lock $HOME/Pictures/Lockscreen/wallpaper.jpg
 run xxkb
-run code
 run google-chrome-beta
 run kitty
 run telegram-desktop

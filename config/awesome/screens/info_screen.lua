@@ -249,29 +249,6 @@ packages:buttons(
   )
 )
 
-awful.util.disable_notification = 0
-local disable_notification_icon = icon("", 10, true, true)
-local disable_notification_text = text(markup("#FFFFFF", theme_pad(2) .. "Disable Notifications"))
-local disable_notification =
-  widget_button(
-  widget_info(disable_notification_icon, disable_notification_text, nil),
-  function()
-    if awful.util.disable_notification == 0 then
-      awful.util.disable_notification = 1
-      disable_notification_icon:set_markup(icon("", 10, true, true, true))
-      disable_notification_text:set_markup(markup("#FFFFFF", theme_pad(2) .. "Disable All Notifications"))
-    elseif awful.util.disable_notification == 1 then
-      awful.util.disable_notification = 2
-      disable_notification_icon:set_markup(icon("", 10, true, true, true))
-      disable_notification_text:set_markup(markup("#FFFFFF", theme_pad(2) .. "Enable Notifications"))
-    elseif awful.util.disable_notification == 2 then
-      awful.util.disable_notification = 0
-      disable_notification_icon:set_markup(icon("", 10, true, true, true))
-      disable_notification_text:set_markup(markup("#FFFFFF", theme_pad(2) .. "Disable Notifications"))
-    end
-  end
-)
-
 local sound_output_icon = icon("", 10, true, true)
 local sound_output_text = text(markup("#FFFFFF", theme_pad(3) .. "Output: Local"))
 local sound_output =
@@ -395,11 +372,28 @@ feedly_timer:connect_signal(
 -- feedly_timer:start()
 -- feedly_timer:emit_signal("timeout")
 
+local clipboard_buttons = awful.util.table.join(
+  awful.button(
+    {},
+    1,
+    function()
+      awful.spawn.easy_async(
+        string.format("curl http://localhost:9102/copy/%s", item.id),
+        function(stdout, stderr, reason, exit_code)
+          naughty.notification {message = "Copied to clipboard!"}
+        end
+      )
+      info_screen_hide()
+    end
+  )
+)
+
+-- local clipboard_widget_template = widget_info(text(), text(string.gsub(item.input, "^%s*(.-)%s*$", "%1")), text())
+
 local clipboard_timer = gears.timer({timeout = 5})
-local clipboard_table = {
+local clipboard_items_widget = wibox.widget {
   layout = wibox.layout.fixed.vertical
 }
-local clipboard_items_widget = wibox.widget(clipboard_table)
 local clipboard_widgets = {
   layout = wibox.layout.fixed.vertical,
   margin(pad(0), 0, 0, 0, 16),
@@ -422,31 +416,10 @@ clipboard_timer:connect_signal(
     if (status == 200) then
       resp_json = json.decode(table.concat(resp))
 
-      local clipboard_table = {layout = wibox.layout.fixed.vertical}
-      clipboard_items_widget:setup({layout = wibox.layout.fixed.vertical, text("shit")})
+      clipboard_items_widget:reset()
       for _, item in ipairs(resp_json) do
-        local w = widget_info(text(), text(string.gsub(item.input, "^%s*(.-)%s*$", "%1")), text())
-        w.id = item.id
-        w:buttons(
-          awful.util.table.join(
-            awful.button(
-              {},
-              1,
-              function()
-                awful.spawn.easy_async(
-                  string.format("curl http://localhost:9102/copy/%s", item.id),
-                  function(stdout, stderr, reason, exit_code)
-                    naughty.notification {message = "Copied to clipboard!"}
-                  end
-                )
-                info_screen_hide()
-              end
-            )
-          )
-        )
-        table.insert(clipboard_table, w)
+        clipboard_items_widget:add(w)
       end
-      clipboard_items_widget:setup(clipboard_table)
     end
   end
 )
@@ -483,91 +456,6 @@ power_button:buttons(
   )
 )
 
-local notification_list = naughty.list.notifications {
-  base_layout = wibox.widget {
-    -- spacing_widget = wibox.widget {
-      -- orientation = 'horizontal',
-      -- span_ratio  = 0.5,
-      -- widget      = wibox.widget.separator,
-    -- },
-    forced_height = screen_height,
-    spacing       = 3,
-    layout        = wibox.layout.fixed.vertical
-  },
-  widget_template = {
-    {
-      {
-        {
-          widget = naughty.widget.icon
-        },
-        widget = wibox.container.constraint,
-        strategy = "exact",
-        width = 48,
-        height = 48
-      },
-      {
-        {
-          naughty.widget.title,
-          margin(text(''), 0, 0, 10),
-          naughty.widget.message,
-          {
-            layout = wibox.widget {
-              -- Adding the wibox.widget allows to share a
-              -- single instance for all spacers.
-              spacing_widget = wibox.widget {
-                orientation = 'vertical',
-                span_ratio  = 0.9,
-                widget      = wibox.widget.separator,
-              },
-              spacing = 3,
-              layout  = wibox.layout.flex.vertical
-            },
-            widget = naughty.list.widgets,
-          },
-          layout = wibox.layout.fixed.vertical
-        },
-        widget = wibox.container.constraint,
-        strategy = "exact",
-        width = 259,
-        height = 48
-      },
-      {
-        {
-          {
-            widget = icon("", 10, true, true)
-          },
-          widget = wibox.container.place,
-          valign = "center",
-          halign = "center"
-        },
-        widget = wibox.container.constraint,
-        strategy = "exact",
-        width = 20,
-        height = 48
-      },
-      spacing = 10,
-      fill_space = true,
-      layout  = wibox.layout.fixed.horizontal
-    },
-    widget = margin,
-    left = 40,
-    right = 20,
-    top = 0,
-    bottom = 0
-  }
-}
-
-local notification_list_with_title = wibox.widget {
-  visible  = #naughty.active > 0,
-  layout = wibox.layout.fixed.vertical,
-  background(margin(title("Notifications"), 40, 40, 10, 10), "#1c1c1c"),
-  notification_list,
-}
-
-naughty.connect_signal('property::active', function()
-  notification_list_with_title.visible = #naughty.active > 0
-end)
-
 local widgets = {
   {
     {
@@ -575,8 +463,6 @@ local widgets = {
       margin(pad(0), 0, 0, 32),
       margin(time_text, 40, 40),
       margin(date_text, 40, 40, 0, 20),
-      notification_list_with_title,
-      margin(pad(0), 0, 0, 0, 32),
       background(margin(title("Work Information"), 40, 40, 10, 10), "#1c1c1c"),
       margin(pad(0), 0, 0, 0, 16),
       toggl,
@@ -599,7 +485,6 @@ local widgets = {
       -- margin(pad(0), 0, 0, 0, 32),
       background(margin(title("Settings"), 40, 40, 10, 10), "#1c1c1c"),
       margin(pad(0), 0, 0, 0, 16),
-      disable_notification,
       sound_output,
       clipboard
     },

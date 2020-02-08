@@ -81,7 +81,25 @@ local function tasklist(theme)
         )
         bg_clickable = clickable_container()
         bg_clickable_background = wibox.container.background()
-        title_container = wibox.container.margin(title, 10, 4)
+        local title_constraint = wibox.widget {
+          {
+            {
+              {
+                widget = title
+              },
+              widget = wibox.container.constraint,
+              strategy = "exact",
+              height = 20
+            },
+            widget = wibox.container.constraint,
+            strategy = "max",
+            width = 200
+          },
+          widget = wibox.container.constraint,
+          strategy = "min",
+          width = 80
+        }
+        title_container = wibox.container.margin(wibox.container.place(title_constraint, "left", "center"), 10, 4)
         task_clickable = wibox.layout.fixed.horizontal()
         task_layout = wibox.layout.fixed.horizontal()
 
