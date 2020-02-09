@@ -216,3 +216,4 @@ CDC_DIRS=$HOME/Documents/Projects
 ## Theme
 source ~/.zsh.d/themes/powerlevel10k/powerlevel10k.zsh-theme
 [[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
+

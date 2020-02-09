@@ -123,6 +123,8 @@ let g:airline_symbols.readonly = ''
 let g:airline_symbols.linenr = '☰'
 let g:airline_symbols.maxlinenr = ''
 
+let g:vim_markdown_conceal = 0
+
 " let g:indentLine_setColors = 0
 let g:bufferline_echo = 0
 
@@ -234,6 +236,11 @@ nnoremap <silent> <Leader>vv :source ~/.vimrc<CR>
 nnoremap <silent> <Leader>vqq :q<CR>
 nnoremap <silent> <Leader>vm :Maps<CR>
 nnoremap <silent> <Leader>vii :IndentLinesToggle<CR>
+
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+" Leader W is for window related mappings
+""""""""""""""""""""""""""""""""""""""""""""""""""""""""
+nnoremap <silent> <Leader>sa :Ag 
 
 """"""""""""""""""""""""""""""""""""""""""""""""""""""""
 " Leader W is for window related mappings
