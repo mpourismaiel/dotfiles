@@ -22,7 +22,7 @@ run kitty
 run telegram-desktop
 run nm-applet
 run mpd
-run compton
+run picom -b --config $HOME/.config/picom.conf
 run show-ping.sh
 
 touch /tmp/started
