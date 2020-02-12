@@ -13,3 +13,6 @@
 [submodule "zsh/zsh.d/plugins/forgit"]
 	path = zsh/zsh.d/plugins/forgit
 	url = git@github.com:wfxr/forgit.git
+[submodule "config/awesome/widgets/awesome-switcher"]
+	path = config/awesome/widgets/awesome-switcher
+	url = https://github.com/berlam/awesome-switcher.git
