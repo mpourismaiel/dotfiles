@@ -4,6 +4,7 @@ local beautiful = require("beautiful")
 local naughty = require("naughty")
 local hotkeys_popup = require("awful.hotkeys_popup").widget
 local lain = require("lain")
+local switcher = require("widgets/my-switcher")
 local helpers = require("utils.helpers")
 require("awful.hotkeys_popup.keys")
 
@@ -143,7 +144,12 @@ local globalkeys =
     end,
     {description = "take a screenshot", group = "hotkeys"}
   ),
-  awful.key({modkey, "Shift"}, "x", lock_screen_show, {description = "lock screen", group = "hotkeys"}),
+  awful.key(
+    {modkey, "Shift"},
+    "x",
+    action_screen_toggle("show", "lock"),
+    {description = "lock screen", group = "hotkeys"}
+  ),
   awful.key({modkey}, "/", hotkeys_popup.show_help, {description = "show help", group = "awesome"}),
   awful.key(
     {modkey},
@@ -279,21 +285,14 @@ local globalkeys =
     {altkey},
     "Tab",
     function()
-      beautiful.myswitcher.visible = not beautiful.myswitcher.visible
-
-      awful.util.switcher_keygrabber =
-        awful.keygrabber.run(
-        function(mod, key, event)
-          if event == "release" then
-            return
-          end
-
-          if key == "Escape" or key == "q" or key == "x" then
-            beautiful.myswitcher.visible = false
-            awful.keygrabber.stop(awful.util.switcher_keygrabber)
-          end
-        end
-      )
+      switcher.switch(1, "Mod1", "Alt_L", "Shift", "Tab")
+    end
+  ),
+  awful.key(
+    {altkey, "Shift"},
+    "Tab",
+    function()
+      switcher.switch(-1, "Mod1", "Alt_L", "Shift", "Tab")
     end
   ),
   awful.key(
