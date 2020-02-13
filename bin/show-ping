@@ -1,0 +1,4 @@
+#! /usr/bin/zsh
+
+source ~/.zsh.d/plugins/zsh-ing/ing.plugin.zsh
+ing 8.8.8.8 | awk '{print $2}'
