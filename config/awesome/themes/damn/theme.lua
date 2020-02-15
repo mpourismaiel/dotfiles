@@ -13,6 +13,9 @@ local my_table = awful.util.table or gears.table
 local margin = wibox.container.margin
 local background = wibox.container.background
 local markup = lain.util.markup
+local text = wibox.widget.textbox
+local margin = wibox.container.margin
+local background = wibox.container.background
 
 local default_dir = require("awful.util").get_themes_dir() .. "default"
 local icon_dir = os.getenv("HOME") .. "/.config/awesome/themes/damn/icons"
@@ -38,9 +41,6 @@ local theme = {
       stops = {{0, "#1a1a1a"}, {1, "#050505"}}
     }
   ),
-  -- boxes
-  exit_screen_font = "FiraCode Bold 14",
-  exit_screen_goodbye_font = "FiraCode Bold 50",
   -- colors
   bg_systray = "#171520",
   fg_normal = "#ffffff33",
@@ -49,6 +49,7 @@ local theme = {
   bg_normal = "#151515",
   fg_urgent = "#CC9393",
   bg_urgent = "#151515",
+  bg_panel = "#1a1a1a",
   -- systray
   systray_icon_spacing = 15,
   -- border styles
@@ -125,7 +126,7 @@ local theme = {
   titlebar_maximized_button_focus_active = default_dir .. "/titlebar/maximized_focus_active.png"
 }
 
-function icon(ic, size, solid, font_awesome)
+function icon_string(ic, size, solid, font_awesome)
   return markup.font(
     string.format(
       "%s %s%s",
@@ -135,6 +136,18 @@ function icon(ic, size, solid, font_awesome)
     ),
     ic
   )
+end
+
+function icon_fn(color)
+  color = color or "#ffffff"
+
+  return function(ic, size, solid, fontawesome, string)
+    if string == true then
+      return icon_string(ic, size, solid, fontawesome)
+    end
+
+    return text(markup(color, icon_string(ic, size, solid, fontawesome)))
+  end
 end
 
 function font(text)
@@ -165,13 +178,11 @@ function titlebar_widget(w)
 end
 
 theme.font_fn = font
-theme.icon_fn = icon
+theme.icon_string = icon_string
+theme.icon_fn = icon_fn
 theme.pad_fn = pad
 theme.bar_widget_fn = bar_widget
 theme.titlebar_widget_fn = titlebar_widget
-
-theme.lock_bg = string.format("%s/Pictures/Lockscreen/wallpaper.jpg", os.getenv("HOME"))
-theme.lock_cmd = string.format("sh %s/.config/i3/i3lock %s", os.getenv("HOME"), theme.lock_bg)
 
 local toggl =
   awful.widget.watch(
@@ -187,7 +198,7 @@ local toggl_report =
   string.format("sh %s/.config/polybar/scripts/toggl-report.sh hide", os.getenv("HOME")),
   99999,
   function(widget, stdout)
-    widget:set_markup(markup(theme.fg_normal, icon("")))
+    widget:set_markup(markup(theme.fg_normal, icon_string("")))
   end
 )
 
@@ -233,7 +244,7 @@ local bat =
             bat_icon = ""
           end
         end
-        widget:set_markup(icon(bat_icon, 12))
+        widget:set_markup(icon_string(bat_icon, 12))
       end
     }
   ).widget
@@ -250,16 +261,16 @@ theme.volume =
         local level = tonumber(volume_now.level)
 
         if level <= 35 then
-          volume_icon = icon("", 12)
+          volume_icon = icon_string("", 12)
         elseif level <= 65 then
-          volume_icon = icon("", 12)
+          volume_icon = icon_string("", 12)
         elseif level <= 100 then
-          volume_icon = icon("", 12)
+          volume_icon = icon_string("", 12)
         end
 
         vlevel = volume_icon
       else
-        vlevel = icon("", 12)
+        vlevel = icon_string("", 12)
       end
       widget:set_markup(markup(theme.fg_normal, vlevel))
     end
@@ -303,8 +314,8 @@ local cpu = function(format)
     {
       settings = function()
         widget:set_markup(
-          format and format(icon("", 9, true, true), cpu_now.usage) or
-            (icon("") .. pad(1) .. font(cpu_now.usage .. "%"))
+          format and format(icon_string("", 9, true, true), cpu_now.usage) or
+            (icon_string("") .. pad(1) .. font(cpu_now.usage .. "%"))
         )
       end
     }
@@ -319,8 +330,8 @@ local mem = function(format)
       timeout = 1,
       settings = function()
         widget:set_markup(
-          format and format(icon("", 9, true, true), mem_now.perc) or
-            (icon("", 9, true, true) .. pad(1) .. font(mem_now.perc .. "%"))
+          format and format(icon_string("", 9, true, true), mem_now.perc) or
+            (icon_string("", 9, true, true) .. pad(1) .. font(mem_now.perc .. "%"))
         )
       end
     }
@@ -334,10 +345,10 @@ local backlight =
   brightness(
     {
       markup = "",
-      level1 = icon("", 12),
-      level2 = icon("", 12),
-      level3 = icon("", 12),
-      level4 = icon("", 12)
+      level1 = icon_string("", 12),
+      level2 = icon_string("", 12),
+      level3 = icon_string("", 12),
+      level4 = icon_string("", 12)
     }
   )
 )
@@ -383,7 +394,7 @@ theme.myswitcher =
             },
             {
               id = "text_role",
-              widget = wibox.widget.textbox,
+              widget = text,
               align = "center",
               forced_width = 80
             },
@@ -424,10 +435,6 @@ end
 
 theme.set_github_listener = set_github_listener
 
-local margin = wibox.container.margin
-local background = wibox.container.background
-local text = wibox.widget.textbox
-
 function widget_button(w, action)
   local bg_normal = theme.widget_bg .. "00"
   local bg_hover = "#1c1c1c"
@@ -452,38 +459,55 @@ function widget_button(w, action)
   return wibox.container.place({widget = w, forced_height = 50, forced_width = 50})
 end
 
+local line = wibox.container.background(wibox.container.constraint(text(""), "exact", 50, 3), theme.primary)
+
+local ping_command = [[bash -c '
+  ping 8.8.8.8
+']]
+
+awful.spawn.with_line_callback(
+  ping_command,
+  {
+    stdout = function()
+      line.bg = theme.sidebar_bg
+    end,
+    stderr = function()
+      line.bg = theme.primary
+    end
+  }
+)
+
 theme.statusbar = function(s, display_systray, top_widget, bg_color)
   return wibox.container.constraint(
-    wibox.widget(
+    wibox.widget {
+      widget = wibox.container.background,
+      bg = bg_color or theme.sidebar_bg,
       {
-        widget = wibox.container.background,
-        bg = bg_color or theme.sidebar_bg,
+        layout = wibox.layout.align.vertical,
         {
-          layout = wibox.layout.align.vertical,
           {
-            {
-              top_widget or nil,
-              s.mytaglist,
-              layout = wibox.layout.align.vertical
-            },
+            top_widget or nil,
+            s.mytaglist,
             layout = wibox.layout.align.vertical
           },
-          nil,
+          layout = wibox.layout.align.vertical
+        },
+        nil,
+        {
+          layout = wibox.layout.fixed.vertical,
           {
-            layout = wibox.layout.fixed.vertical,
-            {
-              display_systray and systray or nil,
-              volume,
-              supports_backlight,
-              bat,
-              keyboard,
-              clock,
-              layout = wibox.layout.fixed.vertical
-            }
+            display_systray and systray or nil,
+            volume,
+            supports_backlight,
+            bat,
+            keyboard,
+            clock,
+            line,
+            layout = wibox.layout.fixed.vertical
           }
         }
       }
-    ),
+    },
     "exact",
     50
   )
@@ -623,7 +647,8 @@ function theme.at_screen_connect(s)
   }
 
   local notification_count_text = text(markup("#ffffff", font(string.format("%d", #naughty.active))))
-  local notification_count = create_button(
+  local notification_count =
+    create_button(
     wibox.widget {
       {
         {
@@ -660,17 +685,20 @@ function theme.at_screen_connect(s)
 
   notification_count.visible = #naughty.active > 0
 
-  naughty.connect_signal('property::active', function()
-    notification_count_text:set_markup(markup("#ffffff", font(string.format("%d", #naughty.active))))
-    notification_count.visible = #naughty.active > 0
-  end)
+  naughty.connect_signal(
+    "property::active",
+    function()
+      notification_count_text:set_markup(markup("#ffffff", font(string.format("%d", #naughty.active))))
+      notification_count.visible = #naughty.active > 0
+    end
+  )
 
-  s.mytasklistbar = awful.wibar({position = "top", screen = s, height = 45, bg = "#1a1a1a"})
+  s.mytasklistbar = awful.wibar({position = "top", screen = s, height = 45, bg = theme.bg_panel})
   s.mytasklistbar:setup {
     layout = wibox.layout.align.horizontal,
     {
       create_button(
-        wibox.container.constraint(wibox.container.place(text(icon("", 12, true, true))), "exact", 50),
+        wibox.container.constraint(wibox.container.place(text(icon_string("", 12, true, true))), "exact", 50),
         function()
           info_screen_show()
         end,

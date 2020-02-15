@@ -18,13 +18,7 @@ local createAnimObject = require("utils.animation").createAnimObject
 local margin = wibox.container.margin
 local background = wibox.container.background
 local text = wibox.widget.textbox
-local icon = function(ic, size, solid, fontawesome, string)
-  if string == true then
-    return beautiful.icon_fn(ic, size, solid, fontawesome)
-  end
-
-  return text(markup("#FFFFFF", beautiful.icon_fn(ic, size, solid, fontawesome)))
-end
+local icon = beautiful.icon_fn()
 local font = beautiful.font_fn
 
 local info_screen =
@@ -259,9 +253,7 @@ local sound_output =
       string.format("bash %s/bin/sound_toggle toggle", os.getenv("HOME")),
       function(stdout)
         local text = string.gsub(stdout, "^%s*(.-)%s*$", "%1")
-        sound_output_text:set_markup(
-          markup("#FFFFFF", theme_pad(3) .. "Output: " .. (text == "" and "Local" or text))
-        )
+        sound_output_text:set_markup(markup("#FFFFFF", theme_pad(3) .. "Output: " .. (text == "" and "Local" or text)))
       end
     )
   end
@@ -270,9 +262,7 @@ awful.spawn.easy_async(
   string.format("bash %s/bin/sound_toggle toggle", os.getenv("HOME")),
   function(stdout)
     local text = string.gsub(stdout, "^%s*(.-)%s*$", "%1")
-    sound_output_text:set_markup(
-      markup("#FFFFFF", theme_pad(3) .. "Output: " .. (text == "" and "Local" or text))
-    )
+    sound_output_text:set_markup(markup("#FFFFFF", theme_pad(3) .. "Output: " .. (text == "" and "Local" or text)))
   end
 )
 
@@ -372,7 +362,8 @@ feedly_timer:connect_signal(
 -- feedly_timer:start()
 -- feedly_timer:emit_signal("timeout")
 
-local clipboard_buttons = awful.util.table.join(
+local clipboard_buttons =
+  awful.util.table.join(
   awful.button(
     {},
     1,
@@ -391,7 +382,8 @@ local clipboard_buttons = awful.util.table.join(
 -- local clipboard_widget_template = widget_info(text(), text(string.gsub(item.input, "^%s*(.-)%s*$", "%1")), text())
 
 local clipboard_timer = gears.timer({timeout = 5})
-local clipboard_items_widget = wibox.widget {
+local clipboard_items_widget =
+  wibox.widget {
   layout = wibox.layout.fixed.vertical
 }
 local clipboard_widgets = {
@@ -493,7 +485,7 @@ local widgets = {
     layout = wibox.layout.align.vertical
   },
   widget = wibox.container.background,
-  bg = "#1a1a1a"
+  bg = beautiful.bg_panel
 }
 
 local close_button = widget_button(wibox.container.constraint(wibox.container.place(icon("", 12)), "exact", 50, 50))
@@ -537,7 +529,7 @@ function info_screen_setup(s, show_rofi)
               type = "linear",
               from = {20, 0},
               to = {70, 0},
-              stops = {{0, "#1a1a1a"}, {1, "#050505"}}
+              stops = {{0, beautiful.bg_panel}, {1, "#050505"}}
             }
           )
         )
@@ -567,7 +559,7 @@ function info_screen_setup(s, show_rofi)
             type = "linear",
             from = {20, 0},
             to = {70, 0},
-            stops = {{0, "#1a1a1a"}, {1, "#050505"}}
+            stops = {{0, beautiful.bg_panel}, {1, "#050505"}}
           }
         )
       )

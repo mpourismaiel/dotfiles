@@ -15,21 +15,16 @@ local margin = wibox.container.margin
 local constraint = wibox.container.constraint
 local background = wibox.container.background
 local text = wibox.widget.textbox
-local icon = function(ic, size, solid, fontawesome, string)
-  if string == true then
-    return beautiful.icon_fn(ic, size, solid, fontawesome)
-  end
-
-  return text(markup("#FFFFFF", beautiful.icon_fn(ic, size, solid, fontawesome)))
-end
+local icon = beautiful.icon_fn()
 local font = beautiful.font_fn
 
-local panel_bg = gears.color(
+local panel_bg =
+  gears.color(
   {
     type = "linear",
     from = {-20, 0},
     to = {50, 0},
-    stops = {{0, "#050505"}, {1, "#1a1a1a"}}
+    stops = {{0, "#050505"}, {1, beautiful.bg_panel}}
   }
 )
 
@@ -175,7 +170,8 @@ end
 awful.util.disable_notification = 0
 local disable_notification_icon = icon("", 10, true, true)
 local disable_notification_text = text(markup("#FFFFFF", theme_pad(2) .. "Disable Notifications"))
-local disable_notification = widget_button(
+local disable_notification =
+  widget_button(
   widget_info(disable_notification_icon, disable_notification_text, nil, 10),
   function()
     if awful.util.disable_notification == 0 then
@@ -195,7 +191,8 @@ local disable_notification = widget_button(
 )
 
 local notification_message = require("widgets.notification.message")
-local notification_list = naughty.list.notifications {
+local notification_list =
+  naughty.list.notifications {
   base_layout = wibox.widget {
     spacing = 20,
     layout = wibox.layout.fixed.vertical
@@ -215,19 +212,19 @@ local notification_list = naughty.list.notifications {
         {
           {
             naughty.widget.title,
-            margin(text(''), 0, 0, 10),
+            margin(text(""), 0, 0, 10),
             notification_message,
             {
               layout = wibox.widget {
                 spacing_widget = wibox.widget {
-                  orientation = 'vertical',
+                  orientation = "vertical",
                   span_ratio = 0.9,
-                  widget = wibox.widget.separator,
+                  widget = wibox.widget.separator
                 },
                 spacing = 3,
                 layout = wibox.layout.flex.vertical
               },
-              widget = naughty.list.widgets,
+              widget = naughty.list.widgets
             },
             layout = wibox.layout.fixed.vertical
           },
@@ -268,9 +265,12 @@ local notification_list = naughty.list.notifications {
 local empty_notification_message = margin(text(markup("#bbbbbb", font("You have no notifications!"))), 40, 40, 20)
 empty_notification_message.visible = #naughty.active == 0
 
-naughty.connect_signal('property::active', function()
-  empty_notification_message.visible = #naughty.active == 0
-end)
+naughty.connect_signal(
+  "property::active",
+  function()
+    empty_notification_message.visible = #naughty.active == 0
+  end
+)
 
 local close_button = widget_button(wibox.container.margin(wibox.container.place(icon("", 12)), 20, 20, 15, 15))
 close_button:buttons(
@@ -290,11 +290,14 @@ local widgets = {
     layout = wibox.layout.fixed.vertical,
     nil,
     {
-      background(wibox.widget {
-        close_button,
-        margin(title("Notifications"), 20, 40, 15, 15),
-        layout = wibox.layout.fixed.horizontal
-      }, panel_bg),
+      background(
+        wibox.widget {
+          close_button,
+          margin(title("Notifications"), 20, 40, 15, 15),
+          layout = wibox.layout.fixed.horizontal
+        },
+        panel_bg
+      ),
       margin(pad(0), 0, 0, 10),
       notification_list,
       empty_notification_message,
@@ -310,15 +313,15 @@ local widgets = {
 function notification_screen_setup(s)
   notification_screen_grabber =
     awful.keygrabber.run(
-      function(_, key, event)
-        if event == "release" then
-          return
-        end
-        if key == "Escape" or key == "q" or key == "x" then
-          notification_screen_hide()
-        end
+    function(_, key, event)
+      if event == "release" then
+        return
       end
-    )
+      if key == "Escape" or key == "q" or key == "x" then
+        notification_screen_hide()
+      end
+    end
+  )
 
   notification_screen:setup(widgets)
 end

@@ -27,10 +27,6 @@ return function(awesome, screen, client)
         end
         gears.wallpaper.maximized(wallpaper, s, true)
       end
-
-      if resize_exit_screen then
-        resize_exit_screen()
-      end
     end
   )
 

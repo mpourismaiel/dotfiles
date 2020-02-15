@@ -343,9 +343,7 @@ local globalkeys =
   awful.key(
     {modkey, "Shift"},
     "q",
-    function()
-      exit_screen_show()
-    end,
+    action_screen_toggle("show", "exit"),
     {description = "show exit screen", group = "awesome"}
   ),
   awful.key(
