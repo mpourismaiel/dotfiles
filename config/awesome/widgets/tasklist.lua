@@ -63,7 +63,7 @@ local function tasklist(theme)
       else
         title = wibox.widget.textbox()
         local exit_icon = wibox.widget.textbox()
-        exit_icon:set_markup(markup(theme.primary, theme.icon_fn("", 12)))
+        exit_icon:set_markup(markup(theme.primary, theme.icon_string("", 12)))
         close_button = clickable_container(wibox.container.margin(exit_icon, 4, 4, 0, 0))
         close_button.shape = gears.shape.circle
         close_button_container = wibox.container.margin(close_button, 4, 8, 12, 12)
@@ -81,7 +81,8 @@ local function tasklist(theme)
         )
         bg_clickable = clickable_container()
         bg_clickable_background = wibox.container.background()
-        local title_constraint = wibox.widget {
+        local title_constraint =
+          wibox.widget {
           {
             {
               {

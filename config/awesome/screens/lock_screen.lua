@@ -25,17 +25,19 @@ local place = wibox.container.place
 local constraint = wibox.container.constraint
 local imagebox = wibox.widget.imagebox
 
-local icon = function(ic, size, solid, fontawesome, string)
-  if string == true then
-    return beautiful.icon_fn(ic, size, solid, fontawesome)
-  end
+-- ================== LOCK SCREEN ================== --
+local icon = beautiful.icon_fn("#ffffffcc")
+local font = beautiful.font_fn
 
-  return text(markup("#ffffffcc", beautiful.icon_fn(ic, size, solid, fontawesome)))
-end
+local action_screen =
+  wibox {
+  visible = false,
+  screen = nil
+}
+
 local info_image = function(icon)
   return margin(place(constraint(imagebox(beautiful.icon_dir .. "/" .. icon), "max", 24, 24)), 0, 0, 0, 10)
 end
-local font = beautiful.font_fn
 
 local lock_image = imagebox(beautiful.icon_dir .. "/lock.svg")
 local lock_icon =
@@ -56,12 +58,6 @@ local lock_icon =
   end
 )
 
-local info_screen =
-  wibox {
-  visible = false,
-  screen = nil
-}
-
 function reset_indicator()
   lock_image.image = beautiful.icon_dir .. "/lock.svg"
   lock_icon.bg = "#000000"
@@ -72,8 +68,6 @@ local reset_indicator_timer =
   timeout = 0.1,
   callback = reset_indicator
 }
-
-local password_display = text()
 
 local lock_screen_grabber =
   awful.keygrabber {
@@ -239,10 +233,6 @@ local audio =
 
 audio:connect_signal("button::press", helpers.audio.mute)
 
-function lock_screen_hide()
-  info_screen.visible = false
-end
-
 function lock_screen_setup()
   time =
     margin(
@@ -277,73 +267,51 @@ function lock_screen_setup()
     }
   )
 
-  info_screen:setup(
-    {
-      layout = wibox.layout.flex.vertical,
-      background(
-        wibox.widget {
-          layout = wibox.layout.flex.horizontal,
-          place(
-            wibox.widget {
-              layout = wibox.layout.align.vertical,
-              time,
-              {
-                layout = wibox.layout.align.horizontal,
-                margin(lock_icon, 0, 10),
-                background(
-                  margin(
-                    wibox.widget {
-                      layout = wibox.layout.flex.horizontal,
-                      battery,
-                      keyboard_layout,
-                      github_notifications,
-                      audio,
-                      cpu_info,
-                      mem_info
-                    },
-                    40,
-                    40,
-                    20,
-                    20
-                  ),
-                  "#000000",
-                  function(cr, width, height)
-                    gears.shape.rounded_rect(cr, width, height, 8)
-                  end
-                )
-              }
-            },
-            "center",
-            "center"
-          )
-        },
-        "#000000b3"
-      )
-    }
-  )
+  action_screen:setup {
+    layout = wibox.layout.flex.vertical,
+    background(
+      wibox.widget {
+        layout = wibox.layout.flex.horizontal,
+        place(
+          wibox.widget {
+            layout = wibox.layout.align.vertical,
+            time,
+            {
+              layout = wibox.layout.align.horizontal,
+              margin(lock_icon, 0, 10),
+              background(
+                margin(
+                  wibox.widget {
+                    layout = wibox.layout.flex.horizontal,
+                    battery,
+                    keyboard_layout,
+                    github_notifications,
+                    audio,
+                    cpu_info,
+                    mem_info
+                  },
+                  40,
+                  40,
+                  20,
+                  20
+                ),
+                "#000000",
+                function(cr, width, height)
+                  gears.shape.rounded_rect(cr, width, height, 8)
+                end
+              )
+            }
+          },
+          "center",
+          "center"
+        )
+      },
+      "#000000b3"
+    )
+  }
 end
 
 function lock_screen_show()
-  local s = awful.screen.focused()
-  local screen_width = s.geometry.width
-  local screen_height = s.geometry.height
-
-  info_screen =
-    wibox(
-    {
-      x = 0,
-      y = 0,
-      opacity = 0,
-      visible = true,
-      ontop = true,
-      screen = s,
-      type = "dock",
-      height = screen_height,
-      width = screen_width,
-      bgimage = awful.util.wallpaper.lockscreen
-    }
-  )
-
   lock_icon.bg = "#ff000088"
   gears.timer {
     timeout = 0.5,
@@ -359,5 +327,216 @@ function lock_screen_show()
   lock_screen_setup()
   time.bottom = 100
   createAnimObject(3, time, {bottom = 0}, "outCubic")
-  createAnimObject(3, info_screen, {opacity = 1}, "outCubic")
+end
+
+function lock_screen_hide()
+  createAnimObject(3, time, {bottom = 100}, "outCubic")
+  action_screen_toggle("hide")()
+end
+
+-- ================== EXIT SCREEN ================== --
+function action_button(icon, text, callback)
+  local button_icon = wibox.widget.imagebox(icon)
+  button_icon.resize = true
+  button_icon.forced_width = 80
+  button_icon.forced_height = 80
+  local button_text = wibox.widget.textbox(markup("#ffffff", text))
+  button_text.font = "FiraCode Bold 14"
+
+  local button =
+    wibox.widget {
+    {
+      pad(5),
+      button_icon,
+      pad(5),
+      expand = "none",
+      layout = wibox.layout.align.horizontal
+    },
+    pad(1),
+    {
+      pad(1),
+      button_text,
+      pad(1),
+      expand = "none",
+      layout = wibox.layout.align.horizontal
+    },
+    layout = wibox.layout.fixed.vertical
+  }
+
+  button:buttons(gears.table.join(awful.button({}, 1, callback)))
+
+  return button
+end
+
+-- Commands
+local poweroff_command = function()
+  awful.spawn.with_shell("shutdown now")
+  awful.keygrabber.stop(exit_screen_grabber)
+end
+local reboot_command = function()
+  awful.spawn.with_shell("reboot")
+  awful.keygrabber.stop(exit_screen_grabber)
+end
+local suspend_command = function()
+  awful.spawn.with_shell(
+    string.format(
+      "%s & systemctl suspend",
+      function()
+        lock_screen_show()
+        exit_screen_hide(true)
+      end
+    )
+  )
+end
+local exit_command = function()
+  awful.spawn.with_shell("rm /tmp/started")
+  awesome.quit()
+end
+local lock_command = function()
+  exit_screen_hide(true)
+  gears.timer {
+    timeout = 0.5,
+    autostart = true,
+    single_shot = true,
+    callback = function()
+      lock_screen_show()
+    end
+  }
+end
+
+local username = os.getenv("USER")
+-- Capitalize username
+local goodbye_text = text(markup("#ffffff", "Goodbye " .. username:sub(1, 1):upper() .. username:sub(2)))
+goodbye_text.font = "FiraCode Bold 50"
+goodbye_widget = margin(goodbye_text, 0, 0, 0, 50)
+
+local poweroff = action_button(beautiful.icon_dir .. "/exit_screen/poweroff.png", "Poweroff", poweroff_command)
+local reboot = action_button(beautiful.icon_dir .. "/exit_screen/reboot.png", "Reboot", reboot_command)
+local suspend = action_button(beautiful.icon_dir .. "/exit_screen/suspend.png", "Suspend", suspend_command)
+local exit = action_button(beautiful.icon_dir .. "/exit_screen/logout.png", "Logout", exit_command)
+local lock = action_button(beautiful.icon_dir .. "/exit_screen/lock.png", "Lock", lock_command)
+
+local exit_screen_grabber
+
+local spacing = margin(text(), 0, 0)
+local buttons = {
+  -- {
+  poweroff,
+  spacing,
+  reboot,
+  spacing,
+  suspend,
+  spacing,
+  exit,
+  spacing,
+  lock,
+  layout = wibox.layout.fixed.horizontal
+}
+
+function exit_screen_setup()
+  action_screen:setup {
+    layout = wibox.layout.flex.vertical,
+    background(
+      wibox.widget {
+        layout = wibox.layout.flex.horizontal,
+        place(
+          wibox.widget {
+            layout = wibox.layout.align.vertical,
+            margin(place(goodbye_widget, "center", "center"), 0, 0, 0, 30),
+            buttons
+          },
+          "center",
+          "center"
+        )
+      },
+      "#000000b3"
+    )
+  }
+end
+
+function exit_screen_show()
+  exit_screen_grabber =
+    awful.keygrabber.run(
+    function(_, key, event)
+      if event == "release" then
+        return
+      end
+
+      if key == "s" then
+        suspend_command()
+      elseif key == "e" then
+        exit_command()
+      elseif key == "l" then
+        lock_command()
+      elseif key == "p" then
+        poweroff_command()
+      elseif key == "r" then
+        reboot_command()
+      elseif key == "Escape" or key == "q" or key == "x" then
+        exit_screen_hide()
+      -- else awful.keygrabber.stop(exit_screen_grabber)
+      end
+    end
+  )
+
+  exit_screen_setup()
+
+  goodbye_widget.bottom = 150
+  createAnimObject(3, goodbye_widget, {bottom = 0}, "outCubic")
+end
+
+function exit_screen_hide(dont_hide_action_screen)
+  awful.keygrabber.stop(exit_screen_grabber)
+  createAnimObject(3, goodbye_widget, {bottom = 150}, "outCubic")
+
+  if dont_hide_action_screen ~= true then
+    action_screen_toggle("hide")()
+  end
+end
+
+function action_screen_toggle(state, screen)
+  screen = screen or "lock"
+  state = state or "hide"
+
+  return function()
+    if state == "hide" then
+      createAnimObject(3, action_screen, {opacity = 0}, "outCubic")
+      gears.timer {
+        timeout = 0.3,
+        autostart = true,
+        single_shot = true,
+        callback = function()
+          action_screen.visible = false
+        end
+      }
+    else
+      local s = awful.screen.focused()
+      local screen_width = s.geometry.width
+      local screen_height = s.geometry.height
+
+      action_screen =
+        wibox(
+        {
+          x = 0,
+          y = 0,
+          opacity = 0,
+          visible = true,
+          ontop = true,
+          screen = s,
+          type = "dock",
+          height = screen_height,
+          width = screen_width,
+          bgimage = awful.util.wallpaper.lockscreen
+        }
+      )
+
+      if screen == "lock" then
+        lock_screen_show()
+      else
+        exit_screen_show()
+      end
+
+      createAnimObject(3, action_screen, {opacity = 1}, "outCubic")
+    end
+  end
 end

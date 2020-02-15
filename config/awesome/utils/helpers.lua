@@ -73,10 +73,10 @@ end
 
 function helpers.icon(ic, size, solid, fontawesome, string)
     if string == true then
-        return beautiful.icon_fn(ic, size, solid, fontawesome)
+        return beautiful.icon_string(ic, size, solid, fontawesome)
     end
 
-    return wibox.widget.textbox(markup("#FFFFFF", beautiful.icon_fn(ic, size, solid, fontawesome)))
+    return wibox.widget.textbox(markup("#FFFFFF", beautiful.icon_string(ic, size, solid, fontawesome)))
 end
 
 function helpers.font(text, font)
