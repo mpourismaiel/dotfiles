@@ -8,15 +8,15 @@ local keygrabber = require("awful.keygrabber")
 local createAnimObject = require("utils.animation").createAnimObject
 local helpers = require("utils.helpers")
 local my_table = awful.util.table or gears.table
-local theme_pad = beautiful.pad_fn
+local theme_pad = awful.util.theme_functions.pad_fn
 
 local pad = helpers.pad
 local margin = wibox.container.margin
 local constraint = wibox.container.constraint
 local background = wibox.container.background
 local text = wibox.widget.textbox
-local icon = beautiful.icon_fn()
-local font = beautiful.font_fn
+local icon = awful.util.theme_functions.icon_fn()
+local font = awful.util.theme_functions.font_fn
 
 local panel_bg =
   gears.color(
@@ -24,7 +24,7 @@ local panel_bg =
     type = "linear",
     from = {-20, 0},
     to = {50, 0},
-    stops = {{0, "#050505"}, {1, beautiful.bg_panel}}
+    stops = {{0, "#050505"}, {1, awful.util.theme_functions.bg_panel}}
   }
 )
 
@@ -65,8 +65,8 @@ function widget_info(w1, w2, w3, margins)
 end
 
 function widget_button(w, action)
-  local bg_normal = beautiful.widget_bg .. "00"
-  local bg_hover = beautiful.widget_bg .. "ff"
+  local bg_normal = awful.util.theme_functions.widget_bg .. "00"
+  local bg_hover = awful.util.theme_functions.widget_bg .. "ff"
 
   w = background(w, bg_normal)
   w:connect_signal(

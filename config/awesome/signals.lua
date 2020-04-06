@@ -74,9 +74,7 @@ return function(awesome, screen, client)
     end
   )
 
-  awful.screen.connect_for_each_screen(
-    function(s)
-      beautiful.at_screen_connect(s)
-    end
-  )
+  if awful.util.theme_functions.at_screen_connect then
+    awful.screen.connect_for_each_screen(awful.util.theme_functions.at_screen_connect)
+  end
 end
