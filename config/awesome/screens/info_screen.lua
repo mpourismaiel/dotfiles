@@ -11,15 +11,15 @@ local markup = require("lain.util.markup")
 local helpers = require("utils.helpers")
 local my_table = awful.util.table or gears.table
 local pad = helpers.pad
-local theme_pad = beautiful.pad_fn
+local theme_pad = awful.util.theme_functions.pad_fn
 local keygrabber = require("awful.keygrabber")
 local createAnimObject = require("utils.animation").createAnimObject
 
 local margin = wibox.container.margin
 local background = wibox.container.background
 local text = wibox.widget.textbox
-local icon = beautiful.icon_fn()
-local font = beautiful.font_fn
+local icon = awful.util.theme_functions.icon_fn()
+local font = awful.util.theme_functions.font_fn
 
 local info_screen =
   wibox {
@@ -139,8 +139,8 @@ function widget_info(w1, w2, w3)
 end
 
 function widget_button(w, action)
-  local bg_normal = beautiful.widget_bg .. "00"
-  local bg_hover = beautiful.widget_bg .. "ff"
+  local bg_normal = awful.util.theme_functions.widget_bg .. "00"
+  local bg_hover = awful.util.theme_functions.widget_bg .. "ff"
 
   w = background(w, bg_normal)
   w:connect_signal(
@@ -164,13 +164,13 @@ end
 
 local cpu =
   widget_info(
-  beautiful.cpu(
+  awful.util.theme_functions.cpu(
     function(ic, usage)
       return markup(beautiful.white, ic .. theme_pad(3) .. "CPU")
     end
   ),
   nil,
-  beautiful.cpu(
+  awful.util.theme_functions.cpu(
     function(_, usage)
       return usage .. "%"
     end
@@ -179,13 +179,13 @@ local cpu =
 
 local mem =
   widget_info(
-  beautiful.mem(
+  awful.util.theme_functions.mem(
     function(ic, usage)
       return markup(beautiful.white, ic .. theme_pad(3) .. "Memory")
     end
   ),
   nil,
-  beautiful.mem(
+  awful.util.theme_functions.mem(
     function(_, usage)
       return usage .. "%"
     end
@@ -277,11 +277,13 @@ local github =
   end
 )
 
-beautiful.set_github_listener(
-  function(text)
-    github_notifications:set_markup(markup("#FFFFFF", theme_pad(3) .. (text == "" and "0" or text)))
-  end
-)
+if awful.util.theme_functions.set_github_listener then
+  awful.util.theme_functions.set_github_listener(
+    function(text)
+      github_notifications:set_markup(markup("#FFFFFF", theme_pad(3) .. (text == "" and "0" or text)))
+    end
+  )
+end
 
 local toggl_icon = icon("", 10, true, true)
 local toggl_text = text(markup("#FFFFFF", theme_pad(3) .. "Toggl"))
@@ -424,7 +426,7 @@ local power_button = background(margin(title(icon("", 12, true, true, true) .
 power_button:connect_signal(
   "mouse::enter",
   function()
-    power_button.bg = beautiful.widget_bg
+    power_button.bg = awful.util.theme_functions.widget_bg
   end
 )
 
@@ -485,7 +487,7 @@ local widgets = {
     layout = wibox.layout.align.vertical
   },
   widget = wibox.container.background,
-  bg = beautiful.bg_panel
+  bg = awful.util.theme_functions.bg_panel
 }
 
 local close_button = widget_button(wibox.container.constraint(wibox.container.place(icon("", 12)), "exact", 50, 50))
@@ -529,7 +531,7 @@ function info_screen_setup(s, show_rofi)
               type = "linear",
               from = {20, 0},
               to = {70, 0},
-              stops = {{0, beautiful.bg_panel}, {1, "#050505"}}
+              stops = {{0, awful.util.theme_functions.bg_panel}, {1, "#050505"}}
             }
           )
         )
@@ -559,7 +561,7 @@ function info_screen_setup(s, show_rofi)
             type = "linear",
             from = {20, 0},
             to = {70, 0},
-            stops = {{0, beautiful.bg_panel}, {1, "#050505"}}
+            stops = {{0, awful.util.theme_functions.bg_panel}, {1, "#050505"}}
           }
         )
       )

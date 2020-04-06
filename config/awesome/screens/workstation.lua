@@ -72,9 +72,17 @@ function workstation_hide()
 end
 
 local separator =
-  place(margin(text(markup(beautiful.widget_bg .. "99", font("/", "FireCode Bold 100"))), 30, 30), "left", "top")
+  place(
+  margin(text(markup(awful.util.theme_functions.widget_bg .. "99", font("/", "FireCode Bold 100"))), 30, 30),
+  "left",
+  "top"
+)
 local title = function(w)
-  return margin((place(text(markup(beautiful.widget_bg, font(w, "FireCode Bold 100"))), "left", "top")), 200, 0)
+  return margin(
+    (place(text(markup(awful.util.theme_functions.widget_bg, font(w, "FireCode Bold 100"))), "left", "top")),
+    200,
+    0
+  )
 end
 
 local button = function(w, action)
@@ -102,7 +110,10 @@ local button = function(w, action)
 end
 
 local back_button =
-  button(margin(text(markup(beautiful.widget_bg, icon("", 60, true, true, true))), 200, 0, 20), workstation_hide)
+  button(
+  margin(text(markup(awful.util.theme_functions.widget_bg, icon("", 60, true, true, true))), 200, 0, 20),
+  workstation_hide
+)
 
 local environment = function(w, action)
   return button(margin(text(font(w, "FireCode Bold 60")), 0, 0, 20, 20), action)

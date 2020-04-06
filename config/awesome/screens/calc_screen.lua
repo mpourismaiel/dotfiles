@@ -11,15 +11,15 @@ local margin = wibox.container.margin
 local place = wibox.container.place
 local background = wibox.container.background
 local text = wibox.widget.textbox
-local font_small = beautiful.font_base .. " 20"
-local font_large = beautiful.font_base .. " 28"
+local font_small = awful.util.theme_functions.font_base .. " 20"
+local font_large = awful.util.theme_functions.font_base .. " 28"
 local input_bg = "#ffffff11"
 local rounded_rect = function(cr, width, height)
   gears.shape.rounded_rect(cr, width, height, 8)
 end
 
 function widget_button(w, action)
-  local bg_normal = beautiful.widget_bg .. "00"
+  local bg_normal = awful.util.theme_functions.widget_bg .. "00"
   local bg_hover = input_bg
 
   w = background(w, bg_normal, rounded_rect)

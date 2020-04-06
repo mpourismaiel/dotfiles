@@ -177,10 +177,14 @@ function titlebar_widget(w)
   }
 end
 
-theme.font_fn = font
-theme.icon_string = icon_string
-theme.icon_fn = icon_fn
-theme.pad_fn = pad
+awful.util.theme_functions.font_fn = font
+awful.util.theme_functions.icon_string = icon_string
+awful.util.theme_functions.icon_fn = icon_fn
+awful.util.theme_functions.pad_fn = pad
+awful.util.theme_functions.widget_bg = theme.widget_bg
+awful.util.theme_functions.icon_dir = icon_dir
+awful.util.theme_functions.font_base = theme.font_base
+awful.util.theme_functions.bg_panel = theme.bg_panel
 theme.bar_widget_fn = bar_widget
 theme.titlebar_widget_fn = titlebar_widget
 
@@ -321,7 +325,7 @@ local cpu = function(format)
     }
   )
 end
-theme.cpu = cpu
+awful.util.theme_functions.cpu = cpu
 
 -- MEM
 local mem = function(format)
@@ -337,7 +341,7 @@ local mem = function(format)
     }
   )
 end
-theme.mem = mem
+awful.util.theme_functions.mem = mem
 
 -- Brightness
 local backlight =
@@ -433,7 +437,7 @@ function set_github_listener(fn)
   )
 end
 
-theme.set_github_listener = set_github_listener
+awful.util.theme_functions.set_github_listener = set_github_listener
 
 function widget_button(w, action)
   local bg_normal = theme.widget_bg .. "00"
@@ -815,4 +819,5 @@ theme.zen_mode = function(c)
   end
 end
 
+awful.util.theme_functions.at_screen_connect = theme.at_screen_connect
 return theme

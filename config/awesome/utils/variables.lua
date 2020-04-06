@@ -77,3 +77,5 @@ awful.util.tags = {
     text = awful.util.tagnames[9]
   }
 }
+
+awful.util.theme_functions = {}

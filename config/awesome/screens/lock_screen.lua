@@ -26,8 +26,8 @@ local constraint = wibox.container.constraint
 local imagebox = wibox.widget.imagebox
 
 -- ================== LOCK SCREEN ================== --
-local icon = beautiful.icon_fn("#ffffffcc")
-local font = beautiful.font_fn
+local icon = awful.util.theme_functions.icon_fn("#ffffffcc")
+local font = awful.util.theme_functions.font_fn
 
 local action_screen =
   wibox {
@@ -36,10 +36,16 @@ local action_screen =
 }
 
 local info_image = function(icon)
-  return margin(place(constraint(imagebox(beautiful.icon_dir .. "/" .. icon), "max", 24, 24)), 0, 0, 0, 10)
+  return margin(
+    place(constraint(imagebox(awful.util.theme_functions.icon_dir .. "/" .. icon), "max", 24, 24)),
+    0,
+    0,
+    0,
+    10
+  )
 end
 
-local lock_image = imagebox(beautiful.icon_dir .. "/lock.svg")
+local lock_image = imagebox(awful.util.theme_functions.icon_dir .. "/lock.svg")
 local lock_icon =
   background(
   margin(
@@ -59,7 +65,7 @@ local lock_icon =
 )
 
 function reset_indicator()
-  lock_image.image = beautiful.icon_dir .. "/lock.svg"
+  lock_image.image = awful.util.theme_functions.icon_dir .. "/lock.svg"
   lock_icon.bg = "#000000"
 end
 
@@ -68,69 +74,6 @@ local reset_indicator_timer =
   timeout = 0.1,
   callback = reset_indicator
 }
-
-local lock_screen_grabber =
-  awful.keygrabber {
-  start_callback = function()
-    reset_indicator()
-  end
-}
-
-function authenticate()
-  local sequence = lock_screen_grabber.sequence
-  local username = os.getenv("USER")
-
-  reset_indicator_timer:stop()
-  lock_screen_grabber.sequence = ""
-
-  if string.len(sequence) <= 1 then
-    return
-  end
-
-  lock_icon.bg = "#ffffff22"
-
-  local password = sequence
-  local cmd = os.getenv("HOME") .. "/bin/auth " .. username .. " " .. password
-
-  awful.spawn.with_line_callback(
-    cmd,
-    {
-      exit = function(_, code)
-        if code ~= 0 then
-          lock_screen_grabber.sequence = ""
-          lock_icon.bg = "#ff000088"
-          gears.timer {
-            timeout = 0.5,
-            autostart = true,
-            single_shot = true,
-            callback = function()
-              lock_icon.bg = "#000000"
-            end
-          }
-          return
-        end
-
-        lock_screen_grabber:stop()
-        lock_screen_hide()
-      end
-    }
-  )
-end
-
-lock_screen_grabber:add_keybinding({}, "Return", authenticate)
-lock_screen_grabber:add_keybinding(
-  {},
-  "Escape",
-  function()
-    lock_screen_grabber.sequence = ""
-  end
-)
-lock_screen_grabber:add_keybinding({awful.util.altkey}, "m", helpers.audio.mute)
-
-lock_screen_grabber.keyreleased_callback = function()
-  lock_icon.bg = "#ffffff22"
-  reset_indicator_timer:again()
-end
 
 local time_text = textclock(markup("#000000", markup.font("SourceCodePro Semibold 110", "%H:%M")))
 local date_text = textclock(markup("#000000", markup.font("SourceCodePro 21", "%a\n%b %d\n%Y")))
@@ -163,11 +106,15 @@ local keyboard_layout =
 
 local github_notification_count = text(markup("#FFFFFF", markup.font("SourceCodePro 12", "...")))
 
-beautiful.set_github_listener(
-  function(text)
-    github_notification_count:set_markup(markup("#FFFFFF", markup.font("SourceCodePro 12", text == "" and "0" or text)))
-  end
-)
+if awful.util.theme_functions.set_github_listener then
+  awful.util.theme_functions.set_github_listener(
+    function(text)
+      github_notification_count:set_markup(
+        markup("#FFFFFF", markup.font("SourceCodePro 12", text == "" and "0" or text))
+      )
+    end
+  )
+end
 
 local github_notifications =
   wibox.widget {
@@ -311,6 +258,74 @@ function lock_screen_setup()
   }
 end
 
+local locked_keygrabber = awful.keygrabber {}
+
+function authenticate(self, sequence)
+  local username = os.getenv("USER")
+
+  reset_indicator_timer:stop()
+  locked_keygrabber:start()
+
+  if string.len(sequence) <= 1 then
+    locked_keygrabber:stop()
+    self:start()
+    return
+  end
+
+  lock_icon.bg = "#ffffff22"
+
+  awful.spawn.with_line_callback(
+    os.getenv("HOME") .. "/bin/auth " .. username .. " " .. sequence,
+    {
+      exit = function(_, code)
+        if code ~= 0 then
+          locked_keygrabber:stop()
+          self:start()
+          lock_icon.bg = "#ff000088"
+          gears.timer {
+            timeout = 0.5,
+            autostart = true,
+            single_shot = true,
+            callback = function()
+              lock_icon.bg = "#000000"
+            end
+          }
+          return
+        end
+
+        locked_keygrabber:stop()
+        lock_screen_hide()
+      end
+    }
+  )
+end
+
+local lock_screen_grabber =
+  awful.keygrabber {
+  keybindings = {
+    awful.key {
+      modifiers = {},
+      key = "Escape",
+      on_press = function()
+        lock_screen_grabber:start()
+      end
+    },
+    awful.key {modifiers = {awful.util.altkey}, key = "m", on_press = helpers.audio.mute}
+  },
+  keyreleased_callback = function()
+    lock_icon.bg = "#ffffff22"
+    reset_indicator_timer:again()
+  end,
+  stop_key = "Return",
+  stop_event = "release",
+  start_callback = function()
+    reset_indicator()
+  end,
+  stop_callback = function(self, stop_key, stop_mods, sequence)
+    authenticate(self, sequence)
+  end
+}
+
 function lock_screen_show()
   lock_icon.bg = "#ff000088"
   gears.timer {
@@ -318,7 +333,6 @@ function lock_screen_show()
     autostart = true,
     single_shot = true,
     callback = function()
-      lock_screen_grabber.sequence = ""
       lock_screen_grabber:start()
       lock_icon.bg = "#000000"
     end
@@ -371,11 +385,9 @@ end
 -- Commands
 local poweroff_command = function()
   awful.spawn.with_shell("shutdown now")
-  awful.keygrabber.stop(exit_screen_grabber)
 end
 local reboot_command = function()
   awful.spawn.with_shell("reboot")
-  awful.keygrabber.stop(exit_screen_grabber)
 end
 local suspend_command = function()
   awful.spawn.with_shell(
@@ -404,19 +416,46 @@ local lock_command = function()
   }
 end
 
+local exit_actions = {
+  s = poweroff_command,
+  e = exit_command,
+  l = lock_command,
+  p = poweroff_command,
+  r = reboot_command,
+  Return = function()
+    exit_screen_hide()
+  end,
+  Escape = function()
+    exit_screen_hide()
+  end,
+  q = function()
+    exit_screen_hide()
+  end
+}
+
+local parse_exit_action = function(_, stop_key)
+  exit_actions[stop_key]()
+end
+
+local exit_screen_grabber =
+  awful.keygrabber {
+  stop_key = gears.table.keys(exit_actions),
+  stop_callback = parse_exit_action
+}
+
 local username = os.getenv("USER")
 -- Capitalize username
 local goodbye_text = text(markup("#ffffff", "Goodbye " .. username:sub(1, 1):upper() .. username:sub(2)))
 goodbye_text.font = "FiraCode Bold 50"
 goodbye_widget = margin(goodbye_text, 0, 0, 0, 50)
 
-local poweroff = action_button(beautiful.icon_dir .. "/exit_screen/poweroff.png", "Poweroff", poweroff_command)
-local reboot = action_button(beautiful.icon_dir .. "/exit_screen/reboot.png", "Reboot", reboot_command)
-local suspend = action_button(beautiful.icon_dir .. "/exit_screen/suspend.png", "Suspend", suspend_command)
-local exit = action_button(beautiful.icon_dir .. "/exit_screen/logout.png", "Logout", exit_command)
-local lock = action_button(beautiful.icon_dir .. "/exit_screen/lock.png", "Lock", lock_command)
-
-local exit_screen_grabber
+local poweroff =
+  action_button(awful.util.theme_functions.icon_dir .. "/exit_screen/poweroff.png", "Poweroff", poweroff_command)
+local reboot = action_button(awful.util.theme_functions.icon_dir .. "/exit_screen/reboot.png", "Reboot", reboot_command)
+local suspend =
+  action_button(awful.util.theme_functions.icon_dir .. "/exit_screen/suspend.png", "Suspend", suspend_command)
+local exit = action_button(awful.util.theme_functions.icon_dir .. "/exit_screen/logout.png", "Exit", exit_command)
+local lock = action_button(awful.util.theme_functions.icon_dir .. "/exit_screen/lock.png", "Lock", lock_command)
 
 local spacing = margin(text(), 0, 0)
 local buttons = {
@@ -455,38 +494,14 @@ function exit_screen_setup()
 end
 
 function exit_screen_show()
-  exit_screen_grabber =
-    awful.keygrabber.run(
-    function(_, key, event)
-      if event == "release" then
-        return
-      end
-
-      if key == "s" then
-        suspend_command()
-      elseif key == "e" then
-        exit_command()
-      elseif key == "l" then
-        lock_command()
-      elseif key == "p" then
-        poweroff_command()
-      elseif key == "r" then
-        reboot_command()
-      elseif key == "Escape" or key == "q" or key == "x" then
-        exit_screen_hide()
-      -- else awful.keygrabber.stop(exit_screen_grabber)
-      end
-    end
-  )
-
   exit_screen_setup()
+  exit_screen_grabber:start()
 
   goodbye_widget.bottom = 150
   createAnimObject(3, goodbye_widget, {bottom = 0}, "outCubic")
 end
 
 function exit_screen_hide(dont_hide_action_screen)
-  awful.keygrabber.stop(exit_screen_grabber)
   createAnimObject(3, goodbye_widget, {bottom = 150}, "outCubic")
 
   if dont_hide_action_screen ~= true then
