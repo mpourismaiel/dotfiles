@@ -111,14 +111,14 @@ function notification_screen_show(show_rofi)
       screen = s,
       ontop = true,
       visible = true,
-      opacity = 0,
+      opacity = 1,
       bg = beautiful.wibar_bg .. "cc"
     }
   )
   notification_screen =
     wibox(
     {
-      x = screen_width,
+      x = screen_width - 400,
       y = 0,
       visible = true,
       ontop = true,
@@ -126,12 +126,12 @@ function notification_screen_show(show_rofi)
       type = "dock",
       height = screen_height,
       width = 450,
-      opacity = 0,
+      opacity = 1,
       bg = beautiful.wibar_bg
     }
   )
-  createAnimObject(0.6, notification_screen, {x = screen_width - 400, opacity = 1}, "outCubic")
-  createAnimObject(0.6, backdrop, {opacity = 1}, "outCubic")
+  -- createAnimObject(0.6, notification_screen, {x = screen_width - 400, opacity = 1}, "outCubic")
+  -- createAnimObject(0.6, backdrop, {opacity = 1}, "outCubic")
 
   backdrop:buttons(
     awful.util.table.join(
@@ -151,16 +151,25 @@ end
 function notification_screen_hide()
   local s = awful.screen.focused()
   backdrop.visible = false
-  createAnimObject(
-    0.6,
-    notification_screen,
-    {x = screen_width, opacity = 0},
-    "outCubic",
-    function()
-      notification_screen.visible = false
+  notification_screen.x = screen_width
+  notification_screen.opacity = 0
+  notification_screen.visible = false
+  -- createAnimObject(
+  --   0.6,
+  --   notification_screen,
+  --   {x = screen_width, opacity = 0},
+  --   "outCubic",
+  --   function()
+  --     notification_screen.visible = false
+  --   end
+  -- )
+  gears.timer {
+    autostart = true,
+    timeout = 1,
+    callback = function()
+      awful.keygrabber.stop(notification_screen_grabber)
     end
-  )
-  awful.keygrabber.stop(notification_screen_grabber)
+  }
 end
 
 function title(txt)
@@ -287,7 +296,6 @@ close_button:buttons(
 
 local widgets = {
   {
-    layout = wibox.layout.fixed.vertical,
     nil,
     {
       background(

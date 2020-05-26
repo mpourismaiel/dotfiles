@@ -44,14 +44,14 @@ function info_screen_show(show_rofi)
       screen = s,
       ontop = true,
       visible = true,
-      opacity = 0,
+      opacity = 1,
       bg = beautiful.wibar_bg .. "cc"
     }
   )
   info_screen =
     wibox(
     {
-      x = -400,
+      x = 0,
       y = 0,
       visible = true,
       ontop = true,
@@ -59,12 +59,12 @@ function info_screen_show(show_rofi)
       type = "dock",
       height = screen_height,
       width = 450,
-      opacity = 0,
+      opacity = 1,
       bg = beautiful.wibar_bg
     }
   )
-  createAnimObject(0.6, info_screen, {x = 0, opacity = 1}, "outCubic")
-  createAnimObject(0.6, backdrop, {opacity = 1}, "outCubic")
+  -- createAnimObject(0.6, info_screen, {x = 0, opacity = 1}, "outCubic")
+  -- createAnimObject(0.6, backdrop, {opacity = 1}, "outCubic")
 
   backdrop:buttons(
     awful.util.table.join(
@@ -84,16 +84,25 @@ end
 function info_screen_hide()
   local s = awful.screen.focused()
   backdrop.visible = false
-  createAnimObject(
-    0.6,
-    info_screen,
-    {x = -400, opacity = 0},
-    "outCubic",
-    function()
-      info_screen.visible = false
+  info_screen.opacity = 0
+  info_screen.x = -400
+  info_screen.visible = false
+  -- createAnimObject(
+  --   0.6,
+  --   info_screen,
+  --   {x = -400, opacity = 0},
+  --   "outCubic",
+  --   function()
+  --     info_screen.visible = false
+  --   end
+  -- )
+  gears.timer {
+    autostart = true,
+    timeout = 1,
+    callback = function()
+      awful.keygrabber.stop(info_screen_grabber)
     end
-  )
-  awful.keygrabber.stop(info_screen_grabber)
+  }
 end
 
 local time_text = wibox.widget.textclock(markup("#FFFFFF", markup.font("FiraCode 30", "%H:%M")))
@@ -212,7 +221,7 @@ local uptime = text()
 local uptime_widget = widget_info(icon("", 10, true, true), text(markup("#FFFFFF", theme_pad(3) .. "Uptime")), uptime)
 
 awful.widget.watch(
-  'bash -c "echo $(uptime) | sed \'s/\\sup.*//g\'"',
+  'bash -c "uptime | grep -ohe \'up .*\' | sed \'s/,//g\' | awk \'{ print $2 }\'"',
   60,
   function(w, stdout)
     uptime:set_markup(string.gsub(stdout, "^%s*(.-)%s*$", "%1"))
@@ -243,6 +252,75 @@ packages:buttons(
   )
 )
 
+local network_connectivity = text("Not Connected")
+
+local network =
+  widget_info(icon("", 10, true, true), margin(text(markup("#FFFFFF", "Network")), 20), network_connectivity)
+
+gears.timer {
+  timeout = 5,
+  autostart = true,
+  callnow = true,
+  callback = function()
+    if awful.util.theme_functions.is_network_connected == true then
+      network_connectivity:set_markup("Connected")
+    else
+      network_connectivity:set_markup("Not Connected")
+    end
+  end
+}
+
+local system_information_collapse_icon = text("")
+local system_information_title =
+  widget_info(
+  icon("", 10, true, true),
+  text(markup("#FFFFFF", theme_pad(3) .. "System")),
+  system_information_collapse_icon
+)
+
+local system_information_collapse =
+  wibox.container.constraint(
+  wibox.container.background(
+    wibox.widget {
+      layout = wibox.layout.fixed.vertical,
+      uptime_widget,
+      cpu,
+      mem,
+      fs_root_used,
+      fs_home_used
+    },
+    "#1c1c1c"
+  ),
+  "exact",
+  450,
+  0
+)
+
+system_information_title:buttons(
+  awful.util.table.join(
+    awful.button(
+      {},
+      1,
+      function()
+        if system_information_collapse.height == 0 then
+          system_information_collapse.height = 190
+          system_information_collapse_icon:set_markup("")
+        elseif system_information_collapse.height == 140 then
+          system_information_collapse.height = 0
+          system_information_collapse_icon:set_markup("")
+        end
+      end
+    )
+  )
+)
+
+local system_information =
+  wibox.widget {
+  layout = wibox.layout.fixed.vertical,
+  system_information_title,
+  system_information_collapse
+}
+
 local sound_output_icon = icon("", 10, true, true)
 local sound_output_text = text(markup("#FFFFFF", theme_pad(3) .. "Output: Local"))
 local sound_output =
@@ -259,7 +337,7 @@ local sound_output =
   end
 )
 awful.spawn.easy_async(
-  string.format("bash %s/bin/sound_toggle toggle", os.getenv("HOME")),
+  string.format("bash %s/bin/sound_toggle", os.getenv("HOME")),
   function(stdout)
     local text = string.gsub(stdout, "^%s*(.-)%s*$", "%1")
     sound_output_text:set_markup(markup("#FFFFFF", theme_pad(3) .. "Output: " .. (text == "" and "Local" or text)))
@@ -466,12 +544,10 @@ local widgets = {
       margin(pad(0), 0, 0, 0, 32),
       background(margin(title("Information"), 40, 40, 10, 10), "#1c1c1c"),
       margin(pad(0), 0, 0, 0, 16),
-      uptime_widget,
       packages,
-      cpu,
-      mem,
-      fs_root_used,
-      fs_home_used,
+      network,
+      system_information,
+      -- background(margin(text('hello'), 40, 40, 10, 10), "#ff0000"),
       margin(pad(0), 0, 0, 0, 32),
       -- background(margin(title("Feed"), 40, 40, 10, 10), '#050505'),
       -- margin(pad(0), 0, 0, 0, 16),
@@ -479,8 +555,8 @@ local widgets = {
       -- margin(pad(0), 0, 0, 0, 32),
       background(margin(title("Settings"), 40, 40, 10, 10), "#1c1c1c"),
       margin(pad(0), 0, 0, 0, 16),
-      sound_output,
-      clipboard
+      sound_output
+      -- clipboard
     },
     nil,
     power_button,
