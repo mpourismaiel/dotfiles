@@ -16,4 +16,4 @@ else
 fi
 
 sleep 0.5
-echo "awesome.restart()" | /usr/bin/awesome-client
+#echo "awesome.restart()" | /usr/bin/awesome-client

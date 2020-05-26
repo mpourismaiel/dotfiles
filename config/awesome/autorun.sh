@@ -9,8 +9,8 @@ function run {
 setxkbmap -layout us,ir -option grp:alt_shift_toggle
 xrdb -merge $HOME/.Xresources
 
-run sh $HOME/.screenlayout/single-screen-full-hd.sh
-run sh $HOME/bin/desktop-environment.sh
+#run sh $HOME/.screenlayout/single-screen-full-hd.sh
+#run sh $HOME/bin/desktop-environment.sh
 
 run watch -n30 $HOME/bin/battery
 

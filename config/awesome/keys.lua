@@ -251,7 +251,7 @@ local globalkeys =
   ),
   awful.key(
     {modkey},
-    "v",
+    "n",
     function()
       notification_screen_show(true)
     end,

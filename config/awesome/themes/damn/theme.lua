@@ -185,6 +185,7 @@ awful.util.theme_functions.widget_bg = theme.widget_bg
 awful.util.theme_functions.icon_dir = icon_dir
 awful.util.theme_functions.font_base = theme.font_base
 awful.util.theme_functions.bg_panel = theme.bg_panel
+awful.util.theme_functions.is_network_connected = false
 theme.bar_widget_fn = bar_widget
 theme.titlebar_widget_fn = titlebar_widget
 
@@ -466,20 +467,35 @@ end
 local line = wibox.container.background(wibox.container.constraint(text(""), "exact", 50, 3), theme.primary)
 
 local ping_command = [[bash -c '
-  ping 8.8.8.8
+  wget -q --spider http://google.com
+
+  if [ $? -eq 0 ]; then
+      echo "Online"
+  else
+      echo "Offline"
+  fi
 ']]
 
-awful.spawn.with_line_callback(
-  ping_command,
-  {
-    stdout = function()
-      line.bg = theme.sidebar_bg
-    end,
-    stderr = function()
-      line.bg = theme.primary
-    end
-  }
-)
+gears.timer {
+  timeout = 30,
+  autostart = true,
+  call_now = true,
+  callback = function()
+    awful.spawn.with_line_callback(
+      ping_command,
+      {
+        stdout = function()
+          line.bg = theme.sidebar_bg
+          awful.util.theme_functions.is_network_connected = true
+        end,
+        stderr = function()
+          line.bg = theme.primary
+          awful.util.theme_functions.is_network_connected = false
+        end
+      }
+    )
+  end
+}
 
 theme.statusbar = function(s, display_systray, top_widget, bg_color)
   return wibox.container.constraint(
