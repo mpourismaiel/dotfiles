@@ -4,7 +4,7 @@ local os = os
 
 awful.util.modkey = "Mod4"
 awful.util.altkey = "Mod1"
-awful.util.terminal = "kitty"
+awful.util.terminal = "alacritty"
 
 awful.util.wallpaper = {
   desktop = os.getenv("HOME") .. "/Pictures/Wallpapers/world-of-warcraft-battle-for-azeroth-teldrassil.jpg",
