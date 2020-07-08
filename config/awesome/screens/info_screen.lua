@@ -98,7 +98,7 @@ function info_screen_hide()
   -- )
   gears.timer {
     autostart = true,
-    timeout = 1,
+    timeout = 0.3,
     callback = function()
       awful.keygrabber.stop(info_screen_grabber)
     end
@@ -399,22 +399,33 @@ local toggl_reports = widget_info(toggl_reports_icon, toggl_reports_text, text()
 local toggl_syna_icon = icon("", 10, true, true)
 local toggl_syna_text = text(markup("#FFFFFF", theme_pad(3) .. "Syna"))
 local toggl_syna_active = text(markup("#FFFFFF", theme_pad(3) .. "Loading Report"))
+local toggl_syna_reload = icon("", 10, true, true)
 local toggl_syna =
   widget_button(
-  widget_info(toggl_syna_icon, toggl_syna_text, toggl_syna_active),
+  widget_info(toggl_syna_icon, toggl_syna_text, wibox.widget {toggl_syna_active, wibox.container.margin(toggl_syna_reload, 10), layout = wibox.layout.fixed.horizontal}),
   function()
     awful.spawn.with_shell("google-chrome-beta https://www.toggl.com/app/reports/summary/2623050")
   end
 )
 
-awful.widget.watch(
-  string.format("sh %s/bin/toggl-report", os.getenv("HOME")),
-  60,
-  function(widget, stdout)
-    local text = string.gsub(stdout, "^%s*(.-)%s*$", "%1")
-    toggl_syna_active:set_markup(markup("#FFFFFF", theme_pad(3) .. (text == "m" and "" or text)))
-  end
-)
+local prev_toggl_syna_text = ""
+function fetch_toggle_syna()
+  awful.widget.watch(
+    string.format("sh %s/bin/toggl-report diff", os.getenv("HOME")),
+    60,
+    function(widget, stdout)
+      local text = string.gsub(stdout, "^%s*(.-)%s*$", "%1")
+      if text ~= "m" then
+        toggl_syna_active:set_markup(markup("#FFFFFF", theme_pad(3) .. "-" .. text))
+        prev_toggl_syna_text = text
+      elseif prev_toggl_syna_text == "" then
+        toggl_syna_active:set_markup(markup("#FFFFFF", theme_pad(3) .. "Failed"))
+      end
+    end
+  )
+end
+fetch_toggle_syna()
+toggl_syna_reload:buttons(my_table.join(awful.button({}, 1, fetch_toggle_syna)))
 
 local feedly = text()
 local feedly_timer = gears.timer({timeout = 3600})
