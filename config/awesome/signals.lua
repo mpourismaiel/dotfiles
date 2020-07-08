@@ -1,9 +1,12 @@
 local beautiful = require("beautiful")
 local awful = require("awful")
+local wibox = require("wibox")
+local gears = require("gears")
 local naughty = require("naughty")
 local helpers = require("utils.helpers")
+local createAnimObject = require("utils.animation").createAnimObject
 
-return function(awesome, screen, client)
+return function(awesome, screen, client, tag)
   naughty.connect_signal(
     "request::preset",
     function(notification)
@@ -65,6 +68,30 @@ return function(awesome, screen, client)
       helpers.client.border_adjust(c)
     end
   )
+
+  -- screen.connect_signal("tag::history::update", function(s)
+  --   local maximized = false
+  --   for i, c in ipairs(s.selected_tag:clients()) do
+  --     if c.maximized then
+  --       maximized = true
+  --       break
+  --     end
+  --   end
+
+  --   if maximized then
+  --     awful.screen.focused().selected_tag.gap = 0
+  --     s.mytagbar_widgets:set_shape(function(cr, width, height)
+  --       gears.shape.rectangle(cr, width, height, 0)
+  --     end)
+  --     createAnimObject(0.6, s.mytagbar_margin, {left = 0, right = 0}, "outCubic")
+  --   else
+  --     awful.screen.focused().selected_tag.gap = 10
+  --     s.mytagbar_widgets:set_shape(function(cr, width, height)
+  --       gears.shape.rounded_rect(cr, width, height, 10)
+  --     end)
+  --     createAnimObject(0.6, s.mytagbar_margin, {left = 20, right = 20}, "outCubic")
+  --   end
+  -- end)
 
   client.connect_signal("focus", helpers.client.border_adjust)
   client.connect_signal(

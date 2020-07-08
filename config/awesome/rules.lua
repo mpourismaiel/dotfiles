@@ -51,7 +51,7 @@ return function(keys)
     {
       rule_any = {type = {"normal"}},
       except_any = {class = {"jetbrains-studio"}},
-      properties = {titlebars_enabled = false}
+      properties = {titlebars_enabled = true}
     },
     {
       rule_any = {class = {"Google-chrome-beta", "firefox"}},
@@ -87,7 +87,7 @@ return function(keys)
         maximized = true,
         fullscreen = true,
         focus = true,
-        titlebars_enabled = false
+        titlebars_enabled = true
       }
     },
     {
@@ -109,7 +109,7 @@ return function(keys)
         screen = 1,
         tag = awful.util.tagnames[2],
         buttons = {},
-        titlebars_enabled = false
+        titlebars_enabled = true
       }
     }
   }

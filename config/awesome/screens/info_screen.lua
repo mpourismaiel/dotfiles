@@ -609,19 +609,19 @@ function info_screen_setup(s, show_rofi)
         layout = wibox.layout.align.horizontal,
         nil,
         widgets,
-        beautiful.statusbar(
-          s,
-          false,
-          close_button,
-          gears.color(
-            {
-              type = "linear",
-              from = {20, 0},
-              to = {70, 0},
-              stops = {{0, awful.util.theme_functions.bg_panel}, {1, "#050505"}}
-            }
-          )
-        )
+        -- beautiful.statusbar(
+        --   s,
+        --   false,
+        --   close_button,
+        --   gears.color(
+        --     {
+        --       type = "linear",
+        --       from = {20, 0},
+        --       to = {70, 0},
+        --       stops = {{0, awful.util.theme_functions.bg_panel}, {1, "#050505"}}
+        --     }
+        --   )
+        -- )
       }
     )
     return
@@ -639,19 +639,19 @@ function info_screen_setup(s, show_rofi)
       layout = wibox.layout.align.horizontal,
       nil,
       nil,
-      beautiful.statusbar(
-        s,
-        false,
-        close_button,
-        gears.color(
-          {
-            type = "linear",
-            from = {20, 0},
-            to = {70, 0},
-            stops = {{0, awful.util.theme_functions.bg_panel}, {1, "#050505"}}
-          }
-        )
-      )
+      -- beautiful.statusbar(
+      --   s,
+      --   false,
+      --   close_button,
+      --   gears.color(
+      --     {
+      --       type = "linear",
+      --       from = {20, 0},
+      --       to = {70, 0},
+      --       stops = {{0, awful.util.theme_functions.bg_panel}, {1, "#050505"}}
+      --     }
+      --   )
+      -- )
     }
   )
 end
