@@ -85,16 +85,18 @@ local function taglist(theme)
       background_box.shape_border_color = args.shape_border_color
 
       local widget_children = wibox.layout.fixed.horizontal()
+      local widget_container = wibox.layout.fixed.vertical()
+      widget_container:add(widget_children)
       local indicator =
         wibox.container.background(wibox.container.margin(wibox.widget.textbox(), 0, 0, 3), theme.border_normal .. "00")
 
       if object.selected then
         indicator.bg = theme.primary
-        widget_children:add(wibox.container.constraint(indicator, "exact", 3))
+        widget_container:add(wibox.container.constraint(indicator, "exact", 3))
       end
 
-      widget_children:add(wibox.container.constraint(background_box, "exact", 47))
-      widget:add(widget_children)
+      widget_children:add(wibox.container.constraint(background_box, "exact", 47, 47))
+      widget:add(widget_container)
     end
   end
 end

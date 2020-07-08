@@ -36,8 +36,8 @@ local theme = {
   sidebar_bg = gears.color(
     {
       type = "linear",
-      from = {20, 0},
-      to = {70, 0},
+      from = {0, 20},
+      to = {0, 70},
       stops = {{0, "#1a1a1a"}, {1, "#050505"}}
     }
   ),
@@ -163,7 +163,7 @@ function pad(size)
 end
 
 function bar_widget(w)
-  return background(margin(wibox.container.place(w), 0, 0, 10, 10), theme.sidebar_bg, gears.shape.rectangle)
+  return background(margin(wibox.container.place(w), 10, 10, 0, 0), theme.sidebar_bg, gears.shape.rectangle)
 end
 
 function titlebar_widget(w)
@@ -209,12 +209,12 @@ local toggl_report =
 
 -- System Tray - Systray
 local systray_widget = wibox.widget.systray(true)
-systray_widget:set_horizontal(false)
-systray_widget:set_base_size(16)
-local systray = margin(wibox.container.place(systray_widget), 5, 0, 10, 25)
+systray_widget:set_horizontal(true)
+systray_widget:set_base_size(22)
+local systray = margin(wibox.container.place(systray_widget), 10, 25, 12, 0)
 
 -- Clock
-local clock = bar_widget(wibox.widget.textclock(markup(theme.fg_normal, markup.font("FiraCode Bold 16", "%H\n%M"))))
+local clock = bar_widget(wibox.widget.textclock(markup(theme.fg_normal, markup.font("FiraCode Bold 16", "%H:%M"))))
 
 -- Keyboard
 local keyboard = bar_widget(layout_indicator())
@@ -464,7 +464,7 @@ function widget_button(w, action)
   return wibox.container.place({widget = w, forced_height = 50, forced_width = 50})
 end
 
-local line = wibox.container.background(wibox.container.constraint(text(""), "exact", 50, 3), theme.primary)
+local line = wibox.container.background(wibox.container.constraint(text(""), "exact", 3, 50), theme.primary)
 
 local ping_command = [[bash -c '
   wget -q --spider http://google.com
@@ -497,24 +497,26 @@ gears.timer {
   end
 }
 
-theme.statusbar = function(s, display_systray, top_widget, bg_color)
-  return wibox.container.constraint(
-    wibox.widget {
+theme.statusbar = function(s, display_systray, top_widget, notification_count)
+  return wibox.widget {
       widget = wibox.container.background,
-      bg = bg_color or theme.sidebar_bg,
+      bg = theme.sidebar_bg,
+      shape = function(cr, width, height)
+        gears.shape.rectangle(cr, width, height)
+      end,
       {
-        layout = wibox.layout.align.vertical,
+        layout = wibox.layout.align.horizontal,
         {
           {
-            top_widget or nil,
+            create_button(s.mylayoutbox, nil, true),
             s.mytaglist,
-            layout = wibox.layout.align.vertical
+            layout = wibox.layout.align.horizontal
           },
-          layout = wibox.layout.align.vertical
+          layout = wibox.layout.align.horizontal
         },
         nil,
         {
-          layout = wibox.layout.fixed.vertical,
+          layout = wibox.layout.fixed.horizontal,
           {
             display_systray and systray or nil,
             volume,
@@ -522,15 +524,13 @@ theme.statusbar = function(s, display_systray, top_widget, bg_color)
             bat,
             keyboard,
             clock,
+            notification_count,
             line,
-            layout = wibox.layout.fixed.vertical
+            layout = wibox.layout.fixed.horizontal
           }
         }
       }
-    },
-    "exact",
-    50
-  )
+    }
 end
 
 function create_button(w, action, higher_color, color)
@@ -587,7 +587,7 @@ function theme.at_screen_connect(s)
     filter = awful.widget.taglist.filter.noempty,
     buttons = awful.util.taglist_buttons,
     layout = {
-      layout = wibox.layout.fixed.vertical
+      layout = wibox.layout.fixed.horizontal
     },
     update_function = require("widgets.taglist")(theme)
   }
@@ -606,7 +606,7 @@ function theme.at_screen_connect(s)
   local layoutbox = awful.widget.layoutbox(s)
   layoutbox.forced_height = 16
   layoutbox.forced_width = 16
-  s.mylayoutbox = margin(wibox.container.place(layoutbox), 18, 16, 0, 0)
+  s.mylayoutbox = margin(wibox.container.place(layoutbox), 22, 20, 0, 0)
   s.mylayoutbox:buttons(
     my_table.join(
       awful.button(
@@ -646,16 +646,6 @@ function theme.at_screen_connect(s)
       )
     )
   )
-
-  -- Bar
-  s.mytagbar = awful.wibar({position = "left", screen = s, width = 50, bg = theme.wibar_bg})
-  s.mytagbar:setup {
-    bg = theme.wibar_bg,
-    layout = wibox.layout.align.horizontal,
-    nil,
-    nil,
-    theme.statusbar(s, true)
-  }
 
   -- Task List
   s.mytasklist =
@@ -713,28 +703,39 @@ function theme.at_screen_connect(s)
     end
   )
 
-  s.mytasklistbar = awful.wibar({position = "top", screen = s, height = 45, bg = theme.bg_panel})
-  s.mytasklistbar:setup {
-    layout = wibox.layout.align.horizontal,
-    {
-      create_button(
-        wibox.container.constraint(wibox.container.place(text(icon_string("", 12, true, true))), "exact", 50),
-        function()
-          info_screen_show()
-        end,
-        nil,
-        theme.sidebar_bg
-      ),
-      s.mytasklist,
-      layout = wibox.layout.align.horizontal
-    },
-    nil,
-    {
-      create_button(s.mylayoutbox, nil, true),
-      notification_count,
-      layout = wibox.layout.fixed.horizontal
-    }
+  s.mytagbar_widgets = theme.statusbar(s, true, nil, notification_count)
+  s.mytagbar_margin = wibox.container.margin(
+    s.mytagbar_widgets
+  )
+  -- Bar
+  s.mytagbar = awful.wibar({position = "bottom", screen = s, height = 50, bg = "#ffffff00"})
+  s.mytagbar:setup {
+    layout = wibox.layout.align.vertical,
+    s.mytagbar_margin
   }
+
+  -- s.mytasklistbar = awful.wibar({position = "top", screen = s, height = 45, bg = theme.bg_panel})
+  -- s.mytasklistbar:setup {
+  --   layout = wibox.layout.align.horizontal,
+  --   {
+  --     create_button(
+  --       wibox.container.constraint(wibox.container.place(text(icon_string("", 12, true, true))), "exact", 50),
+  --       function()
+  --         info_screen_show()
+  --       end,
+  --       nil,
+  --       theme.sidebar_bg
+  --     ),
+  --     s.mytasklist,
+  --     layout = wibox.layout.align.horizontal
+  --   },
+  --   nil,
+  --   {
+  --     create_button(s.mylayoutbox, nil, true),
+  --     notification_count,
+  --     layout = wibox.layout.fixed.horizontal
+  --   }
+  -- }
 
   s.mywibox = awful.wibar({position = "bottom", screen = s, height = 45, bg = theme.wibar_bg, visible = false})
 end
@@ -744,7 +745,7 @@ theme.titlebar_fun = function(c)
     awful.titlebar(
     c,
     {
-      size = 40,
+      size = 50,
       position = "top",
       buttons = my_table.join(
         awful.button(
@@ -774,27 +775,24 @@ theme.titlebar_fun = function(c)
       {
         {
           {
-            {
-              -- {
-              widget = awful.titlebar.widget.titlewidget(c)
-              -- },
-              -- widget = wibox.container.rotate,
-              -- direction = "east"
-            },
+            awful.titlebar.widget.titlewidget(c),
             widget = margin,
-            top = 5,
-            bottom = 5,
+            top = 10,
+            bottom = 10,
             left = 8,
             right = 8
           },
           widget = background,
-          bg = theme.widget_bg
+          bg = theme.widget_bg,
+          shape = function(cr, width, height)
+            gears.shape.partially_rounded_rect(cr, width, height, false, true, true, false, 5)
+          end
         },
         layout = wibox.layout.flex.horizontal
       },
       widget = margin,
-      top = 5,
-      bottom = 5
+      top = 10,
+      bottom = 10
     },
     nil,
     {
@@ -806,11 +804,14 @@ theme.titlebar_fun = function(c)
             layout = wibox.layout.fixed.horizontal
           },
           widget = background,
-          bg = theme.widget_bg
+          bg = theme.widget_bg,
+          shape = function(cr, width, height)
+            gears.shape.partially_rounded_rect(cr, width, height, true, false, false, true, 5)
+          end
         },
         widget = margin,
-        top = 5,
-        bottom = 5
+        top = 10,
+        bottom = 10
       },
       layout = wibox.layout.fixed.horizontal
     },
@@ -823,13 +824,13 @@ theme.zen_mode = function(c)
   if s.mytagbar.visible == true then
     s.mytagbar.visible = false
     s.mywibox.bg = theme.wibar_bg
-    s.mytasklistbar.bg = theme.wibar_bg
+    -- s.mytasklistbar.bg = theme.wibar_bg
     awful.screen.focused().selected_tag.gap = 0
     awful.layout.arrange(scr)
   else
     s.mytagbar.visible = true
     s.mywibox.bg = "#241b2f"
-    s.mytasklistbar.bg = "#241b2f"
+    -- s.mytasklistbar.bg = "#241b2f"
     awful.screen.focused().selected_tag.gap = 10
     awful.layout.arrange(scr)
   end

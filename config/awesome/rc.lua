@@ -133,4 +133,4 @@ awful.keygrabber {
 }
 
 require("rules")(keys)
-require("signals")(awesome, screen, client)
+require("signals")(awesome, screen, client, tag)
