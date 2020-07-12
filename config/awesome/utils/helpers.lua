@@ -172,7 +172,7 @@ function helpers.audio.mute()
 end
 
 function helpers.client.border_adjust(c)
-    if c.maximized then
+    if c.maximized or c.class == "albert" then
         c.border_width = 0
     elseif #awful.screen.focused().clients > 1 then
         c.border_width = beautiful.border_width

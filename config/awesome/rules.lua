@@ -111,6 +111,12 @@ return function(keys)
         buttons = {},
         titlebars_enabled = true
       }
+    },
+    {
+      rule_any = {class = {"albert"}},
+      properties = {
+        border_width = 0,
+      }
     }
   }
 

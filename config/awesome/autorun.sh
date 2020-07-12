@@ -23,5 +23,6 @@ run mpd
 run picom -b --config $HOME/.config/picom.conf
 run show-ping.sh
 run polychromatic-tray-applet
+run albert
 
 touch /tmp/started

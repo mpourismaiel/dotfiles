@@ -60,14 +60,7 @@ local theme = {
   hotkeys_border_color = "#252525",
   -- tag list styles
   taglist_fg_focus = "#86848a",
-  taglist_bg_focus = gears.color(
-    {
-      type = "linear",
-      from = {20, 0},
-      to = {70, 0},
-      stops = {{0, "#241b2f66"}, {1, "#050505"}}
-    }
-  ),
+  taglist_bg_focus = "#241b2f66",
   taglist_bg_urgent = "#15151500",
   taglist_fg_urgent = "#ffffff33",
   taglist_font = "Font Awesome 5 Free Solid 12",
@@ -498,6 +491,7 @@ gears.timer {
 }
 
 theme.statusbar = function(s, display_systray, top_widget, notification_count)
+  local fancy_taglist = require("fancy")
   return wibox.widget {
       widget = wibox.container.background,
       bg = theme.sidebar_bg,
@@ -510,6 +504,7 @@ theme.statusbar = function(s, display_systray, top_widget, notification_count)
           {
             create_button(s.mylayoutbox, nil, true),
             s.mytaglist,
+            -- fancy_taglist.new({ screen = s }),
             layout = wibox.layout.align.horizontal
           },
           layout = wibox.layout.align.horizontal
@@ -777,10 +772,10 @@ theme.titlebar_fun = function(c)
           {
             awful.titlebar.widget.titlewidget(c),
             widget = margin,
-            top = 10,
-            bottom = 10,
+            top = 5,
+            bottom = 5,
             left = 8,
-            right = 8
+            right = 12
           },
           widget = background,
           bg = theme.widget_bg,
@@ -791,8 +786,8 @@ theme.titlebar_fun = function(c)
         layout = wibox.layout.flex.horizontal
       },
       widget = margin,
-      top = 10,
-      bottom = 10
+      top = 6,
+      bottom = 6
     },
     nil,
     {

@@ -257,14 +257,14 @@ local globalkeys =
     end,
     {description = "show launcher", group = "awesome"}
   ),
-  awful.key(
-    {modkey},
-    "d",
-    function()
-      info_screen_show(true)
-    end,
-    {description = "show launcher", group = "awesome"}
-  ),
+  -- awful.key(
+  --   {modkey},
+  --   "d",
+  --   function()
+    --   info_screen_show(true)
+  --   end,
+  --   {description = "show launcher", group = "awesome"}
+--   ),
   awful.key(
     {},
     "XF86Calculator",
