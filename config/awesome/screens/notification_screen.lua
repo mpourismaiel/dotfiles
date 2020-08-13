@@ -165,7 +165,7 @@ function notification_screen_hide()
   -- )
   gears.timer {
     autostart = true,
-    timeout = 1,
+    timeout = 0.5,
     callback = function()
       awful.keygrabber.stop(notification_screen_grabber)
     end
@@ -240,7 +240,7 @@ local notification_list =
           widget = constraint,
           strategy = "exact",
           width = 189,
-          height = 48
+          height = 56
         },
         {
           {

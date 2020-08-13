@@ -1,0 +1,34 @@
+#!/bin/bash
+
+## Set login wallpaper
+
+# strip new line char passed by Nautilus
+FILENAME=$(echo $NAUTILUS_SCRIPT_SELECTED_FILE_PATHS | sed -e 's/\r//g')
+
+# Multiple files can't be selected.
+LINE_COUNT=$(wc -l <<< "$NAUTILUS_SCRIPT_SELECTED_FILE_PATHS")
+LINE_COUNT=$((LINE_COUNT-1))
+
+if [[ $LINE_COUNT > 1 ]] ; then
+    zenity --error --text "Ony one file can be selected at a time! "
+    exit 1
+fi
+
+# Object type must be "file..." (ie no directories, etc.)
+if [ -d "${FILENAME}" ] ; then
+    zenity --error --text "$FILENAME is a directory!";
+    exit 1
+else
+    if [ -f "${FILENAME}" ]; then
+        : # Bash noop
+    else
+        zenity --error --text "${FILENAME} is not a file!";
+        exit 2
+    fi
+fi
+
+NEWNAME="$HOME/.cache/lockscreen_wallpaper.jpg"
+convert $FILENAME -resize 1920x1080 $NEWNAME
+rm $HOME/.cache/wallpaper-lock
+echo $NEWNAME >> $HOME/.cache/wallpaper-lock
+awesome-client "awesome.emit_signal('awesome::update_wallpaper')"

@@ -554,16 +554,22 @@ function create_button(w, action, higher_color, color)
   return w
 end
 
+function set_wallpaper()
+  awful.spawn.easy_async_with_shell("cat " .. os.getenv("HOME") .. "/.cache/wallpaper", function(stdout)
+    gears.wallpaper.maximized(string.gsub(stdout, "^%s*(.-)%s*$", "%1"), nil, true)
+  end)
+end
+
+awesome.connect_signal("awesome::update_wallpaper", function()
+  set_wallpaper()
+end)
+
 function theme.at_screen_connect(s)
   local screen_width = s.geometry.width
   local screen_height = s.geometry.height
 
   -- If wallpaper is a function, call it with the screen
-  local wallpaper = theme.wallpaper
-  if type(wallpaper) == "function" then
-    wallpaper = wallpaper(s)
-  end
-  gears.wallpaper.maximized(wallpaper, s, true)
+  set_wallpaper()
 
   -- Tag List
   for index, tag in pairs(awful.util.tags) do
