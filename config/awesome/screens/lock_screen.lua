@@ -525,33 +525,37 @@ function action_screen_toggle(state, screen)
         end
       }
     else
-      local s = awful.screen.focused()
-      local screen_width = s.geometry.width
-      local screen_height = s.geometry.height
+      awful.spawn.easy_async_with_shell("cat " .. os.getenv("HOME") .. "/.cache/wallpaper-lock", function(stdout)
+        local wallpaper = string.gsub(stdout, "^%s*(.-)%s*$", "%1")
 
-      action_screen =
-        wibox(
-        {
-          x = 0,
-          y = 0,
-          opacity = 0,
-          visible = true,
-          ontop = true,
-          screen = s,
-          type = "dock",
-          height = screen_height,
-          width = screen_width,
-          bgimage = awful.util.wallpaper.lockscreen
-        }
-      )
+        local s = awful.screen.focused()
+        local screen_width = s.geometry.width
+        local screen_height = s.geometry.height
 
-      if screen == "lock" then
-        lock_screen_show()
-      else
-        exit_screen_show()
-      end
+        action_screen =
+          wibox(
+          {
+            x = 0,
+            y = 0,
+            opacity = 0,
+            visible = true,
+            ontop = true,
+            screen = s,
+            type = "dock",
+            height = screen_height,
+            width = screen_width,
+            bgimage = wallpaper
+          }
+        )
 
-      createAnimObject(3, action_screen, {opacity = 1}, "outCubic")
+        if screen == "lock" then
+          lock_screen_show()
+        else
+          exit_screen_show()
+        end
+
+        createAnimObject(3, action_screen, {opacity = 1}, "outCubic")
+      end)
     end
   end
 end
