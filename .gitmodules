@@ -16,3 +16,6 @@
 [submodule "config/awesome/widgets/awesome-switcher"]
 	path = config/awesome/widgets/awesome-switcher
 	url = https://github.com/berlam/awesome-switcher.git
+[submodule "zsh/zsh.d/plugins/autosrc"]
+	path = zsh/zsh.d/plugins/autosrc
+	url = git@github.com:seanyeh/autosrc.git

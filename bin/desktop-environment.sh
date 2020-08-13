@@ -9,10 +9,12 @@ echo "HOW MANY CONNECTED?"
 echo $IS_HDMI_CONNECTED
 if [ $IS_HDMI_CONNECTED -eq 1 ]; then
   echo "Initiating second screen"
-  /usr/bin/sh "$HOME/.screenlayout/single-screen-second-full-hd.sh"
+  sh "$HOME/.screenlayout/single-screen-second-full-hd.sh"
+  sed -i 's/size: 9.5/size: 11.5/g' $HOME/.config/alacritty/alacritty.yml
 else
   echo "Initiating builtin screen"
-  /usr/bin/sh "$HOME/.screenlayout/single-screen-full-hd.sh"
+  sh "$HOME/.screenlayout/single-screen-full-hd.sh"
+  sed -i 's/size: 11.5/size: 9.5/g' $HOME/.config/alacritty/alacritty.yml
 fi
 
 sleep 0.5
