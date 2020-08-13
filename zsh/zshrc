@@ -1,11 +1,12 @@
 ## PATHs
+export JAVA_HOME="/usr/lib/jvm/java-14-openjdk"
 export GOPATH="$HOME/go"
 export GOBIN="$GOPATH/bin"
 export GO111MODULE=on
 export ANDROID_HOME=$HOME/Android/Sdk
 export YARN_BIN=$HOME/.config/yarn/global/node_modules/.bin
 
-export PATH="$PATH:$YARN_BIN:$ANDROID_HOME/emulator:$ANDROID_HOME/tools:$ANDROID_HOME/tools/bin:$ANDROID_HOME/platform-tools:$GOPATH:$HOME/bin:$GOBIN:$HOME/.gem/ruby/2.5.0/bin:$HOME/.gem/ruby/2.6.0/bin:/usr/lib/ruby/2.6.0"
+export PATH="$PATH:$YARN_BIN:$JAVA_HOME/bin:$ANDROID_HOME/emulator:$ANDROID_HOME/tools:$ANDROID_HOME/tools/bin:$ANDROID_HOME/platform-tools:$GOPATH:$HOME/bin:$GOBIN:$HOME/.gem/ruby/2.5.0/bin:$HOME/.gem/ruby/2.6.0/bin:/usr/lib/ruby/2.6.0"
 
 ## Options section
 setopt correct                                                  # Auto correct mistakes
@@ -184,6 +185,7 @@ source $HOME/.zsh.d/plugins/cdc/cdc.plugin.zsh
 source $HOME/.zsh.d/plugins/zsh-ing/ing.plugin.zsh
 source $HOME/.zsh.d/plugins/zsh-tab-title/title.plugin.zsh
 source $HOME/.zsh.d/plugins/forgit/forgit.plugin.zsh
+source $HOME/.zsh.d/plugins/autosrc/autosrc.zsh
 
 source $HOME/.zsh.d/functions/general.zsh
 source $HOME/.zsh.d/functions/hugo.zsh
@@ -219,3 +221,9 @@ source ~/.zsh.d/themes/powerlevel10k/powerlevel10k.zsh-theme
 
 precmd () { print -Pn "\e]0;${USER}@${HOST%%.*}: $(pwd)\a" }
 title() { export TITLE="$*" }
+
+###-tns-completion-start-###
+if [ -f /home/mahdi/.tnsrc ]; then 
+    source /home/mahdi/.tnsrc 
+fi
+###-tns-completion-end-###

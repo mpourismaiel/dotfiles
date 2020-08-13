@@ -2,6 +2,7 @@ local awesome, client, mouse, screen, tag = awesome, client, mouse, screen, tag
 local ipairs, string, os, table, tostring, tonumber, type = ipairs, string, os, table, tostring, tonumber, type
 
 local awful = require("awful")
+local wibox = require("wibox")
 local gears = require("gears")
 local beautiful = require("beautiful")
 local naughty = require("naughty")

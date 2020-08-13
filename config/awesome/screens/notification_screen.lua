@@ -288,7 +288,7 @@ close_button:buttons(
       {},
       1,
       function()
-        notification_screen_hide()
+        naughty.destroy_all_notifications()
       end
     )
   )

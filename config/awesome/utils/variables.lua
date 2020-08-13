@@ -1,5 +1,6 @@
 local awful = require("awful")
 local naughty = require("naughty")
+local gears = require("gears")
 local os = os
 
 awful.util.modkey = "Mod4"
@@ -7,9 +8,8 @@ awful.util.altkey = "Mod1"
 awful.util.terminal = "alacritty"
 
 awful.util.wallpaper = {
-  desktop = os.getenv("HOME") .. "/Pictures/Wallpapers/world-of-warcraft-battle-for-azeroth-teldrassil.jpg",
-  lockscreen = os.getenv("HOME") ..
-    "/Pictures/Wallpapers/world-of-warcraft-battle-for-azeroth-teldrassil-tree-burning.jpg"
+  desktop = os.getenv("HOME") .. "/Pictures/Wallpapers/shooting-star-wallpaper.png",
+  lockscreen = os.getenv("HOME") .. "/Pictures/Wallpapers/shooting-star-wallpaper.png"
 }
 
 naughty.config.padding = 20
