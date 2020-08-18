@@ -91,6 +91,10 @@ return function(keys)
       }
     },
     {
+      rule = {class = "Steam"},
+      properties = {titlebars_enabled = false}
+    },
+    {
       rule = {class = "TelegramDesktop"},
       properties = {screen = 1, tag = awful.util.tagnames[5]}
     },
@@ -115,7 +119,7 @@ return function(keys)
     {
       rule_any = {class = {"albert"}},
       properties = {
-        border_width = 0,
+        border_width = 0
       }
     }
   }

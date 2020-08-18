@@ -25,15 +25,7 @@ return function(awesome, screen, client, tag)
   screen.connect_signal(
     "property::geometry",
     function(s)
-      -- Wallpaper
-      if beautiful.wallpaper then
-        local wallpaper = beautiful.wallpaper
-        -- If wallpaper is a function, call it with the screen
-        if type(wallpaper) == "function" then
-          wallpaper = wallpaper(s)
-        end
-        gears.wallpaper.maximized(wallpaper, s, true)
-      end
+      beautiful.set_wallpaper()
     end
   )
 
@@ -58,13 +50,13 @@ return function(awesome, screen, client, tag)
     end
   )
 
-  client.connect_signal(
-    "mouse::enter",
-    function(c)
-      -- Enable sloppy focus, so that focus follows mouse.
-      c:emit_signal("request::activate", "mouse_enter", {raise = true})
-    end
-  )
+  -- client.connect_signal(
+  --   "mouse::enter",
+  --   function(c)
+  --     -- Enable sloppy focus, so that focus follows mouse.
+  --     c:emit_signal("request::activate", "mouse_enter", {raise = true})
+  --   end
+  -- )
 
   client.connect_signal(
     "property::maximized",

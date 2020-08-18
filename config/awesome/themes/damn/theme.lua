@@ -459,7 +459,8 @@ end
 
 local line = wibox.container.background(wibox.container.constraint(text(""), "exact", 3, 50), theme.primary)
 
-local ping_command = [[bash -c '
+local ping_command =
+  [[bash -c '
   wget -q --spider http://google.com
 
   if [ $? -eq 0 ]; then
@@ -493,39 +494,40 @@ gears.timer {
 theme.statusbar = function(s, display_systray, top_widget, notification_count)
   local fancy_taglist = require("fancy")
   return wibox.widget {
-      widget = wibox.container.background,
-      bg = theme.sidebar_bg,
-      shape = function(cr, width, height)
-        gears.shape.rectangle(cr, width, height)
-      end,
+    widget = wibox.container.background,
+    bg = theme.sidebar_bg,
+    shape = function(cr, width, height)
+      gears.shape.rectangle(cr, width, height)
+    end,
+    {
+      layout = wibox.layout.align.horizontal,
       {
-        layout = wibox.layout.align.horizontal,
         {
-          {
-            create_button(s.mylayoutbox, nil, true),
-            s.mytaglist,
-            -- fancy_taglist.new({ screen = s }),
-            layout = wibox.layout.align.horizontal
-          },
+          create_button(s.mylayoutbox, nil, true),
+          s.mytaglist,
+          -- fancy_taglist.new({ screen = s }),
           layout = wibox.layout.align.horizontal
         },
-        nil,
+        layout = wibox.layout.align.horizontal
+      },
+      nil,
+      {
+        layout = wibox.layout.fixed.horizontal,
         {
-          layout = wibox.layout.fixed.horizontal,
-          {
-            display_systray and systray or nil,
-            volume,
-            supports_backlight,
-            bat,
-            keyboard,
-            clock,
-            notification_count,
-            line,
-            layout = wibox.layout.fixed.horizontal
-          }
+          display_systray and systray or nil,
+          volume,
+          supports_backlight,
+          bat,
+          keyboard,
+          -- mynetworklauncher,
+          clock,
+          notification_count,
+          line,
+          layout = wibox.layout.fixed.horizontal
         }
       }
     }
+  }
 end
 
 function create_button(w, action, higher_color, color)
@@ -555,14 +557,22 @@ function create_button(w, action, higher_color, color)
 end
 
 function set_wallpaper()
-  awful.spawn.easy_async_with_shell("cat " .. os.getenv("HOME") .. "/.cache/wallpaper", function(stdout)
-    gears.wallpaper.maximized(string.gsub(stdout, "^%s*(.-)%s*$", "%1"), nil, true)
-  end)
+  awful.spawn.easy_async_with_shell(
+    "cat " .. os.getenv("HOME") .. "/.cache/wallpaper",
+    function(stdout)
+      gears.wallpaper.maximized(string.gsub(stdout, "^%s*(.-)%s*$", "%1"), nil, true)
+    end
+  )
 end
 
-awesome.connect_signal("awesome::update_wallpaper", function()
-  set_wallpaper()
-end)
+theme.set_wallpaper = set_wallpaper
+
+awesome.connect_signal(
+  "awesome::update_wallpaper",
+  function()
+    set_wallpaper()
+  end
+)
 
 function theme.at_screen_connect(s)
   local screen_width = s.geometry.width
@@ -705,9 +715,7 @@ function theme.at_screen_connect(s)
   )
 
   s.mytagbar_widgets = theme.statusbar(s, true, nil, notification_count)
-  s.mytagbar_margin = wibox.container.margin(
-    s.mytagbar_widgets
-  )
+  s.mytagbar_margin = wibox.container.margin(s.mytagbar_widgets)
   -- Bar
   s.mytagbar = awful.wibar({position = "bottom", screen = s, height = 50, bg = "#ffffff00"})
   s.mytagbar:setup {
@@ -746,7 +754,7 @@ theme.titlebar_fun = function(c)
     awful.titlebar(
     c,
     {
-      size = 50,
+      size = 40,
       position = "top",
       buttons = my_table.join(
         awful.button(
@@ -773,46 +781,29 @@ theme.titlebar_fun = function(c)
 
   theme.mytitlebar:setup {
     {
-      {
-        {
-          {
-            awful.titlebar.widget.titlewidget(c),
-            widget = margin,
-            top = 5,
-            bottom = 5,
-            left = 8,
-            right = 12
-          },
-          widget = background,
-          bg = theme.widget_bg,
-          shape = function(cr, width, height)
-            gears.shape.partially_rounded_rect(cr, width, height, false, true, true, false, 5)
-          end
-        },
-        layout = wibox.layout.flex.horizontal
-      },
+      awful.titlebar.widget.titlewidget(c),
       widget = margin,
-      top = 6,
-      bottom = 6
+      top = 5,
+      bottom = 5,
+      left = 16,
+      right = 12
     },
     nil,
     {
       {
         {
-          {
-            titlebar_widget(awful.titlebar.widget.maximizedbutton(c)),
-            titlebar_widget(awful.titlebar.widget.closebutton(c)),
-            layout = wibox.layout.fixed.horizontal
-          },
-          widget = background,
-          bg = theme.widget_bg,
-          shape = function(cr, width, height)
-            gears.shape.partially_rounded_rect(cr, width, height, true, false, false, true, 5)
-          end
+          titlebar_widget(awful.titlebar.widget.maximizedbutton(c)),
+          widget = margin,
+          top = 5,
+          bottom = 5
         },
-        widget = margin,
-        top = 10,
-        bottom = 10
+        {
+          titlebar_widget(awful.titlebar.widget.closebutton(c)),
+          widget = margin,
+          top = 5,
+          bottom = 5
+        },
+        layout = wibox.layout.fixed.horizontal
       },
       layout = wibox.layout.fixed.horizontal
     },
