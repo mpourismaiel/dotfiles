@@ -24,5 +24,6 @@ run picom -b --config $HOME/.config/picom.conf
 run show-ping.sh
 run polychromatic-tray-applet
 run albert
+run node $HOME/Documents/Projects/network-manager/index.js
 
 touch /tmp/started

@@ -44,7 +44,9 @@ local function create_buttons(buttons, object)
   end
 end
 
-local function tasklist(widget, buttons, label, data, objects)
+local tasklist = {}
+
+function tasklist.tasks(widget, buttons, label, data, objects)
   -- update the widgets, creating them if needed
   widget:reset()
   for i, object in ipairs(objects) do
@@ -52,44 +54,44 @@ local function tasklist(widget, buttons, label, data, objects)
     args = args or {}
 
     local cache = data[object]
-    local iconbox, icon_box_container, indicator, bg_clickable_background, bg_clickable
+    local title, title_container, indicator, bg_clickable_background, bg_clickable
 
     if cache then
-      iconbox = cache.iconbox
-      icon_box_container = cache.icon_box_container
+      title = cache.title
+      title_container = cache.title_container
       bg_clickable = cache.bg_clickable
       indicator = cache.indicator
       bg_clickable_background = cache.bg_clickable_background
     else
-      iconbox = wibox.widget.imagebox()
-      icon_box_container = constraint(margin(iconbox, 10, 10, 10, 10), "exact", 50, 47)
-      icon_box_container:buttons(create_buttons(buttons, object))
+      title = wibox.widget.textbox()
+      title_container = constraint(margin(title, 10, 10, 10, 10), "exact", 200, 40)
 
       bg_clickable = clickable_container()
-      bg_clickable:set_widget(icon_box_container)
+      bg_clickable:set_widget(title_container)
 
-      indicator = background(constraint(wibox.widget.textbox(), "exact", 4, 4), bg, gears.shape.circle)
+      indicator = background(constraint(wibox.widget.textbox(), "exact", 200, 3), bg)
 
       bg_clickable_background = background()
       bg_clickable_background:set_widget(
         wibox.widget {
           bg_clickable,
-          margin(place(indicator, "center", "bottom"), 0, 0, 0, 3),
+          place(indicator, "center", "bottom"),
           layout = wibox.layout.stack
         }
       )
+      bg_clickable_background:buttons(create_buttons(buttons, object))
 
       data[object] = {
-        iconbox = iconbox,
-        icon_box_container = icon_box_container,
+        title = title,
+        title_container = title_container,
         bg_clickable = bg_clickable,
         indicator = indicator,
         bg_clickable_background = bg_clickable_background
       }
     end
 
-    if icon then
-      iconbox.image = icon
+    if text then
+      title:set_markup(text)
     end
 
     bg_clickable_background:set_bg(bg)
@@ -117,5 +119,25 @@ local function tasklist(widget, buttons, label, data, objects)
     widget:add(bg_clickable_background)
   end
 end
+
+tasklist.wibar =
+  awful.wibar({position = "top", screen = s, type = "dock", height = 40, bg = "#ff0000", visible = false})
+
+tasklist.widgets = {
+  layout = wibox.layout.flex.horizontal,
+  background(
+    {
+      layout = wibox.layout.fixed.horizontal,
+      awful.widget.tasklist {
+        screen = awful.screen.focused(),
+        filter = awful.widget.tasklist.filter.currenttags,
+        buttons = awful.util.tasklist_buttons,
+        layout = {layout = wibox.layout.fixed.horizontal},
+        update_function = tasklist.tasks
+      }
+    },
+    "#1f1f1f"
+  )
+}
 
 return tasklist

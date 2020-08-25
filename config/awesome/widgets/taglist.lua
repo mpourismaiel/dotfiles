@@ -33,70 +33,49 @@ local function create_buttons(buttons, object)
   end
 end
 
+local icon_dir = os.getenv("HOME") .. "/.config/awesome/themes/icons"
 local function taglist(theme)
   return function(widget, buttons, label, data, objects)
     -- update the widgets, creating them if needed
     widget:reset()
     for i, object in ipairs(objects) do
       local cache = data[object]
-      local textbox, background_box, textbox_container, widget_layout, bg_clickable
+
+      local text, bg = label(object)
+      local circle
       if cache then
-        textbox = cache.textbox
-        background_box = cache.background_box
-        textbox_container = cache.textbox_container
+        circle = cache.circle
+        main_circle = cache.main_circle
       else
-        textbox = wibox.widget.textbox()
-        background_box = wibox.container.background()
-        textbox_container = wibox.container.margin(wibox.container.place(textbox), 0, 0, 16, 16)
-        widget_layout = wibox.layout.fixed.horizontal()
-        bg_clickable = clickable_container()
-
-        -- All of this is added in a fixed widget
-        widget_layout:fill_space(true)
-        widget_layout:add(textbox_container)
-        bg_clickable:set_widget(widget_layout)
-
-        -- And all of this gets a background
-        background_box:set_widget(bg_clickable)
-
-        background_box:buttons(create_buttons(buttons, object))
-
+        main_circle = wibox.container.background(
+          wibox.container.margin(wibox.widget.textbox(' '), 3, 3, 3, 3),
+          bg,
+          function(cr, width, height)
+            return gears.shape.circle(cr, width - 1, height - 1)
+          end
+        )
+        circle = wibox.container.background(
+          wibox.container.margin(main_circle, 1, 0, 1),
+          theme.taglist_border,
+          function(cr, width, height)
+            return gears.shape.circle(cr, width, height)
+          end
+        )
         data[object] = {
-          textbox = textbox,
-          background_box = background_box,
-          textbox_container = textbox_container
+          circle = circle,
+          main_circle = main_circle,
         }
       end
 
-      local text, bg, args = label(object, textbox)
-      args = args or {}
-      -- The text might be invalid, so use pcall.
-      if text == nil or text == "" then
-        textbox_container:set_margins(0)
-      else
-        if not textbox:set_markup_silently(text) then
-          textbox:set_markup("<i>&lt;Invalid text&gt;</i>")
-        end
-      end
-
-      background_box:set_bg(bg)
-      background_box.shape = args.shape
-      background_box.shape_border_width = args.shape_border_width
-      background_box.shape_border_color = args.shape_border_color
-
-      local widget_children = wibox.layout.fixed.horizontal()
-      local widget_container = wibox.layout.fixed.vertical()
-      widget_container:add(widget_children)
-      local indicator =
-        wibox.container.background(wibox.container.margin(wibox.widget.textbox(), 0, 0, 3), theme.border_normal .. "00")
-
+      main_circle.bg = bg
       if object.selected then
-        indicator.bg = theme.primary
-        widget_container:add(wibox.container.constraint(indicator, "exact", 3))
+        circle.bg = "#FC438433"
+      else
+        circle.bg = theme.taglist_border
       end
-
-      widget_children:add(wibox.container.constraint(background_box, "exact", 47, 47))
-      widget:add(widget_container)
+      local tag_widget = wibox.container.margin(circle, 4, 4)
+      tag_widget:buttons(create_buttons(buttons, object))
+      widget:add(tag_widget)
     end
   end
 end

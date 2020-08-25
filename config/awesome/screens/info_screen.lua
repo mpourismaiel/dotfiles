@@ -3,6 +3,7 @@ local gears = require("gears")
 local wibox = require("wibox")
 local beautiful = require("beautiful")
 local naughty = require("naughty")
+local lain = require("lain")
 local http = require("socket.http")
 local json = require("json")
 local ltn12 = require("ltn12")
@@ -18,7 +19,7 @@ local createAnimObject = require("utils.animation").createAnimObject
 local margin = wibox.container.margin
 local background = wibox.container.background
 local text = wibox.widget.textbox
-local icon = awful.util.theme_functions.icon_fn()
+local icon = awful.util.theme_functions.colored_icon()
 local font = awful.util.theme_functions.font_fn
 
 local info_screen =
@@ -148,8 +149,8 @@ function widget_info(w1, w2, w3)
 end
 
 function widget_button(w, action)
-  local bg_normal = awful.util.theme_functions.widget_bg .. "00"
-  local bg_hover = awful.util.theme_functions.widget_bg .. "ff"
+  local bg_normal = awful.util.theme.widget_bg .. "00"
+  local bg_hover = awful.util.theme.widget_bg .. "ff"
 
   w = background(w, bg_normal)
   w:connect_signal(
@@ -171,30 +172,57 @@ function widget_button(w, action)
   return w
 end
 
+local cpu_fn = function(format)
+  return lain.widget.cpu(
+    {
+      settings = function()
+        widget:set_markup(
+          format and format(awful.util.theme_functions.icon_string({ icon = "", size = 9, font = "Font Awesome 5 Pro" }), cpu_now.usage) or
+            (awful.util.theme_functions.icon_string({ icon = "" }) .. pad(1) .. font(cpu_now.usage .. "%"))
+        )
+      end
+    }
+  )
+end
+
 local cpu =
   widget_info(
-  awful.util.theme_functions.cpu(
+  cpu_fn(
     function(ic, usage)
       return markup(beautiful.white, ic .. theme_pad(3) .. "CPU")
     end
   ),
   nil,
-  awful.util.theme_functions.cpu(
+  cpu_fn(
     function(_, usage)
       return usage .. "%"
     end
   )
 )
 
+local mem_fn = function(format)
+  return lain.widget.mem(
+    {
+      timeout = 1,
+      settings = function()
+        widget:set_markup(
+          format and format(awful.util.theme_functions.icon_string({ icon = "", size = 9, font = "Font Awesome 5 Pro" }), mem_now.perc) or
+            (awful.util.theme_functions.icon_string({ icon = "", size = 9, font = "Font Awesome 5 Pro" }) .. pad(1) .. font(mem_now.perc .. "%"))
+        )
+      end
+    }
+  )
+end
+
 local mem =
   widget_info(
-  awful.util.theme_functions.mem(
+  mem_fn(
     function(ic, usage)
       return markup(beautiful.white, ic .. theme_pad(3) .. "Memory")
     end
   ),
   nil,
-  awful.util.theme_functions.mem(
+  mem_fn(
     function(_, usage)
       return usage .. "%"
     end
@@ -202,10 +230,10 @@ local mem =
 )
 
 local root_used = text()
-local fs_root_used = widget_info(icon("", 10, true, true), text(markup("#FFFFFF", theme_pad(3) .. "/")), root_used)
+local fs_root_used = widget_info(icon({ icon = "", font = "Font Awesome 5 Pro" }), text(markup("#FFFFFF", theme_pad(3) .. "/")), root_used)
 
 local home_used = text()
-local fs_home_used = widget_info(icon("", 10, true, true), text(markup("#FFFFFF", theme_pad(3) .. "/Home")), home_used)
+local fs_home_used = widget_info(icon({ icon = "", font = "Font Awesome 5 Pro" }), text(markup("#FFFFFF", theme_pad(3) .. "/Home")), home_used)
 
 for _, s in ipairs {{partition = "sdb3", widget = root_used}, {partition = "sdb4", widget = home_used}} do
   awful.widget.watch(
@@ -218,7 +246,7 @@ for _, s in ipairs {{partition = "sdb3", widget = root_used}, {partition = "sdb4
 end
 
 local uptime = text()
-local uptime_widget = widget_info(icon("", 10, true, true), text(markup("#FFFFFF", theme_pad(3) .. "Uptime")), uptime)
+local uptime_widget = widget_info(icon({ icon = "", font = "Font Awesome 5 Pro" }), text(markup("#FFFFFF", theme_pad(3) .. "Uptime")), uptime)
 
 awful.widget.watch(
   'bash -c "uptime | grep -ohe \'up .*\' | sed \'s/,//g\' | awk \'{ print $2 }\'"',
@@ -239,7 +267,7 @@ local packages_number =
 )
 
 local packages =
-  widget_info(icon("", 10, true, true), text(markup("#FFFFFF", theme_pad(3) .. "New Updates")), packages_number)
+  widget_info(icon({ icon = "", font = "Font Awesome 5 Pro" }), text(markup("#FFFFFF", theme_pad(3) .. "New Updates")), packages_number)
 packages:buttons(
   awful.util.table.join(
     awful.button(
@@ -255,14 +283,14 @@ packages:buttons(
 local network_connectivity = text("Not Connected")
 
 local network =
-  widget_info(icon("", 10, true, true), margin(text(markup("#FFFFFF", "Network")), 20), network_connectivity)
+  widget_info(icon({ icon = "", font = "Font Awesome 5 Pro" }), margin(text(markup("#FFFFFF", "Network")), 20), network_connectivity)
 
 gears.timer {
   timeout = 5,
   autostart = true,
   callnow = true,
   callback = function()
-    if awful.util.theme_functions.is_network_connected == true then
+    if awful.util.variables.is_network_connected == true then
       network_connectivity:set_markup("Connected")
     else
       network_connectivity:set_markup("Not Connected")
@@ -273,7 +301,7 @@ gears.timer {
 local system_information_collapse_icon = text("")
 local system_information_title =
   widget_info(
-  icon("", 10, true, true),
+  icon({ icon = "", font = "Font Awesome 5 Pro" }),
   text(markup("#FFFFFF", theme_pad(3) .. "System")),
   system_information_collapse_icon
 )
@@ -296,18 +324,21 @@ local system_information_collapse =
   0
 )
 
+local system_information_collapsed = true
 system_information_title:buttons(
   awful.util.table.join(
     awful.button(
       {},
       1,
       function()
-        if system_information_collapse.height == 0 then
+        if system_information_collapsed == true then
           system_information_collapse.height = 190
           system_information_collapse_icon:set_markup("")
-        elseif system_information_collapse.height == 140 then
+          system_information_collapsed = false
+        elseif system_information_collapsed == false then
           system_information_collapse.height = 0
           system_information_collapse_icon:set_markup("")
+          system_information_collapsed = true
         end
       end
     )
@@ -321,7 +352,32 @@ local system_information =
   system_information_collapse
 }
 
-local sound_output_icon = icon("", 10, true, true)
+local clipboard =
+  require("widgets/damn/clipboard")(
+  function(widget, data, items)
+    widget:reset()
+    for _, item in ipairs(items) do
+      local clipboard_icon = icon({ icon = "", font = "Font Awesome 5 Pro" })
+      local clipboard_text = text(markup("#FFFFFF", theme_pad(3) .. item.input))
+      local clipboard_container =
+        widget_button(
+        widget_info(clipboard_icon, clipboard_text, nil),
+        function()
+          awful.spawn.easy_async(
+            string.format("curl http://localhost:9102/copy/%s", item.id),
+            function(stdout, stderr, reason, exit_code)
+              naughty.notification {message = "Copied to clipboard!"}
+            end
+          )
+        end
+      )
+
+      widget:add(clipboard_container)
+    end
+  end
+)
+
+local sound_output_icon = icon({ icon = "", font = "Font Awesome 5 Pro" })
 local sound_output_text = text(markup("#FFFFFF", theme_pad(3) .. "Output: Local"))
 local sound_output =
   widget_button(
@@ -344,7 +400,7 @@ awful.spawn.easy_async(
   end
 )
 
-local github_icon = icon("", 10, true, true)
+local github_icon = icon({ icon = "", font = "Font Awesome 5 Pro" })
 local github_text = text(markup("#FFFFFF", theme_pad(3) .. "Github Notifications"))
 local github_notifications = text(markup("#FFFFFF", theme_pad(3) .. "Loading notifications"))
 local github =
@@ -363,7 +419,7 @@ if awful.util.theme_functions.set_github_listener then
   )
 end
 
-local toggl_icon = icon("", 10, true, true)
+local toggl_icon = icon({ icon = "", font = "Font Awesome 5 Pro" })
 local toggl_text = text(markup("#FFFFFF", theme_pad(3) .. "Toggl"))
 local toggl_active = text(markup("#FFFFFF", theme_pad(3) .. "Loading active task"))
 local toggl =
@@ -392,17 +448,25 @@ awful.widget.watch(
   end
 )
 
-local toggl_reports_icon = icon("", 10, true, true)
+local toggl_reports_icon = icon({ icon = "", font = "Font Awesome 5 Pro" })
 local toggl_reports_text = text(markup("#FFFFFF", theme_pad(3) .. "Reports"))
 local toggl_reports = widget_info(toggl_reports_icon, toggl_reports_text, text())
 
-local toggl_syna_icon = icon("", 10, true, true)
+local toggl_syna_icon = icon({ icon = "", font = "Font Awesome 5 Pro" })
 local toggl_syna_text = text(markup("#FFFFFF", theme_pad(3) .. "Syna"))
 local toggl_syna_active = text(markup("#FFFFFF", theme_pad(3) .. "Loading Report"))
-local toggl_syna_reload = icon("", 10, true, true)
+local toggl_syna_reload = icon({ icon = "", font = "Font Awesome 5 Pro" })
 local toggl_syna =
   widget_button(
-  widget_info(toggl_syna_icon, toggl_syna_text, wibox.widget {toggl_syna_active, wibox.container.margin(toggl_syna_reload, 10), layout = wibox.layout.fixed.horizontal}),
+  widget_info(
+    toggl_syna_icon,
+    toggl_syna_text,
+    wibox.widget {
+      toggl_syna_active,
+      wibox.container.margin(toggl_syna_reload, 10),
+      layout = wibox.layout.fixed.horizontal
+    }
+  ),
   function()
     awful.spawn.with_shell("google-chrome-beta https://www.toggl.com/app/reports/summary/2623050")
   end
@@ -427,95 +491,12 @@ end
 fetch_toggle_syna()
 toggl_syna_reload:buttons(my_table.join(awful.button({}, 1, fetch_toggle_syna)))
 
-local feedly = text()
-local feedly_timer = gears.timer({timeout = 3600})
-
-local resp = {}
-feedly_timer:connect_signal(
-  "timeout",
-  function()
-    local result, status =
-      http.request {
-      method = "GET",
-      url = "https://cloud.feedly.com/v3/streams/contents?streamId=" ..
-        secrets.feedly_stream .. "&count=20&unreadOnly=true&ranked=newest",
-      headers = {
-        Authorization = "Bearer " .. secrets.feedly
-      },
-      sink = ltn12.sink.table(resp)
-    }
-    if (status == 200) then
-      resp_json = json.decode(table.concat(resp))
-      gears.debug.dump(resp_json)
-    end
-  end
-)
--- feedly_timer:start()
--- feedly_timer:emit_signal("timeout")
-
-local clipboard_buttons =
-  awful.util.table.join(
-  awful.button(
-    {},
-    1,
-    function()
-      awful.spawn.easy_async(
-        string.format("curl http://localhost:9102/copy/%s", item.id),
-        function(stdout, stderr, reason, exit_code)
-          naughty.notification {message = "Copied to clipboard!"}
-        end
-      )
-      info_screen_hide()
-    end
-  )
-)
-
--- local clipboard_widget_template = widget_info(text(), text(string.gsub(item.input, "^%s*(.-)%s*$", "%1")), text())
-
-local clipboard_timer = gears.timer({timeout = 5})
-local clipboard_items_widget =
-  wibox.widget {
-  layout = wibox.layout.fixed.vertical
-}
-local clipboard_widgets = {
-  layout = wibox.layout.fixed.vertical,
-  margin(pad(0), 0, 0, 0, 16),
-  background(margin(title("Clipboard"), 40, 40, 10, 10), "#1c1c1c"),
-  margin(pad(0), 0, 0, 0, 16),
-  clipboard_items_widget
-}
-local clipboard = wibox.widget(clipboard_widgets)
-
-local resp = {}
-clipboard_timer:connect_signal(
-  "timeout",
-  function()
-    local result, status =
-      http.request {
-      method = "GET",
-      url = "http://localhost:9102/read/3/40",
-      sink = ltn12.sink.table(resp)
-    }
-    if (status == 200) then
-      resp_json = json.decode(table.concat(resp))
-
-      clipboard_items_widget:reset()
-      for _, item in ipairs(resp_json) do
-        clipboard_items_widget:add(w)
-      end
-    end
-  end
-)
-
--- clipboard_timer:start()
--- clipboard_timer:emit_signal("timeout")
-
-local power_button = background(margin(title(icon("", 12, true, true, true) .. " Power"), 40, 40, 20, 20), "#1c1c1c")
+local power_button = background(margin(title(icon({ icon = "", font = "Font Awesome 5 Pro" }, true) .. " Power"), 40, 40, 20, 20), "#1c1c1c")
 
 power_button:connect_signal(
   "mouse::enter",
   function()
-    power_button.bg = awful.util.theme_functions.widget_bg
+    power_button.bg = awful.util.theme.widget_bg
   end
 )
 
@@ -558,15 +539,12 @@ local widgets = {
       packages,
       network,
       system_information,
-      -- background(margin(text('hello'), 40, 40, 10, 10), "#ff0000"),
       margin(pad(0), 0, 0, 0, 32),
-      -- background(margin(title("Feed"), 40, 40, 10, 10), '#050505'),
-      -- margin(pad(0), 0, 0, 0, 16),
-      -- feedly,
-      -- margin(pad(0), 0, 0, 0, 32),
       background(margin(title("Settings"), 40, 40, 10, 10), "#1c1c1c"),
       margin(pad(0), 0, 0, 0, 16),
-      sound_output
+      sound_output,
+      margin(pad(0), 0, 0, 0, 32),
+      -- background(margin(title("Clipboard"), 40, 40, 10, 10), "#1c1c1c"),
       -- clipboard
     },
     nil,
@@ -574,10 +552,10 @@ local widgets = {
     layout = wibox.layout.align.vertical
   },
   widget = wibox.container.background,
-  bg = awful.util.theme_functions.bg_panel
+  bg = awful.util.theme.bg_panel
 }
 
-local close_button = widget_button(wibox.container.constraint(wibox.container.place(icon("", 12)), "exact", 50, 50))
+local close_button = widget_button(wibox.container.constraint(wibox.container.place(icon({ icon = "", size = 12 })), "exact", 50, 50))
 close_button:buttons(
   awful.util.table.join(
     awful.button(
@@ -608,20 +586,7 @@ function info_screen_setup(s, show_rofi)
       {
         layout = wibox.layout.align.horizontal,
         nil,
-        widgets,
-        -- beautiful.statusbar(
-        --   s,
-        --   false,
-        --   close_button,
-        --   gears.color(
-        --     {
-        --       type = "linear",
-        --       from = {20, 0},
-        --       to = {70, 0},
-        --       stops = {{0, awful.util.theme_functions.bg_panel}, {1, "#050505"}}
-        --     }
-        --   )
-        -- )
+        widgets
       }
     )
     return
@@ -638,7 +603,7 @@ function info_screen_setup(s, show_rofi)
     {
       layout = wibox.layout.align.horizontal,
       nil,
-      nil,
+      nil
       -- beautiful.statusbar(
       --   s,
       --   false,
@@ -648,7 +613,7 @@ function info_screen_setup(s, show_rofi)
       --       type = "linear",
       --       from = {20, 0},
       --       to = {70, 0},
-      --       stops = {{0, awful.util.theme_functions.bg_panel}, {1, "#050505"}}
+      --       stops = {{0, awful.util.theme.bg_panel}, {1, "#050505"}}
       --     }
       --   )
       -- )

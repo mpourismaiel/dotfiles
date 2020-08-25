@@ -29,7 +29,7 @@ local _M = {}
 
 _M.settings = {
   preview_box = true,
-  preview_box_bg = awful.util.theme_functions.bg_panel,
+  preview_box_bg = awful.util.theme.bg_panel,
   preview_box_border = beautiful.primary,
   preview_box_fps = 30,
   preview_box_delay = 150,

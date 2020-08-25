@@ -219,7 +219,7 @@ CDC_DIRS=$HOME/Documents/Projects
 source ~/.zsh.d/themes/powerlevel10k/powerlevel10k.zsh-theme
 [[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
 
-precmd () { print -Pn "\e]0;${USER}@${HOST%%.*}: $(pwd)\a" }
+precmd () { print -Pn "\e]0;/$(pwd | sed 's#.*/##') - ${USER}@${HOST%%.*}\a" }
 title() { export TITLE="$*" }
 
 ###-tns-completion-start-###

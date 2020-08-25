@@ -9,8 +9,8 @@ local my_table = awful.util.table or gears.table
 local icon_string = awful.util.theme_functions.icon_string
 
 function widget_button(w, action)
-  local bg_normal = awful.util.theme_functions.widget_bg .. "00"
-  local bg_hover = awful.util.theme_functions.widget_bg .. "ff"
+  local bg_normal = awful.util.theme.widget_bg .. "00"
+  local bg_hover = awful.util.theme.widget_bg .. "ff"
 
   w = wibox.container.background(wibox.container.margin(w, 10, 10), bg_normal)
   w:connect_signal(
@@ -40,7 +40,7 @@ local timer_screen =
     screen = s,
     x = s.geometry.width / 2 - 200,
     y = s.geometry.height - 2,
-    bg = awful.util.theme_functions.bg_panel,
+    bg = awful.util.theme.bg_panel,
     type = "dock",
     width = 400,
     height = 40,
@@ -69,7 +69,7 @@ local timer_running = false
 local timer_stopped = true
 local timer_time = wibox.widget.textbox(markup("#ffffff", "25:00"))
 local timer_title = wibox.widget.textbox(markup("#ffffff", "Start a pomodoro!"))
-local timer_button_label = wibox.widget.textbox(icon_string("", 10, true))
+local timer_button_label = wibox.widget.textbox(icon_string({ icon = "" }))
 
 local timer =
   gears.timer {
@@ -91,7 +91,7 @@ local timer =
 
 local timer_stop =
   widget_button(
-  wibox.widget.textbox(icon_string("", 10, true)),
+  wibox.widget.textbox(icon_string({ icon = "" })),
   function()
     timer:stop()
     timer_stop.visible = false

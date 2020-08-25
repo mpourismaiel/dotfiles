@@ -1,11 +1,7 @@
 local wibox = require("wibox")
 
 function clickable_container(widget)
-  local container =
-    wibox.widget {
-    widget,
-    widget = wibox.container.background
-  }
+  local container = wibox.container.background(widget)
   local old_cursor, old_wibox
 
   container:connect_signal(
