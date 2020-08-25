@@ -70,8 +70,8 @@ return function(keys)
       }
     },
     {
-      rule_any = {class = {"Terminator", "XTerm", "kitty", "Alacritty", "Hyper"}},
-      properties = {screen = 1, tag = awful.util.tagnames[3]}
+      rule_any = {class = awful.util.variables.terminal_tag_terminals},
+      properties = {screen = 1, tag = awful.util.tagnames[3], titlebars_enabled = false}
     },
     {
       rule_any = {
@@ -120,6 +120,14 @@ return function(keys)
       rule_any = {class = {"albert"}},
       properties = {
         border_width = 0
+      }
+    },
+    {
+      rule_any = {class = {"dota2"}},
+      properties = {
+        screen = 1,
+        tag = awful.util.tagnames[6],
+        fullscreen = true
       }
     }
   }

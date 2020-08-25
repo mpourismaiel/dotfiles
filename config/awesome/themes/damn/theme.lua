@@ -6,6 +6,8 @@ local naughty = require("naughty")
 local wibox = require("wibox")
 local layout_indicator = require("widgets.layout-indicator")
 local brightness = require("widgets.brightness")
+local network_menu = require("widgets/damn/network")
+local clock_widget = require("widgets/damn/clock")
 local string, os = string, os
 
 -- Helpers
@@ -14,200 +16,17 @@ local margin = wibox.container.margin
 local background = wibox.container.background
 local markup = lain.util.markup
 local text = wibox.widget.textbox
-local margin = wibox.container.margin
-local background = wibox.container.background
 
-local default_dir = require("awful.util").get_themes_dir() .. "default"
-local icon_dir = os.getenv("HOME") .. "/.config/awesome/themes/damn/icons"
-local clean_icons = os.getenv("HOME") .. "/.config/awesome/themes/icons"
+local theme = awful.util.theme
 
-local theme = {
-  default_dir = default_dir,
-  icon_dir = icon_dir,
-  wallpaper = awful.util.wallpaper.desktop,
-  font_base = "FiraCode",
-  font_only = "FiraCode Bold",
-  font = "FiraCode Bold 10",
-  hotkeys_font = "FiraCode 10",
-  font_icon = "fontello",
-  useless_gap = 0,
-  primary = "#FC4384",
-  white = "#ffffff",
-  sidebar_bg = gears.color(
-    {
-      type = "linear",
-      from = {0, 20},
-      to = {0, 70},
-      stops = {{0, "#1a1a1a"}, {1, "#050505"}}
-    }
-  ),
-  -- colors
-  bg_systray = "#171520",
-  fg_normal = "#ffffff33",
-  fg_focus = "#86848a",
-  bg_focus = "#151515",
-  bg_normal = "#151515",
-  fg_urgent = "#CC9393",
-  bg_urgent = "#151515",
-  bg_panel = "#1a1a1a",
-  -- systray
-  systray_icon_spacing = 15,
-  -- border styles
-  border_width = 3,
-  border_normal = "#252525",
-  border_focus = "#FC4384",
-  hotkeys_border_width = 3,
-  hotkeys_border_color = "#252525",
-  -- tag list styles
-  taglist_fg_focus = "#86848a",
-  taglist_bg_focus = "#241b2f66",
-  taglist_bg_urgent = "#15151500",
-  taglist_fg_urgent = "#ffffff33",
-  taglist_font = "Font Awesome 5 Free Solid 12",
-  -- wibar styles
-  widget_bg = "#241b2f",
-  wibar_bg = "#171520",
-  -- menu styles
-  menu_height = 20,
-  menu_width = 160,
-  menu_icon_size = 32,
-  -- notification styles
-  notification_border_color = "#FC4384",
-  notification_border_width = 2,
-  notification_width = 300,
-  notification_margin = 16,
-  notification_fg = "#ffffff",
-  notification_font = "FiraCode Bold 10",
-  notification_message_font = "FiraCode 10",
-  -- layout box styles
-  layout_tile = clean_icons .. "/tiled.svg",
-  layout_max = clean_icons .. "/maximized.svg",
-  layout_floating = clean_icons .. "/float.svg",
-  -- task list styles
-  tasklist_bg_normal = "#171520",
-  tasklist_bg_focus = gears.color(
-    {
-      type = "linear",
-      from = {0, 20},
-      to = {0, 70},
-      stops = {{0, "#241b2f66"}, {1, "#050505"}}
-    }
-  ),
-  tasklist_fg_focus = "#86848a",
-  tasklist_plain_task_name = true,
-  tasklist_disable_icon = false,
-  -- title bar styles
-  titlebar_bg = "#171520",
-  titlebar_fg = "#86848a",
-  titlebar_fg_focus = "#86848a",
-  titlebar_height = 32,
-  titlebar_close_button_normal = default_dir .. "/titlebar/close_normal.png",
-  titlebar_close_button_focus = default_dir .. "/titlebar/close_focus.png",
-  titlebar_minimize_button_normal = default_dir .. "/titlebar/minimize_normal.png",
-  titlebar_minimize_button_focus = default_dir .. "/titlebar/minimize_focus.png",
-  titlebar_sticky_button_normal_inactive = default_dir .. "/titlebar/sticky_normal_inactive.png",
-  titlebar_sticky_button_focus_inactive = default_dir .. "/titlebar/sticky_focus_inactive.png",
-  titlebar_sticky_button_normal_active = default_dir .. "/titlebar/sticky_normal_active.png",
-  titlebar_sticky_button_focus_active = default_dir .. "/titlebar/sticky_focus_active.png",
-  titlebar_floating_button_normal_inactive = default_dir .. "/titlebar/floating_normal_inactive.png",
-  titlebar_floating_button_focus_inactive = default_dir .. "/titlebar/floating_focus_inactive.png",
-  titlebar_floating_button_normal_active = default_dir .. "/titlebar/floating_normal_active.png",
-  titlebar_floating_button_focus_active = default_dir .. "/titlebar/floating_focus_active.png",
-  titlebar_maximized_button_normal_inactive = default_dir .. "/titlebar/maximized_normal_inactive.png",
-  titlebar_maximized_button_focus_inactive = default_dir .. "/titlebar/maximized_focus_inactive.png",
-  titlebar_maximized_button_normal_active = default_dir .. "/titlebar/maximized_normal_active.png",
-  titlebar_maximized_button_focus_active = default_dir .. "/titlebar/maximized_focus_active.png"
-}
-
-function icon_string(ic, size, solid, font_awesome)
-  return markup.font(
-    string.format(
-      "%s %s%s",
-      font_awesome and "Font Awesome 5 Free" or theme.font_icon,
-      solid and "solid " or "",
-      size or 10
-    ),
-    ic
-  )
-end
-
-function icon_fn(color)
-  color = color or "#ffffff"
-
-  return function(ic, size, solid, fontawesome, string)
-    if string == true then
-      return icon_string(ic, size, solid, fontawesome)
-    end
-
-    return text(markup(color, icon_string(ic, size, solid, fontawesome)))
-  end
-end
-
-function font(text)
-  return markup.font(theme.font, text)
-end
-
-function pad(size)
-  local str = ""
-  for i = 1, size or 1 do
-    str = str .. " "
-  end
-  return font(str)
-end
-
-function bar_widget(w)
-  return background(margin(wibox.container.place(w), 10, 10, 0, 0), theme.sidebar_bg, gears.shape.rectangle)
-end
-
-function titlebar_widget(w)
-  return {
-    {widget = w},
-    widget = margin,
-    left = 8,
-    right = 8,
-    top = 4,
-    bottom = 4
-  }
-end
-
-awful.util.theme_functions.font_fn = font
-awful.util.theme_functions.icon_string = icon_string
-awful.util.theme_functions.icon_fn = icon_fn
-awful.util.theme_functions.pad_fn = pad
-awful.util.theme_functions.widget_bg = theme.widget_bg
-awful.util.theme_functions.icon_dir = icon_dir
-awful.util.theme_functions.font_base = theme.font_base
-awful.util.theme_functions.bg_panel = theme.bg_panel
-awful.util.theme_functions.is_network_connected = false
+awful.util.variables.is_network_connected = false
 theme.bar_widget_fn = bar_widget
-theme.titlebar_widget_fn = titlebar_widget
-
-local toggl =
-  awful.widget.watch(
-  string.format("sh %s/.config/polybar/scripts/toggl.sh", os.getenv("HOME")),
-  60,
-  function(widget, stdout)
-    widget:set_markup(markup(theme.fg_normal, pad(1) .. font(stdout)))
-  end
-)
-
-local toggl_report =
-  awful.widget.watch(
-  string.format("sh %s/.config/polybar/scripts/toggl-report.sh hide", os.getenv("HOME")),
-  99999,
-  function(widget, stdout)
-    widget:set_markup(markup(theme.fg_normal, icon_string("")))
-  end
-)
 
 -- System Tray - Systray
 local systray_widget = wibox.widget.systray(true)
 systray_widget:set_horizontal(true)
 systray_widget:set_base_size(22)
 local systray = margin(wibox.container.place(systray_widget), 10, 25, 12, 0)
-
--- Clock
-local clock = bar_widget(wibox.widget.textclock(markup(theme.fg_normal, markup.font("FiraCode Bold 16", "%H:%M"))))
 
 -- Keyboard
 local keyboard = bar_widget(layout_indicator())
@@ -242,7 +61,7 @@ local bat =
             bat_icon = ""
           end
         end
-        widget:set_markup(icon_string(bat_icon, 12))
+        widget:set_markup(awful.util.theme_functions.icon_string({icon = bat_icon, size = 12, font_weight = false}))
       end
     }
   ).widget
@@ -255,22 +74,21 @@ theme.volume =
     settings = function()
       local vlevel = ""
       if volume_now.status == "on" then
-        local volume_icon = ""
         local level = tonumber(volume_now.level)
 
         if level <= 35 then
-          volume_icon = icon_string("", 12)
+          vlevel = ""
         elseif level <= 65 then
-          volume_icon = icon_string("", 12)
+          vlevel = ""
         elseif level <= 100 then
-          volume_icon = icon_string("", 12)
+          vlevel = ""
         end
-
-        vlevel = volume_icon
       else
-        vlevel = icon_string("", 12)
+        vlevel = ""
       end
-      widget:set_markup(markup(theme.fg_normal, vlevel))
+      widget:set_markup(
+        markup(theme.fg_normal, awful.util.theme_functions.icon_string({icon = vlevel, size = 12, font_weight = false}))
+      )
     end
   }
 )
@@ -303,51 +121,6 @@ volume:buttons(
         theme.volume.update()
       end
     )
-  )
-)
-
--- CPU
-local cpu = function(format)
-  return lain.widget.cpu(
-    {
-      settings = function()
-        widget:set_markup(
-          format and format(icon_string("", 9, true, true), cpu_now.usage) or
-            (icon_string("") .. pad(1) .. font(cpu_now.usage .. "%"))
-        )
-      end
-    }
-  )
-end
-awful.util.theme_functions.cpu = cpu
-
--- MEM
-local mem = function(format)
-  return lain.widget.mem(
-    {
-      timeout = 1,
-      settings = function()
-        widget:set_markup(
-          format and format(icon_string("", 9, true, true), mem_now.perc) or
-            (icon_string("", 9, true, true) .. pad(1) .. font(mem_now.perc .. "%"))
-        )
-      end
-    }
-  )
-end
-awful.util.theme_functions.mem = mem
-
--- Brightness
-local backlight =
-  bar_widget(
-  brightness(
-    {
-      markup = "",
-      level1 = icon_string("", 12),
-      level2 = icon_string("", 12),
-      level3 = icon_string("", 12),
-      level4 = icon_string("", 12)
-    }
   )
 )
 
@@ -421,42 +194,6 @@ theme.myswitcher =
   visible = false
 }
 
-function set_github_listener(fn)
-  awful.widget.watch(
-    string.format("sh %s/.config/polybar/scripts/inbox-github.sh", os.getenv("HOME")),
-    60,
-    function(widget, stdout)
-      fn(string.gsub(stdout, "^%s*(.-)%s*$", "%1"))
-    end
-  )
-end
-
-awful.util.theme_functions.set_github_listener = set_github_listener
-
-function widget_button(w, action)
-  local bg_normal = theme.widget_bg .. "00"
-  local bg_hover = "#1c1c1c"
-
-  w = background(margin(w, 5, 5, 5, 5), bg_normal)
-  w:connect_signal(
-    "mouse::enter",
-    function()
-      w.bg = bg_hover
-    end
-  )
-
-  w:connect_signal(
-    "mouse::leave",
-    function()
-      w.bg = bg_normal
-    end
-  )
-
-  w:buttons(my_table.join(awful.button({}, 1, action)))
-
-  return wibox.container.place({widget = w, forced_height = 50, forced_width = 50})
-end
-
 local line = wibox.container.background(wibox.container.constraint(text(""), "exact", 3, 50), theme.primary)
 
 local ping_command =
@@ -480,55 +217,16 @@ gears.timer {
       {
         stdout = function()
           line.bg = theme.sidebar_bg
-          awful.util.theme_functions.is_network_connected = true
+          awful.util.variables.is_network_connected = true
         end,
         stderr = function()
           line.bg = theme.primary
-          awful.util.theme_functions.is_network_connected = false
+          awful.util.variables.is_network_connected = false
         end
       }
     )
   end
 }
-
-theme.statusbar = function(s, display_systray, top_widget, notification_count)
-  local fancy_taglist = require("fancy")
-  return wibox.widget {
-    widget = wibox.container.background,
-    bg = theme.sidebar_bg,
-    shape = function(cr, width, height)
-      gears.shape.rectangle(cr, width, height)
-    end,
-    {
-      layout = wibox.layout.align.horizontal,
-      {
-        {
-          create_button(s.mylayoutbox, nil, true),
-          s.mytaglist,
-          -- fancy_taglist.new({ screen = s }),
-          layout = wibox.layout.align.horizontal
-        },
-        layout = wibox.layout.align.horizontal
-      },
-      nil,
-      {
-        layout = wibox.layout.fixed.horizontal,
-        {
-          display_systray and systray or nil,
-          volume,
-          supports_backlight,
-          bat,
-          keyboard,
-          -- mynetworklauncher,
-          clock,
-          notification_count,
-          line,
-          layout = wibox.layout.fixed.horizontal
-        }
-      }
-    }
-  }
-end
 
 function create_button(w, action, higher_color, color)
   local bg_normal = color and color or theme.widget_bg .. (higher_color and "ee" or "00")
@@ -577,38 +275,53 @@ awesome.connect_signal(
 function theme.at_screen_connect(s)
   local screen_width = s.geometry.width
   local screen_height = s.geometry.height
+  local clock = clock_widget(theme)
+  local network_menu_widget =
+    network_menu {
+    layout = {
+      layout = wibox.layout.fixed.vertical
+    },
+    margins = {
+      right = 100,
+      bottom = 50
+    },
+    update_function = require("widgets/damn/network/update_function")
+  }
 
   -- If wallpaper is a function, call it with the screen
   set_wallpaper()
 
   -- Tag List
   for index, tag in pairs(awful.util.tags) do
+    local rules = nil
+    if tag.rules ~= nil then
+      rules = {}
+      for _, rule in ipairs(tag.rules) do
+        rules[rule] = true
+      end
+    end
     awful.tag.add(
       tag.text,
       {
+        icon = tag.icon,
         screen = s,
         layout = tag.layout or awful.layout.layouts[1],
-        selected = index == 1
+        selected = index == 1,
+        rules = rules,
+        wibar = tag.wibar
       }
     )
   end
   s.mytaglist =
     awful.widget.taglist {
     screen = s,
-    filter = awful.widget.taglist.filter.noempty,
+    filter = awful.widget.taglist.filter.all,
     buttons = awful.util.taglist_buttons,
     layout = {
       layout = wibox.layout.fixed.horizontal
     },
     update_function = require("widgets.taglist")(theme)
   }
-
-  local supports_backlight = nil
-  for k, v in pairs(s.outputs) do
-    if k == "eDP1" then
-      supports_backlight = backlight
-    end
-  end
 
   -- Prompt
   s.mypromptbox = awful.widget.prompt()
@@ -662,9 +375,10 @@ function theme.at_screen_connect(s)
   s.mytasklist =
     awful.widget.tasklist {
     screen = s,
-    filter = awful.widget.tasklist.filter.currenttags,
+    filter = awful.widget.tasklist.filter.allscreen,
     buttons = awful.util.tasklist_buttons,
-    update_function = require("widgets.tasklist")(theme)
+    layout = {layout = wibox.layout.fixed.horizontal},
+    update_function = require("widgets.tasklist")
   }
 
   local notification_count_text = text(markup("#ffffff", font(string.format("%d", #naughty.active))))
@@ -714,118 +428,68 @@ function theme.at_screen_connect(s)
     end
   )
 
-  s.mytagbar_widgets = theme.statusbar(s, true, nil, notification_count)
-  s.mytagbar_margin = wibox.container.margin(s.mytagbar_widgets)
-  -- Bar
-  s.mytagbar = awful.wibar({position = "bottom", screen = s, height = 50, bg = "#ffffff00"})
-  s.mytagbar:setup {
-    layout = wibox.layout.align.vertical,
-    s.mytagbar_margin
-  }
-
-  -- s.mytasklistbar = awful.wibar({position = "top", screen = s, height = 45, bg = theme.bg_panel})
-  -- s.mytasklistbar:setup {
-  --   layout = wibox.layout.align.horizontal,
-  --   {
-  --     create_button(
-  --       wibox.container.constraint(wibox.container.place(text(icon_string("", 12, true, true))), "exact", 50),
-  --       function()
-  --         info_screen_show()
-  --       end,
-  --       nil,
-  --       theme.sidebar_bg
-  --     ),
-  --     s.mytasklist,
-  --     layout = wibox.layout.align.horizontal
-  --   },
-  --   nil,
-  --   {
-  --     create_button(s.mylayoutbox, nil, true),
-  --     notification_count,
-  --     layout = wibox.layout.fixed.horizontal
-  --   }
-  -- }
-
-  s.mywibox = awful.wibar({position = "bottom", screen = s, height = 45, bg = theme.wibar_bg, visible = false})
-end
-
-theme.titlebar_fun = function(c)
-  theme.mytitlebar =
-    awful.titlebar(
-    c,
+  s.tags_list_widgets =
+    wibox.widget {
+    widget = wibox.container.background,
+    bg = theme.sidebar_bg,
+    shape = function(cr, width, height)
+      gears.shape.rectangle(cr, width, height)
+    end,
     {
-      size = 40,
-      position = "top",
-      buttons = my_table.join(
-        awful.button(
-          {},
-          1,
-          function()
-            client.focus = c
-            c:raise()
-            awful.mouse.client.move(c)
-          end
-        ),
-        awful.button(
-          {},
-          3,
-          function()
-            client.focus = c
-            c:raise()
-            awful.mouse.client.resize(c)
-          end
-        )
-      )
-    }
-  )
-
-  theme.mytitlebar:setup {
-    {
-      awful.titlebar.widget.titlewidget(c),
-      widget = margin,
-      top = 5,
-      bottom = 5,
-      left = 16,
-      right = 12
-    },
-    nil,
-    {
+      layout = wibox.layout.align.horizontal,
       {
         {
-          titlebar_widget(awful.titlebar.widget.maximizedbutton(c)),
-          widget = margin,
-          top = 5,
-          bottom = 5
+          background(
+            {
+              s.mylayoutbox,
+              wibox.container.background(wibox.container.margin(wibox.widget {}, 1), "#292929"),
+              layout = wibox.layout.fixed.horizontal
+            },
+            "#1f1f1f"
+          ),
+          margin(s.mytaglist, 10),
+          layout = wibox.layout.align.horizontal
         },
-        {
-          titlebar_widget(awful.titlebar.widget.closebutton(c)),
-          widget = margin,
-          top = 5,
-          bottom = 5
-        },
-        layout = wibox.layout.fixed.horizontal
+        layout = wibox.layout.align.horizontal
       },
-      layout = wibox.layout.fixed.horizontal
-    },
-    layout = wibox.layout.align.horizontal
+      margin(
+        background(
+          {
+            wibox.container.background(wibox.container.margin(wibox.widget {}, 1), theme.separator),
+            wibox.container.place(margin(s.mytasklist, 0, 10)),
+            wibox.container.background(wibox.container.margin(wibox.widget {}, 1), theme.separator),
+            layout = wibox.layout.align.horizontal
+          },
+          "#1f1f1f"
+        ),
+        10,
+        10
+      ),
+      {
+        layout = wibox.layout.fixed.horizontal,
+        {
+          systray,
+          volume,
+          bat,
+          keyboard,
+          network_menu_widget.indicator_widget,
+          clock,
+          notification_count,
+          line,
+          layout = wibox.layout.fixed.horizontal
+        }
+      }
+    }
   }
-end
+  -- Bar
+  s.tags_list = awful.wibar({position = "bottom", screen = s, type = "dock", height = 50, bg = "#ffffff00"})
 
-theme.zen_mode = function(c)
-  local s = awful.screen.focused()
-  if s.mytagbar.visible == true then
-    s.mytagbar.visible = false
-    s.mywibox.bg = theme.wibar_bg
-    -- s.mytasklistbar.bg = theme.wibar_bg
-    awful.screen.focused().selected_tag.gap = 0
-    awful.layout.arrange(scr)
-  else
-    s.mytagbar.visible = true
-    s.mywibox.bg = "#241b2f"
-    -- s.mytasklistbar.bg = "#241b2f"
-    awful.screen.focused().selected_tag.gap = 10
-    awful.layout.arrange(scr)
-  end
+  s.tags_list:setup {
+    layout = wibox.layout.align.vertical,
+    s.tags_list_widgets
+  }
+
+  s.main_bar = awful.wibar({position = "bottom", screen = s, height = 45, bg = theme.wibar_bg, visible = false})
 end
 
 awful.util.theme_functions.at_screen_connect = theme.at_screen_connect

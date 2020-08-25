@@ -6,11 +6,22 @@ local gears = require("gears")
 local naughty = require("naughty")
 local helpers = require("utils.helpers")
 local createAnimObject = require("utils.animation").createAnimObject
-require"logging.file"
+require "logging.file"
 
 local logger = logging.file("/home/mahdi/test%s.log", "%Y-%m-%d")
 
 return function(awesome, screen, client, tag)
+  tag.connect_signal("property::selected", function(t)
+    if not t.selected and t.wibar ~= nil then
+      t.wibar.visible = false
+      return
+    end
+
+    if t.wibar then
+      t.wibar.visible = true
+    end
+  end)
+
   naughty.connect_signal(
     "request::preset",
     function(notification)
@@ -42,21 +53,9 @@ return function(awesome, screen, client, tag)
   client.connect_signal(
     "request::titlebars",
     function(c)
-      -- Add a titlebar if titlebars_enabled is set to true in the rules.
-      if beautiful.titlebar_fun then
-        beautiful.titlebar_fun(c)
-        return
-      end
+      require('widgets.damn.titlebar')(c)
     end
   )
-
-  -- client.connect_signal(
-  --   "mouse::enter",
-  --   function(c)
-  --     -- Enable sloppy focus, so that focus follows mouse.
-  --     c:emit_signal("request::activate", "mouse_enter", {raise = true})
-  --   end
-  -- )
 
   client.connect_signal(
     "property::maximized",
@@ -75,45 +74,6 @@ return function(awesome, screen, client, tag)
       }
     )
   end
-
-  screen.connect_signal(
-    "tag::history::update",
-    function(s)
-      if true then
-        return
-      end
-
-      local maximized = false
-      for i, c in ipairs(s.selected_tag:clients()) do
-        if c.maximized then
-          maximized = true
-          break
-        end
-      end
-
-      if maximized then
-        s.selected_tag.gap = 0
-        s.mytagbar_widgets:set_shape(
-          function(cr, width, height)
-            gears.shape.rectangle(cr, width, height, 0)
-          end
-        )
-        createAnimObject(0.6, s.mytagbar_margin, {bottom = 0, left = 0, right = 0}, "outCubic")
-        s.mytagbar.height = 50
-        attach(s.mytagbar, "bottom", 0)
-      else
-        s.selected_tag.gap = 10
-        s.mytagbar_widgets:set_shape(
-          function(cr, width, height)
-            gears.shape.rounded_rect(cr, width, height, 10)
-          end
-        )
-        createAnimObject(0.6, s.mytagbar_margin, {bottom = 0, left = 20, right = 20}, "outCubic")
-        s.mytagbar.height = 60
-        attach(s.mytagbar, "bottom", 10)
-      end
-    end
-  )
 
   client.connect_signal("focus", helpers.client.border_adjust)
   client.connect_signal(

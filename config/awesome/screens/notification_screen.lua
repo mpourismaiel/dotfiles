@@ -15,7 +15,7 @@ local margin = wibox.container.margin
 local constraint = wibox.container.constraint
 local background = wibox.container.background
 local text = wibox.widget.textbox
-local icon = awful.util.theme_functions.icon_fn()
+local icon = awful.util.theme_functions.colored_icon()
 local font = awful.util.theme_functions.font_fn
 
 local panel_bg =
@@ -24,7 +24,7 @@ local panel_bg =
     type = "linear",
     from = {-20, 0},
     to = {50, 0},
-    stops = {{0, "#050505"}, {1, awful.util.theme_functions.bg_panel}}
+    stops = {{0, "#050505"}, {1, awful.util.theme.bg_panel}}
   }
 )
 
@@ -65,8 +65,8 @@ function widget_info(w1, w2, w3, margins)
 end
 
 function widget_button(w, action)
-  local bg_normal = awful.util.theme_functions.widget_bg .. "00"
-  local bg_hover = awful.util.theme_functions.widget_bg .. "ff"
+  local bg_normal = awful.util.theme.widget_bg .. "00"
+  local bg_hover = awful.util.theme.widget_bg .. "ff"
 
   w = background(w, bg_normal)
   w:connect_signal(
@@ -177,7 +177,7 @@ function title(txt)
 end
 
 awful.util.disable_notification = 0
-local disable_notification_icon = icon("", 10, true, true)
+local disable_notification_icon = icon({ icon = "", font = "Font Awesome 5 Pro" })
 local disable_notification_text = text(markup("#FFFFFF", theme_pad(2) .. "Disable Notifications"))
 local disable_notification =
   widget_button(
@@ -185,15 +185,15 @@ local disable_notification =
   function()
     if awful.util.disable_notification == 0 then
       awful.util.disable_notification = 1
-      disable_notification_icon:set_markup(icon("", 10, true, true, true))
+      disable_notification_icon:set_markup(icon({ icon = "", font = "Font Awesome 5 Pro" }, true))
       disable_notification_text:set_markup(markup("#FFFFFF", theme_pad(2) .. "Disable All Notifications"))
     elseif awful.util.disable_notification == 1 then
       awful.util.disable_notification = 2
-      disable_notification_icon:set_markup(icon("", 10, true, true, true))
+      disable_notification_icon:set_markup(icon({ icon = "", font = "Font Awesome 5 Pro" }, true))
       disable_notification_text:set_markup(markup("#FFFFFF", theme_pad(2) .. "Enable Notifications"))
     elseif awful.util.disable_notification == 2 then
       awful.util.disable_notification = 0
-      disable_notification_icon:set_markup(icon("", 10, true, true, true))
+      disable_notification_icon:set_markup(icon({ icon = "", font = "Font Awesome 5 Pro" }, true))
       disable_notification_text:set_markup(markup("#FFFFFF", theme_pad(2) .. "Disable Notifications"))
     end
   end
@@ -239,13 +239,12 @@ local notification_list =
           },
           widget = constraint,
           strategy = "exact",
-          width = 189,
-          height = 56
+          width = 189
         },
         {
           {
             {
-              widget = icon("", 10, true, true)
+              widget = icon({ icon = "", font = "Font Awesome 5 Pro" })
             },
             widget = wibox.container.place,
             valign = "center",
@@ -281,7 +280,7 @@ naughty.connect_signal(
   end
 )
 
-local close_button = widget_button(wibox.container.margin(wibox.container.place(icon("", 12)), 20, 20, 15, 15))
+local close_button = widget_button(wibox.container.margin(wibox.container.place(icon({ icon = "", size = 12 })), 20, 20, 15, 15))
 close_button:buttons(
   awful.util.table.join(
     awful.button(

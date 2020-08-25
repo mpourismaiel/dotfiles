@@ -21,99 +21,17 @@ local taglist_buttons =
     end
   ),
   awful.button(
-    {modkey},
-    1,
-    function(t)
-      if client.focus then
-        client.focus:move_to_tag(t)
-      end
-    end
-  ),
-  awful.button({}, 3, awful.tag.viewtoggle),
-  awful.button(
-    {modkey},
-    3,
-    function(t)
-      if client.focus then
-        client.focus:toggle_tag(t)
-      end
-    end
-  ),
-  awful.button(
     {},
     4,
     function(t)
-      lain.util.tag_view_nonempty(-1, t.screen)
+      awful.tag.viewidx(-1, t.screen)
     end
   ),
   awful.button(
     {},
     5,
     function(t)
-      lain.util.tag_view_nonempty(1, t.screen)
-    end
-  )
-)
-
-local tasklist_buttons =
-  gears.table.join(
-  awful.button(
-    {},
-    1,
-    function(c)
-      if c == client.focus then
-        c.minimized = true
-      else
-        -- c:emit_signal("request::activate", "tasklist", {raise = true})<Paste>
-
-        -- Without this, the following
-        -- :isvisible() makes no sense
-        c.minimized = false
-        if not c:isvisible() and c.first_tag then
-          c.first_tag:view_only()
-        end
-        -- This will also un-minimize
-        -- the client, if needed
-        client.focus = c
-        c:raise()
-      end
-    end
-  ),
-  awful.button(
-    {modkey},
-    2,
-    function(c)
-      c:kill()
-    end
-  ),
-  awful.button(
-    {},
-    3,
-    function()
-      local instance = nil
-
-      return function()
-        if instance and instance.wibox.visible then
-          instance:hide()
-          instance = nil
-        else
-          instance = awful.menu.clients({theme = {width = 250}})
-        end
-      end
-    end
-  ),
-  awful.button(
-    {},
-    4,
-    function()
-      awful.client.focus.byidx(1)
-    end
-  ),
-  awful.button(
-    {},
-    5,
-    function()
-      awful.client.focus.byidx(-1)
+      awful.tag.viewidx(1, t.screen)
     end
   )
 )
@@ -318,7 +236,7 @@ local globalkeys =
       for s in screen do
         s.mytagbar.visible = not s.mytagbar.visible
         s.mytasklistbar.visible = not s.mytasklistbar.visible
-        s.mywibox.visible = not s.mywibox.visible
+        s.main_bar.visible = not s.main_bar.visible
       end
     end,
     {description = "toggle wibox", group = "awesome"}
@@ -471,7 +389,10 @@ for i = 1, 9 do
         if client.focus then
           local tag = client.focus.screen.tags[i]
           if tag then
-            client.focus:move_to_tag(tag)
+            local rules = tag.rules
+            if rules == nil or rules[client.focus.class] == true then
+              client.focus:move_to_tag(tag)
+            end
           end
         end
       end,
@@ -479,6 +400,24 @@ for i = 1, 9 do
     )
   )
 end
+
+-- special tags
+globalkeys =
+  gears.table.join(
+  globalkeys,
+  awful.key(
+    {modkey},
+    "g",
+    function()
+      local screen = awful.screen.focused()
+      local tag = screen.tags[6]
+      if tag then
+        tag:view_only()
+      end
+    end,
+    descr_view
+  )
+)
 
 local clientkeys =
   gears.table.join(
@@ -566,14 +505,12 @@ local clientbuttons =
 )
 
 awful.util.taglist_buttons = taglist_buttons
-awful.util.tasklist_buttons = tasklist_buttons
 awful.util.globalkeys = globalkeys
 awful.util.clientkeys = clientkeys
 awful.util.clientbuttons = clientbuttons
 
 return {
   taglist_buttons = taglist_buttons,
-  tasklist_buttons = tasklist_buttons,
   globalkeys = globalkeys,
   clientkeys = clientkeys,
   clientbuttons = clientbuttons

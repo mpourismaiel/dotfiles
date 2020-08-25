@@ -72,11 +72,12 @@ function helpers.pad(size)
 end
 
 function helpers.icon(ic, size, solid, fontawesome, string)
+    local args = { icon = ic, size = size, font_weight = solid and "solid" or nil, font = fontawesome and "Font Awesome 5 Free" or nil }
     if string == true then
-        return awful.util.theme_functions.icon_string(ic, size, solid, fontawesome)
+        return awful.util.theme_functions.icon_string(args)
     end
 
-    return wibox.widget.textbox(markup("#FFFFFF", awful.util.theme_functions.icon_string(ic, size, solid, fontawesome)))
+    return wibox.widget.textbox(markup("#FFFFFF", awful.util.theme_functions.icon_string(args)))
 end
 
 function helpers.font(text, font)

@@ -73,13 +73,13 @@ end
 
 local separator =
   place(
-  margin(text(markup(awful.util.theme_functions.widget_bg .. "99", font("/", "FireCode Bold 100"))), 30, 30),
+  margin(text(markup(awful.util.theme.widget_bg .. "99", font("/", "FireCode Bold 100"))), 30, 30),
   "left",
   "top"
 )
 local title = function(w)
   return margin(
-    (place(text(markup(awful.util.theme_functions.widget_bg, font(w, "FireCode Bold 100"))), "left", "top")),
+    (place(text(markup(awful.util.theme.widget_bg, font(w, "FireCode Bold 100"))), "left", "top")),
     200,
     0
   )
@@ -111,7 +111,7 @@ end
 
 local back_button =
   button(
-  margin(text(markup(awful.util.theme_functions.widget_bg, icon("", 60, true, true, true))), 200, 0, 20),
+  margin(text(markup(awful.util.theme.widget_bg, icon("", 60, true, true, true))), 200, 0, 20),
   workstation_hide
 )
 
