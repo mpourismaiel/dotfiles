@@ -1,4 +1,4 @@
-local json = require("json")
+local json = require("JSON")
 local gears = require("gears")
 local lain = require("lain")
 local awful = require("awful")
@@ -292,26 +292,6 @@ function theme.at_screen_connect(s)
   set_wallpaper()
 
   -- Tag List
-  for index, tag in pairs(awful.util.tags) do
-    local rules = nil
-    if tag.rules ~= nil then
-      rules = {}
-      for _, rule in ipairs(tag.rules) do
-        rules[rule] = true
-      end
-    end
-    awful.tag.add(
-      tag.text,
-      {
-        icon = tag.icon,
-        screen = s,
-        layout = tag.layout or awful.layout.layouts[1],
-        selected = index == 1,
-        rules = rules,
-        wibar = tag.wibar
-      }
-    )
-  end
   s.mytaglist =
     awful.widget.taglist {
     screen = s,
@@ -492,5 +472,4 @@ function theme.at_screen_connect(s)
   s.main_bar = awful.wibar({position = "bottom", screen = s, height = 45, bg = theme.wibar_bg, visible = false})
 end
 
-awful.util.theme_functions.at_screen_connect = theme.at_screen_connect
 return theme

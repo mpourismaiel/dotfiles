@@ -5,7 +5,7 @@ local gears = require("gears")
 local naughty = require("naughty")
 local lain = require("lain")
 local http = require("socket.http")
-local json = require("json")
+local json = require("JSON")
 local ltn12 = require("ltn12")
 
 local markup = lain.util.markup

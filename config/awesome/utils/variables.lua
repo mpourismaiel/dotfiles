@@ -125,12 +125,6 @@ naughty.config.defaults.icon_size = 36
 naughty.config.defaults.margin = 10
 naughty.config.defaults.position = "bottom_right"
 
-awful.layout.layouts = {
-  awful.layout.suit.tile,
-  awful.layout.suit.floating,
-  awful.layout.suit.max
-}
-
 awful.util.tagnames = {
   "Browser",
   "Code",
@@ -151,6 +145,14 @@ awful.util.tasklist_buttons = require("utils.tasklist.buttons")
 local terminal_tasklist = require("widgets.damn.terminal.tasklist")
 awful.util.terminal_tasklist = terminal_tasklist.wibar
 awful.util.terminal_tasklist:setup(terminal_tasklist.widgets)
+
+tag.connect_signal("request::default_layouts", function()
+  awful.layout.append_default_layouts({
+    awful.layout.suit.tile,
+    awful.layout.suit.floating,
+    awful.layout.suit.max
+  })
+end)
 
 awful.util.tags = {
   {
