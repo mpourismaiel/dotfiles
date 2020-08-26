@@ -15,7 +15,7 @@ local fixed = require("wibox.layout.fixed")
 local timer = require("gears.timer")
 local base = require("wibox.widget.base")
 local http_request = require "http.request"
-local json = require("json")
+local json = require("JSON")
 local ltn12 = require("ltn12")
 local clickable_container = require("widgets.clickable-container")
 

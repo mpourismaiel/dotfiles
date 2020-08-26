@@ -6,21 +6,21 @@ local gears = require("gears")
 local naughty = require("naughty")
 local helpers = require("utils.helpers")
 local createAnimObject = require("utils.animation").createAnimObject
-require "logging.file"
-
-local logger = logging.file("/home/mahdi/test%s.log", "%Y-%m-%d")
 
 return function(awesome, screen, client, tag)
-  tag.connect_signal("property::selected", function(t)
-    if not t.selected and t.wibar ~= nil then
-      t.wibar.visible = false
-      return
-    end
+  tag.connect_signal(
+    "property::selected",
+    function(t)
+      if not t.selected and t.wibar ~= nil then
+        t.wibar.visible = false
+        return
+      end
 
-    if t.wibar then
-      t.wibar.visible = true
+      if t.wibar then
+        t.wibar.visible = true
+      end
     end
-  end)
+  )
 
   naughty.connect_signal(
     "request::preset",
@@ -53,7 +53,7 @@ return function(awesome, screen, client, tag)
   client.connect_signal(
     "request::titlebars",
     function(c)
-      require('widgets.damn.titlebar')(c)
+      require("widgets.damn.titlebar")(c)
     end
   )
 
@@ -83,7 +83,30 @@ return function(awesome, screen, client, tag)
     end
   )
 
-  if awful.util.theme_functions.at_screen_connect then
-    awful.screen.connect_for_each_screen(awful.util.theme_functions.at_screen_connect)
-  end
+  screen.connect_signal(
+    "request::desktop_decoration",
+    function(s)
+      for index, tag in pairs(awful.util.tags) do
+        local rules = nil
+        if tag.rules ~= nil then
+          rules = {}
+          for _, rule in ipairs(tag.rules) do
+            rules[rule] = true
+          end
+        end
+        awful.tag.add(
+          tag.text,
+          {
+            icon = tag.icon,
+            screen = s,
+            layout = tag.layout or awful.layout.layouts[1],
+            selected = index == 1,
+            rules = rules,
+            wibar = tag.wibar
+          }
+        )
+      end
+      beautiful.at_screen_connect(s)
+    end
+  )
 end

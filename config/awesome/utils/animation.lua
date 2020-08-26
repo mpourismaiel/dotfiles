@@ -1,4 +1,5 @@
 local tween = require("utils.tween")
+local gears = require("gears")
 
 function createAnimObject(duration, subject, target, easing, end_callback)
   -- check if animation is running
@@ -6,7 +7,7 @@ function createAnimObject(duration, subject, target, easing, end_callback)
     subject:emit_signal("interrupt", subject)
   end
   -- create timer at 60 fps
-  local timer = timer({timeout = 0.0167})
+  local timer = gears.timer({timeout = 0.0167})
   -- determine variable name to animate
   local val = nil
   for k, v in pairs(target) do -- only need to iterate once for our purposes
@@ -14,7 +15,7 @@ function createAnimObject(duration, subject, target, easing, end_callback)
   end
   -- create self-destructing animation-stop callback function
   cback = function(subject)
-    timer:stop()
+    if timer and timer.started then timer:stop() end
     subject:disconnect_signal("interrupt", cback)
   end
   -- create tween

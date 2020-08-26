@@ -5,7 +5,7 @@ local beautiful = require("beautiful")
 local naughty = require("naughty")
 local lain = require("lain")
 local http = require("socket.http")
-local json = require("json")
+local json = require("JSON")
 local ltn12 = require("ltn12")
 local secrets = require("secrets")
 local markup = require("lain.util.markup")
@@ -34,126 +34,25 @@ local action_screen =
   screen = nil
 }
 
-local info_image = function(icon)
-  return margin(
-    place(constraint(imagebox(awful.util.icons.icon_dir .. "/" .. icon), "max", 24, 24)),
-    0,
-    0,
-    0,
-    10
+local password_markup = function(password, is_plain)
+  return markup(
+    "#555555",
+    markup.font(
+      "Roboto " .. (is_plain and "Light 12" or "Regular 22"),
+      is_plain and password or password:gsub(".", "•")
+    )
   )
 end
-
-local lock_image = imagebox(awful.util.icons.icon_dir .. "/lock.svg")
-local lock_icon =
-  background(
-  margin(
-    wibox.widget {
-      layout = wibox.layout.align.horizontal,
-      constraint(lock_image, "max", 50, 50)
-    },
-    30,
-    30,
-    20,
-    20
-  ),
-  "#000000",
-  function(cr, width, height)
-    gears.shape.rounded_rect(cr, width, height, 8)
-  end
-)
-
-function reset_indicator()
-  lock_image.image = awful.util.icons.icon_dir .. "/lock.svg"
-  lock_icon.bg = "#000000"
-end
-
-local reset_indicator_timer =
-  gears.timer {
-  timeout = 0.1,
-  callback = reset_indicator
-}
-
-local time_text = textclock(markup("#000000", markup.font("SourceCodePro Semibold 110", "%H:%M")))
-local date_text = textclock(markup("#000000", markup.font("SourceCodePro 21", "%a\n%b %d\n%Y")))
-
-local time = nil
-
-local battery_text =
-  lain.widget.bat(
-  {
-    notify = "off",
-    settings = function()
-      widget:set_markup(markup("#FFFFFF", markup.font("SourceCodePro 12", bat_now.perc .. "%")))
-    end
-  }
-).widget
-
-local battery =
-  wibox.widget {
-  layout = wibox.layout.align.vertical,
-  info_image("battery.svg"),
-  place(battery_text)
-}
+local password_input = wibox.widget.textbox(password_markup(""))
 
 local keyboard_layout =
-  wibox.widget {
-  layout = wibox.layout.align.vertical,
-  info_image("keyboard.svg"),
-  place(layout_indicator())
-}
-
-local github_notification_count = text(markup("#FFFFFF", markup.font("SourceCodePro 12", "...")))
-
-if awful.util.theme_functions.set_github_listener then
-  awful.util.theme_functions.set_github_listener(
-    function(text)
-      github_notification_count:set_markup(
-        markup("#FFFFFF", markup.font("SourceCodePro 12", text == "" and "0" or text))
-      )
-    end
-  )
-end
-
-local github_notifications =
-  wibox.widget {
-  layout = wibox.layout.align.vertical,
-  info_image("github.svg"),
-  place(github_notification_count)
-}
-
-local cpu =
-  lain.widget.cpu(
+  layout_indicator(
   {
-    settings = function()
-      widget:set_markup(markup("#FFFFFF", markup.font("SourceCodePro 12", cpu_now.usage .. "%")))
+    markup_fn = function(text)
+      return markup("#ffffffbb", markup.font("Roboto Bold 20", string.upper(text)))
     end
   }
 )
-
-local cpu_info =
-  wibox.widget {
-  layout = wibox.layout.align.vertical,
-  info_image("cpu.svg"),
-  place(cpu.widget)
-}
-
-local mem =
-  lain.widget.mem(
-  {
-    timeout = 1,
-    settings = function()
-      widget:set_markup(markup("#FFFFFF", markup.font("SourceCodePro 12", mem_now.perc .. "%")))
-    end
-  }
-)
-
-local mem_info =
-  wibox.widget {
-  layout = wibox.layout.align.vertical,
-  info_image("ram.svg"),
-  place(mem.widget)
-}
 
 local audio_volume =
   lain.widget.alsa(
@@ -161,98 +60,119 @@ local audio_volume =
     settings = function()
       local vlevel = ""
       if volume_now.status == "on" then
-        vlevel = markup.font("SourceCodePro 12", volume_now.level .. "%")
+        local level = tonumber(volume_now.level)
+
+        if level <= 35 then
+          vlevel = ""
+        elseif level <= 65 then
+          vlevel = ""
+        elseif level <= 100 then
+          vlevel = ""
+        end
       else
-        vlevel = markup.font("SourceCodePro 12", "0%")
+        vlevel = ""
       end
-      widget:set_markup(markup("#FFFFFF", vlevel))
+      widget:set_markup(
+        markup("#ffffffbb", awful.util.theme_functions.icon_string({icon = vlevel, size = 24, font_weight = false}))
+      )
     end
   }
 ).widget
 
-local audio =
-  wibox.widget {
-  layout = wibox.layout.align.vertical,
-  info_image("speaker.svg"),
-  place(audio_volume)
-}
+local audio = audio_volume
 
 audio:connect_signal("button::press", helpers.audio.mute)
 
 function lock_screen_setup()
-  time =
-    margin(
-    wibox.widget {
-      layout = wibox.layout.stack,
+  password_input:set_markup(password_markup("Please enter your password", true))
+  local user_image = wibox.widget.imagebox(os.getenv("HOME") .. "/.cache/user.jpg", true, gears.shape.circle)
+  user_image.forced_width = 128
+  user_image.forced_height = 128
+
+  action_screen:setup {
+    layout = wibox.layout.flex.horizontal,
+    place(
       margin(
-        background(
-          margin(pad(0), 400, 0, 137),
-          "#ffffff",
-          function(cr, width, height)
-            gears.shape.rounded_rect(cr, width, 137, 8)
-          end
+        wibox.widget {
+          layout = wibox.layout.stack,
+          margin(place(textclock(markup("#00000033", markup.font("Roboto Bold 150", "%H")))), 2, 0, 0, 247),
+          margin(place(textclock(markup("#00000033", markup.font("Roboto Bold 150", "%M")))), 2, 0, 53),
+          margin(place(textclock(markup("#ffffff", markup.font("Roboto Bold 150", "%H")))), 0, 0, 0, 250),
+          margin(place(textclock(markup("#ffffff", markup.font("Roboto Bold 150", "%M")))), 0, 0, 50),
+          margin(place(textclock(markup("#ffffffcc", markup.font("Roboto Thin 50", "%m/%d")))), 0, 0, 290),
+          margin(place(textclock(markup("#ffffffbb", markup.font("Roboto Light 25", "%A")))), 0, 0, 400)
+        },
+        40
+      ),
+      "left",
+      "bottom"
+    ),
+    place(
+      wibox.widget {
+        layout = wibox.layout.fixed.vertical,
+        margin(
+          {
+            layout = wibox.layout.fixed.vertical,
+            place(margin(user_image, 0, 0, 0, 15)),
+            place(
+              {
+                layout = wibox.layout.stack,
+                margin(text(markup("#00000033", markup.font("Roboto Regular 28", os.getenv("USER")))), 2, 0, 2),
+                text(markup("#ffffff", markup.font("Roboto Regular 28", "Mahdi")))
+              }
+            )
+          },
+          0,
+          0,
+          0,
+          15
         ),
+        {
+          layout = wibox.layout.stack,
+          background(
+            constraint(text(""), "exact", 300, 40),
+            "#ffffff88",
+            function(cr, w, h)
+              gears.shape.rounded_rect(cr, w, h, 10)
+            end
+          ),
+          margin(password_input, 15, 15, 0, 0),
+          margin(
+            place(
+              text(
+                markup(
+                  "#555555",
+                  awful.util.theme_functions.icon_string(
+                    {
+                      icon = "",
+                      size = 18
+                    }
+                  )
+                )
+              ),
+              "right",
+              "center"
+            ),
+            0,
+            15
+          )
+        }
+      }
+    ),
+    place(
+      margin(
+        wibox.widget {
+          layout = wibox.layout.fixed.horizontal,
+          margin(keyboard_layout, 0, 0, 3),
+          margin(audio, 20)
+        },
         0,
+        40,
         0,
         40
       ),
-      {
-        layout = wibox.layout.align.horizontal,
-        margin(
-          wibox.widget {
-            layout = wibox.layout.align.horizontal,
-            time_text,
-            margin(date_text, 10, 0, 10)
-          },
-          25,
-          25,
-          10,
-          0
-        )
-      }
-    }
-  )
-
-  action_screen:setup {
-    layout = wibox.layout.flex.vertical,
-    background(
-      wibox.widget {
-        layout = wibox.layout.flex.horizontal,
-        place(
-          wibox.widget {
-            layout = wibox.layout.align.vertical,
-            time,
-            {
-              layout = wibox.layout.align.horizontal,
-              margin(lock_icon, 0, 10),
-              background(
-                margin(
-                  wibox.widget {
-                    layout = wibox.layout.flex.horizontal,
-                    battery,
-                    keyboard_layout,
-                    github_notifications,
-                    audio,
-                    cpu_info,
-                    mem_info
-                  },
-                  40,
-                  40,
-                  20,
-                  20
-                ),
-                "#000000",
-                function(cr, width, height)
-                  gears.shape.rounded_rect(cr, width, height, 8)
-                end
-              )
-            }
-          },
-          "center",
-          "center"
-        )
-      },
-      "#000000b3"
+      "right",
+      "bottom"
     )
   }
 end
@@ -262,33 +182,28 @@ local locked_keygrabber = awful.keygrabber {}
 function authenticate(self, sequence)
   local username = os.getenv("USER")
 
-  reset_indicator_timer:stop()
   locked_keygrabber:start()
 
   if string.len(sequence) <= 1 then
-    locked_keygrabber:stop()
-    self:start()
+    gears.timer.delayed_call(
+      function()
+        locked_keygrabber:stop()
+        self:start()
+      end
+    )
+    password_input:set_markup(password_markup("Please enter your password", true))
     return
   end
-
-  lock_icon.bg = "#ffffff22"
 
   awful.spawn.with_line_callback(
     os.getenv("HOME") .. "/bin/auth " .. username .. " " .. sequence,
     {
       exit = function(_, code)
+        password_input:set_markup(password_markup(""))
         if code ~= 0 then
           locked_keygrabber:stop()
           self:start()
-          lock_icon.bg = "#ff000088"
-          gears.timer {
-            timeout = 0.5,
-            autostart = true,
-            single_shot = true,
-            callback = function()
-              lock_icon.bg = "#000000"
-            end
-          }
+          password_input:set_markup(password_markup("Authentication failed", true))
           return
         end
 
@@ -302,48 +217,38 @@ end
 local lock_screen_grabber =
   awful.keygrabber {
   keybindings = {
-    awful.key {
-      modifiers = {},
-      key = "Escape",
-      on_press = function()
-        lock_screen_grabber:start()
-      end
-    },
     awful.key {modifiers = {awful.util.altkey}, key = "m", on_press = helpers.audio.mute}
   },
-  keyreleased_callback = function()
-    lock_icon.bg = "#ffffff22"
-    reset_indicator_timer:again()
+  keyreleased_callback = function(self)
+    password_input:set_markup(password_markup(self.sequence))
+    if self.sequence == "" then
+      password_input:set_markup(password_markup("Please enter your password", true))
+    end
   end,
   stop_key = "Return",
   stop_event = "release",
-  start_callback = function()
-    reset_indicator()
-  end,
   stop_callback = function(self, stop_key, stop_mods, sequence)
     authenticate(self, sequence)
   end
 }
 
 function lock_screen_show()
-  lock_icon.bg = "#ff000088"
   gears.timer {
     timeout = 0.5,
     autostart = true,
     single_shot = true,
     callback = function()
       lock_screen_grabber:start()
-      lock_icon.bg = "#000000"
     end
   }
 
   lock_screen_setup()
-  time.bottom = 100
-  createAnimObject(3, time, {bottom = 0}, "outCubic")
+  action_screen.bottom = 100
+  createAnimObject(3, action_screen, {bottom = 0}, "outCubic")
 end
 
 function lock_screen_hide()
-  createAnimObject(3, time, {bottom = 100}, "outCubic")
+  createAnimObject(3, action_screen, {bottom = 100}, "outCubic")
   action_screen_toggle("hide")()
 end
 
@@ -448,11 +353,9 @@ local goodbye_text = text(markup("#ffffff", "Goodbye " .. username:sub(1, 1):upp
 goodbye_text.font = "FiraCode Bold 50"
 goodbye_widget = margin(goodbye_text, 0, 0, 0, 50)
 
-local poweroff =
-  action_button(awful.util.icons.icon_dir .. "/exit_screen/poweroff.png", "Poweroff", poweroff_command)
+local poweroff = action_button(awful.util.icons.icon_dir .. "/exit_screen/poweroff.png", "Poweroff", poweroff_command)
 local reboot = action_button(awful.util.icons.icon_dir .. "/exit_screen/reboot.png", "Reboot", reboot_command)
-local suspend =
-  action_button(awful.util.icons.icon_dir .. "/exit_screen/suspend.png", "Suspend", suspend_command)
+local suspend = action_button(awful.util.icons.icon_dir .. "/exit_screen/suspend.png", "Suspend", suspend_command)
 local exit = action_button(awful.util.icons.icon_dir .. "/exit_screen/logout.png", "Exit", exit_command)
 local lock = action_button(awful.util.icons.icon_dir .. "/exit_screen/lock.png", "Lock", lock_command)
 
