@@ -46,7 +46,7 @@ function info_screen_show(show_rofi)
       ontop = true,
       visible = true,
       opacity = 1,
-      bg = beautiful.wibar_bg .. "cc"
+      bg = "#000000cc"
     }
   )
   info_screen =

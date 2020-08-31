@@ -49,6 +49,10 @@ return function(keys)
       end
     },
     {
+      rule = {type = {"dialog"}, class = {"TelegramDesktop"}},
+      properties = {titlebars_enabled = false},
+    },
+    {
       rule_any = {type = {"normal"}},
       except_any = {class = {"jetbrains-studio"}},
       properties = {titlebars_enabled = true}

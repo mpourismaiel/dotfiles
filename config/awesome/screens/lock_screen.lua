@@ -99,10 +99,15 @@ function lock_screen_setup()
           margin(place(textclock(markup("#00000033", markup.font("Roboto Bold 150", "%M")))), 2, 0, 53),
           margin(place(textclock(markup("#ffffff", markup.font("Roboto Bold 150", "%H")))), 0, 0, 0, 250),
           margin(place(textclock(markup("#ffffff", markup.font("Roboto Bold 150", "%M")))), 0, 0, 50),
-          margin(place(textclock(markup("#ffffffcc", markup.font("Roboto Thin 50", "%m/%d")))), 0, 0, 290),
-          margin(place(textclock(markup("#ffffffbb", markup.font("Roboto Light 25", "%A")))), 0, 0, 400)
+          margin(textclock(markup("#00000011", markup.font("Roboto Thin 70", "%m/%d"))), 2, 0, 313),
+          margin(place(textclock(markup("#00000022", markup.font("Roboto Light 32", "%A")))), 2, 0, 433),
+          margin(textclock(markup("#ffffffcc", markup.font("Roboto Thin 70", "%m/%d"))), 0, 0, 310),
+          margin(place(textclock(markup("#ffffffbb", markup.font("Roboto Light 32", "%A")))), 0, 0, 430)
         },
-        40
+        40,
+        0,
+        0,
+        20
       ),
       "left",
       "bottom"
@@ -253,178 +258,8 @@ function lock_screen_hide()
 end
 
 -- ================== EXIT SCREEN ================== --
-function action_button(icon, text, callback)
-  local button_icon = wibox.widget.imagebox(icon)
-  button_icon.resize = true
-  button_icon.forced_width = 80
-  button_icon.forced_height = 80
-  local button_text = wibox.widget.textbox(markup("#ffffff", text))
-  button_text.font = "FiraCode Bold 14"
-
-  local button =
-    wibox.widget {
-    {
-      pad(5),
-      button_icon,
-      pad(5),
-      expand = "none",
-      layout = wibox.layout.align.horizontal
-    },
-    pad(1),
-    {
-      pad(1),
-      button_text,
-      pad(1),
-      expand = "none",
-      layout = wibox.layout.align.horizontal
-    },
-    layout = wibox.layout.fixed.vertical
-  }
-
-  button:buttons(gears.table.join(awful.button({}, 1, callback)))
-
-  return button
-end
 
 -- Commands
-local poweroff_command = function()
-  awful.spawn.with_shell("shutdown now")
-end
-local reboot_command = function()
-  awful.spawn.with_shell("reboot")
-end
-local suspend_command = function()
-  awful.spawn.with_shell(
-    string.format(
-      "%s & systemctl suspend",
-      function()
-        lock_screen_show()
-        exit_screen_hide(true)
-      end
-    )
-  )
-end
-local exit_command = function()
-  awful.spawn.with_shell("rm /tmp/started")
-  awesome.quit()
-end
-local lock_command = function()
-  exit_screen_hide(true)
-  gears.timer {
-    timeout = 0.5,
-    autostart = true,
-    single_shot = true,
-    callback = function()
-      lock_screen_show()
-    end
-  }
-end
-
-local exit_actions = {
-  s = poweroff_command,
-  e = exit_command,
-  l = lock_command,
-  p = poweroff_command,
-  r = reboot_command,
-  Return = function()
-    exit_screen_hide()
-  end,
-  Escape = function()
-    exit_screen_hide()
-  end,
-  q = function()
-    exit_screen_hide()
-  end
-}
-
-local parse_exit_action = function(_, stop_key)
-  exit_actions[stop_key]()
-end
-
-local exit_screen_grabber =
-  awful.keygrabber {
-  stop_key = gears.table.keys(exit_actions),
-  stop_callback = parse_exit_action
-}
-
-local username = os.getenv("USER")
--- Capitalize username
-local goodbye_text = text(markup("#ffffff", "Goodbye " .. username:sub(1, 1):upper() .. username:sub(2)))
-goodbye_text.font = "FiraCode Bold 50"
-goodbye_widget = margin(goodbye_text, 0, 0, 0, 50)
-
-local poweroff = action_button(awful.util.icons.icon_dir .. "/exit_screen/poweroff.png", "Poweroff", poweroff_command)
-local reboot = action_button(awful.util.icons.icon_dir .. "/exit_screen/reboot.png", "Reboot", reboot_command)
-local suspend = action_button(awful.util.icons.icon_dir .. "/exit_screen/suspend.png", "Suspend", suspend_command)
-local exit = action_button(awful.util.icons.icon_dir .. "/exit_screen/logout.png", "Exit", exit_command)
-local lock = action_button(awful.util.icons.icon_dir .. "/exit_screen/lock.png", "Lock", lock_command)
-
-local spacing = margin(text(), 0, 0)
-local buttons = {
-  -- {
-  wibox.container.margin(
-    wibox.container.place(
-      {
-        poweroff,
-        spacing,
-        reboot,
-        spacing,
-        suspend,
-        layout = wibox.layout.fixed.horizontal
-      }
-    ),
-    0,
-    0,
-    0,
-    10
-  ),
-  wibox.container.place(
-    {
-      exit,
-      spacing,
-      lock,
-      layout = wibox.layout.fixed.horizontal
-    }
-  ),
-  layout = wibox.layout.fixed.vertical
-}
-
-function exit_screen_setup()
-  action_screen:setup {
-    layout = wibox.layout.flex.vertical,
-    background(
-      wibox.widget {
-        layout = wibox.layout.flex.horizontal,
-        place(
-          wibox.widget {
-            layout = wibox.layout.align.vertical,
-            margin(place(goodbye_widget, "center", "center"), 0, 0, 0, 30),
-            buttons
-          },
-          "center",
-          "center"
-        )
-      },
-      "#000000b3"
-    )
-  }
-end
-
-function exit_screen_show()
-  exit_screen_setup()
-  exit_screen_grabber:start()
-
-  goodbye_widget.bottom = 150
-  createAnimObject(3, goodbye_widget, {bottom = 0}, "outCubic")
-end
-
-function exit_screen_hide(dont_hide_action_screen)
-  createAnimObject(3, goodbye_widget, {bottom = 150}, "outCubic")
-
-  if dont_hide_action_screen ~= true then
-    action_screen_toggle("hide")()
-  end
-end
 
 function action_screen_toggle(state, screen)
   screen = screen or "lock"
