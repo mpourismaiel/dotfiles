@@ -54,6 +54,7 @@ require("utils.functions")
 beautiful.init(string.format("%s/.config/awesome/themes/damn/theme.lua", os.getenv("HOME")))
 
 require("screens")
+require("menus")
 
 local keys = require("keys")
 

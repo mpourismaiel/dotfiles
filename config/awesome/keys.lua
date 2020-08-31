@@ -65,7 +65,9 @@ local globalkeys =
   awful.key(
     {modkey, "Shift"},
     "x",
-    action_screen_toggle("show", "lock"),
+    function()
+      action_screen_toggle("show", "lock")()
+    end,
     {description = "lock screen", group = "hotkeys"}
   ),
   awful.key({modkey}, "/", hotkeys_popup.show_help, {description = "show help", group = "awesome"}),
@@ -179,10 +181,10 @@ local globalkeys =
   --   {modkey},
   --   "d",
   --   function()
-    --   info_screen_show(true)
+  --   info_screen_show(true)
   --   end,
   --   {description = "show launcher", group = "awesome"}
---   ),
+  --   ),
   awful.key(
     {},
     "XF86Calculator",
@@ -261,7 +263,7 @@ local globalkeys =
   awful.key(
     {modkey, "Shift"},
     "q",
-    action_screen_toggle("show", "exit"),
+    awful.util.menus.exit.show,
     {description = "show exit screen", group = "awesome"}
   ),
   awful.key(

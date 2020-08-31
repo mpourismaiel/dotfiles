@@ -1,7 +1,7 @@
 local tween = require("utils.tween")
 local gears = require("gears")
 
-function createAnimObject(duration, subject, target, easing, end_callback)
+function createAnimObject(duration, subject, target, easing, end_callback, delay)
   -- check if animation is running
   if subject.anim then
     subject:emit_signal("interrupt", subject)
@@ -41,7 +41,18 @@ function createAnimObject(duration, subject, target, easing, end_callback)
   -- start animation
   subject:connect_signal("interrupt", cback)
   subject.anim = true
-  timer:start()
+  if delay ~= nil then
+    gears.timer {
+      autostart = true,
+      single_shot = true,
+      timeout = delay,
+      callback = function()
+        timer:start()
+      end
+    }
+  else
+    timer:start()
+  end
 end
 
 return {createAnimObject = createAnimObject}
