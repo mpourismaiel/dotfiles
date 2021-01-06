@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 
-function run {
+function run() {
   if [ ! -f /tmp/started ]; then
-    $@&
+    $@ &
   fi
 }
 
@@ -20,10 +20,9 @@ run alacritty
 run telegram-desktop
 run nm-applet
 run mpd
-run picom -b --config $HOME/.config/picom.conf
+run picom -b --config $HOME/.config/picom.conf --experimental-backend
 run show-ping.sh
 run polychromatic-tray-applet
-run albert
 run node $HOME/Documents/Projects/network-manager/index.js
 
 touch /tmp/started

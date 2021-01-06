@@ -177,14 +177,14 @@ local globalkeys =
     end,
     {description = "show launcher", group = "awesome"}
   ),
-  -- awful.key(
-  --   {modkey},
-  --   "d",
-  --   function()
-  --   info_screen_show(true)
-  --   end,
-  --   {description = "show launcher", group = "awesome"}
-  --   ),
+  awful.key(
+    {modkey},
+    "d",
+    function()
+      awful.spawn.with_shell("sh $HOME/.config/rofi/launchers/colorful/launcher.sh")
+    end,
+    {description = "show launcher", group = "awesome"}
+  ),
   awful.key(
     {},
     "XF86Calculator",
@@ -260,12 +260,7 @@ local globalkeys =
     {description = "open a terminal", group = "launcher"}
   ),
   awful.key({modkey, "Control"}, "r", awesome.restart, {description = "reload awesome", group = "awesome"}),
-  awful.key(
-    {modkey, "Shift"},
-    "q",
-    awful.util.menus.exit.show,
-    {description = "show exit screen", group = "awesome"}
-  ),
+  awful.key({modkey, "Shift"}, "q", exit_screen_show, {description = "show exit screen", group = "awesome"}),
   awful.key(
     {modkey, "Shift"},
     "w",
@@ -343,8 +338,9 @@ local globalkeys =
     {altkey},
     "Up",
     function()
-      os.execute(string.format("amixer -q set %s 5%%+", beautiful.volume.channel))
-      beautiful.volume.update()
+      os.execute(string.format("amixer -q set %s 5%%+", awful.util.volume.channel))
+      awful.util.volume.update()
+      awful.util.volume_indicator.update()
     end,
     {description = "volume up", group = "hotkeys"}
   ),
@@ -352,8 +348,9 @@ local globalkeys =
     {altkey},
     "Down",
     function()
-      os.execute(string.format("amixer -q set %s 5%%-", beautiful.volume.channel))
-      beautiful.volume.update()
+      os.execute(string.format("amixer -q set %s 5%%-", awful.util.volume.channel))
+      awful.util.volume.update()
+      awful.util.volume_indicator.update()
     end,
     {description = "volume down", group = "hotkeys"}
   ),

@@ -15,8 +15,11 @@ local buttons = {}
 
 function buttons.button(icon, color, bg_color, action)
   local icon_container =
-    wibox.widget.textbox(markup(awful.util.theme.fg_normal, icon_string({icon = icon, font = "Font Awesome 5 Pro", size = 9})))
-  local background = place(background(constraint(wibox.widget.textbox(), "exact", 18, 18), bg_color, gears.shape.circle))
+    wibox.widget.textbox(
+    markup(awful.util.theme.fg_normal, icon_string({icon = icon, font = "Font Awesome 5 Pro", size = 9}))
+  )
+  local background =
+    place(background(constraint(wibox.widget.textbox(), "exact", 18, 18), bg_color, gears.shape.circle))
   background.opacity = 0
   local button =
     wibox.widget {
