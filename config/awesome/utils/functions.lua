@@ -48,12 +48,8 @@ function pad(size)
   return font(str)
 end
 
-function bar_widget(w)
+local function bar_widget(w)
   return background(margin(place(w), 10, 10, 0, 0), awful.util.theme.sidebar_bg, gears.shape.rectangle)
-end
-
-function titlebar_widget(w)
-  return margin(w, 8, 8, 4, 4)
 end
 
 function set_github_listener(fn)
@@ -67,6 +63,7 @@ function set_github_listener(fn)
 end
 
 awful.util.theme_functions.set_github_listener = set_github_listener
+awful.util.theme_functions.bar_widget = bar_widget
 awful.util.theme_functions.font_fn = font
 awful.util.theme_functions.icon_string = icon_string
 awful.util.theme_functions.colored_icon = colored_icon

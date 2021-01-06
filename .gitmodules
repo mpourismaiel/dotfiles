@@ -19,3 +19,6 @@
 [submodule "zsh/zsh.d/plugins/autosrc"]
 	path = zsh/zsh.d/plugins/autosrc
 	url = git@github.com:seanyeh/autosrc.git
+[submodule "config/awesome/deps/tweening"]
+	path = config/awesome/deps/tweening
+	url = git@github.com:luapower/tweening.git

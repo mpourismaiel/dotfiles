@@ -45,6 +45,25 @@ local password_markup = function(password, is_plain)
 end
 local password_input = wibox.widget.textbox(password_markup(""))
 
+local power =
+  text(
+  markup(
+    "#ffffffbb",
+    awful.util.theme_functions.icon_string({icon = "", size = 22, font = "Font Awesome 5 Pro", font_weight = "Solid"})
+  )
+)
+power:buttons(
+  awful.util.table.join(
+    awful.button(
+      {},
+      1,
+      function()
+        exit_screen_show(true)
+      end
+    )
+  )
+)
+
 local keyboard_layout =
   layout_indicator(
   {
@@ -122,8 +141,15 @@ function lock_screen_setup()
             place(
               {
                 layout = wibox.layout.stack,
-                margin(text(markup("#00000033", markup.font("Roboto Regular 28", os.getenv("USER")))), 2, 0, 2),
-                text(markup("#ffffff", markup.font("Roboto Regular 28", "Mahdi")))
+                margin(
+                  text(
+                    markup("#00000033", markup.font("Roboto Regular 28", os.getenv("USER"):gsub("^%l", string.upper)))
+                  ),
+                  2,
+                  0,
+                  2
+                ),
+                text(markup("#ffffff", markup.font("Roboto Regular 28", os.getenv("USER"):gsub("^%l", string.upper))))
               }
             )
           },
@@ -169,7 +195,8 @@ function lock_screen_setup()
         wibox.widget {
           layout = wibox.layout.fixed.horizontal,
           margin(keyboard_layout, 0, 0, 3),
-          margin(audio, 20)
+          margin(audio, 20),
+          margin(power, 20, 0, 3)
         },
         0,
         40,

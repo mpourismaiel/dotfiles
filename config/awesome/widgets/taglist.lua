@@ -34,7 +34,7 @@ local function create_buttons(buttons, object)
 end
 
 local icon_dir = os.getenv("HOME") .. "/.config/awesome/themes/icons"
-local function taglist(theme)
+local function taglist_update_function()
   return function(widget, buttons, label, data, objects)
     -- update the widgets, creating them if needed
     widget:reset()
@@ -56,7 +56,7 @@ local function taglist(theme)
         )
         circle = wibox.container.background(
           wibox.container.margin(main_circle, 1, 0, 1),
-          theme.taglist_border,
+          awful.util.theme.taglist_border,
           function(cr, width, height)
             return gears.shape.circle(cr, width, height)
           end
@@ -71,7 +71,7 @@ local function taglist(theme)
       if object.selected then
         circle.bg = "#FC438433"
       else
-        circle.bg = theme.taglist_border
+        circle.bg = awful.util.theme.taglist_border
       end
       local tag_widget = wibox.container.margin(circle, 4, 4)
       tag_widget:buttons(create_buttons(buttons, object))
@@ -80,4 +80,14 @@ local function taglist(theme)
   end
 end
 
-return taglist
+return function(s)
+  return awful.widget.taglist {
+    screen = s,
+    filter = awful.widget.taglist.filter.all,
+    buttons = awful.util.taglist_buttons,
+    layout = {
+      layout = wibox.layout.fixed.horizontal
+    },
+    update_function = taglist_update_function()
+  }
+end

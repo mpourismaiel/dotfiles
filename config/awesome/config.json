@@ -1,0 +1,106 @@
+{
+  "rules": [
+    {
+      "rule_any": {
+        "instance": ["DTA", "copyq"],
+        "class": [
+          "Arandr",
+          "Gpick",
+          "Sxiv",
+          "Wpa_gui",
+          "pinentry",
+          "veromix",
+          "xtightvncviewer"
+        ],
+        "name": ["Event Tester"],
+        "role": ["pop-up"]
+      },
+      "properties": { "floating": true }
+    },
+    {
+      "rule": { "type": ["dialog"], "class": "TelegramDesktop" },
+      "properties": { "titlebars_enabled": false }
+    },
+    {
+      "rule_any": { "type": ["normal"] },
+      "except_any": { "class": ["jetbrains-studio"] },
+      "properties": { "titlebars_enabled": true }
+    },
+    {
+      "rule_any": { "class": ["Google-chrome-beta", "firefox"] },
+      "properties": {
+        "screen": 1,
+        "tag": ["awful", "util", "tagnames", 1],
+        "maximized": true
+      }
+    },
+    {
+      "rule_any": { "class": ["Code"] },
+      "properties": {
+        "screen": 1,
+        "tag": 2,
+        "maximized": true
+      }
+    },
+    {
+      "rule_any": {
+        "class": ["Terminator", "XTerm", "kitty", "Alacritty", "Hyper"]
+      },
+      "properties": {
+        "screen": 1,
+        "tag": 3,
+        "titlebars_enabled": false
+      }
+    },
+    {
+      "rule": { "class": "Steam" },
+      "properties": { "titlebars_enabled": false }
+    },
+    {
+      "rule": { "class": "TelegramDesktop" },
+      "properties": {
+        "screen": 1,
+        "tag": 5
+      }
+    },
+    {
+      "rule": {
+        "class": "jetbrains-.*",
+        "instance": "sun-awt-X11-XWindowPeer",
+        "name": "win*"
+      },
+      "properties": {
+        "floating": true,
+        "focus": true,
+        "focusable": false,
+        "ontop": true,
+        "placement": "restore",
+        "screen": 1,
+        "tag": 2,
+        "buttons": {},
+        "titlebars_enabled": true
+      }
+    },
+    {
+      "rule_any": { "class": ["albert"] },
+      "properties": {
+        "border_width": 0
+      }
+    },
+    {
+      "rule_any": { "class": ["dota2",
+        "Minecraft Launcher",
+        "minecraft-launcher",
+        "Minecraft 1.14.4"
+      ] },
+      "properties": {
+        "screen": 1,
+        "tag": 6,
+        "fullscreen": true,
+        "maximized": true,
+        "focus": true,
+        "titlebars_enabled": true
+      }
+    }
+  ]
+}

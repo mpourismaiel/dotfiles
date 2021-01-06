@@ -14,8 +14,7 @@ local gtable = require("gears.table")
 local widget_base = require("wibox.widget.base")
 local gdebug = require("gears.debug")
 local lain = require("lain")
-require "logging.file"
-local logger = logging.file("/home/mahdi/.cache/awesome/log-%s.log", "%Y-%m-%d")
+
 local markup = lain.util.markup
 --- Keyboard Layout widget.
 -- awful.widget.keyboardlayout
@@ -279,8 +278,6 @@ function keyboardlayout.new(args)
 
   self.widget = widget
   gtable.crush(self, args)
-
-  logger:debug(args)
 
   self.layout_name = function(v)
     local name = v.file

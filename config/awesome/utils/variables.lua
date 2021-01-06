@@ -61,7 +61,7 @@ awful.util.theme = {
   -- tag list styles
   taglist_fg_focus = "#86848a",
   taglist_bg_occupied = "#f5f5f500",
-  taglist_bg_focus = "#FC4384",
+  taglist_bg_focus = "#FBC02D",
   taglist_border = "#ffffff33",
   taglist_bg_urgent = "#f5f5f500",
   taglist_fg_urgent = "#ffffff33",
@@ -146,13 +146,18 @@ local terminal_tasklist = require("widgets.damn.terminal.tasklist")
 awful.util.terminal_tasklist = terminal_tasklist.wibar
 awful.util.terminal_tasklist:setup(terminal_tasklist.widgets)
 
-tag.connect_signal("request::default_layouts", function()
-  awful.layout.append_default_layouts({
-    awful.layout.suit.tile,
-    awful.layout.suit.floating,
-    awful.layout.suit.max
-  })
-end)
+tag.connect_signal(
+  "request::default_layouts",
+  function()
+    awful.layout.append_default_layouts(
+      {
+        awful.layout.suit.tile,
+        awful.layout.suit.floating,
+        awful.layout.suit.max
+      }
+    )
+  end
+)
 
 awful.util.tags = {
   {

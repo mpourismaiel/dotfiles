@@ -168,8 +168,9 @@ function helpers.split(inputstr, sep)
 end
 
 function helpers.audio.mute()
-    os.execute(string.format("amixer -q set %s toggle", beautiful.volume.togglechannel or beautiful.volume.channel))
-    beautiful.volume.update()
+    os.execute(string.format("amixer -q set %s toggle", awful.util.volume.channel))
+    awful.util.volume.update()
+    awful.util.volume_indicator.update()
 end
 
 function helpers.client.border_adjust(c)
