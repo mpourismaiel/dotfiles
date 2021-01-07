@@ -1,3 +1,10 @@
+# Enable Powerlevel10k instant prompt. Should stay close to the top of ~/.zshrc.
+# Initialization code that may require console input (password prompts, [y/n]
+# confirmations, etc.) must go above this block; everything else may go below.
+if [[ -r "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh" ]]; then
+  source "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh"
+fi
+
 ## PATHs
 export JAVA_HOME="/usr/lib/jvm/java-14-openjdk"
 export GOPATH="$HOME/go"
@@ -181,12 +188,6 @@ source /usr/share/nvm/init-nvm.sh
 source /usr/share/zsh/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
 source /usr/share/zsh/plugins/zsh-history-substring-search/zsh-history-substring-search.zsh
 
-source $HOME/.zsh.d/plugins/cdc/cdc.plugin.zsh
-source $HOME/.zsh.d/plugins/zsh-ing/ing.plugin.zsh
-source $HOME/.zsh.d/plugins/zsh-tab-title/title.plugin.zsh
-source $HOME/.zsh.d/plugins/forgit/forgit.plugin.zsh
-source $HOME/.zsh.d/plugins/autosrc/autosrc.zsh
-
 source $HOME/.zsh.d/functions/general.zsh
 source $HOME/.zsh.d/functions/hugo.zsh
 source $HOME/.zsh.d/functions/git.zsh
@@ -195,6 +196,12 @@ source $HOME/.zsh.d/functions/laptop.zsh
 source $HOME/.zsh.d/functions/cd-reminder.zsh
 
 [ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
+
+source $HOME/.zsh.d/plugins/autosrc/autosrc.zsh
+source $HOME/.zsh.d/plugins/cdc/cdc.plugin.zsh
+source $HOME/.zsh.d/plugins/zsh-ing/ing.plugin.zsh
+source $HOME/.zsh.d/plugins/zsh-tab-title/title.plugin.zsh
+source $HOME/.zsh.d/plugins/forgit/forgit.plugin.zsh
 
 ## Plugin variables
 
