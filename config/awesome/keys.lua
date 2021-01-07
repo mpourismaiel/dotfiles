@@ -70,6 +70,7 @@ local globalkeys =
     end,
     {description = "lock screen", group = "hotkeys"}
   ),
+  awful.key({modkey}, "r", recorder_screen_show),
   awful.key({modkey}, "/", hotkeys_popup.show_help, {description = "show help", group = "awesome"}),
   awful.key(
     {modkey},

@@ -223,7 +223,7 @@ precmd () { print -Pn "\e]0;/$(pwd | sed 's#.*/##') - ${USER}@${HOST%%.*}\a" }
 title() { export TITLE="$*" }
 
 ###-tns-completion-start-###
-if [ -f /home/mahdi/.tnsrc ]; then 
-    source /home/mahdi/.tnsrc 
+if [ -f /home/mahdi/.tnsrc ]; then
+    source /home/mahdi/.tnsrc
 fi
 ###-tns-completion-end-###
