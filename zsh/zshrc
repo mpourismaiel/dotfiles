@@ -42,8 +42,6 @@ export EDITOR=/usr/bin/nvim
 export VISUAL=/usr/bin/nvim
 export REACT_EDITOR=/usr/bin/code
 
-stty -ixon
-
 WORDCHARS=${WORDCHARS//\/[&.;]}                                 # Don't consider certain characters part of the word
 
 ## Keybindings section

@@ -20,7 +20,7 @@ run alacritty
 run telegram-desktop
 run nm-applet
 run mpd
-run picom -b --config $HOME/.config/picom.conf --experimental-backend
+# run picom -b --config $HOME/.config/picom.conf --experimental-backend
 run show-ping.sh
 run polychromatic-tray-applet
 run node $HOME/Documents/Projects/network-manager/index.js
