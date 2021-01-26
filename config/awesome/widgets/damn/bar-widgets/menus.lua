@@ -69,6 +69,7 @@ function menus.new()
     x = 0,
     y = 0,
     visible = false,
+    type = "dock",
     bg = "#00000000",
     ontop = true
   }
@@ -77,6 +78,7 @@ function menus.new()
     x = 0,
     y = 0,
     visible = false,
+    type = "dock",
     bg = "#00000000",
     ontop = true
   }
@@ -87,6 +89,7 @@ function menus.new()
     y = 0,
     opacity = 0,
     visible = false,
+    type = "dock",
     bg = "#00000000",
     ontop = true
   }

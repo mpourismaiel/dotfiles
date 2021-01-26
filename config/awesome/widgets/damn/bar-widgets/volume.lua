@@ -1,6 +1,7 @@
 local awful = require("awful")
 local gears = require("gears")
 local wibox = require("wibox")
+local naughty = require("naughty")
 local lain = require("lain")
 local lain_helpers = require("lain.helpers")
 local shell = require("awful.util").shell
@@ -10,26 +11,34 @@ local string = string
 local markup = lain.util.markup
 
 local volume = {mt = {}}
+local createPopup = require("widgets.damn.popup.popup")
+
+local popup = createPopup("#fbc02d")
+
+local function getIcon(volume_now)
+  local vlevel = ""
+  if volume_now.status == "on" then
+    local level = tonumber(volume_now.level)
+
+    if level <= 35 then
+      vlevel = ""
+    elseif level <= 65 then
+      vlevel = ""
+    elseif level <= 100 then
+      vlevel = ""
+    end
+  else
+    vlevel = ""
+  end
+  return vlevel
+end
 
 function volume.new()
   local widget =
     lain.widget.alsa(
     {
       settings = function()
-        local vlevel = ""
-        if volume_now.status == "on" then
-          local level = tonumber(volume_now.level)
-
-          if level <= 35 then
-            vlevel = ""
-          elseif level <= 65 then
-            vlevel = ""
-          elseif level <= 100 then
-            vlevel = ""
-          end
-        else
-          vlevel = ""
-        end
+        local vlevel = getIcon(volume_now)
         widget:set_markup(
           markup(
             awful.util.theme.fg_normal,
@@ -48,15 +57,7 @@ function volume.new()
 
   local format_cmd = string.format("%s get %s", bar_controller.cmd, bar_controller.channel)
 
-  bar_controller.last = {}
-
-  local bar =
-    wibox.widget {
-    background_color = "#ffffff",
-    forced_height = height,
-    forced_width = 4,
-    widget = wibox.widget.progressbar
-  }
+  bar_controller.last = {notSet = true}
 
   function bar_controller.update()
     lain_helpers.async(
@@ -64,8 +65,21 @@ function volume.new()
       function(mixer)
         local l, s = string.match(mixer, "([%d]+)%%.*%[([%l]*)")
         if bar_controller.last.level ~= l or bar_controller.last.status ~= s then
-          bar.forced_height = l / 100 * height
-          local volume_now = { level = l, status = s }
+          local volume_now = {level = l, status = s}
+          local vlevel = getIcon(volume_now)
+
+          popup.update(l, awful.util.theme_functions.icon_string({icon = vlevel, size = 14, font_weight = false}))
+
+          if volume ~= l then
+            popup.updateValue(l)
+          end
+
+          if bar_controller.notSet == false then
+            popup.show()
+          else
+            bar_controller.notSet = false
+          end
+
           bar_controller.last = volume_now
         end
       end
@@ -76,25 +90,6 @@ function volume.new()
     string.format("alsa-%s-%s", bar_controller.cmd, bar_controller.channel),
     5,
     bar_controller.update
-  )
-
-  local bar_container = wibox.container.background(wibox.container.margin(bar, 2, 2, 2, 2), "#1f1f1f")
-  local indicator =
-    awful.popup {
-    ontop = true,
-    visible = false,
-    shape = gears.shape.rectangle,
-    screen = awful.screen.focused(),
-    widget = wibox.container {
-      bar_container,
-      direction = "north",
-      widget = wibox.container.rotate
-    }
-  }
-
-  awful.placement.bottom_left(
-    indicator,
-    {margins = {bottom = awful.screen.focused().geometry.height - height - 30, left = 30}, parent = s}
   )
 
   local volume = awful.util.theme_functions.bar_widget(widget.widget)
