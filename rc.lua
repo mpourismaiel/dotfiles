@@ -15,7 +15,8 @@ local menubar = require("menubar")
 
 require("configuration.keys")
 require("configuration.ruled")
-local taglist = require("configuration.widgets.taglist")
+local theme = require("configuration.config.theme")
+local widgets = require("configuration.widgets")
 
 naughty.connect_signal(
   "request::display_error",
@@ -28,7 +29,7 @@ naughty.connect_signal(
   end
 )
 
-beautiful.init(gears.filesystem.get_themes_dir() .. "default/theme.lua")
+beautiful.init(theme)
 
 tag.connect_signal(
   "request::default_layouts",
@@ -64,109 +65,10 @@ screen.connect_signal(
   end
 )
 
-mykeyboardlayout = awful.widget.keyboardlayout()
-
-mytextclock = wibox.widget.textclock()
-
 screen.connect_signal(
   "request::desktop_decoration",
   function(s)
     awful.tag({"1", "2", "3", "4", "5", "6"}, s, awful.layout.layouts[1])
-
-    s.mylayoutbox =
-      awful.widget.layoutbox {
-      screen = s,
-      buttons = {
-        awful.button(
-          {},
-          1,
-          function()
-            awful.layout.inc(1)
-          end
-        ),
-        awful.button(
-          {},
-          3,
-          function()
-            awful.layout.inc(-1)
-          end
-        ),
-        awful.button(
-          {},
-          4,
-          function()
-            awful.layout.inc(-1)
-          end
-        ),
-        awful.button(
-          {},
-          5,
-          function()
-            awful.layout.inc(1)
-          end
-        )
-      }
-    }
-
-    s.mytasklist =
-      awful.widget.tasklist {
-      screen = s,
-      filter = awful.widget.tasklist.filter.currenttags,
-      buttons = {
-        awful.button(
-          {},
-          1,
-          function(c)
-            c:activate {context = "tasklist", action = "toggle_minimization"}
-          end
-        ),
-        awful.button(
-          {},
-          3,
-          function()
-            awful.menu.client_list {theme = {width = 250}}
-          end
-        ),
-        awful.button(
-          {},
-          4,
-          function()
-            awful.client.focus.byidx(-1)
-          end
-        ),
-        awful.button(
-          {},
-          5,
-          function()
-            awful.client.focus.byidx(1)
-          end
-        )
-      }
-    }
-
-    s.mywibox =
-      awful.wibar {
-      position = "top",
-      height = 48,
-      screen = s,
-      widget = {
-        layout = wibox.layout.align.horizontal,
-        {
-          -- Left widgets
-          layout = wibox.layout.fixed.horizontal,
-          mylauncher,
-          taglist.new(s)
-        },
-        s.mytasklist, -- Middle widget
-        {
-          -- Right widgets
-          layout = wibox.layout.fixed.horizontal,
-          mykeyboardlayout,
-          wibox.widget.systray(),
-          mytextclock,
-          s.mylayoutbox
-        }
-      }
-    }
+    widgets.bar.new(s)
   end
 )

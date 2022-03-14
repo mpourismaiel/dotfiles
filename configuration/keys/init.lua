@@ -1,19 +1,12 @@
 local awful = require("awful")
 local hotkeys_popup = require("awful.hotkeys_popup")
-require("awful.hotkeys_popup.keys")
 local config = require("configuration.config")
+
+require("awful.hotkeys_popup.keys")
 
 awful.keyboard.append_global_keybindings(
   {
     awful.key({config.modkey}, "s", hotkeys_popup.show_help, {description = "show help", group = "awesome"}),
-    awful.key(
-      {config.modkey},
-      "w",
-      function()
-        mymainmenu:show()
-      end,
-      {description = "show main menu", group = "awesome"}
-    ),
     awful.key({config.modkey, "Control"}, "r", awesome.restart, {description = "reload awesome", group = "awesome"}),
     awful.key({config.modkey, "Shift"}, "q", awesome.quit, {description = "quit awesome", group = "awesome"}),
     awful.key(
@@ -26,36 +19,28 @@ awful.keyboard.append_global_keybindings(
     ),
     awful.key(
       {config.modkey},
-      "p",
+      "d",
       function()
-        menubar.show()
+        awful.spawn(config.rofi_appmenu, false)
       end,
-      {description = "show the menubar", group = "launcher"}
+      {description = "open application drawer", group = "launcher"}
     )
   }
 )
 
 awful.keyboard.append_global_keybindings(
   {
-    awful.key({config.modkey}, "Left", awful.tag.viewprev, {description = "view previous", group = "tag"}),
-    awful.key({config.modkey}, "Right", awful.tag.viewnext, {description = "view next", group = "tag"}),
-    awful.key({config.modkey}, "Escape", awful.tag.history.restore, {description = "go back", group = "tag"})
-  }
-)
-
-awful.keyboard.append_global_keybindings(
-  {
     awful.key(
       {config.modkey},
-      "j",
+      "Tab",
       function()
         awful.client.focus.byidx(1)
       end,
       {description = "focus next by index", group = "client"}
     ),
     awful.key(
-      {config.modkey},
-      "k",
+      {config.modkey, "Shift"},
+      "Tab",
       function()
         awful.client.focus.byidx(-1)
       end,
@@ -63,42 +48,85 @@ awful.keyboard.append_global_keybindings(
     ),
     awful.key(
       {config.modkey},
-      "Tab",
+      "Down",
       function()
-        awful.client.focus.history.previous()
+        awful.client.focus.global_bydirection("down")
         if client.focus then
           client.focus:raise()
         end
       end,
-      {description = "go back", group = "client"}
+      {description = "focus down", group = "client"}
     ),
     awful.key(
-      {config.modkey, "Control"},
-      "j",
+      {config.modkey},
+      "Up",
       function()
-        awful.screen.focus_relative(1)
-      end,
-      {description = "focus the next screen", group = "screen"}
-    ),
-    awful.key(
-      {config.modkey, "Control"},
-      "k",
-      function()
-        awful.screen.focus_relative(-1)
-      end,
-      {description = "focus the previous screen", group = "screen"}
-    ),
-    awful.key(
-      {config.modkey, "Control"},
-      "n",
-      function()
-        local c = awful.client.restore()
-        -- Focus restored client
-        if c then
-          c:activate {raise = true, context = "key.unminimize"}
+        awful.client.focus.global_bydirection("up")
+        if client.focus then
+          client.focus:raise()
         end
       end,
-      {description = "restore minimized", group = "client"}
+      {description = "focus up", group = "client"}
+    ),
+    awful.key(
+      {config.modkey},
+      "Left",
+      function()
+        awful.client.focus.global_bydirection("left")
+        if client.focus then
+          client.focus:raise()
+        end
+      end,
+      {description = "focus left", group = "client"}
+    ),
+    awful.key(
+      {config.modkey},
+      "Right",
+      function()
+        awful.client.focus.global_bydirection("right")
+        if client.focus then
+          client.focus:raise()
+        end
+      end,
+      {description = "focus right", group = "client"}
+    ),
+    awful.key(
+      {config.modkey, "Shift"},
+      "Left",
+      function()
+        awful.client.swap.global_bydirection("left")
+      end,
+      {description = "swap with left client", group = "client"}
+    ),
+    awful.key(
+      {config.modkey, "Shift"},
+      "Right",
+      function()
+        awful.client.swap.global_bydirection("right")
+      end,
+      {
+        description = "swap with right client",
+        group = "client"
+      }
+    ),
+    awful.key(
+      {config.modkey, "Shift"},
+      "Up",
+      function()
+        awful.client.swap.global_bydirection("up")
+      end,
+      {description = "swap with upper client", group = "client"}
+    ),
+    awful.key(
+      {config.modkey, "Shift"},
+      "Down",
+      function()
+        awful.client.swap.global_bydirection("down")
+      end,
+      {
+        description = "swap with bottom client",
+        group = "client"
+      }
     )
   }
 )
@@ -106,74 +134,10 @@ awful.keyboard.append_global_keybindings(
 awful.keyboard.append_global_keybindings(
   {
     awful.key(
-      {config.modkey, "Shift"},
-      "j",
-      function()
-        awful.client.swap.byidx(1)
-      end,
-      {description = "swap with next client by index", group = "client"}
-    ),
-    awful.key(
-      {config.modkey, "Shift"},
-      "k",
-      function()
-        awful.client.swap.byidx(-1)
-      end,
-      {description = "swap with previous client by index", group = "client"}
-    ),
-    awful.key(
       {config.modkey},
       "u",
       awful.client.urgent.jumpto,
       {description = "jump to urgent client", group = "client"}
-    ),
-    awful.key(
-      {config.modkey},
-      "l",
-      function()
-        awful.tag.incmwfact(0.05)
-      end,
-      {description = "increase master width factor", group = "layout"}
-    ),
-    awful.key(
-      {config.modkey},
-      "h",
-      function()
-        awful.tag.incmwfact(-0.05)
-      end,
-      {description = "decrease master width factor", group = "layout"}
-    ),
-    awful.key(
-      {config.modkey, "Shift"},
-      "h",
-      function()
-        awful.tag.incnmaster(1, nil, true)
-      end,
-      {description = "increase the number of master clients", group = "layout"}
-    ),
-    awful.key(
-      {config.modkey, "Shift"},
-      "l",
-      function()
-        awful.tag.incnmaster(-1, nil, true)
-      end,
-      {description = "decrease the number of master clients", group = "layout"}
-    ),
-    awful.key(
-      {config.modkey, "Control"},
-      "h",
-      function()
-        awful.tag.incncol(1, nil, true)
-      end,
-      {description = "increase the number of columns", group = "layout"}
-    ),
-    awful.key(
-      {config.modkey, "Control"},
-      "l",
-      function()
-        awful.tag.incncol(-1, nil, true)
-      end,
-      {description = "decrease the number of columns", group = "layout"}
     ),
     awful.key(
       {config.modkey},
@@ -210,19 +174,6 @@ awful.keyboard.append_global_keybindings(
       end
     },
     awful.key {
-      modifiers = {config.modkey, "Control"},
-      keygroup = "numrow",
-      description = "toggle tag",
-      group = "tag",
-      on_press = function(index)
-        local screen = awful.screen.focused()
-        local tag = screen.tags[index]
-        if tag then
-          awful.tag.viewtoggle(tag)
-        end
-      end
-    },
-    awful.key {
       modifiers = {config.modkey, "Shift"},
       keygroup = "numrow",
       description = "move focused client to tag",
@@ -233,32 +184,6 @@ awful.keyboard.append_global_keybindings(
           if tag then
             client.focus:move_to_tag(tag)
           end
-        end
-      end
-    },
-    awful.key {
-      modifiers = {config.modkey, "Control", "Shift"},
-      keygroup = "numrow",
-      description = "toggle focused client on tag",
-      group = "tag",
-      on_press = function(index)
-        if client.focus then
-          local tag = client.focus.screen.tags[index]
-          if tag then
-            client.focus:toggle_tag(tag)
-          end
-        end
-      end
-    },
-    awful.key {
-      modifiers = {config.modkey},
-      keygroup = "numpad",
-      description = "select layout directly",
-      group = "layout",
-      on_press = function(index)
-        local t = awful.screen.focused().selected_tag
-        if t then
-          t.layout = t.layouts[index] or t.layout
         end
       end
     }
@@ -311,34 +236,18 @@ client.connect_signal(
           {description = "toggle fullscreen", group = "client"}
         ),
         awful.key(
-          {config.modkey, "Shift"},
-          "c",
+          {config.modkey},
+          "q",
           function(c)
             c:kill()
           end,
           {description = "close", group = "client"}
         ),
         awful.key(
-          {config.modkey, "Control"},
-          "space",
+          {config.modkey},
+          "c",
           awful.client.floating.toggle,
           {description = "toggle floating", group = "client"}
-        ),
-        awful.key(
-          {config.modkey, "Control"},
-          "Return",
-          function(c)
-            c:swap(awful.client.getmaster())
-          end,
-          {description = "move to master", group = "client"}
-        ),
-        awful.key(
-          {config.modkey},
-          "o",
-          function(c)
-            c:move_to_screen()
-          end,
-          {description = "move to screen", group = "client"}
         ),
         awful.key(
           {config.modkey},
@@ -366,24 +275,6 @@ client.connect_signal(
             c:raise()
           end,
           {description = "(un)maximize", group = "client"}
-        ),
-        awful.key(
-          {config.modkey, "Control"},
-          "m",
-          function(c)
-            c.maximized_vertical = not c.maximized_vertical
-            c:raise()
-          end,
-          {description = "(un)maximize vertically", group = "client"}
-        ),
-        awful.key(
-          {config.modkey, "Shift"},
-          "m",
-          function(c)
-            c.maximized_horizontal = not c.maximized_horizontal
-            c:raise()
-          end,
-          {description = "(un)maximize horizontally", group = "client"}
         )
       }
     )
