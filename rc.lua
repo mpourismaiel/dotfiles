@@ -13,10 +13,11 @@ local naughty = require("naughty")
 local ruled = require("ruled")
 local menubar = require("menubar")
 
+require("configuration.tags")
 require("configuration.keys")
 require("configuration.ruled")
+
 local theme = require("configuration.config.theme")
-local widgets = require("configuration.widgets")
 
 naughty.connect_signal(
   "request::display_error",
@@ -30,6 +31,10 @@ naughty.connect_signal(
 )
 
 beautiful.init(theme)
+
+require("module.autostart")
+require("configuration.bling")
+local widgets = require("configuration.widgets")
 
 tag.connect_signal(
   "request::default_layouts",
@@ -68,7 +73,6 @@ screen.connect_signal(
 screen.connect_signal(
   "request::desktop_decoration",
   function(s)
-    awful.tag({"1", "2", "3", "4", "5", "6"}, s, awful.layout.layouts[1])
     widgets.bar.new(s)
   end
 )

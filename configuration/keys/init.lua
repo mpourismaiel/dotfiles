@@ -8,7 +8,14 @@ awful.keyboard.append_global_keybindings(
   {
     awful.key({config.modkey}, "s", hotkeys_popup.show_help, {description = "show help", group = "awesome"}),
     awful.key({config.modkey, "Control"}, "r", awesome.restart, {description = "reload awesome", group = "awesome"}),
-    awful.key({config.modkey, "Shift"}, "q", awesome.quit, {description = "quit awesome", group = "awesome"}),
+    awful.key(
+      {config.modkey, "Shift"},
+      "q",
+      function()
+        awful.spawn.with_shell("poweroff")
+      end,
+      {description = "quit awesome", group = "awesome"}
+    ),
     awful.key(
       {config.modkey},
       "Return",
@@ -21,9 +28,89 @@ awful.keyboard.append_global_keybindings(
       {config.modkey},
       "d",
       function()
-        awful.spawn(config.rofi_appmenu, false)
+        awful.spawn(config.commands.rofi_appmenu, false)
       end,
       {description = "open application drawer", group = "launcher"}
+    ),
+    awful.key(
+      {},
+      "Print",
+      function()
+        awful.spawn.easy_async_with_shell(
+          config.commands.full_screenshot,
+          function()
+          end
+        )
+      end,
+      {description = "fullscreen screenshot", group = "Utility"}
+    ),
+    awful.key(
+      {"Shift"},
+      "Print",
+      function()
+        awful.spawn.easy_async_with_shell(
+          config.commands.area_screenshot,
+          function()
+          end
+        )
+      end,
+      {description = "area/selected screenshot", group = "Utility"}
+    ),
+    awful.key(
+      {},
+      "XF86AudioRaiseVolume",
+      function()
+        awful.spawn("amixer -D pulse sset Master 5%+", false)
+      end,
+      {description = "increase volume up by 5%", group = "hotkeys"}
+    ),
+    awful.key(
+      {},
+      "XF86AudioLowerVolume",
+      function()
+        awful.spawn("amixer -D pulse sset Master 5%-", false)
+      end,
+      {description = "decrease volume up by 5%", group = "hotkeys"}
+    ),
+    awful.key(
+      {},
+      "XF86AudioMute",
+      function()
+        awful.spawn("amixer -D pulse set Master 1+ toggle", false)
+      end,
+      {description = "toggle mute", group = "hotkeys"}
+    ),
+    awful.key(
+      {},
+      "XF86AudioNext",
+      function()
+        awful.spawn("playerctl next", false)
+      end,
+      {description = "next music", group = "hotkeys"}
+    ),
+    awful.key(
+      {},
+      "XF86AudioPrev",
+      function()
+        awful.spawn("playerctl previous", false)
+      end,
+      {description = "previous music", group = "hotkeys"}
+    ),
+    awful.key(
+      {},
+      "XF86AudioPlay",
+      function()
+        awful.spawn("playerctl play-pause", false)
+      end,
+      {description = "play/pause music", group = "hotkeys"}
+    ),
+    awful.key(
+      {},
+      "XF86AudioMicMute",
+      function()
+        awful.spawn("amixer set Capture toggle", false)
+      end,
+      {description = "mute microphone", group = "hotkeys"}
     )
   }
 )

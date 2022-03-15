@@ -1,4 +1,5 @@
 local awful = require("awful")
+local wibox = require("wibox")
 local layoutbox = {mt = {}}
 
 function layoutbox.new(screen)

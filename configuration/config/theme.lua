@@ -108,6 +108,17 @@ theme.layout_cornerne = themes_path .. "default/layouts/cornernew.png"
 theme.layout_cornersw = themes_path .. "default/layouts/cornersww.png"
 theme.layout_cornerse = themes_path .. "default/layouts/cornersew.png"
 
+theme.tag_preview_widget_border_radius = config.dpi(3) -- Border radius of the widget (With AA)
+theme.tag_preview_client_border_radius = config.dpi(3) -- Border radius of each client in the widget (With AA)
+theme.tag_preview_client_opacity = 0.5 -- Opacity of each client
+theme.tag_preview_client_bg = "#000000" -- The bg color of each client
+theme.tag_preview_client_border_color = "#ffffff" -- The border color of each client
+theme.tag_preview_client_border_width = config.dpi(3) -- The border width of each client
+theme.tag_preview_widget_bg = "#000000" -- The bg color of the widget
+theme.tag_preview_widget_border_color = "#ffffff88" -- The border color of the widget
+theme.tag_preview_widget_border_width = config.dpi(3) -- The border width of the widget
+theme.tag_preview_widget_margin = 0 -- The margin of the widget
+
 -- Generate Awesome icon:
 theme.awesome_icon = theme_assets.awesome_icon(theme.menu_height, theme.bg_focus, theme.fg_focus)
 

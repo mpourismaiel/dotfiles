@@ -15,44 +15,164 @@ ruled.client.connect_signal(
       }
     }
 
+    -- Dialogs
     ruled.client.append_rule {
-      id = "floating",
+      id = "dialog",
       rule_any = {
-        instance = {"copyq", "pinentry"},
+        type = {"dialog"},
+        class = {"Wicd-client.py", "calendar.google.com"}
+      },
+      properties = {
+        titlebars_enabled = true,
+        floating = true,
+        above = true,
+        skip_decoration = true,
+        placement = awful.placement.centered
+      }
+    }
+
+    -- Modals
+    ruled.client.append_rule {
+      id = "modal",
+      rule_any = {
+        type = {"modal"}
+      },
+      properties = {
+        titlebars_enabled = true,
+        floating = true,
+        above = true,
+        skip_decoration = true,
+        placement = awful.placement.centered
+      }
+    }
+
+    -- Utilities
+    ruled.client.append_rule {
+      id = "utility",
+      rule_any = {
+        type = {"utility"}
+      },
+      properties = {
+        titlebars_enabled = false,
+        floating = true,
+        skip_decoration = true,
+        placement = awful.placement.centered
+      }
+    }
+
+    -- Splash
+    ruled.client.append_rule {
+      id = "splash",
+      rule_any = {
+        type = {"splash"},
+        name = {"Discord Updater"}
+      },
+      properties = {
+        titlebars_enabled = false,
+        round_corners = false,
+        floating = true,
+        above = true,
+        skip_decoration = true,
+        placement = awful.placement.centered
+      }
+    }
+
+    ruled.client.append_rule {
+      id = "terminals",
+      rule_any = {
         class = {
-          "Arandr",
-          "Blueman-manager",
-          "Gpick",
-          "Kruler",
-          "Sxiv",
-          "Tor Browser",
-          "Wpa_gui",
-          "veromix",
-          "xtightvncviewer"
-        },
-        -- Note that the name property shown in xprop might be set slightly after creation of the client
-        -- and the name shown there might not match defined rules here.
-        name = {
-          "Event Tester" -- xev.
-        },
-        role = {
-          "AlarmWindow", -- Thunderbird's calendar.
-          "ConfigManager", -- Thunderbird's about:config.
-          "pop-up" -- e.g. Google Chrome's (detached) Developer Tools.
+          "URxvt",
+          "XTerm",
+          "UXTerm",
+          "kitty",
+          "K3rmit"
         }
       },
-      properties = {floating = true}
+      properties = {
+        tag = "3",
+        switch_to_tags = true,
+        size_hints_honor = false,
+        titlebars_enabled = true
+      }
     }
 
     ruled.client.append_rule {
-      id = "titlebars",
-      rule_any = {type = {"normal", "dialog"}},
-      properties = {titlebars_enabled = true}
+      rule = {class_any = {"Firefox", "Google-chrome", "Chromium"}},
+      properties = {tag = "1"}
     }
 
     ruled.client.append_rule {
-      rule = {class = "Firefox"},
-      properties = {screen = 1, tag = "2"}
+      id = "text",
+      rule_any = {
+        class = {
+          "Geany",
+          "Atom",
+          "Subl3",
+          "code-oss",
+          "Code"
+        },
+        name = {
+          "LibreOffice",
+          "libreoffice"
+        }
+      },
+      properties = {
+        tag = "2"
+      }
+    }
+
+    ruled.client.append_rule {
+      id = "files",
+      rule_any = {
+        class = {
+          "vlc",
+          "Spotify",
+          "dolphin",
+          "ark",
+          "Nemo",
+          "File-roller",
+          "discord",
+          "Thunar"
+        }
+      },
+      properties = {
+        tag = "4",
+        switch_to_tags = true
+      }
+    }
+
+    ruled.client.append_rule {
+      id = "multimedia",
+      rule_any = {
+        class = {
+          "TelegramDesktop"
+        }
+      },
+      properties = {
+        tag = "5",
+        switch_to_tags = true,
+        placement = awful.placement.centered
+      }
+    }
+
+    ruled.client.append_rule {
+      id = "gaming",
+      rule_any = {
+        class = {
+          "Wine",
+          "dolphin-emu",
+          "Steam",
+          "Citra",
+          "supertuxkart"
+        },
+        name = {"Steam"}
+      },
+      properties = {
+        tag = "6",
+        skip_decoration = true,
+        switch_to_tags = true,
+        placement = awful.placement.centered
+      }
     }
   end
 )
