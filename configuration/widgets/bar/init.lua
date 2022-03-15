@@ -13,38 +13,49 @@ local bar = {mt = {}}
 
 function bar.new(screen)
   return awful.wibar {
-    position = "bottom",
-    height = 48,
+    position = "left",
+    width = 48,
     screen = screen,
-    bg = "#222222e0",
+    bg = "#222222c0",
     widget = {
       layout = wibox.layout.stack,
       {
         widget = wibox.container.place,
-        halign = "left",
+        valign = "top",
         {
           widget = wibox.container.margin,
-          left = config.dpi(6),
+          top = config.dpi(9),
           {
             widget = taglist.new(screen)
           }
         }
       },
       {
-        layout = wibox.layout.align.horizontal,
+        layout = wibox.layout.align.vertical,
         nil,
         wibox.container.place(tasklist.new(screen)),
         nil
       },
       {
         widget = wibox.container.place,
-        halign = "right",
+        valign = "bottom",
         {
-          layout = wibox.layout.fixed.horizontal,
-          bar_widget_wrapper(wibox.widget.systray()),
-          bar_widget_wrapper(keyboardlayout.new()),
-          bar_widget_wrapper(clock.new()),
-          bar_widget_wrapper(layoutbox.new(screen))
+          widget = wibox.container.margin,
+          bottom = config.dpi(9),
+          {
+            layout = wibox.layout.fixed.vertical,
+            bar_widget_wrapper(
+              wibox.widget {
+                base_size = config.dpi(16),
+                horizontal = false,
+                screen = screen,
+                widget = wibox.widget.systray
+              }
+            ),
+            bar_widget_wrapper(keyboardlayout.new()),
+            bar_widget_wrapper(clock.new()),
+            bar_widget_wrapper(layoutbox.new(screen))
+          }
         }
       }
     }

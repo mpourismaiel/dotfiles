@@ -61,19 +61,23 @@ local function custom_template(args)
           }
         },
         {
-          widget = wibox.container.place,
-          valign = "bottom",
+          widget = wibox.container.margin,
+          left = config.dpi(2),
           {
-            id = "indicator",
-            widget = wibox.container.background,
-            shape = gears.shape.circle,
+            widget = wibox.container.place,
+            halign = "left",
             {
-              widget = wibox.container.constraint,
-              strategy = "exact",
-              width = config.dpi(4),
-              height = config.dpi(4),
+              id = "indicator",
+              widget = wibox.container.background,
+              shape = gears.shape.rounded_rect,
               {
-                widget = wibox.widget.textbox
+                widget = wibox.container.constraint,
+                strategy = "exact",
+                width = config.dpi(3),
+                height = config.dpi(12),
+                {
+                  widget = wibox.widget.textbox
+                }
               }
             }
           }
@@ -158,7 +162,7 @@ function tasklist.new(screen)
       return list
     end,
     layout = {
-      layout = wibox.layout.fixed.horizontal
+      layout = wibox.layout.fixed.vertical
     },
     buttons = {
       awful.button(

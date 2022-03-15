@@ -57,8 +57,8 @@ local function custom_template(args)
     end,
     widget = wibox.container.constraint,
     strategy = "exact",
-    width = config.dpi(20),
-    height = config.dpi(48),
+    width = config.dpi(48),
+    height = config.dpi(16),
     {
       widget = wibox.container.place,
       {
@@ -68,8 +68,8 @@ local function custom_template(args)
         {
           widget = wibox.container.constraint,
           strategy = "exact",
-          width = config.dpi(12),
-          height = config.dpi(12)
+          width = config.dpi(9),
+          height = config.dpi(9)
         }
       }
     }
@@ -125,6 +125,9 @@ function taglist.new(screen)
     screen = screen,
     filter = awful.widget.taglist.filter.all,
     update_function = taglist.render,
+    layout = {
+      layout = wibox.layout.fixed.vertical
+    },
     buttons = {
       awful.button(
         {},
