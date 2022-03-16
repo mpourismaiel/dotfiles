@@ -8,6 +8,11 @@ local config = {
   terminal = "kitty",
   modkey = "Mod4",
   dpi = xresources.apply_dpi,
+  openweathermap = {
+    key = "",
+    city_id = "",
+    weather_units = "metric"
+  },
   wallpaper = os.getenv("HOME") .. "/Pictures/wallpaper.jpg",
   auto_start = {
     debug_mode = false,

@@ -33,6 +33,7 @@ naughty.connect_signal(
 beautiful.init(theme)
 
 require("module.autostart")
+require("module.weather")
 require("configuration.bling")
 local widgets = require("configuration.widgets")
 

@@ -58,18 +58,19 @@ local function custom_template(args)
     widget = wibox.container.constraint,
     strategy = "exact",
     width = config.dpi(48),
-    height = config.dpi(16),
+    height = config.dpi(24),
     {
       widget = wibox.container.place,
       {
         id = "indicator",
         widget = wibox.container.background,
         shape = gears.shape.circle,
+        border_color = "#ffffff44",
         {
           widget = wibox.container.constraint,
           strategy = "exact",
-          width = config.dpi(9),
-          height = config.dpi(9)
+          width = config.dpi(12),
+          height = config.dpi(12)
         }
       }
     }
@@ -110,10 +111,12 @@ function taglist.render(w, buttons, label, data, objects, args)
       cache.update_callback(cache.primary, o, i, objects)
     end
 
-    cache.indicator:set_bg("#ffffff44")
+    cache.indicator:set_bg("")
+    cache.indicator.border_width = config.dpi(1)
 
     if o.selected then
       cache.indicator:set_bg("#ffffffff")
+      cache.indicator.border_width = config.dpi(0)
     end
 
     w:add(cache.primary)

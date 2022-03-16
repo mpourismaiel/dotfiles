@@ -1,29 +1,29 @@
 local wibox = require("wibox")
 
-local tasklist = {mt = {}}
+local clock = {mt = {}}
 
-function tasklist.new()
+function clock.new()
   return wibox.widget {
     layout = wibox.layout.fixed.vertical,
     {
       widget = wibox.container.place,
       {
         widget = wibox.widget.textclock,
-        format = "<b><span font_size='14pt'>%H</span></b>"
+        format = "<b><span font_size='12.5pt' color='#cccccc'>%H</span></b>"
       }
     },
     {
       widget = wibox.container.place,
       {
         widget = wibox.widget.textclock,
-        format = "<span font_size='14pt'>%M</span>"
+        format = "<span font_size='13pt'>%M</span>"
       }
     }
   }
 end
 
-function tasklist.mt:__call(...)
-  return tasklist.new(...)
+function clock.mt:__call(...)
+  return clock.new(...)
 end
 
-return setmetatable(tasklist, tasklist.mt)
+return setmetatable(clock, clock.mt)

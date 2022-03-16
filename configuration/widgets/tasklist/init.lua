@@ -155,9 +155,16 @@ function tasklist.new(screen)
     update_function = tasklist.render,
     source = function(s, args)
       local list = {}
+      local cache = {}
       local tags = s.tags
       for k, v in ipairs(tags) do
-        list = gears.table.join(list, v:clients())
+        for i, c in ipairs(v:clients()) do
+          -- if you want to group same windows you can move table.insert into this if, but i'm not sure how you would access a minimized window
+          if cache[c.class] ~= true then
+            cache[c.class] = true
+          end
+          table.insert(list, c)
+        end
       end
       return list
     end,

@@ -4,8 +4,8 @@ local config = require("configuration.config")
 function bar_widget_wrapper(w)
   return wibox.widget {
     widget = wibox.container.margin,
-    top = config.dpi(6),
-    bottom = config.dpi(6),
+    top = config.dpi(9),
+    bottom = config.dpi(9),
     {
       widget = wibox.container.constraint,
       width = config.dpi(48),
@@ -17,7 +17,10 @@ function bar_widget_wrapper(w)
           width = config.dpi(24),
           strategy = "exact",
           {
-            widget = w
+            widget = wibox.container.place,
+            {
+              widget = w
+            }
           }
         }
       }
