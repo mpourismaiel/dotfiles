@@ -33,6 +33,17 @@ awful.keyboard.append_global_keybindings(
       {description = "open application drawer", group = "launcher"}
     ),
     awful.key(
+      {config.modkey},
+      "Escape",
+      function()
+        awesome.emit_signal("widget::systray:toggle")
+      end,
+      {
+        description = "toggle systray",
+        group = "systray"
+      }
+    ),
+    awful.key(
       {},
       "Print",
       function()
