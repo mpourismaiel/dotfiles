@@ -26,6 +26,14 @@ awful.keyboard.append_global_keybindings(
     ),
     awful.key(
       {config.modkey},
+      "l",
+      function()
+        awesome.emit_signal("module::lockscreen:show")
+      end,
+      {description = "lock desktop", group = "launcher"}
+    ),
+    awful.key(
+      {config.modkey},
       "d",
       function()
         awful.spawn(config.commands.rofi_appmenu, false)

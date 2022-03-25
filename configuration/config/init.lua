@@ -9,8 +9,8 @@ local config = {
   modkey = "Mod4",
   dpi = xresources.apply_dpi,
   openweathermap = {
-    key = "",
-    city_id = "",
+    key = "c9d7511427001fd380fa12270a6ad0fd",
+    city_id = "112931",
     weather_units = "metric"
   },
   wallpaper = os.getenv("HOME") .. "/Pictures/wallpaper.jpg",
@@ -28,7 +28,7 @@ local config = {
       -- Lockscreen timer
       [[
       xidlehook --not-when-fullscreen --not-when-audio --timer 600 \
-      "awesome-client 'awesome.emit_signal(\"module::lockscreen_show\")'" ""
+      "awesome-client 'awesome.emit_signal(\"module::lockscreen:show\")'" ""
       ]]
     }
   },
@@ -48,7 +48,7 @@ local config = {
     },
     {
       name = "3",
-      layout = awful.layout.suit.max
+      layout = awful.layout.suit.tile
     },
     {
       name = "4",

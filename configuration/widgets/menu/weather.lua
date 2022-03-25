@@ -7,45 +7,50 @@ function weather.new()
   local w =
     wibox.widget.base.make_widget_from_value(
     wibox.widget {
-      layout = wibox.layout.align.horizontal,
+      widget = wibox.container.constraint,
+      height = config.dpi(60),
+      strategy = "exact",
       {
-        widget = wibox.container.margin,
-        right = config.dpi(16),
+        layout = wibox.layout.align.horizontal,
         {
-          widget = wibox.container.place,
-          valign = "middle",
-          {
-            widget = wibox.container.constraint,
-            width = config.dpi(40),
-            height = config.dpi(40),
-            strategy = "exact",
-            {
-              id = "icon",
-              widget = wibox.widget.imagebox
-            }
-          }
-        }
-      },
-      nil,
-      {
-        widget = wibox.container.place,
-        halign = "right",
-        valign = "middle",
-        {
-          layout = wibox.layout.fixed.vertical,
+          widget = wibox.container.margin,
+          right = config.dpi(16),
           {
             widget = wibox.container.place,
-            halign = "right",
+            valign = "middle",
             {
-              id = "temp",
+              widget = wibox.container.constraint,
+              width = config.dpi(40),
+              height = config.dpi(40),
+              strategy = "exact",
+              {
+                id = "icon",
+                widget = wibox.widget.imagebox
+              }
+            }
+          }
+        },
+        nil,
+        {
+          widget = wibox.container.place,
+          halign = "right",
+          valign = "middle",
+          {
+            layout = wibox.layout.fixed.vertical,
+            {
+              widget = wibox.container.place,
+              halign = "right",
+              {
+                id = "temp",
+                widget = wibox.widget.textbox,
+                markup = ""
+              }
+            },
+            {
+              id = "desc",
               widget = wibox.widget.textbox,
               markup = ""
             }
-          },
-          {
-            id = "desc",
-            widget = wibox.widget.textbox,
-            markup = ""
           }
         }
       }
@@ -66,8 +71,8 @@ function weather.new()
       end
 
       icon.image = icon_widget
-      temp.markup = "<b><span font_size='16pt'>" .. temperature .. weather_temp_symbol .. "</span></b>"
-      desc.markup = "<span font_size='10pt'>" .. description .. "</span>"
+      temp.markup = "<b><span color='#ffffff' font_size='16pt'>" .. temperature .. weather_temp_symbol .. "</span></b>"
+      desc.markup = "<span color='#ffffff' font_size='10pt'>" .. description .. "</span>"
     end
   )
 

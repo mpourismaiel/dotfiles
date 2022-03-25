@@ -10,12 +10,12 @@ function clock.new()
       layout = wibox.layout.align.horizontal,
       {
         widget = wibox.widget.textclock,
-        format = "<span font_size='12pt' color='#cccccc'>%A</span>"
+        format = "<b><span font_size='12pt' color='#eeeeee'>%A</span></b>"
       },
       nil,
       {
         widget = wibox.widget.textclock,
-        format = "<span font_size='12pt' color='#cccccc'>%A %F</span>"
+        format = "<b><span font_size='12pt' color='#eeeeee'>%A %F</span></b>"
       }
     },
     {
@@ -26,7 +26,7 @@ function clock.new()
         halign = "right",
         {
           widget = wibox.widget.textclock,
-          format = "<b><span font_size='40pt' color='#cccccc'>%H:%M</span></b>"
+          format = "<span font_size='48pt' color='#ffffff'>%H:%M</span>"
         }
       }
     }

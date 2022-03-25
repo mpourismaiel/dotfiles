@@ -16,6 +16,9 @@ local menubar = require("menubar")
 require("configuration.tags")
 require("configuration.keys")
 require("configuration.ruled")
+require("configuration.client")
+require("configuration.notifications")
+require("configuration.widgets.lockscreen")
 
 local theme = require("configuration.config.theme")
 
@@ -36,19 +39,6 @@ require("module.autostart")
 require("module.weather")
 require("configuration.bling")
 local widgets = require("configuration.widgets")
-
-tag.connect_signal(
-  "request::default_layouts",
-  function()
-    awful.layout.append_default_layouts(
-      {
-        awful.layout.suit.max,
-        awful.layout.suit.tile,
-        awful.layout.suit.floating
-      }
-    )
-  end
-)
 
 screen.connect_signal(
   "request::wallpaper",

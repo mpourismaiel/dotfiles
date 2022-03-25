@@ -11,7 +11,8 @@ ruled.client.connect_signal(
         focus = awful.client.focus.filter,
         raise = true,
         screen = awful.screen.preferred,
-        placement = awful.placement.no_overlap + awful.placement.no_offscreen
+        placement = awful.placement.no_overlap + awful.placement.no_offscreen,
+        titlebars_enabled = true
       }
     }
 

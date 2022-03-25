@@ -1,6 +1,19 @@
 local awful = require("awful")
 local config = require("configuration/config")
 
+tag.connect_signal(
+  "request::default_layouts",
+  function()
+    awful.layout.append_default_layouts(
+      {
+        awful.layout.suit.max,
+        awful.layout.suit.tile,
+        awful.layout.suit.floating
+      }
+    )
+  end
+)
+
 screen.connect_signal(
   "request::desktop_decoration",
   function(s)
@@ -9,8 +22,8 @@ screen.connect_signal(
         i,
         {
           screen = s,
-          name = tag.name,
-          layout = tag.layout or awful.layout.suit.max
+          layout = tag.layout or awful.layout.suit.max,
+          selected = i == 1
         }
       )
     end
