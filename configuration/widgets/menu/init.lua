@@ -8,6 +8,7 @@ local theme = require("configuration.config.theme")
 local container = require("configuration.widgets.menu.container")
 local clock = require("configuration.widgets.menu.clock")
 local weather = require("configuration.widgets.menu.weather")
+local power_button = require("configuration.widgets.menu.power-button")
 local volumeslider = require("configuration.widgets.volume.slider")
 
 local config_dir = filesystem.get_configuration_dir()
@@ -134,7 +135,16 @@ function menu.new(screen)
           {
             layout = wibox.layout.fixed.vertical,
             spacing = config.dpi(16),
-            container(volumeslider)
+            container(volumeslider),
+            {
+              layout = wibox.layout.flex.horizontal,
+              spacing = config.dpi(8),
+              container(power_button("lock")),
+              container(power_button("sleep")),
+              container(power_button("logout")),
+              container(power_button("reboot")),
+              container(power_button("power"))
+            }
           }
         }
       }
@@ -146,6 +156,14 @@ function menu.new(screen)
     function()
       backdrop.visible = not backdrop.visible
       drawer.visible = not drawer.visible
+    end
+  )
+
+  awesome.connect_signal(
+    "widget::drawer:hide",
+    function()
+      backdrop.visible = false
+      drawer.visible = false
     end
   )
 
