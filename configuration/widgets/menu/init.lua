@@ -8,6 +8,7 @@ local theme = require("configuration.config.theme")
 local container = require("configuration.widgets.menu.container")
 local clock = require("configuration.widgets.menu.clock")
 local weather = require("configuration.widgets.menu.weather")
+local volumeslider = require("configuration.widgets.volume.slider")
 
 local config_dir = filesystem.get_configuration_dir()
 local menu_icon = config_dir .. "/images/circle.svg"
@@ -57,6 +58,18 @@ function menu.new(screen)
     end
   )
 
+  local backdrop =
+    wibox {
+    ontop = true,
+    screen = screen,
+    bg = "#ffffff00",
+    type = "utility",
+    x = screen.geometry.x,
+    y = screen.geometry.y,
+    width = screen.geometry.width,
+    height = screen.geometry.height
+  }
+
   local drawer =
     awful.popup {
     widget = {},
@@ -81,6 +94,19 @@ function menu.new(screen)
     bg = "#44444430"
   }
 
+  backdrop:buttons(
+    awful.util.table.join(
+      awful.button(
+        {},
+        1,
+        function()
+          backdrop.visible = false
+          drawer.visible = false
+        end
+      )
+    )
+  )
+
   drawer:setup {
     widget = wibox.container.constraint,
     width = config.dpi(400),
@@ -90,14 +116,26 @@ function menu.new(screen)
       widget = wibox.container.margin,
       margins = config.dpi(16),
       {
-        layout = wibox.layout.fixed.vertical,
-        spacing = config.dpi(16),
-        container(clock()),
+        layout = wibox.layout.flex.vertical,
         {
-          layout = wibox.layout.flex.horizontal,
+          layout = wibox.layout.fixed.vertical,
           spacing = config.dpi(16),
-          container(weather()),
-          container(weather())
+          container(clock()),
+          {
+            layout = wibox.layout.flex.horizontal,
+            spacing = config.dpi(16),
+            container(weather()),
+            container(weather())
+          }
+        },
+        {
+          widget = wibox.container.place,
+          valign = "bottom",
+          {
+            layout = wibox.layout.fixed.vertical,
+            spacing = config.dpi(16),
+            container(volumeslider)
+          }
         }
       }
     }
@@ -106,6 +144,7 @@ function menu.new(screen)
   awesome.connect_signal(
     "widget::drawer:toggle",
     function()
+      backdrop.visible = not backdrop.visible
       drawer.visible = not drawer.visible
     end
   )
