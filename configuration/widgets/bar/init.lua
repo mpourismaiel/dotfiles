@@ -10,6 +10,7 @@ local layoutbox = require("configuration.widgets.layoutbox")
 local systray = require("configuration.widgets.systray")
 local keyboardlayout = require("configuration.widgets.keyboardlayout")
 local clock = require("configuration.widgets.clock")
+local bluetooth = require("configuration.widgets.bar.bluetooth")
 
 local bar = {mt = {}}
 
@@ -18,7 +19,7 @@ function bar.new(screen)
     position = "left",
     width = 48,
     screen = screen,
-    bg = "#222222c0",
+    bg = "#111111ff",
     widget = {
       layout = wibox.layout.stack,
       {
@@ -49,6 +50,7 @@ function bar.new(screen)
           {
             layout = wibox.layout.fixed.vertical,
             bar_widget_wrapper(systray.new()),
+            bluetooth(),
             bar_widget_wrapper(keyboardlayout.new()),
             bar_widget_wrapper(clock.new()),
             bar_widget_wrapper(layoutbox.new(screen))

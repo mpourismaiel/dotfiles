@@ -2,24 +2,9 @@ local awful = require("awful")
 local wibox = require("wibox")
 local gears = require("gears")
 local config = require("configuration.config")
+local helpers = require("module.helpers")
 
 local lockscreen = {mt = {}}
-
--- Check module if valid
-local module_check = function(name)
-  if package.loaded[name] then
-    return true
-  else
-    for _, searcher in ipairs(package.searchers or package.loaders) do
-      local loader = searcher(name)
-      if type(loader) == "function" then
-        package.preload[name] = loader
-        return true
-      end
-    end
-    return false
-  end
-end
 
 function lockscreen.new(s)
   local screen =
@@ -64,6 +49,14 @@ function lockscreen.new(s)
     }
   }
 
+  local update_password_input = function()
+    local pw = ""
+    for i = 1, #input_password, 1 do
+      pw = pw .. "⬤"
+    end
+    text:set_markup("<span font_size='8pt'>" .. pw .. "</span>")
+  end
+
   local type_again = true
   local password_grabber =
     awful.keygrabber {
@@ -91,16 +84,25 @@ function lockscreen.new(s)
         return
       end
 
+      if key == "BackSpace" then
+        if input_password == nil then
+          return
+        end
+        input_password = input_password:sub(1, -2)
+        update_password_input()
+        return
+      end
+
       -- Accept only the single charactered key
       -- Ignore 'Shift', 'Control', 'Return', 'F1', 'F2', etc., etc.
       if #key == 1 then
         if input_password == nil then
           input_password = key
-          text:set_markup("<span font_size='14pt'>" .. input_password .. "</span>")
+          update_password_input()
           return
         end
         input_password = input_password .. key
-        text:set_markup("<span font_size='14pt'>" .. input_password .. "</span>")
+        update_password_input()
       end
     end,
     keyreleased_callback = function(self, mod, key, command)
@@ -110,19 +112,19 @@ function lockscreen.new(s)
 
       -- Validation
       if key == "Return" then
-        if true then
-          awesome.emit_signal("module::lockscreen:hide")
-          self:stop()
-          return
-        end
-
         -- Validate password
         local authenticated = false
         if input_password ~= nil then
           -- If lua-pam library is 'okay'
-          if module_check("liblua_pam") then
+          if helpers.module_check("liblua_pam") then
             local pam = require("liblua_pam")
             authenticated = pam:auth_current_user(input_password)
+          else
+            text:set_markup("<span color='#ff0000' font_size='14pt'>no liblua</span>")
+            awesome.emit_signal("module::lockscreen:fail")
+            type_again = false
+            input_password = nil
+            return
           end
         end
 
@@ -130,6 +132,7 @@ function lockscreen.new(s)
           self:stop()
           awesome.emit_signal("module::lockscreen:hide")
         else
+          text:set_markup("<span color='#ff0000' font_size='14pt'>Failed to login</span>")
           awesome.emit_signal("module::lockscreen:fail")
         end
 
@@ -158,6 +161,7 @@ function lockscreen.new(s)
   awesome.connect_signal(
     "module::lockscreen:hide",
     function()
+      password_grabber:stop()
       screen.visible = false
     end
   )
@@ -168,6 +172,7 @@ function lockscreen.new(s)
       gears.timer.start_new(
         1,
         function()
+          input_password = nil
           type_again = true
         end
       )

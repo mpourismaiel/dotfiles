@@ -12,7 +12,7 @@ awful.keyboard.append_global_keybindings(
       {config.modkey, "Shift"},
       "q",
       function()
-        awful.spawn.with_shell("poweroff")
+        awesome.emit_signal("widget::drawer:toggle")
       end,
       {description = "quit awesome", group = "awesome"}
     ),

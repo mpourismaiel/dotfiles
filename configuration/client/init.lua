@@ -119,7 +119,7 @@ client.connect_signal(
       {
         position = "top",
         size = config.dpi(36),
-        bg = "#111111c0"
+        bg = "#111111ff"
       }
     ):setup {
       layout = wibox.layout.flex.horizontal,

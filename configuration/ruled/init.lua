@@ -163,16 +163,30 @@ ruled.client.connect_signal(
           "Wine",
           "dolphin-emu",
           "Steam",
+          "dota2",
           "Citra",
           "supertuxkart"
         },
-        name = {"Steam"}
+        name = {"Steam", "Elden Ring", "elden ring", "eldenring"}
       },
       properties = {
         tag = "6",
         skip_decoration = true,
         switch_to_tags = true,
         placement = awful.placement.centered
+      }
+    }
+
+    ruled.client.append_rule {
+      id = "gaming-fullscreen",
+      rule_any = {
+        class = {
+          "dota2"
+        },
+        name = {"ELDEN RING"}
+      },
+      properties = {
+        fullscreen = true
       }
     }
   end

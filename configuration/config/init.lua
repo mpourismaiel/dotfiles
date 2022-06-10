@@ -5,7 +5,7 @@ local xresources = require("beautiful.xresources")
 local config_dir = filesystem.get_configuration_dir()
 
 local config = {
-  terminal = "kitty",
+  terminal = "xfce4-terminal",
   modkey = "Mod4",
   dpi = xresources.apply_dpi,
   openweathermap = {
@@ -35,7 +35,8 @@ local config = {
   commands = {
     rofi_appmenu = os.getenv("HOME") .. "/.config/rofi/launchers/misc/launcher.sh",
     full_screenshot = "flameshot full -p /home/mahdi/Pictures/Screenshots/ -c",
-    area_screenshot = "flameshot gui"
+    area_screenshot = "flameshot gui",
+    bluetooth = "blueman-manager"
   },
   tags = {
     {

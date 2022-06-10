@@ -12,6 +12,7 @@ local beautiful = require("beautiful")
 local naughty = require("naughty")
 local ruled = require("ruled")
 local menubar = require("menubar")
+local helpers = require("module.helpers")
 
 require("configuration.tags")
 require("configuration.keys")
@@ -67,3 +68,11 @@ screen.connect_signal(
     widgets.bar.new(s)
   end
 )
+
+if helpers.module_check("liblua_pam") == false then
+  naughty.notification {
+    title = "Missing dependency!",
+    message = "Please install lua-pam library for lockscreen to work",
+    timeout = 5
+  }
+end
