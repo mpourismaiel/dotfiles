@@ -3,6 +3,7 @@ local capi = {
 }
 local awful = require("awful")
 local wibox = require("wibox")
+local gears = require("gears")
 local config = require("configuration.config")
 local filesystem = require("gears.filesystem")
 
@@ -38,7 +39,9 @@ local function client_title_widget(c)
   local ret = wibox.widget.textbox()
 
   local function update()
-    ret:set_markup("<span font_size='9pt' color='#ffffffaa'>" .. (c.name or "unknown") .. "</span>")
+    ret:set_markup(
+      "<span font_size='9pt' color='#ffffffaa'>" .. gears.string.xml_escape(c.name or "unknown") .. "</span>"
+    )
   end
   ret.update = update
   update_on_signal(c, "property::name", ret)

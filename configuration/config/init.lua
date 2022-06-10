@@ -3,6 +3,7 @@ local filesystem = require("gears.filesystem")
 local xresources = require("beautiful.xresources")
 
 local config_dir = filesystem.get_configuration_dir()
+local images_dir = filesystem.get_configuration_dir() .. "/images"
 
 local config = {
   terminal = "xfce4-terminal",
@@ -14,6 +15,7 @@ local config = {
     weather_units = "metric"
   },
   wallpaper = os.getenv("HOME") .. "/Pictures/wallpaper.jpg",
+  images_dir = images_dir,
   auto_start = {
     debug_mode = false,
     apps = {
