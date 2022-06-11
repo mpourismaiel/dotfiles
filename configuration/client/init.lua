@@ -4,6 +4,7 @@ local capi = {
 local awful = require("awful")
 local wibox = require("wibox")
 local gears = require("gears")
+local naughty = require("naughty")
 local config = require("configuration.config")
 local filesystem = require("gears.filesystem")
 
@@ -81,6 +82,19 @@ local titlebar_button = function(w, hover_color, onclick)
   return widget
 end
 
+local maximize_widget =
+  wibox.widget {
+  widget = wibox.widget.imagebox,
+  image = config_dir .. "images/maximize.svg"
+}
+
+client.connect_signal(
+  "property::maximized",
+  function(c)
+    maximize_widget.image = c.maximized and config_dir .. "images/unmaximize.svg" or config_dir .. "images/maximize.svg"
+  end
+)
+
 client.connect_signal(
   "request::titlebars",
   function(c)
@@ -99,12 +113,6 @@ client.connect_signal(
           c:activate {context = "titlebar", action = "mouse_resize"}
         end
       )
-    }
-
-    local maximize_widget =
-      wibox.widget {
-      widget = wibox.widget.imagebox,
-      image = c.maximized and config_dir .. "images/unmaximize.svg" or config_dir .. "images/maximize.svg"
     }
     local minimize_widget =
       wibox.widget {

@@ -80,6 +80,7 @@ awful.keyboard.append_global_keybindings(
       "XF86AudioRaiseVolume",
       function()
         awful.spawn("amixer -D pulse sset Master 5%+", false)
+        awesome.emit_signal("widget::volume")
       end,
       {description = "increase volume up by 5%", group = "hotkeys"}
     ),
@@ -88,6 +89,7 @@ awful.keyboard.append_global_keybindings(
       "XF86AudioLowerVolume",
       function()
         awful.spawn("amixer -D pulse sset Master 5%-", false)
+        awesome.emit_signal("widget::volume")
       end,
       {description = "decrease volume up by 5%", group = "hotkeys"}
     ),

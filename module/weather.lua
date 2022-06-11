@@ -69,10 +69,11 @@ local weather_details_script =
 
     if [ ! -z "$weather" ]; then
         weather_temp=$(echo "$weather" | jq ".main.temp" | cut -d "." -f 1)
+        weather_name=$(echo "$weather" | jq -r ".name" | cut -d "." -f 1)
         weather_icon=$(echo "$weather" | jq -r ".weather[].icon" | head -1)
         weather_description=$(echo "$weather" | jq -r ".weather[].description" | head -1)
 
-        echo "$weather_icon" "$weather_description"@@"$weather_temp"
+        echo "$weather_icon" "$weather_description"@@"$weather_temp"##"$weather_name"
     else
         echo "..."
     fi
@@ -91,7 +92,8 @@ helpers.remote_watch(
     -- Capitalize first letter of the description
     weather_details = weather_details:sub(1, 1):upper() .. weather_details:sub(2)
     local description = weather_details:match("(.*)@@")
-    local temperature = weather_details:match("@@(.*)")
+    local temperature = weather_details:match("@@(.*)##")
+    local city = weather_details:match("##(.*)")
     local icon
     local color
     local weather_icon
@@ -101,7 +103,7 @@ helpers.remote_watch(
       awful.spawn.with_shell("rm " .. temp_file)
       awesome.emit_signal("signal::weather", 999, "Weather unavailable", weather_icons["_"])
     else
-      awesome.emit_signal("signal::weather", tonumber(temperature), description, weather_icons[icon_code])
+      awesome.emit_signal("signal::weather", tonumber(temperature), description, weather_icons[icon_code], city)
     end
   end
 )

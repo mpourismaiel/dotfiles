@@ -20,6 +20,7 @@ require("configuration.ruled")
 require("configuration.client")
 require("configuration.notifications")
 require("configuration.widgets.lockscreen")
+require("configuration.widgets.volume.osd")
 
 local theme = require("configuration.config.theme")
 

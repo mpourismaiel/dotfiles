@@ -121,12 +121,11 @@ function menu.new(screen)
         {
           layout = wibox.layout.fixed.vertical,
           spacing = config.dpi(16),
-          container(clock()),
+          container(weather()),
           {
             layout = wibox.layout.flex.horizontal,
             spacing = config.dpi(16),
-            container(weather()),
-            container(weather())
+            container(clock())
           }
         },
         {

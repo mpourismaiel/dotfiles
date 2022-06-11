@@ -2,69 +2,61 @@ local wibox = require("wibox")
 local gears = require("gears")
 local awful = require("awful")
 local config = require("configuration.config")
-local theme = require("configuration.config.theme")
-local clickable_container = require("configuration.widgets.clickable-container")
+local osd = require("configuration.widgets.osd")
 
 local spawn = awful.spawn
 local dpi = config.dpi
 local config_dir = gears.filesystem.get_configuration_dir()
 local volume_icon = config_dir .. "/images/volume-high.svg"
 
-local action_name =
-  wibox.widget {
-  markup = "<span color='#ffffff'>Volume</span>",
-  font = "Inter Bold 12",
-  align = "left",
-  widget = wibox.widget.textbox
-}
-
 local icon =
   wibox.widget {
-  layout = wibox.layout.align.vertical,
-  expand = "none",
-  nil,
+  widget = wibox.container.place,
+  valign = "center",
+  halign = "center",
   {
-    image = volume_icon,
-    resize = true,
-    widget = wibox.widget.imagebox
-  },
-  nil
-}
-
-local action_level =
-  wibox.widget {
-  {
-    icon,
-    margins = dpi(5),
-    widget = wibox.container.margin
-  },
-  widget = clickable_container
+    widget = wibox.container.constraint,
+    width = config.dpi(24),
+    height = config.dpi(24),
+    strategy = "exact",
+    {
+      image = volume_icon,
+      resize = true,
+      widget = wibox.widget.imagebox
+    }
+  }
 }
 
 local slider =
+  wibox.widget.base.make_widget_from_value(
   wibox.widget {
-  nil,
-  {
-    id = "volume_slider",
-    bar_shape = gears.shape.rounded_rect,
-    bar_height = dpi(16),
-    bar_color = "#ffffff20",
-    bar_active_color = "#f2f2f2EE",
-    handle_color = "#ffffff",
-    handle_shape = gears.shape.circle,
-    handle_width = dpi(24),
-    handle_border_color = "#00000012",
-    handle_border_width = dpi(1),
-    maximum = 100,
-    widget = wibox.widget.slider
-  },
-  nil,
-  expand = "none",
-  forced_height = dpi(24),
-  layout = wibox.layout.align.vertical
-}
+    nil,
+    {
+      widget = wibox.container.rotate,
+      direction = "east",
+      {
+        id = "volume_slider",
+        bar_shape = gears.shape.rounded_rect,
+        bar_height = dpi(4),
+        bar_color = "#ffffff20",
+        bar_active_color = "#f2f2f2EE",
+        handle_color = "#ffffff",
+        handle_shape = gears.shape.circle,
+        handle_width = dpi(16),
+        handle_border_color = "#00000012",
+        handle_border_width = dpi(1),
+        maximum = 100,
+        widget = wibox.widget.slider
+      }
+    },
+    nil,
+    expand = "none",
+    forced_height = config.osd_height,
+    layout = wibox.layout.align.vertical
+  }
+)
 
-local volume_slider = slider.volume_slider
+local volume_slider = slider:get_children_by_id("volume_slider")[1]
 
 volume_slider:connect_signal(
   "property::value",
@@ -74,7 +66,7 @@ volume_slider:connect_signal(
     spawn("amixer -D pulse sset Master " .. volume_level .. "%", false)
 
     -- Update volume osd
-    awesome.emit_signal("widget::volume_osd", volume_level)
+    awesome.emit_signal("module::volume_osd", volume_level)
   end
 )
 
@@ -134,43 +126,44 @@ local action_jump = function()
   volume_slider:set_value(new_value)
 end
 
-action_level:buttons(
-  awful.util.table.join(
-    awful.button(
-      {},
-      1,
-      nil,
-      function()
-        action_jump()
-      end
-    )
-  )
+local volume_osd =
+  osd.create(
+  wibox.widget {
+    widget = wibox.container.background,
+    background = "#ff0000",
+    {
+      widget = wibox.container.margin,
+      top = config.dpi(16),
+      bottom = config.dpi(16),
+      {
+        layout = wibox.layout.fixed.vertical,
+        spacing = dpi(20),
+        icon,
+        slider
+      }
+    }
+  }
 )
 
+timer = nil
 -- The emit will come from the global keybind
 awesome.connect_signal(
   "widget::volume",
   function()
+    volume_osd.visible = true
+    if timer ~= nil then
+      timer:stop()
+    end
+
     update_slider()
+    timer =
+      gears.timer.start_new(
+      3,
+      function()
+        volume_osd.visible = false
+      end
+    )
   end
 )
 
-local volume_setting =
-  wibox.widget {
-  layout = wibox.layout.fixed.vertical,
-  spacing = dpi(20),
-  {
-    layout = wibox.layout.fixed.horizontal,
-    spacing = dpi(5),
-    {
-      layout = wibox.layout.fixed.horizontal,
-      forced_height = dpi(36),
-      forced_width = dpi(36),
-      action_level
-    },
-    action_name
-  },
-  slider
-}
-
-return volume_setting
+return volume_osd

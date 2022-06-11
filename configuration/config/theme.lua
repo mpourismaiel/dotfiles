@@ -118,6 +118,9 @@ theme.awesome_icon = theme_assets.awesome_icon(theme.menu_height, theme.bg_focus
 -- from /usr/share/icons and /usr/share/icons/hicolor will be used.
 theme.icon_theme = nil
 
+theme.osd_height = config.dpi(300)
+theme.osd_width = config.dpi(56)
+
 -- Set different colors for urgent notifications.
 rnotification.connect_signal(
   "request::rules",

@@ -8,7 +8,7 @@ function weather.new()
     wibox.widget.base.make_widget_from_value(
     wibox.widget {
       widget = wibox.container.constraint,
-      height = config.dpi(60),
+      height = config.dpi(80),
       strategy = "exact",
       {
         layout = wibox.layout.align.horizontal,
@@ -19,13 +19,30 @@ function weather.new()
             widget = wibox.container.place,
             valign = "middle",
             {
-              widget = wibox.container.constraint,
-              width = config.dpi(40),
-              height = config.dpi(40),
-              strategy = "exact",
+              layout = wibox.layout.fixed.vertical,
+              spacing = config.dpi(8),
               {
-                id = "icon",
-                widget = wibox.widget.imagebox
+                widget = wibox.container.place,
+                valign = "middle",
+                halign = "middle",
+                {
+                  widget = wibox.container.constraint,
+                  width = config.dpi(40),
+                  height = config.dpi(40),
+                  strategy = "exact",
+                  {
+                    id = "icon",
+                    widget = wibox.widget.imagebox
+                  }
+                }
+              },
+              {
+                widget = wibox.container.place,
+                halign = "middle",
+                {
+                  widget = wibox.widget.textbox,
+                  id = "city"
+                }
               }
             }
           }
@@ -60,9 +77,10 @@ function weather.new()
   local icon = w:get_children_by_id("icon")[1]
   local temp = w:get_children_by_id("temp")[1]
   local desc = w:get_children_by_id("desc")[1]
+  local city = w:get_children_by_id("city")[1]
   awesome.connect_signal(
     "signal::weather",
-    function(temperature, description, icon_widget)
+    function(temperature, description, icon_widget, city_name)
       local weather_temp_symbol
       if config.openweathermap.weather_units == "metric" then
         weather_temp_symbol = "°C"
@@ -71,8 +89,9 @@ function weather.new()
       end
 
       icon.image = icon_widget
-      temp.markup = "<b><span color='#ffffff' font_size='16pt'>" .. temperature .. weather_temp_symbol .. "</span></b>"
-      desc.markup = "<span color='#ffffff' font_size='10pt'>" .. description .. "</span>"
+      temp.markup = "<b><span color='#ffffff' font_size='24pt'>" .. temperature .. weather_temp_symbol .. "</span></b>"
+      desc.markup = "<span color='#ffffff' font_size='14pt'>" .. description .. "</span>"
+      city.markup = "<span color='#ffffffcc' font_size='12pt'>" .. city_name .. "</span>"
     end
   )
 
