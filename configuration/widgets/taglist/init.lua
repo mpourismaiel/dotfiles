@@ -58,19 +58,20 @@ local function custom_template(args)
     widget = wibox.container.constraint,
     strategy = "exact",
     width = config.dpi(48),
-    height = config.dpi(24),
+    height = config.dpi(20),
     {
       widget = wibox.container.place,
       {
         id = "indicator",
         widget = wibox.container.background,
-        shape = gears.shape.circle,
+        shape = gears.shape.rounded_rect,
         border_color = "#ffffff44",
         {
+          id = "indicator_size",
           widget = wibox.container.constraint,
           strategy = "exact",
-          width = config.dpi(12),
-          height = config.dpi(12)
+          width = config.dpi(8),
+          height = config.dpi(8)
         }
       }
     }
@@ -79,6 +80,7 @@ local function custom_template(args)
 
   return {
     indicator = l:get_children_by_id("indicator")[1],
+    indicator_size = l:get_children_by_id("indicator_size")[1],
     primary = l,
     update_callback = l.update_callback,
     create_callback = l.create_callback
@@ -112,11 +114,20 @@ function taglist.render(w, buttons, label, data, objects, args)
     end
 
     cache.indicator:set_bg("")
-    cache.indicator.border_width = config.dpi(1)
+    cache.indicator:set_bg("#ffffff22")
+    cache.indicator_size.height = config.dpi(8)
+    cache.indicator_size.width = config.dpi(8)
+    cache.primary.height = config.dpi(20)
+
+    if #o:clients() > 0 then
+      cache.indicator:set_bg("#ffffff88")
+    end
 
     if o.selected then
       cache.indicator:set_bg("#ffffffff")
-      cache.indicator.border_width = config.dpi(0)
+      cache.indicator_size.height = config.dpi(16)
+      cache.indicator_size.width = config.dpi(7)
+      cache.primary.height = config.dpi(32)
     end
 
     w:add(cache.primary)
