@@ -21,12 +21,13 @@ ruled.client.connect_signal(
       id = "dialog",
       rule_any = {
         type = {"dialog"},
-        class = {"Wicd-client.py", "calendar.google.com"}
+        class = {"Wicd-client.py", "calendar.google.com", "xdman-Main"}
       },
       properties = {
-        titlebars_enabled = true,
+        titlebars_enabled = false,
         floating = true,
         above = true,
+        ontop = true,
         skip_decoration = true,
         placement = awful.placement.centered
       }

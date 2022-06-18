@@ -7,6 +7,9 @@ local gears = require("gears")
 local awful = require("awful")
 require("awful.autofocus")
 
+local filesystem = require("gears.filesystem")
+local config_dir = filesystem.get_configuration_dir()
+
 local wibox = require("wibox")
 local beautiful = require("beautiful")
 local naughty = require("naughty")
@@ -67,6 +70,7 @@ screen.connect_signal(
   "request::desktop_decoration",
   function(s)
     widgets.bar.new(s)
+    require("module.launcher")(s)
   end
 )
 
@@ -77,3 +81,5 @@ if helpers.module_check("liblua_pam") == false then
     timeout = 5
   }
 end
+
+awful.spawn("node " .. config_dir .. "module/launcher/list.js crawl " .. theme.icon_theme)

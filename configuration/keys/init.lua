@@ -41,6 +41,14 @@ awful.keyboard.append_global_keybindings(
       {description = "open application drawer", group = "launcher"}
     ),
     awful.key(
+      {config.modkey, "Shift"},
+      "d",
+      function()
+        awesome.emit_signal("launcher:show")
+      end,
+      {description = "open application drawer", group = "launcher"}
+    ),
+    awful.key(
       {config.modkey},
       "Escape",
       function()
