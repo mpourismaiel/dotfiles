@@ -4,7 +4,6 @@ local capi = {
 local awful = require("awful")
 local wibox = require("wibox")
 local gears = require("gears")
-local naughty = require("naughty")
 local config = require("configuration.config")
 local filesystem = require("gears.filesystem")
 
@@ -152,7 +151,8 @@ client.connect_signal(
             minimize_widget,
             "#ffbd44c0",
             function()
-              c.minimized = not c.minimized
+              c.ontop = not c.ontop
+              c.floating = c.ontop
             end
           ),
           titlebar_button(

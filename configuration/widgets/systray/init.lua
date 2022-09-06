@@ -1,4 +1,5 @@
 local awful = require("awful")
+local gears = require("gears")
 local wibox = require("wibox")
 local config = require("configuration.config")
 local filesystem = require("gears.filesystem")
@@ -11,16 +12,24 @@ local systray = {mt = {}}
 function systray.new(screen)
   local w =
     wibox.widget {
-    base_size = config.dpi(16),
-    horizontal = false,
-    screen = screen,
-    visible = false,
-    widget = wibox.widget.systray
+    widget = wibox.container.background,
+    {
+      widget = wibox.container.margin,
+      margins = config.dpi(2),
+      {
+        base_size = config.dpi(16),
+        horizontal = false,
+        screen = screen == nil and awful.screen.focused() or screen,
+        visible = true,
+        widget = wibox.widget.systray
+      }
+    }
   }
 
   awesome.connect_signal(
     "widget::systray:toggle",
     function()
+      w.screen = awful.screen.focused()
       w.visible = not w.visible
     end
   )

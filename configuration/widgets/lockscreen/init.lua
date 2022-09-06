@@ -1,5 +1,4 @@
 local awful = require("awful")
-local naughty = require("naughty")
 local wibox = require("wibox")
 local gears = require("gears")
 local config = require("configuration.config")
@@ -16,7 +15,7 @@ function lockscreen.new(s)
     type = "splash",
     width = s.geometry.width,
     height = s.geometry.height,
-    bg = "",
+    bg = "#00000088",
     fg = "#ffffff"
   }
 
@@ -232,6 +231,7 @@ function lockscreen.new(s)
   awesome.connect_signal(
     "module::lockscreen:show",
     function()
+      config.locked = true
       screen.visible = true
       input_password = nil
       type_again = true
@@ -250,6 +250,7 @@ function lockscreen.new(s)
   awesome.connect_signal(
     "module::lockscreen:hide",
     function()
+      config.locked = false
       password_grabber:stop()
       input_password = nil
       screen.visible = false

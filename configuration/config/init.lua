@@ -68,4 +68,8 @@ local config = {
   }
 }
 
+config.state = {
+  locked = false
+}
+
 return config

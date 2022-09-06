@@ -1,6 +1,7 @@
 local awful = require("awful")
 local hotkeys_popup = require("awful.hotkeys_popup")
 local config = require("configuration.config")
+local global_state = require("configuration.config.global_state")
 
 require("awful.hotkeys_popup.keys")
 
@@ -31,6 +32,14 @@ awful.keyboard.append_global_keybindings(
         awesome.emit_signal("module::lockscreen:show")
       end,
       {description = "lock desktop", group = "launcher"}
+    ),
+    awful.key(
+      {config.modkey},
+      "b",
+      function()
+        global_state.bar.visible = not global_state.bar.visible
+      end,
+      {description = "open application drawer", group = "launcher"}
     ),
     awful.key(
       {config.modkey},

@@ -52,7 +52,6 @@ theme.taglist_squares_unsel = theme_assets.taglist_squares_unsel(taglist_square_
 theme.notification_font = theme.font
 theme.notification_bg = ""
 theme.notification_fg = "#ffffff"
-theme.notification_border_width = 0
 
 -- Variables set for theming the menu:
 -- menu_[bg|fg]_[normal|focus]

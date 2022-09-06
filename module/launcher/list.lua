@@ -36,6 +36,10 @@ local function read_file(path)
   return content
 end
 
+local function read_app_list()
+  return json.decode(read_file(os.getenv("HOME") .. "/.config/awesome/module/launcher/list.json")).list
+end
+
 local function get_screen(s)
   return s and capi.screen[s]
 end
@@ -80,7 +84,7 @@ local function create_buttons(buttons, object)
   end
 end
 
-local function custom_template(args)
+local function template(args)
   local template = {
     widget = wibox.container.background,
     bg = "#00000000",
@@ -157,7 +161,7 @@ function launcher.renderApps(w, buttons, data, objects, args)
       end
 
       if not cache then
-        cache = custom_template()
+        cache = template()
 
         cache.primary.buttons = {create_buttons(buttons, o)}
 
@@ -210,7 +214,7 @@ local function launcher_update(s, w, list, query, page, selected, data, args)
 
   launcher.renderApps(
     w,
-    buttons,
+    nil,
     data,
     apps,
     {
@@ -228,7 +232,7 @@ function launcher.new(args)
   local data = setmetatable({}, {__mode = "k"})
 
   local queued_update = {}
-  local list = json.decode(read_file(os.getenv("HOME") .. "/.config/awesome/module/launcher/list.json")).list
+  local list = read_app_list()
 
   function w._do_launcher_update_now(query, page, selected)
     if screen.valid then
@@ -260,17 +264,22 @@ function launcher.new(args)
     end
   )
   w:connect_signal(
+    "launcher:exec_object",
+    function(w, parent, object)
+      awful.spawn((parent == nil and "mullvad-exclude " or parent .. " ") .. object.executable)
+      awful.spawn("node " .. config_dir .. "module/launcher/list.js score " .. object.desktop)
+    end
+  )
+  w:connect_signal(
     "launcher:exec",
-    function(w, query, page, selected)
+    function(w, parent, query, page, selected)
       local q = query == nil and "" or query
       local p = page == nil and 0 or page
       local s = selected == nil and 1 or selected
       local apps = source(list, q, p, s)
       if #apps > 0 then
-        gdebug.dump(apps[s].executable)
-        awful.spawn(apps[s].executable)
-        awful.spawn("node " .. config_dir .. "module/launcher/list.js score " .. apps[s].desktop)
-        list = json.decode(read_file(os.getenv("HOME") .. "/.config/awesome/module/launcher/list.json"))
+        w:emit_signal("launcher:exec_object", parent == "" and nil or parent, apps[s])
+        list = read_app_list()
       end
     end
   )

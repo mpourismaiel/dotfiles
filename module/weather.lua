@@ -14,7 +14,7 @@ local key = config.openweathermap.key
 local city_id = config.openweathermap.city_id
 local units = config.openweathermap.weather_units
 -- Don't update too often, because your requests might get blocked for 24 hours
-local update_interval = 1200
+local update_interval = 1200000
 local temp_file = "/tmp/awesomewm-signal-weather-" .. city_id .. "-" .. units
 
 local sun_icon = config_dir .. "/images/sun.svg"

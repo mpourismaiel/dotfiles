@@ -26,6 +26,7 @@ require("configuration.widgets.lockscreen")
 require("configuration.widgets.volume.osd")
 
 local theme = require("configuration.config.theme")
+local global_state = require("configuration.config.global_state")
 
 naughty.connect_signal(
   "request::display_error",
@@ -69,7 +70,7 @@ screen.connect_signal(
 screen.connect_signal(
   "request::desktop_decoration",
   function(s)
-    widgets.bar.new(s)
+    global_state.bar = widgets.bar.new(s)
     require("module.launcher")(s)
   end
 )

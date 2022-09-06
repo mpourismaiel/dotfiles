@@ -1,5 +1,6 @@
 local awful = require("awful")
 local wibox = require("wibox")
+local naughty = require("naughty")
 local gears = require("gears")
 local filesystem = require("gears.filesystem")
 local config = require("configuration.config")
@@ -10,6 +11,7 @@ local clock = require("configuration.widgets.menu.clock")
 local weather = require("configuration.widgets.menu.weather")
 local power_button = require("configuration.widgets.menu.power-button")
 local volumeslider = require("configuration.widgets.volume.slider")
+local notification_widget = require("configuration.notifications.widget")
 
 local config_dir = filesystem.get_configuration_dir()
 local menu_icon = config_dir .. "/images/circle.svg"
@@ -118,6 +120,7 @@ function menu.new(screen)
       margins = config.dpi(16),
       {
         layout = wibox.layout.flex.vertical,
+        fill_space = true,
         {
           layout = wibox.layout.fixed.vertical,
           spacing = config.dpi(16),
@@ -126,6 +129,37 @@ function menu.new(screen)
             layout = wibox.layout.flex.horizontal,
             spacing = config.dpi(16),
             container(clock())
+          },
+          {
+            layout = wibox.layout.flex.vertical,
+            container(
+              {
+                layout = wibox.layout.fixed.vertical,
+                spacing = config.dpi(8),
+                {
+                  widget = wibox.widget.textbox,
+                  markup = "<span font='Inter bold 14' color='#ffffff'>Notifications</span>"
+                },
+                {
+                  widget = naughty.list.notifications,
+                  filter = naughty.list.notifications.filter.all,
+                  base_layout = wibox.widget {
+                    layout = wibox.layout.flex.vertical,
+                    fill_space = true,
+                    spacing = config.dpi(10)
+                  },
+                  widget_template = {
+                    widget = wibox.container.background,
+                    background = "#ff0000",
+                    {
+                      widget = wibox.container.margin,
+                      margins = config.dpi(8),
+                      notification_widget
+                    }
+                  }
+                }
+              }
+            )
           }
         },
         {

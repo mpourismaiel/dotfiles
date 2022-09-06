@@ -22,7 +22,7 @@ local run_once = function(cmd)
       naughty.notification(
         {
           app_name = "Start-up Applications",
-          title = "<b>Oof! Error detected when starting an application!</b>",
+          title = "Oof! Error detected when starting an application!",
           message = stderr:gsub("%\n", ""),
           timeout = 20,
           icon = require("beautiful").awesome_icon
