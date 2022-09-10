@@ -1,6 +1,5 @@
 local awful = require("awful")
 local wibox = require("wibox")
-local naughty = require("naughty")
 local gears = require("gears")
 local filesystem = require("gears.filesystem")
 local config = require("configuration.config")
@@ -12,6 +11,8 @@ local weather = require("configuration.widgets.menu.weather")
 local power_button = require("configuration.widgets.menu.power-button")
 local volumeslider = require("configuration.widgets.volume.slider")
 local notification_widget = require("configuration.notifications.widget")
+local global_state = require("configuration.config.global_state")
+local list = require("configuration.widgets.list")
 
 local config_dir = filesystem.get_configuration_dir()
 local menu_icon = config_dir .. "/images/circle.svg"
@@ -58,6 +59,71 @@ function menu.new(screen)
     "mouse::leave",
     function()
       background.bg = ""
+    end
+  )
+
+  local notifications =
+    list {
+    layout = {
+      layout = wibox.layout.fixed.vertical,
+      spacing = config.dpi(16)
+    },
+    source = function()
+      return global_state.cache.notifications
+    end,
+    render_list = list.render_list,
+    template = function()
+      local template = {
+        layout = wibox.layout.fixed.horizontal,
+        {
+          widget = wibox.container.margin,
+          right = config.dpi(16),
+          {
+            widget = wibox.container.place,
+            {
+              widget = wibox.widget.imagebox,
+              forced_height = config.dpi(32),
+              forced_width = config.dpi(32),
+              id = "image"
+            }
+          }
+        },
+        {
+          layout = wibox.layout.fixed.vertical,
+          spacing = config.dpi(8),
+          {
+            widget = wibox.widget.textbox,
+            id = "title"
+          },
+          {
+            widget = wibox.widget.textbox,
+            id = "text"
+          }
+        }
+      }
+      local l = wibox.widget.base.make_widget_from_value(container(template))
+
+      return {
+        title = l:get_children_by_id("title")[1],
+        text = l:get_children_by_id("text")[1],
+        image = l:get_children_by_id("image")[1],
+        primary = l
+      }
+    end,
+    render_template = function(cached, data)
+      cached.title:set_markup("<span font_size='12pt' font_weight='bold' color='#ffffff'>" .. data.title .. "</span>")
+      cached.text:set_markup(
+        "<span font_size='10pt' font_weight='normal' color='#ffffff'>" .. data.message .. "</span>"
+      )
+
+      local icon = gears.surface.load_silently(data.icon)
+      cached.image:set_image(icon)
+    end
+  }
+
+  global_state.cache.notifications_subscribe(
+    function()
+      notifications:emit_signal("update")
     end
   )
 
@@ -135,29 +201,12 @@ function menu.new(screen)
             container(
               {
                 layout = wibox.layout.fixed.vertical,
-                spacing = config.dpi(8),
+                spacing = config.dpi(16),
                 {
                   widget = wibox.widget.textbox,
                   markup = "<span font='Inter bold 14' color='#ffffff'>Notifications</span>"
                 },
-                {
-                  widget = naughty.list.notifications,
-                  filter = naughty.list.notifications.filter.all,
-                  base_layout = wibox.widget {
-                    layout = wibox.layout.flex.vertical,
-                    fill_space = true,
-                    spacing = config.dpi(10)
-                  },
-                  widget_template = {
-                    widget = wibox.container.background,
-                    background = "#ff0000",
-                    {
-                      widget = wibox.container.margin,
-                      margins = config.dpi(8),
-                      notification_widget
-                    }
-                  }
-                }
+                notifications
               }
             )
           }

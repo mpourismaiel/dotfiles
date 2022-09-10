@@ -1,8 +1,10 @@
 local naughty = require("naughty")
 local gears = require("gears")
+local awful = require("awful")
 local wibox = require("wibox")
 local config = require("configuration.config")
 local notification_widget = require("configuration.notifications.widget")
+local global_state = require("configuration.config.global_state")
 
 naughty.connect_signal(
   "request::display",
@@ -10,6 +12,8 @@ naughty.connect_signal(
     if config.locked then
       return
     end
+
+    global_state.cache.notifications_update(n)
 
     naughty.layout.box {
       notification = n,

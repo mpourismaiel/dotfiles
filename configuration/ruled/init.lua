@@ -87,7 +87,9 @@ ruled.client.connect_signal(
           "XTerm",
           "UXTerm",
           "kitty",
-          "K3rmit"
+          "K3rmit",
+          "xfce4-terminal",
+          "mullvad vpn"
         }
       },
       properties = {
@@ -99,7 +101,7 @@ ruled.client.connect_signal(
     }
 
     ruled.client.append_rule {
-      rule = {class_any = {"Firefox", "Google-chrome", "Chromium"}},
+      rule_any = {class = {"Firefox", "Google-chrome", "Chromium"}},
       properties = {tag = "1"}
     }
 
