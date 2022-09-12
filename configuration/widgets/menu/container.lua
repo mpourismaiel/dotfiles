@@ -4,14 +4,17 @@ local config = require("configuration.config")
 
 local container = {mt = {}}
 
-function container.new(w)
+function container.new(w, padding_left, padding_right, padding_top, padding_bottom)
   return wibox.widget {
     widget = wibox.container.background,
     bg = "#55555560",
     shape = gears.shape.rounded_rect,
     {
       widget = wibox.container.margin,
-      margins = config.dpi(16),
+      left = config.dpi(padding_left ~= nil and padding_left or 16),
+      right = config.dpi(padding_right ~= nil and padding_right or 16),
+      top = config.dpi(padding_top ~= nil and padding_top or 16),
+      bottom = config.dpi(padding_bottom ~= nil and padding_bottom or 16),
       w
     }
   }

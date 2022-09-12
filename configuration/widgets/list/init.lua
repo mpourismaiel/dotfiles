@@ -65,9 +65,9 @@ local function create_buttons(buttons, object)
   end
 end
 
-function list.render_list(w, template, render_template, buttons, data, objects)
+function list.render_list(w, template, render_template, buttons, data, source)
   w:reset()
-  for i, o in ipairs(objects) do
+  for i, o in ipairs(source) do
     local cache = data[o]
 
     -- Allow the buttons to be replaced.
@@ -87,7 +87,7 @@ function list.render_list(w, template, render_template, buttons, data, objects)
       cache._buttons = buttons
       data[o] = cache
     elseif cache.update_callback then
-      cache.update_callback(cache.primary, o, i, objects)
+      cache.update_callback(cache.primary, o, i, source)
     end
 
     render_template(cache, o, i)
@@ -96,8 +96,22 @@ function list.render_list(w, template, render_template, buttons, data, objects)
   end
 end
 
-local function list_update(w, render_list, template, render_template, items, data)
-  render_list(w, template, render_template, buttons, data, items)
+local function render_empty(w, empty_widget)
+  w:reset()
+
+  if empty_widget == nil then
+    empty_widget = wibox.widget.textbox("")
+  end
+
+  w:add(wibox.widget.base.make_widget_from_value(empty_widget))
+end
+
+local function list_update(w, render_list, template, render_template, source, data, empty_widget)
+  if #source == 0 then
+    render_empty(w, empty_widget)
+  else
+    render_list(w, template, render_template, buttons, data, source)
+  end
 end
 
 -- args             table with the following fields
@@ -129,6 +143,9 @@ end
 -- )
 function list.new(args)
   local w = base.make_widget_from_value(args.layout == nil and wibox.layout.fixed.vertical or args.layout)
+  if args.buttons ~= nil then
+    w:buttons(args.buttons)
+  end
 
   local data = setmetatable({}, {__mode = "k"})
   local queued_update = false
@@ -139,8 +156,9 @@ function list.new(args)
       args.render_list == nil and list.render_list or args.render_list,
       args.template,
       args.render_template,
-      args.source(),
-      data
+      args.source(w.start, w.finish),
+      data,
+      args.empty_widget
     )
     queued_update = false
   end
@@ -162,6 +180,7 @@ function list.new(args)
     "update",
     function(w)
       w._do_list_update()
+      w:emit_signal("updated")
     end
   )
   return w

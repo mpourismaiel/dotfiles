@@ -13,6 +13,7 @@ function systray.new(screen)
   local w =
     wibox.widget {
     widget = wibox.container.background,
+    visible = false,
     {
       widget = wibox.container.margin,
       margins = config.dpi(2),
