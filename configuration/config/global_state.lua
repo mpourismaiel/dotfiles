@@ -1,5 +1,15 @@
 local gears = require("gears")
 
+function table.slice(tbl, first, last, step)
+  local sliced = {}
+
+  for i = first or 1, last or #tbl, step or 1 do
+    sliced[#sliced + 1] = tbl[i]
+  end
+
+  return sliced
+end
+
 local global_state = {
   cache = {
     n_id = 0,
@@ -10,10 +20,21 @@ local global_state = {
 
 global_state.cache.notifications_remove = function(id)
   local c = global_state.cache
+  local found = 0
   for i, n in ipairs(c.notifications) do
     if n.id == id then
-      c.notifications[i] = nil
+      found = i
+      break
     end
+  end
+
+  if found == 1 then
+    c.notifications = table.slice(c.notifications, 2)
+  elseif found == #c.notifications then
+    c.notifications = table.slice(c.notifications, 1, found - 1)
+  elseif found > 0 then
+    c.notifications =
+      gears.table.join(table.slice(c.notifications, 1, found - 1), table.slice(c.notifications, found + 1))
   end
 
   for _, fn in ipairs(c.notifications_subscribers) do
