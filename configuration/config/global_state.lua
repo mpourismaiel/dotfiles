@@ -37,9 +37,12 @@ global_state.cache.notifications_remove = function(id)
       gears.table.join(table.slice(c.notifications, 1, found - 1), table.slice(c.notifications, found + 1))
   end
 
-  for _, fn in ipairs(c.notifications_subscribers) do
-    fn()
-  end
+  global_state.cache.notifications_emit()
+end
+
+global_state.cache.notifications_clear = function()
+  global_state.cache.notifications = {}
+  global_state.cache.notifications_emit()
 end
 
 global_state.cache.notifications_update = function(n)
@@ -47,7 +50,11 @@ global_state.cache.notifications_update = function(n)
   c.notifications = gears.table.join({id = c.n_id + 1, n}, c.notifications)
   c.n_id = c.n_id + 1
 
-  for _, fn in ipairs(c.notifications_subscribers) do
+  global_state.cache.notifications_emit()
+end
+
+global_state.cache.notifications_emit = function()
+  for _, fn in ipairs(global_state.cache.notifications_subscribers) do
     fn()
   end
 end

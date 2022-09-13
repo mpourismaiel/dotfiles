@@ -73,6 +73,29 @@ function menu.new(screen)
     return sliced
   end
 
+  local clear_notifications =
+    wibox.widget {
+    widget = wibox.container.place,
+    halign = "middle",
+    {
+      widget = wibox.widget.textbox,
+      markup = "<span color='#aaaaaa' font_size='10pt' font_weight='normal'>Clear all</span>"
+    }
+  }
+
+  clear_notifications:buttons(
+    gears.table.join(
+      awful.button(
+        {},
+        1,
+        nil,
+        function()
+          global_state.cache.notifications_clear()
+        end
+      )
+    )
+  )
+
   local notifications =
     list {
     layout = {
@@ -223,6 +246,7 @@ function menu.new(screen)
     "updated",
     function()
       notifications.finish = #global_state.cache.notifications
+      clear_notifications.visible = #global_state.cache.notifications > 0
     end
   )
 
@@ -311,8 +335,13 @@ function menu.new(screen)
               layout = wibox.layout.fixed.vertical,
               spacing = config.dpi(16),
               {
-                widget = wibox.widget.textbox,
-                markup = "<span font='Inter bold 14' color='#ffffff'>Notifications</span>"
+                layout = wibox.layout.align.horizontal,
+                {
+                  widget = wibox.widget.textbox,
+                  markup = "<span font='Inter bold 14' color='#ffffff'>Notifications</span>"
+                },
+                nil,
+                clear_notifications
               },
               notifications
             }
