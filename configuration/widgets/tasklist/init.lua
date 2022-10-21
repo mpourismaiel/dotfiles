@@ -160,7 +160,7 @@ function tasklist.new(screen)
       for k, v in ipairs(tags) do
         for i, c in ipairs(v:clients()) do
           -- if you want to group same windows you can move table.insert into this if, but i'm not sure how you would access a minimized window
-          if cache ~= nil and cache[c.class] ~= true then
+          if cache ~= nil and c ~= nil and c.class ~= nil and cache[c.class] ~= true then
             cache[c.class] = true
           end
           table.insert(list, c)

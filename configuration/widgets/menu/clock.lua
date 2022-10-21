@@ -4,6 +4,75 @@ local config = require("configuration.config")
 local clock = {mt = {}}
 
 function clock.new()
+  local weather =
+    wibox.widget.base.make_widget_from_value(
+    {
+      layout = wibox.layout.fixed.horizontal,
+      {
+        widget = wibox.container.place,
+        valign = "middle",
+        {
+          widget = wibox.container.constraint,
+          width = config.dpi(40),
+          height = config.dpi(40),
+          strategy = "exact",
+          {
+            id = "icon",
+            widget = wibox.widget.imagebox
+          }
+        }
+      },
+      {
+        widget = wibox.container.margin,
+        left = config.dpi(12),
+        {
+          widget = wibox.container.place,
+          valign = "middle",
+          {
+            layout = wibox.layout.fixed.vertical,
+            {
+              id = "temp",
+              widget = wibox.widget.textbox,
+              markup = ""
+            },
+            {
+              id = "desc",
+              widget = wibox.widget.textbox,
+              markup = ""
+            }
+          }
+        }
+      }
+    }
+  )
+
+  weather.visible = false
+
+  local icon = weather:get_children_by_id("icon")[1]
+  local temp = weather:get_children_by_id("temp")[1]
+  local desc = weather:get_children_by_id("desc")[1]
+  awesome.connect_signal(
+    "signal::weather",
+    function(temperature, description, icon_widget)
+      local weather_temp_symbol
+      if config.openweathermap.weather_units == "metric" then
+        weather_temp_symbol = "°C"
+      elseif config.openweathermap.weather_units == "imperial" then
+        weather_temp_symbol = "°F"
+      end
+
+      icon.image = icon_widget
+      temp.markup = "<b><span color='#ffffff' font_size='16pt'>" .. temperature .. weather_temp_symbol .. "</span></b>"
+      desc.markup = "<span color='#ffffff' font_size='12pt'>" .. description .. "</span>"
+
+      if temperature and temperature ~= 999 then
+        weather.visible = true
+      else
+        weather.visible = false
+      end
+    end
+  )
+
   return wibox.widget {
     layout = wibox.layout.fixed.vertical,
     {
@@ -15,18 +84,19 @@ function clock.new()
       nil,
       {
         widget = wibox.widget.textclock,
-        format = "<b><span font_size='12pt' color='#eeeeee'>%A %F</span></b>"
+        format = "<b><span font_size='12pt' color='#eeeeee'>%F</span></b>"
       }
     },
     {
       widget = wibox.container.margin,
       top = config.dpi(16),
       {
-        widget = wibox.container.place,
-        halign = "right",
+        layout = wibox.layout.align.horizontal,
+        weather,
+        nil,
         {
           widget = wibox.widget.textclock,
-          format = "<span font_size='48pt' color='#ffffff'>%H:%M</span>"
+          format = "<span font_size='40pt' color='#ffffff'>%H:%M</span>"
         }
       }
     }

@@ -7,7 +7,7 @@ local container = {mt = {}}
 function container.new(w, padding_left, padding_right, padding_top, padding_bottom)
   return wibox.widget {
     widget = wibox.container.background,
-    bg = "#55555560",
+    bg = "#11111160",
     shape = gears.shape.rounded_rect,
     {
       widget = wibox.container.margin,
