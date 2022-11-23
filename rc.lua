@@ -83,4 +83,4 @@ if helpers.module_check("liblua_pam") == false then
   }
 end
 
-awful.spawn("node " .. config_dir .. "module/launcher/list.js crawl " .. theme.icon_theme)
+-- awful.spawn("node " .. config_dir .. "module/launcher/list.js crawl " .. theme.icon_theme)

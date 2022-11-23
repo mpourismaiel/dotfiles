@@ -33,7 +33,7 @@ clear_notifications:buttons(
       1,
       nil,
       function()
-        global_state.cache.notifications_clear()
+        global_state.cache.update("notifications", {})
       end
     )
   )
@@ -48,14 +48,14 @@ local notifications =
   },
   source = function(start, finish)
     local s = start or 1
-    local f = finish or #global_state.cache.notifications
+    local f = finish or #global_state.cache.get("notifications")
     if f - s < 3 then
       s = f - 3
     end
     if s < 1 then
       s = 1
     end
-    return table.slice(global_state.cache.notifications, s, f)
+    return table.slice(global_state.cache.get("notifications"), s, f)
   end,
   render_list = list.render_list,
   empty_widget = {
@@ -146,7 +146,7 @@ local notifications =
           {},
           1,
           function()
-            global_state.cache.notifications_remove(data.id)
+            global_state.cache.remove("notifications", data.id)
           end
         )
       }
@@ -186,12 +186,13 @@ notifications.buttons =
 notifications:connect_signal(
   "updated",
   function()
-    notifications.finish = #global_state.cache.notifications
-    clear_notifications.visible = #global_state.cache.notifications > 0
+    notifications.finish = #global_state.cache.get("notifications")
+    clear_notifications.visible = #global_state.cache.get("notifications") > 0
   end
 )
 
-global_state.cache.notifications_subscribe(
+global_state.cache.listen(
+  "notifications",
   function()
     notifications:emit_signal("update")
   end

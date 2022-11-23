@@ -31,7 +31,7 @@ local function new(args)
   args = args or {}
   local tb = textbox()
   tb:set_wrap("word")
-  tb:set_font("Inter bold 12")
+  tb:set_font("Inter bold 11")
   tb._private.notification = {}
 
   gtable.crush(tb, title, true)
@@ -40,7 +40,7 @@ local function new(args)
     local n = tb._private.notification[1]
 
     if n then
-      markup(tb, n.title, n.fg, "Inter bold 12")
+      markup(tb, n.title, n.fg, "Inter bold 11")
     else
       markup("", nil, nil)
     end

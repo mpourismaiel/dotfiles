@@ -3,10 +3,13 @@ local wibox = require("wibox")
 local gears = require("gears")
 local config = require("configuration.config")
 local helpers = require("module.helpers")
+local global_state = require("configuration.config.global_state")
 
 local lockscreen = {mt = {}}
 
 function lockscreen.new(s)
+  global_state.cache.set("lockscreen", false)
+
   local screen =
     wibox {
     screen = s,
@@ -19,22 +22,48 @@ function lockscreen.new(s)
     fg = "#ffffff"
   }
 
-  local avatar =
-    wibox.widget {
-    widget = wibox.container.background,
-    bg = "#ffffffff",
-    shape = gears.shape.circle,
-    {
-      widget = wibox.widget.imagebox,
-      image = config.images_dir .. "/avatar.png",
-      clip_shape = gears.shape.circle,
-      forced_width = config.dpi(96),
-      forced_height = config.dpi(96)
-    }
-  }
+  local notifications_count = wibox.widget.textbox()
+  notifications_count.update_text = function(n)
+    if n > 0 then
+      notifications_count:set_markup(
+        "<span font='Inter' font_size='10pt' color='#ffffffaa'>" .. n .. " New Notifications</span>"
+      )
+      return
+    end
 
-  local username = wibox.widget.textbox()
-  username:set_markup("<span font_size='24pt' color='#ffffffff'>" .. os.getenv("USER") .. "</span>")
+    notifications_count:set_markup("<span font='Inter' font_size='10pt' color='#ffffff88'>No New Notifications</span>")
+  end
+  global_state.cache.listen(
+    "notifications",
+    function()
+      local n = #global_state.cache.get("notifications")
+      if global_state.cache.get("lockscreen") == false then
+        global_state.cache.set("lockscreen_notifications", n)
+        return
+      end
+
+      local i = n - global_state.cache.get("lockscreen_notifications")
+      notifications_count.update_text(i)
+    end
+  )
+
+  local username = os.getenv("USER")
+  local username_text = wibox.widget.textbox()
+  local username_margin = config.dpi(10)
+  if username == nil or username == "" then
+    username_margin = 0
+  else
+    username_text:set_markup(
+      "<span font='Inter Bold' font_size='11pt' color='#ffffff'>" ..
+        username:gsub(
+          "(%l)(%w*)",
+          function(a, b)
+            return string.upper(a) .. b
+          end
+        ) ..
+          "</span>"
+    )
+  end
 
   local text = wibox.widget.textbox()
   local text_bg =
@@ -42,13 +71,13 @@ function lockscreen.new(s)
     layout = wibox.layout.fixed.vertical,
     {
       widget = wibox.container.background,
-      bg = "#ffffff33",
+      bg = "#ffffff22",
       shape = gears.shape.rounded_rect,
       radius = config.dpi(6),
       {
         widget = wibox.container.margin,
-        left = config.dpi(20),
-        right = config.dpi(20),
+        left = config.dpi(10),
+        right = config.dpi(10),
         top = config.dpi(4),
         bottom = config.dpi(4),
         {
@@ -74,26 +103,41 @@ function lockscreen.new(s)
       valign = "center",
       halign = "center",
       {
-        layout = wibox.layout.fixed.vertical,
+        widget = wibox.container.background,
+        shape = gears.shape.rounded_rect,
+        radius = config.dpi(6),
+        bg = "#ffffff22",
         {
-          widget = wibox.container.margin,
-          bottom = config.dpi(12),
+          layout = wibox.layout.fixed.vertical,
+          spacing = config.dpi(1),
+          spacing_widget = wibox.widget {
+            widget = wibox.widget.separator,
+            color = "#ffffff22",
+            forced_height = config.dpi(1)
+          },
           {
-            widget = wibox.container.place,
-            halign = "center",
-            avatar
-          }
-        },
-        {
-          widget = wibox.container.margin,
-          bottom = config.dpi(12),
+            widget = wibox.container.margin,
+            margins = config.dpi(10),
+            {
+              layout = wibox.layout.fixed.vertical,
+              {
+                widget = wibox.container.margin,
+                bottom = username_margin,
+                username_text
+              },
+              text_bg
+            }
+          },
           {
-            widget = wibox.container.place,
-            halign = "center",
-            username
+            widget = wibox.container.margin,
+            margins = config.dpi(10),
+            {
+              layout = wibox.layout.fixed.horizontal,
+              fill_space = true,
+              notifications_count
+            }
           }
-        },
-        text_bg
+        }
       }
     },
     {
@@ -135,11 +179,11 @@ function lockscreen.new(s)
     end
 
     if pw == "" then
-      text:set_markup("<span font_size='12pt' color='#ffffff99'>Please input your password...</span>")
+      text:set_markup("<span font='Inter' font_size='10pt' color='#ffffff99'>Please input your password...</span>")
       return
     end
 
-    text:set_markup("<span font_size='6pt' color='#ffffffff'>" .. pw .. "</span>")
+    text:set_markup("<span font='Inter' font_size='6pt' color='#ffffffff'>" .. pw .. "</span>")
   end
 
   local type_again = true
@@ -231,10 +275,11 @@ function lockscreen.new(s)
   awesome.connect_signal(
     "module::lockscreen:show",
     function()
-      config.locked = true
       screen.visible = true
       input_password = nil
       type_again = true
+      global_state.cache.set("lockscreen", true)
+      notifications_count.update_text(0)
       update_password_input()
 
       gears.timer.start_new(
@@ -250,17 +295,18 @@ function lockscreen.new(s)
   awesome.connect_signal(
     "module::lockscreen:hide",
     function()
-      config.locked = false
       password_grabber:stop()
       input_password = nil
       screen.visible = false
+      global_state.cache.set("lockscreen", false)
+      global_state.cache.set("lockscreen_notifications", #global_state.cache.get("notifications"))
     end
   )
 
   awesome.connect_signal(
     "module::lockscreen:fail",
     function()
-      text:set_markup("<span color='#dc2626' font_size='14pt'><b>Failed to login</b></span>")
+      text:set_markup("<span font='Inter' color='#dc2626' font_size='10pt'><b>Failed to login</b></span>")
 
       gears.timer.start_new(
         2,

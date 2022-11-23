@@ -17,7 +17,7 @@ function message:set_notification(notif)
     old:disconnect_signal("property::fg", self._private.message_changed_callback)
   end
 
-  markup(self, notif.message, notif.fg, notif.font)
+  markup(self, notif.message, notif.fg, "Inter regular 10")
 
   self._private.notification = setmetatable({notif}, {__mode = "v"})
 

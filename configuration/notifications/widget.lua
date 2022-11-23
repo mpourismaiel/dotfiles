@@ -1,32 +1,59 @@
 local naughty = require("naughty")
 local wibox = require("wibox")
+local gears = require("gears")
 local message = require("configuration.notifications.message")
 local title = require("configuration.notifications.title")
 local config = require("configuration.config")
 
 local notification_widget = {
-  margins = config.dpi(8),
-  widget = wibox.container.margin,
+  layout = wibox.layout.fixed.vertical,
   {
-    layout = wibox.layout.fixed.vertical,
-    spacing = config.dpi(10),
-    naughty.list.actions,
+    widget = wibox.container.background,
+    bg = "#11111188",
     {
-      layout = wibox.layout.fixed.horizontal,
-      fill_space = true,
-      spacing = config.dpi(16),
+      margins = config.dpi(8),
+      widget = wibox.container.margin,
       {
-        widget = wibox.container.constraint,
-        width = config.dpi(48),
-        height = config.dpi(48),
-        strategy = "max",
-        naughty.widget.icon
-      },
+        layout = wibox.layout.fixed.horizontal,
+        fill_space = true,
+        spacing = config.dpi(16),
+        {
+          widget = wibox.container.constraint,
+          width = config.dpi(30),
+          height = config.dpi(30),
+          strategy = "max",
+          {
+            widget = wibox.container.background,
+            shape = gears.shape.circle,
+            naughty.widget.icon
+          }
+        },
+        {
+          widget = wibox.container.place,
+          valign = "middle",
+          halign = "left",
+          title
+        }
+      }
+    }
+  },
+  {
+    widget = wibox.container.background,
+    bg = "#00000000",
+    {
+      margins = config.dpi(8),
+      widget = wibox.container.margin,
       {
         layout = wibox.layout.fixed.vertical,
-        spacing = config.dpi(8),
-        title,
-        message
+        {
+          widget = wibox.container.margin,
+          top = config.dpi(6),
+          bottom = config.dpi(6),
+          {
+            widget = message
+          }
+        },
+        naughty.list.actions
       }
     }
   }

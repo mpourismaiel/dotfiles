@@ -1,157 +1,168 @@
-local gears = require("gears")
+local Gio = require("lgi").Gio
 local awful = require("awful")
-local wibox = require("wibox")
-local list = require("module.launcher.list")
-local config = require("configuration.config")
-local theme = require("configuration.config.theme")
-local launcher_widget_template = require("module.launcher.widget")
-local filesystem = require("gears.filesystem")
-local config_dir = filesystem.get_configuration_dir()
+local gears = require("gears")
+local gtable = require("gears.table")
+local gobject = require("gears.object")
+local icon_theme = require("bling.helpers.icon_theme")
+local path = ...
 
-local select_all = false
-local query = nil
-local selected = 1
-local parent = nil
+local function case_insensitive_pattern(pattern)
+  -- find an optional '%' (group 1) followed by any character (group 2)
+  local p =
+    pattern:gsub(
+    "(%%?)(.)",
+    function(percent, letter)
+      if percent ~= "" or not letter:match("%a") then
+        -- if the '%' matched, or `letter` is not a letter, return "as is"
+        return percent .. letter
+      else
+        -- else, return a case-insensitive character class of the matched letter
+        return string.format("[%s%s]", letter:lower(), letter:upper())
+      end
+    end
+  )
+
+  return p
+end
+
+local function has_value(tab, val)
+  for index, value in pairs(tab) do
+    if val:find(case_insensitive_pattern(value)) then
+      return true
+    end
+  end
+  return false
+end
+
+local function generate_apps(self)
+  self._private.all_entries = {}
+  self._private.matched_entries = {}
+
+  local app_info = Gio.AppInfo
+  local apps = app_info.get_all()
+  if self.sort_alphabetically then
+    table.sort(
+      apps,
+      function(a, b)
+        local app_a_score = app_info.get_name(a):lower()
+        if has_value(self.favorites, app_info.get_name(a)) then
+          app_a_score = "aaaaaaaaaaa" .. app_a_score
+        end
+        local app_b_score = app_info.get_name(b):lower()
+        if has_value(self.favorites, app_info.get_name(b)) then
+          app_b_score = "aaaaaaaaaaa" .. app_b_score
+        end
+
+        return app_a_score < app_b_score
+      end
+    )
+  elseif self.reverse_sort_alphabetically then
+    table.sort(
+      apps,
+      function(a, b)
+        local app_a_score = app_info.get_name(a):lower()
+        if has_value(self.favorites, app_info.get_name(a)) then
+          app_a_score = "zzzzzzzzzzz" .. app_a_score
+        end
+        local app_b_score = app_info.get_name(b):lower()
+        if has_value(self.favorites, app_info.get_name(b)) then
+          app_b_score = "zzzzzzzzzzz" .. app_b_score
+        end
+
+        return app_a_score > app_b_score
+      end
+    )
+  else
+    table.sort(
+      apps,
+      function(a, b)
+        local app_a_favorite = has_value(self.favorites, app_info.get_name(a))
+        local app_b_favorite = has_value(self.favorites, app_info.get_name(b))
+
+        if app_a_favorite and not app_b_favorite then
+          return true
+        elseif app_b_favorite and not app_a_favorite then
+          return false
+        elseif app_a_favorite and app_b_favorite then
+          return app_info.get_name(a):lower() < app_info.get_name(b):lower()
+        else
+          return false
+        end
+      end
+    )
+  end
+
+  local icon_theme = icon_theme(self.icon_theme, self.icon_size)
+
+  for _, app in ipairs(apps) do
+    if app.should_show(app) then
+      local name = app_info.get_name(app)
+      local commandline = app_info.get_commandline(app)
+      local executable = app_info.get_executable(app)
+      local icon = icon_theme:get_gicon_path(app_info.get_icon(app))
+
+      if icon == "" then
+        if self.default_app_icon_name ~= nil then
+          icon = icon_theme:get_icon_path(self.default_app_icon_name)
+        elseif self.default_app_icon_path ~= nil then
+          icon = self.default_app_icon_path
+        else
+          icon = icon_theme:choose_icon({"application-all", "application", "application-default-icon", "app"})
+        end
+      end
+
+      local desktop_app_info = Gio.DesktopAppInfo.new(app_info.get_id(app))
+      local terminal = Gio.DesktopAppInfo.get_string(desktop_app_info, "Terminal") == "true" and true or false
+      local generic_name = Gio.DesktopAppInfo.get_string(desktop_app_info, "GenericName") or nil
+
+      table.insert(
+        self._private.all_entries,
+        {
+          name = name,
+          generic_name = generic_name,
+          commandline = commandline,
+          executable = executable,
+          terminal = terminal,
+          icon = icon
+        }
+      )
+    end
+  end
+end
 
 local launcher = {mt = {}}
-function launcher.new(screen)
-  local app_list = list({screen = awful.screen.focused()})
-  local launcher = launcher_widget_template(app_list)
 
-  local update_query_input = function()
-    launcher.input_select.bg = select_all and "#0000ff" or "#00000000"
-    if query == nil or query == "" then
-      launcher.input:set_markup("<span foreground='#cccccc' font='Inter Regular 12'>Search...</span>")
-    else
-      launcher.input:set_markup("<span foreground='#ffffff' font='Inter Regular 12'>" .. query .. "</span>")
-    end
-    app_list:emit_signal("launcher:list:update", (query == nil and "" or query), 0, selected)
-  end
-  update_query_input()
+function launcher.new()
+  local ret = gobject({})
+  ret._private = {}
+  ret._private.text = ""
+  ret.favorites = {}
+  ret.sort_alphabetically = false
+  ret.reverse_sort_alphabetically = false
 
-  local reset = function()
-    query = nil
-    selected = 1
-    page = 0
-    select_all = false
-    update_query_input()
-  end
+  gtable.crush(ret, launcher)
 
-  local query_grabber =
-    awful.keygrabber {
-    auto_start = true,
-    stop_event = "release",
-    mask_event_callback = true,
-    keybindings = {
-      awful.key {
-        modifiers = {"Control"},
-        key = "a",
-        on_press = function()
-          if query == nil or select_all == true then
-            return
+  local kill_old_inotify_process_script =
+    [[ ps x | grep "inotifywait -e modify /usr/share/applications" | grep -v grep | awk '{print $1}' | xargs kill ]]
+  local subscribe_script = [[ bash -c "while (inotifywait -e modify /usr/share/applications -qq) do echo; done" ]]
+
+  awful.spawn.easy_async_with_shell(
+    kill_old_inotify_process_script,
+    function()
+      awful.spawn.with_line_callback(
+        subscribe_script,
+        {
+          stdout = function(_)
+            generate_apps(ret)
           end
-
-          select_all = true
-          update_query_input()
-        end
-      }
-    },
-    keypressed_callback = function(self, mod, key, command)
-      -- Clear input string
-      if key == "Escape" then
-        if select_all == true then
-          select_all = false
-          query = nil
-          update_query_input()
-          return
-        end
-
-        -- Clear input threshold
-        awesome.emit_signal("launcher:hide")
-        return
-      end
-
-      if key == "BackSpace" then
-        if query == nil then
-          return
-        end
-
-        if select_all == true then
-          query = nil
-          select_all = false
-          update_query_input()
-          return
-        end
-
-        query = query:sub(1, -2)
-        update_query_input()
-        return
-      end
-
-      if key == "Up" or key == "Down" or key == "Right" or key == "Left" then
-        if key == "Up" then
-          selected = selected - 7
-        elseif key == "Down" then
-          selected = selected + 7
-        elseif key == "Right" then
-          selected = selected + 1
-        elseif key == "Left" then
-          selected = selected - 1
-        end
-        update_query_input()
-        return
-      end
-
-      -- Accept only the single charactered key
-      -- Ignore 'Shift', 'Control', 'Return', 'F1', 'F2', etc., etc.
-      if #key == 1 then
-        if select_all == true then
-          select_all = false
-          query = nil
-        end
-
-        if query == nil then
-          query = key
-          update_query_input()
-          return
-        end
-
-        query = query .. key
-        update_query_input()
-      end
-    end,
-    keyreleased_callback = function(self, mod, key, command)
-      if key == "Return" then
-        app_list:emit_signal("launcher:exec", parent, query, page, selected)
-        awesome.emit_signal("launcher:hide")
-      end
-    end
-  }
-
-  awesome.connect_signal(
-    "launcher:update:selected",
-    function(s)
-      selected = s
+        }
+      )
     end
   )
 
-  awesome.connect_signal(
-    "launcher:show",
-    function()
-      launcher.widget.visible = true
-      query_grabber:start()
-      awful.spawn("node " .. config_dir .. "module/launcher/list.js crawl " .. theme.icon_theme)
-    end
-  )
+  generate_apps(ret)
 
-  awesome.connect_signal(
-    "launcher:hide",
-    function()
-      query_grabber:stop()
-      launcher.widget.visible = false
-      reset()
-    end
-  )
+  return ret
 end
 
 function launcher.mt:__call(...)
