@@ -2,11 +2,12 @@ local capi = {button = button, client = client}
 local awful = require("awful")
 local wibox = require("wibox")
 local gears = require("gears")
+local tasklist_override = require("configuration.widgets.tasklist.override")
 local config = require("configuration.config")
 
 local tasklist = {mt = {}}
 
-local function create_buttons(buttons, object)
+local function create_buttons(buttons, items, widgetCache)
   local is_formatted = buttons and buttons[1] and (type(buttons[1]) == "button" or buttons[1]._is_capi_button) or false
 
   if buttons then
@@ -22,13 +23,13 @@ local function create_buttons(buttons, object)
         btn:connect_signal(
           "press",
           function()
-            b:emit_signal("press", object)
+            b:emit_signal("press", items, widgetCache)
           end
         )
         btn:connect_signal(
           "release",
           function()
-            b:emit_signal("release", object)
+            b:emit_signal("release", items, widgetCache)
           end
         )
         btns[#btns + 1] = btn
@@ -39,7 +40,7 @@ local function create_buttons(buttons, object)
   end
 end
 
-local function custom_template(args)
+local function custom_template()
   local template = {
     id = "background",
     border_strategy = "inner",
@@ -97,11 +98,14 @@ local function custom_template(args)
   }
 end
 
-function tasklist.render(w, buttons, label, data, objects, args)
+function tasklist.render(w, buttons, label, previous_cache, items)
   -- update the widgets, creating them if needed
   w:reset()
-  for i, o in ipairs(objects) do
-    local cache = data[o]
+
+  -- o is the group of clients with the same class
+  for i, o in pairs(items) do
+    local cache = previous_cache[i]
+    local firstItemInGroup = o[1]
 
     -- Allow the buttons to be replaced.
     if cache and cache._buttons ~= buttons then
@@ -111,36 +115,51 @@ function tasklist.render(w, buttons, label, data, objects, args)
     if not cache then
       cache = custom_template()
 
-      cache.primary.buttons = {create_buttons(buttons, o)}
+      cache.primary.buttons = {create_buttons(buttons, o, cache)}
 
       if cache.create_callback then
-        cache.create_callback(cache.primary, o, i, objects)
+        cache.create_callback(cache.primary, o, i, items)
       end
 
       cache._buttons = buttons
-      data[o] = cache
+      previous_cache[i] = cache
     elseif cache.update_callback then
-      cache.update_callback(cache.primary, o, i, objects)
+      cache.update_callback(cache.primary, o, i, items)
     end
 
-    if o.icon then
-      cache.icon:set_image(o.icon)
+    if firstItemInGroup.icon then
+      cache.icon:set_image(firstItemInGroup.icon)
     end
 
     cache.indicator.bg = "#ffffff00"
-    if
-      o.active or
-        (capi.client.focus and capi.client.focus.skip_taskbar and
-          capi.client.focus:get_transient_for_matching(
-            function(cl)
-              return not cl.skip_taskbar
-            end
-          ) == o)
-     then
+
+    local groupHasActive = false
+    for _, c in ipairs(o) do
+      if
+        c.active or
+          (capi.client.focus and capi.client.focus.skip_taskbar and
+            capi.client.focus:get_transient_for_matching(
+              function(cl)
+                return not cl.skip_taskbar
+              end
+            ) == c)
+       then
+        groupHasActive = true
+        break
+      end
+    end
+    if groupHasActive then
       cache.indicator.bg = "#ffffff88"
     end
 
-    if o.urgent then
+    local groupHasFocus = false
+    for _, c in ipairs(o) do
+      if c.urgent then
+        groupHasFocus = true
+        break
+      end
+    end
+    if groupHasFocus then
       cache.indicator.bg = "#ff000088"
     end
 
@@ -149,23 +168,26 @@ function tasklist.render(w, buttons, label, data, objects, args)
 end
 
 function tasklist.new(screen)
-  return awful.widget.tasklist {
+  return tasklist_override {
     screen = screen,
-    filter = awful.widget.tasklist.filter.allscreen,
+    filter = tasklist_override.filter.allscreen,
     update_function = tasklist.render,
-    source = function(s, args)
+    source = function(s)
       local list = {}
-      local cache = {}
       local tags = s.tags
       for k, v in ipairs(tags) do
         for i, c in ipairs(v:clients()) do
-          -- if you want to group same windows you can move table.insert into this if, but i'm not sure how you would access a minimized window
-          if cache ~= nil and c ~= nil and c.class ~= nil and cache[c.class] ~= true then
-            cache[c.class] = true
+          if not (c.skip_taskbar or c.hidden or c.type == "splash" or c.type == "dock" or c.type == "desktop") then
+            if c ~= nil and c.class ~= nil then
+              if list[c.class] == nil then
+                list[c.class] = {}
+              end
+              table.insert(list[c.class], c)
+            end
           end
-          table.insert(list, c)
         end
       end
+
       return list
     end,
     layout = {
@@ -175,38 +197,94 @@ function tasklist.new(screen)
       awful.button(
         {},
         1,
-        function(c)
-          if c == client.focus then
-            c.minimized = true
-          else
-            c.minimized = false
-            if not c:isvisible() and c.first_tag then
-              c.first_tag:view_only()
+        function(items, widgetCache)
+          local groupHasFocus = nil
+          for _, c in ipairs(items) do
+            if c == client.focus then
+              groupHasFocus = c
+              break
             end
-            client.focus = c
-            c:raise()
+          end
+
+          if groupHasFocus ~= nil then
+            for _, c in ipairs(items) do
+              c.minimized = true
+            end
+          else
+            items[1].minimized = false
+            if not items[1]:isvisible() and items[1].first_tag then
+              items[1].first_tag:view_only()
+            end
+            client.focus = items[1]
+            items[1]:raise()
           end
         end
       ),
       awful.button(
         {awful.util.modkey},
         2,
-        function(c)
-          c:kill()
+        function(items, widgetCache)
+          for _, c in ipairs(items) do
+            if c == client.focus then
+              c:kill()
+            end
+          end
         end
       ),
       awful.button(
         {},
         4,
-        function()
-          awful.client.focus.byidx(1)
+        function(items)
+          local activeIndex = 0
+          for i, c in pairs(items) do
+            if c.active then
+              activeIndex = i
+              break
+            end
+          end
+
+          if activeIndex == 0 then
+            return
+          end
+
+          if activeIndex == #items then
+            activeIndex = 1
+          else
+            activeIndex = activeIndex + 1
+          end
+
+          items[activeIndex]:activate {
+            switch_to_tag = true,
+            raise = true
+          }
         end
       ),
       awful.button(
         {},
         5,
-        function()
-          awful.client.focus.byidx(-1)
+        function(items)
+          local activeIndex = 0
+          for i, c in pairs(items) do
+            if c.active then
+              activeIndex = i
+              break
+            end
+          end
+
+          if activeIndex == 0 then
+            return
+          end
+
+          if activeIndex == 1 then
+            activeIndex = #items
+          else
+            activeIndex = activeIndex - 1
+          end
+
+          items[activeIndex]:activate {
+            switch_to_tag = true,
+            raise = true
+          }
         end
       )
     }
