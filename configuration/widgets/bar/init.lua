@@ -49,11 +49,11 @@ function bar.new(screen)
           bottom = config.dpi(9),
           {
             layout = wibox.layout.fixed.vertical,
-            bar_widget_wrapper(systray.new()),
             bluetooth(),
             bar_widget_wrapper(keyboardlayout.new()),
             bar_widget_wrapper(clock.new()),
-            bar_widget_wrapper(layoutbox.new(screen))
+            bar_widget_wrapper(layoutbox.new(screen)),
+            bar_widget_wrapper(systray.new())
           }
         }
       }
