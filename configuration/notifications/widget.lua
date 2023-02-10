@@ -9,7 +9,7 @@ local notification_widget = {
   layout = wibox.layout.fixed.vertical,
   {
     widget = wibox.container.background,
-    bg = "#11111188",
+    bg = "#111111aa",
     {
       margins = config.dpi(8),
       widget = wibox.container.margin,

@@ -21,9 +21,11 @@ naughty.connect_signal(
       notification = n,
       ontop = true,
       position = "bottom_right",
-      bg = "#44444422",
+      bg = "#16161688",
       border_width = 0,
       border_color = "#00000000",
+      minimum_width = config.dpi(350),
+      maximum_width = config.dpi(350),
       shape = function(cr, width, height)
         gears.shape.rounded_rect(cr, width, height, 5)
       end,
