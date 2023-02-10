@@ -16,7 +16,9 @@ local return_button = function()
       id = "icon",
       image = widget_icon_dir .. "bluetooth-off" .. ".svg",
       widget = wibox.widget.imagebox,
-      resize = true
+      resize = true,
+      width = config.dpi(16),
+      height = config.dpi(16)
     },
     layout = wibox.layout.align.horizontal
   }

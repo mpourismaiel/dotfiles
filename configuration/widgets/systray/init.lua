@@ -3,6 +3,8 @@ local gears = require("gears")
 local wibox = require("wibox")
 local config = require("configuration.config")
 local filesystem = require("gears.filesystem")
+local keyboardlayout = require("configuration.widgets.keyboardlayout")
+local bluetooth = require("configuration.widgets.bar.bluetooth")
 
 local config_dir = filesystem.get_configuration_dir()
 local chevron_right = config_dir .. "/images/chevron-right.svg"
@@ -25,11 +27,21 @@ function systray.new(screen)
         widget = wibox.container.margin,
         margins = config.dpi(2),
         {
-          base_size = config.dpi(16),
-          horizontal = false,
-          screen = screen,
-          visible = true,
-          widget = wibox.widget.systray
+          layout = wibox.layout.fixed.vertical,
+          spacing = config.dpi(12),
+          wibox.container.place(
+            {
+              base_size = config.dpi(16),
+              horizontal = false,
+              screen = screen,
+              visible = true,
+              widget = wibox.widget.systray
+            },
+            "center",
+            "center"
+          ),
+          wibox.container.place(bluetooth, "center", "center"),
+          wibox.container.place(keyboardlayout, "center", "center")
         }
       }
     },

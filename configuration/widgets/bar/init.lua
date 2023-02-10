@@ -8,9 +8,7 @@ local taglist = require("configuration.widgets.taglist")
 local tasklist = require("configuration.widgets.tasklist")
 local layoutbox = require("configuration.widgets.layoutbox")
 local systray = require("configuration.widgets.systray")
-local keyboardlayout = require("configuration.widgets.keyboardlayout")
 local clock = require("configuration.widgets.clock")
-local bluetooth = require("configuration.widgets.bar.bluetooth")
 
 local bar = {mt = {}}
 
@@ -49,8 +47,6 @@ function bar.new(screen)
           bottom = config.dpi(9),
           {
             layout = wibox.layout.fixed.vertical,
-            bluetooth(),
-            bar_widget_wrapper(keyboardlayout.new()),
             bar_widget_wrapper(clock.new()),
             bar_widget_wrapper(layoutbox.new(screen)),
             bar_widget_wrapper(systray.new())
