@@ -2,6 +2,7 @@
 -- Run all the apps listed in configuration/apps.lua as run_on_start_up only once when awesome start
 
 local awful = require("awful")
+local gears = require("gears")
 local naughty = require("naughty")
 local config = require("configuration.config")
 local debug_mode = config.auto_start.debug_mode or false
@@ -12,6 +13,7 @@ local run_once = function(cmd)
   if firstspace then
     findme = cmd:sub(0, firstspace - 1)
   end
+  gears.debug.dump(cmd, "Starting another app")
   awful.spawn.easy_async_with_shell(
     string.format("pgrep -u $USER -x %s > /dev/null || (%s)", findme, cmd),
     function(stdout, stderr)

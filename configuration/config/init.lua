@@ -1,4 +1,5 @@
 local awful = require("awful")
+local gears = require("gears")
 local filesystem = require("gears.filesystem")
 local xresources = require("beautiful.xresources")
 
@@ -6,6 +7,7 @@ local config_dir = filesystem.get_configuration_dir()
 local images_dir = filesystem.get_configuration_dir() .. "/images"
 
 local config = {
+  confDir = os.getenv("HOME") .. "/.config/awesome-config",
   terminal = "xfce4-terminal",
   modkey = "Mod4",
   dpi = xresources.apply_dpi,
@@ -67,5 +69,35 @@ local config = {
     }
   }
 }
+
+config.auto_start_extra = config.confDir .. "/autostart"
+
+function file_exists(file)
+  local f = io.open(file, "rb")
+  if f then
+    f:close()
+  end
+  return f ~= nil
+end
+
+function lines_from(file)
+  if not file_exists(file) then
+    return {}
+  end
+  local lines = {}
+  for line in io.lines(file) do
+    lines[#lines + 1] = line
+  end
+  return lines
+end
+
+if config.initialized ~= true then
+  if file_exists(config.auto_start_extra) then
+    local lines = lines_from(config.auto_start_extra)
+    gears.table.crush(config.auto_start.apps, lines)
+  end
+
+  config.initialized = true
+end
 
 return config
