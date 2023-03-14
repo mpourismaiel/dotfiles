@@ -9,6 +9,7 @@ local images_dir = filesystem.get_configuration_dir() .. "/images"
 local config = {
   confDir = os.getenv("HOME") .. "/.config/awesome-config",
   terminal = "xfce4-terminal",
+  taskManager = "system-monitoring-center",
   modkey = "Mod4",
   dpi = xresources.apply_dpi,
   openweathermap = {
@@ -94,7 +95,7 @@ end
 if config.initialized ~= true then
   if file_exists(config.auto_start_extra) then
     local lines = lines_from(config.auto_start_extra)
-    gears.table.crush(config.auto_start.apps, lines)
+    config.auto_start.apps = gears.table.join(config.auto_start.apps, lines)
   end
 
   config.initialized = true
