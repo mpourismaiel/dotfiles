@@ -26,7 +26,7 @@ if [[ $CREATE_PROJECTS = "true" ]]; then
   mkdir ~/Documents/projects
   mkdir ~/Documents/projects/dotfiles
   cd ~/Documents/projects/dotfiles
-  git clone --recurse-submodules git@github.com:mpourismaiel/dotfiles.git awesome
+  git clone --recurse-submodules https://github.com/mpourismaiel/dotfiles.git awesome
 fi
 
 pacman -Syu
