@@ -89,35 +89,56 @@ function lines_from(file)
 end
 
 if config.initialized ~= true then
+  config.initialized = true
   if file_exists(config.auto_start_extra) then
     local lines = lines_from(config.auto_start_extra)
     config.auto_start.apps = gears.table.join(config.auto_start.apps, lines)
   end
 
-  config.initialized = true
-end
+  if file_exists(config_dir .. "/config/configuration.json") then
+    -- read config_dir .. "/config/configuration.json" and load the json as config_override_table
+    local json = require("json")
+    local f = io.open(config_dir .. "/config/configuration.json", "rb")
+    local content = f:read("*all")
+    f:close()
+    local config_override_table = json.decode(content)
+    -- iterate over the table and override config
+    for k, v in pairs(config_override_table) do
+      -- if the key is a table, iterate over it and override the config
+      if type(v) == "table" then
+        -- if the key is not present in config, create it
+        if config[k] == nil then
+          config[k] = {}
+        end
 
-if file_exists(config_dir .. "/config/configuration.json") then
-  -- read config_dir .. "/config/configuration.json" and load the json as config_override_table
-  local json = require("json")
-  local f = io.open(config_dir .. "/config/configuration.json", "rb")
-  local content = f:read("*all")
-  f:close()
-  local config_override_table = json.decode(content)
-  -- iterate over the table and override config
-  for k, v in pairs(config_override_table) do
-    -- if the key is a table, iterate over it and override the config
-    if type(v) == "table" then
-      -- if the key is not present in config, create it
-      if config[k] == nil then
-        config[k] = {}
+        if k == "tags" then
+          local tags = {}
+          -- read the tags from the json file
+          for i, tag in pairs(v) do
+            -- if tag is not table, skip it
+            if type(tag) == "table" then
+              -- append the tag to the config.tags
+              t = {}
+              for k2, v2 in pairs(tag) do
+                -- if the key is layout, evaluate the value as a layout
+                if k2 == "layout" then
+                  t[k2] = awful.layout.suit[v2]
+                else
+                  t[k2] = v2
+                end
+              end
+              table.insert(tags, t)
+            end
+          end
+          config.tags = tags
+        else
+          for k2, v2 in pairs(v) do
+            config[k][k2] = v2
+          end
+        end
+      else
+        config[k] = v
       end
-
-      for k2, v2 in pairs(v) do
-        config[k][k2] = v2
-      end
-    else
-      config[k] = v
     end
   end
 end

@@ -4,8 +4,34 @@
     "full_screenshot": "flameshot full -p /home/mahdi/Pictures/Screenshots/ -c"
   },
   "openweathermap": {
-    "key": "c9d7511427001fd380fa12270a6ad0fd",
-    "city_id": "112931",
+    "key": "",
+    "city_id": "2759794",
     "weather_units": "metric"
-  }
+  },
+  "tags": [
+    {
+      "name": "1",
+      "layout": "max"
+    },
+    {
+      "name": "2",
+      "layout": "max"
+    },
+    {
+      "name": "3",
+      "layout": "tile"
+    },
+    {
+      "name": "4",
+      "layout": "max"
+    },
+    {
+      "name": "5",
+      "layout": "max"
+    },
+    {
+      "name": "6",
+      "layout": "max"
+    }
+  ]
 }
