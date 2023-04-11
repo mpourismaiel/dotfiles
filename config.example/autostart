@@ -1,0 +1,3 @@
+# each line in this file will run if it's not already running.
+# example:
+# pulseeffects --gapplication-service
