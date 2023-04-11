@@ -1,0 +1,2 @@
+export project_dirs=($HOME/Documents/projects another_space_separated_project_dir)
+export exclude_project_dirs=(project_dir_name_to_exclude)

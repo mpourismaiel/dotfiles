@@ -8,17 +8,29 @@ if [[ -z "$MY_PATH" ]]; then
   exit 1 # fail
 fi
 
-if [ -f "$HOME/.zshrc" ]; then
-  mv "$HOME/.zshrc" "$HOME/.zshrc.backup"
-  rm "$HOME/.zshrc"
-fi
-
-if [ -d "$HOME/.zsh" ]; then
-  mv "$HOME/.zsh" "$HOME/.zsh.backup"
-  rm -rf "$HOME/.zsh"
-else
+if [[ ! -d "$HOME/.zsh" ]]; then
   mkdir "$HOME/.zsh"
 fi
+if [[ ! -d "$HOME/.zsh/backup" ]]; then
+  mkdir "$HOME/.zsh/backup"
+fi
 
-ln "$MY_PATH/zshrc" "$HOME/.zshrc"
-ln "$MY_PATH/aliases.zsh" "$HOME/.zsh/aliases.zsh"
+if [[ -f "$HOME/.zsh/aliases.zsh" ]]; then
+  mv "$HOME/.zsh/aliases.zsh" "$HOME/.zsh/backup/aliases.zsh-$(date +%Y-%m-%d-%H-%M-%S).bak"
+fi
+if [[ -f "$HOME/.zsh/extra_config.zsh" ]]; then
+  mv "$HOME/.zsh/extra_config.zsh" "$HOME/.zsh/backup/extra_config.zsh-$(date +%Y-%m-%d-%H-%M-%S).bak"
+fi
+if [[ -f "$HOME/.zshrc" ]]; then
+  mv "$HOME/.zshrc" "$HOME/.zsh/backup/zshrc-$(date +%Y-%m-%d-%H-%M-%S).bak"
+fi
+
+if [[ ! -L "$HOME/.zsh/aliases.zsh" ]]; then
+  ln "$MY_PATH/aliases.zsh" "$HOME/.zsh/aliases.zsh"
+fi
+if [[ ! -L "$HOME/.zsh/extra_config.zsh" ]]; then
+  ln "$MY_PATH/extra_config.zsh" "$HOME/.zsh/extra_config.zsh"
+fi
+if [[ ! -L "$HOME/.zshrc" ]]; then
+  ln "$MY_PATH/zshrc" "$HOME/.zshrc"
+fi
