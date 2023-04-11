@@ -1,0 +1,11 @@
+{
+  "terminal": "xfce4-terminal",
+  "commands": {
+    "full_screenshot": "flameshot full -p /home/mahdi/Pictures/Screenshots/ -c"
+  },
+  "openweathermap": {
+    "key": "c9d7511427001fd380fa12270a6ad0fd",
+    "city_id": "112931",
+    "weather_units": "metric"
+  }
+}

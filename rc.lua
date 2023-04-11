@@ -82,5 +82,3 @@ if helpers.module_check("liblua_pam") == false then
     timeout = 5
   }
 end
-
--- awful.spawn("node " .. config_dir .. "module/launcher/list.js crawl " .. theme.icon_theme)

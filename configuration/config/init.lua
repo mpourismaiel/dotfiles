@@ -7,16 +7,10 @@ local config_dir = filesystem.get_configuration_dir()
 local images_dir = filesystem.get_configuration_dir() .. "/images"
 
 local config = {
-  confDir = os.getenv("HOME") .. "/.config/awesome-config",
   terminal = "xfce4-terminal",
   taskManager = "system-monitoring-center",
   modkey = "Mod4",
   dpi = xresources.apply_dpi,
-  openweathermap = {
-    key = "c9d7511427001fd380fa12270a6ad0fd",
-    city_id = "112931",
-    weather_units = "metric"
-  },
   wallpaper = os.getenv("HOME") .. "/Pictures/wallpaper.jpg",
   images_dir = images_dir,
   auto_start = {
@@ -71,7 +65,7 @@ local config = {
   }
 }
 
-config.auto_start_extra = config.confDir .. "/autostart"
+config.auto_start_extra = config_dir .. "/config/autostart"
 
 function file_exists(file)
   local f = io.open(file, "rb")
@@ -87,7 +81,9 @@ function lines_from(file)
   end
   local lines = {}
   for line in io.lines(file) do
-    lines[#lines + 1] = line
+    if string.sub(line, 1, 1) ~= "#" then
+      lines[#lines + 1] = line
+    end
   end
   return lines
 end
@@ -99,6 +95,31 @@ if config.initialized ~= true then
   end
 
   config.initialized = true
+end
+
+if file_exists(config_dir .. "/config/configuration.json") then
+  -- read config_dir .. "/config/configuration.json" and load the json as config_override_table
+  local json = require("json")
+  local f = io.open(config_dir .. "/config/configuration.json", "rb")
+  local content = f:read("*all")
+  f:close()
+  local config_override_table = json.decode(content)
+  -- iterate over the table and override config
+  for k, v in pairs(config_override_table) do
+    -- if the key is a table, iterate over it and override the config
+    if type(v) == "table" then
+      -- if the key is not present in config, create it
+      if config[k] == nil then
+        config[k] = {}
+      end
+
+      for k2, v2 in pairs(v) do
+        config[k][k2] = v2
+      end
+    else
+      config[k] = v
+    end
+  end
 end
 
 return config

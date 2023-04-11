@@ -1,4 +1,5 @@
 local awful = require("awful")
+local naughty = require("naughty")
 local hotkeys_popup = require("awful.hotkeys_popup")
 local config = require("configuration.config")
 local global_state = require("configuration.config.global_state")
@@ -21,7 +22,34 @@ awful.keyboard.append_global_keybindings(
       {"Ctrl", "Shift"},
       "Escape",
       function()
-        awesome.spawn(config.taskManager)
+        if config.taskManager == nil then
+          naughty.notify(
+            {
+              title = "Task Manager not set",
+              text = "Please set config.taskManager in configuration/config/init.lua",
+              preset = naughty.config.presets.critical
+            }
+          )
+          return
+        end
+
+        awful.spawn.easy_async_with_shell(
+          "command -v " .. config.taskManager,
+          function(stdout)
+            if stdout ~= "" then
+              awful.spawn(config.taskManager)
+            else
+              -- show notification if not installed
+              naughty.notify(
+                {
+                  title = "Task Manager not installed",
+                  text = "Please install " .. config.taskManager,
+                  preset = naughty.config.presets.critical
+                }
+              )
+            end
+          end
+        )
       end,
       {description = "open task manager", groupd = "launcher"}
     ),
@@ -29,7 +57,34 @@ awful.keyboard.append_global_keybindings(
       {config.modkey},
       "Return",
       function()
-        awful.spawn(config.terminal)
+        if config.terminal == nil then
+          naughty.notify(
+            {
+              title = "Terminal not set",
+              text = "Please set config.terminal in configuration/config/init.lua",
+              preset = naughty.config.presets.critical
+            }
+          )
+          return
+        end
+
+        awful.spawn.easy_async_with_shell(
+          "command -v " .. config.terminal,
+          function(stdout)
+            if stdout ~= "" then
+              awful.spawn(config.terminal)
+            else
+              -- show notification if not installed
+              naughty.notify(
+                {
+                  title = "Terminal not installed",
+                  text = "Please install " .. config.terminal,
+                  preset = naughty.config.presets.critical
+                }
+              )
+            end
+          end
+        )
       end,
       {description = "open a terminal", group = "launcher"}
     ),
@@ -80,9 +135,33 @@ awful.keyboard.append_global_keybindings(
       {},
       "Print",
       function()
+        -- check if config.commands.full_screenshot is set
+        if config.commands.full_screenshot == nil then
+          naughty.notify(
+            {
+              title = "Screenshot command not set",
+              text = "Please set config.commands.full_screenshot in configuration/config/init.lua",
+              preset = naughty.config.presets.critical
+            }
+          )
+          return
+        end
+
         awful.spawn.easy_async_with_shell(
-          config.commands.full_screenshot,
-          function()
+          "command -v " .. config.commands.full_screenshot,
+          function(stdout)
+            if stdout ~= "" then
+              awful.spawn(config.commands.full_screenshot, false)
+            else
+              -- show notification if not installed
+              naughty.notify(
+                {
+                  title = "Screenshot command not installed",
+                  text = "Please install " .. config.commands.full_screenshot,
+                  preset = naughty.config.presets.critical
+                }
+              )
+            end
           end
         )
       end,
@@ -92,9 +171,32 @@ awful.keyboard.append_global_keybindings(
       {"Shift"},
       "Print",
       function()
+        if config.commands.area_screenshot == nil then
+          naughty.notify(
+            {
+              title = "Screenshot command not set",
+              text = "Please set config.commands.area_screenshot in configuration/config/init.lua",
+              preset = naughty.config.presets.critical
+            }
+          )
+          return
+        end
+
         awful.spawn.easy_async_with_shell(
-          config.commands.area_screenshot,
-          function()
+          "command -v " .. config.commands.area_screenshot,
+          function(stdout)
+            if stdout ~= "" then
+              awful.spawn(config.commands.area_screenshot, false)
+            else
+              -- show notification if not installed
+              naughty.notify(
+                {
+                  title = "Screenshot command not installed",
+                  text = "Please install " .. config.commands.area_screenshot,
+                  preset = naughty.config.presets.critical
+                }
+              )
+            end
           end
         )
       end,
