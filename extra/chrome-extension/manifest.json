@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "version": "1.0",
+  "name": "Awesome New Tab",
+  "description": "Shortcuts and awesomeness",
+  "action": {
+    "default_icon": "icons/icon-64.png",
+    "default_popup": "popup.html"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "icons": {
+    "48": "icons/icon-64.png"
+  },
+  "chrome_url_overrides": {
+    "newtab": "index.html"
+  }
+}

@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Awesome New Tab</title>
+    <link rel="stylesheet" href="./styles.build.css" />
+  </head>
+  <body>
+    <div id="greeting">
+      <div class="container col">
+        <h3 id="hey"><span id="time-state"></span></h3>
+        <h2 id="greeting-info">
+          It's <span id="date">January 1st</span>, <span id="time">02:45</span>,
+          and apparently it's <span id="weather">sunny</span> outside.
+        </h2>
+      </div>
+    </div>
+    <div class="container col">
+      <div id="shortcuts"></div>
+      <button id="shortcuts-add">+ Add new shortcut</button>
+    </div>
+    <div id="backdrop" class="hide">
+      <div
+        id="add-shortcut-modal"
+        class="hide"
+        data-tab-container="add-shortcut"
+      >
+        <h3>Add new shortcut</h3>
+        <div class="tabs">
+          <button class="active" data-tab="new">Create new shortcut</button>
+          <button data-tab="link">Link to another shortcut</button>
+        </div>
+        <div class="tab" data-tab="new">
+          <form id="add-shortcut-form" data-form>
+            <div class="field">
+              <label for="shortcut-new-title">Title</label>
+              <input
+                type="text"
+                id="shortcut-new-title"
+                placeholder="Eg. Reddit"
+                name="title"
+              />
+            </div>
+            <div class="field">
+              <label for="shortcut-new-link">Link</label>
+              <input
+                type="text"
+                id="shortcut-new-link"
+                placeholder="Eg. reddit.com"
+                name="link"
+              />
+            </div>
+            <div class="field">
+              <label for="shortcut-new-icon">Icon</label>
+              <input
+                type="text"
+                id="shortcut-new-icon"
+                placeholder="Link to the favicon, I have to optimize this somehow"
+                name="icon"
+              />
+            </div>
+            <div class="field-submit">
+              <button type="submit">Submit</button>
+            </div>
+          </form>
+        </div>
+        <div class="tab hide" data-tab="link">
+          <form id="add-shortcut-form-related" data-form>
+            <div class="field">
+              <label for="shortcut-related">Related shortcut</label>
+              <select id="shortcut-related" name="parent"></select>
+            </div>
+            <div class="field">
+              <label for="shortcut-related-title">Title</label>
+              <input
+                type="text"
+                id="shortcut-related-title"
+                placeholder="Eg. Reddit"
+                name="title"
+              />
+            </div>
+            <div class="field">
+              <label for="shortcut-related-link">Link</label>
+              <input
+                type="text"
+                id="shortcut-related-link"
+                placeholder="Eg. reddit.com"
+                name="link"
+              />
+            </div>
+            <div class="field-submit">
+              <button type="submit">Submit</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+    <template id="shortcut-template">
+      <div class="shortcut">
+        <a href="https://%link%">
+          <div>
+            <h1>%title%</h1>
+            <h3>https://%link%</h3>
+          </div>
+        </a>
+        <div class="img">
+          <img src="%icon%" />
+        </div>
+      </div>
+    </template>
+    <template id="shortcut-template-with-children">
+      <div class="shortcut">
+        <a href="https://%link%">
+          <div class="header">
+            <img src="%icon%" />
+            <div class="title">
+              <h1>%title%</h1>
+              <h3>https://%link%</h3>
+            </div>
+          </div>
+        </a>
+        <div class="children">%children%</div>
+      </div>
+    </template>
+    <script src="./script.js"></script>
+  </body>
+</html>

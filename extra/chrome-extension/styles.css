@@ -1,0 +1,170 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+button:active {
+  @apply outline-none;
+}
+
+body {
+  @apply bg-[#121212] flex items-center flex-col;
+}
+
+.container {
+  @apply w-full md:w-[760px] lg:w-[1000px] max-w-full flex;
+}
+
+.row {
+  @apply flex-row;
+}
+
+.col {
+  @apply flex-col;
+}
+
+.tabs {
+  @apply flex gap-4 border-b border-gray-500;
+}
+
+.tabs button {
+  @apply text-gray-500 border-b border-gray-500 -m-px py-2 px-2 text-base;
+}
+
+.tabs button.active {
+  @apply text-white font-bold border-b-[3px] -m-[2px] border-blue-500;
+}
+
+.tab {
+  @apply p-4;
+}
+
+.tab.hide {
+  @apply hidden p-0;
+}
+
+.field {
+  @apply grid items-center my-2;
+  grid-template-columns: 8rem auto;
+}
+
+.field label {
+  @apply text-gray-200 text-sm font-bold;
+}
+
+.field-submit {
+  @apply flex justify-end;
+}
+
+.field-submit button[type=submit] {
+  @apply py-2 px-4 rounded bg-blue-500 text-white text-base font-medium;
+}
+
+.field input, .field select, .field textarea {
+  @apply border-2 border-transparent rounded-lg bg-white text-base focus:outline-2 focus:outline-blue-500 py-2 px-4 text-gray-900;
+}
+
+.field input.error, .field select.error, .field textarea.error {
+  @apply border-red-500;
+}
+
+#greeting {
+  @apply pt-8 pb-16 px-8 flex justify-center;
+}
+
+#greeting #hey {
+  @apply text-2xl mb-2 font-normal text-gray-300;
+}
+
+#greeting #greeting-info {
+  @apply text-4xl font-medium text-gray-200;
+}
+
+#greeting #greeting-info #date,
+#greeting #greeting-info #time,
+#greeting #greeting-info #weather {
+  @apply font-bold;
+}
+
+#greeting #greeting-info #date {
+  @apply text-green-700;
+}
+
+#greeting #greeting-info #time {
+  @apply text-white;
+}
+
+#greeting #greeting-info #weather {
+  @apply text-yellow-500;
+}
+
+#shortcuts {
+  @apply grid grid-cols-4 w-full gap-4;
+}
+
+.shortcut {
+  @apply border rounded border-[#282828] p-4 text-gray-200 flex flex-col w-full h-80;
+}
+
+.shortcut h1 {
+  @apply text-2xl font-bold;
+}
+
+.shortcut h3 {
+  @apply text-sm text-gray-700;
+}
+
+.shortcut .img {
+  @apply flex justify-center items-center p-8 flex-1;
+}
+
+.shortcut .img img {
+  @apply w-16 h-16;
+}
+
+.shortcut .header {
+  @apply flex items-center gap-4 mb-8;
+}
+
+.shortcut .header img {
+  @apply w-12 h-12;
+}
+
+.shortcut .children {
+  @apply flex flex-col gap-2 overflow-y-auto;
+}
+
+.shortcut .children a {
+  @apply flex items-center gap-2 text-gray-600 text-base;
+}
+
+.shortcut .children a img {
+  @apply w-4 h-4;
+}
+
+.shortcut .children a span {
+  @apply truncate;
+}
+
+#shortcuts-add {
+  @apply flex justify-end text-gray-400 text-sm mt-4;
+}
+
+#backdrop {
+  @apply flex flex-col items-center w-screen h-screen fixed top-0 left-0 bg-gray-600 bg-opacity-80 py-16;
+}
+
+#backdrop.hide {
+  @apply hidden;
+}
+
+#add-shortcut-modal {
+  @apply flex flex-col rounded p-4 shadow-lg bg-gray-900 w-[600px];
+}
+
+#add-shortcut-modal.hide {
+  @apply hidden;
+}
+
+#add-shortcut-modal h3 {
+  @apply text-white font-bold text-xl mb-4;
+}
