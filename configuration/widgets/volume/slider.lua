@@ -18,29 +18,6 @@ local action_name =
   widget = wibox.widget.textbox
 }
 
-local icon =
-  wibox.widget {
-  layout = wibox.layout.align.vertical,
-  expand = "none",
-  nil,
-  {
-    image = volume_icon,
-    resize = true,
-    widget = wibox.widget.imagebox
-  },
-  nil
-}
-
-local action_level =
-  wibox.widget {
-  {
-    icon,
-    margins = dpi(5),
-    widget = wibox.container.margin
-  },
-  widget = clickable_container
-}
-
 local slider =
   wibox.widget {
   nil,
@@ -65,13 +42,17 @@ local slider =
 }
 
 local volume_slider = slider.volume_slider
+-- volume | mic
+local mode = "volume"
 
 volume_slider:connect_signal(
   "property::value",
   function()
     local volume_level = volume_slider:get_value()
 
-    spawn("amixer -D pulse sset Master " .. volume_level .. "%", false)
+    if mode == "volume" then
+      spawn("amixer -D pulse sset Master " .. volume_level .. "%", false)
+    end
 
     -- Update volume osd
     awesome.emit_signal("widget::volume_osd", volume_level)
@@ -109,7 +90,7 @@ volume_slider:buttons(
 
 local update_slider = function()
   awful.spawn.easy_async_with_shell(
-    [[bash -c "amixer -D pulse sget Master"]],
+    mode == "volume" and [[bash -c "amixer -D pulse sget Master"]] or [[bash -c "amixer get Capture]],
     function(stdout)
       local volume = string.match(stdout, "(%d?%d?%d)%%")
       volume_slider:set_value(tonumber(volume))
@@ -133,6 +114,29 @@ local action_jump = function()
   end
   volume_slider:set_value(new_value)
 end
+
+local icon =
+  wibox.widget {
+  layout = wibox.layout.align.vertical,
+  expand = "none",
+  nil,
+  {
+    image = volume_icon,
+    resize = true,
+    widget = wibox.widget.imagebox
+  },
+  nil
+}
+
+local action_level =
+  wibox.widget {
+  {
+    icon,
+    margins = dpi(5),
+    widget = wibox.container.margin
+  },
+  widget = clickable_container
+}
 
 action_level:buttons(
   awful.util.table.join(

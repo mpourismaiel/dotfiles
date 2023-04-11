@@ -1,6 +1,7 @@
 local awful = require("awful")
 local wibox = require("wibox")
 local gears = require("gears")
+local naughty = require("naughty")
 local config = require("configuration.config")
 
 local bar_widget_wrapper = require("configuration.widgets.bar.widget-wrapper")
@@ -10,6 +11,32 @@ local config_dir = gears.filesystem.get_configuration_dir()
 local widget_icon_dir = config_dir .. "/images/"
 
 local return_button = function()
+  if config.commands.bluetooth == nil then
+    naughty.notify(
+      {
+        title = "Bluetooth",
+        text = "Bluetooth command is not set in config.lua",
+        preset = naughty.config.presets.critical
+      }
+    )
+    return
+  end
+
+  awful.spawn.easy_async_with_shell(
+    "command -v " .. config.commands.bluetooth,
+    function(stdout)
+      if stdout == "" then
+        naughty.notify(
+          {
+            title = "Bluetooth",
+            text = "Bluetooth command is not installed",
+            preset = naughty.config.presets.critical
+          }
+        )
+      end
+    end
+  )
+
   local widget =
     wibox.widget {
     {
