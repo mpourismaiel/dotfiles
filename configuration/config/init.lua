@@ -38,7 +38,7 @@ local config = {
     }
   },
   commands = {
-    rofi_appmenu = os.getenv("HOME") .. "/.config/rofi/launchers/misc/launcher.sh",
+    rofi_appmenu = "bash " .. config_dir .. "configuration/rofi/launcher.sh " .. config_dir .. "configuration/rofi",
     full_screenshot = "flameshot full -p /home/mahdi/Pictures/Screenshots/ -c",
     area_screenshot = "flameshot gui",
     bluetooth = "blueman-manager"

@@ -18,6 +18,14 @@ awful.keyboard.append_global_keybindings(
       {description = "quit awesome", group = "awesome"}
     ),
     awful.key(
+      {"Ctrl", "Shift"},
+      "Escape",
+      function()
+        awesome.spawn(config.taskManager)
+      end,
+      {description = "open task manager", groupd = "launcher"}
+    ),
+    awful.key(
       {config.modkey},
       "Return",
       function()
