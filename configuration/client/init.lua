@@ -5,6 +5,7 @@ local awful = require("awful")
 local wibox = require("wibox")
 local gears = require("gears")
 local config = require("configuration.config")
+local theme = require("configuration.config.theme")
 local filesystem = require("gears.filesystem")
 
 local config_dir = filesystem.get_configuration_dir()
@@ -128,8 +129,7 @@ client.connect_signal(
       c,
       {
         position = "top",
-        size = config.dpi(36),
-        bg = "#111111ff"
+        size = theme.titlebar_size
       }
     ):setup {
       layout = wibox.layout.flex.horizontal,

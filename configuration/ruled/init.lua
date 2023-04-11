@@ -12,7 +12,8 @@ ruled.client.connect_signal(
         raise = true,
         screen = awful.screen.preferred,
         placement = awful.placement.no_overlap + awful.placement.no_offscreen,
-        titlebars_enabled = true
+        titlebars_enabled = true,
+        skip_decoration = false
       }
     }
 
@@ -90,7 +91,7 @@ ruled.client.connect_signal(
           "kitty",
           "K3rmit",
           "xfce4-terminal",
-          "mullvad vpn"
+          "Xfce4-terminal"
         }
       },
       properties = {
@@ -122,7 +123,9 @@ ruled.client.connect_signal(
         }
       },
       properties = {
-        tag = "2"
+        tag = "2",
+        skip_decoration = false,
+        titlebars_enabled = true
       }
     }
 

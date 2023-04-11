@@ -60,10 +60,9 @@ theme.menu_submenu_icon = themes_path .. "default/submenu.png"
 theme.menu_height = config.dpi(15)
 theme.menu_width = config.dpi(100)
 
--- You can add as many variables as
--- you wish and access them by using
--- beautiful.variable in your rc.lua
---theme.bg_widget = "#cc0000"
+theme.titlebar_size = config.dpi(36)
+theme.titlebar_bg_normal = "#333333ff"
+theme.titlebar_bg_focus = "#111111ff"
 
 -- Define the image to load
 theme.titlebar_close_button_normal = themes_path .. "default/titlebar/close_normal.png"
