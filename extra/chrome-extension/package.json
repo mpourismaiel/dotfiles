@@ -4,13 +4,23 @@
   "description": "",
   "main": "script.js",
   "scripts": {
-    "css:build": "npx tailwindcss -i ./styles.css -o ./styles.build.css",
-    "css:watch": "npm run css:build -- --watch"
+    "css:build:index": "npx tailwindcss -i ./pages/newtab/index.css -o ./pages/newtab/build/index.build.css",
+    "css:watch:index": "npm run css:build:index -- --watch",
+    "css:build:popup": "npx tailwindcss -i ./pages/popup/popup.css -o ./pages/popup/build/popup.build.css",
+    "css:watch:popup": "npm run css:build:popup -- --watch",
+    "js:build:index": "npx esbuild pages/newtab/index.js --bundle --minify --sourcemap --outfile=pages/newtab/build/index.build.js",
+    "js:watch:index": "npm run js:build:index -- --watch",
+    "js:build:popup": "npx esbuild pages/popup/popup.js --bundle --minify --sourcemap --outfile=pages/popup/build/popup.build.js",
+    "js:watch:popup": "npm run js:build:popup -- --watch"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "devDependencies": {
     "tailwindcss": "^3.2.4"
+  },
+  "dependencies": {
+    "esbuild": "0.17.16",
+    "fuse.js": "^6.6.2"
   }
 }

@@ -23,7 +23,7 @@ body {
 }
 
 .tabs {
-  @apply flex gap-4 border-b border-gray-500;
+  @apply flex gap-4 border-b border-gray-500 items-center;
 }
 
 .tabs button {
@@ -34,8 +34,12 @@ body {
   @apply text-white font-bold border-b-[3px] -m-[2px] border-blue-500;
 }
 
-.tab {
+.tab:not(.no-padding) {
   @apply p-4;
+}
+
+.tab.no-padding {
+  @apply py-4;
 }
 
 .tab.hide {
@@ -68,7 +72,7 @@ body {
 }
 
 #greeting {
-  @apply pt-8 pb-16 px-8 flex justify-center;
+  @apply p-8 flex justify-center;
 }
 
 #greeting #hey {
@@ -167,4 +171,70 @@ body {
 
 #add-shortcut-modal h3 {
   @apply text-white font-bold text-xl mb-4;
+}
+
+.bookmark-folder h1 {
+  @apply text-base font-bold;
+}
+
+.bookmark-title h1, .no-bookmark {
+  @apply font-normal text-sm;
+}
+
+.bookmark-title h1, .bookmark-folder h1 {
+  @apply text-white;
+}
+
+.bookmark a {
+  @apply flex items-center gap-2;
+}
+
+.bookmark-folder {
+  @apply my-2;
+}
+
+.bookmark-children {
+  @apply ml-4 mt-2 mb-4 flex flex-col gap-2;
+}
+
+.no-bookmark {
+  @apply text-gray-500;
+}
+
+#search-form {
+  @apply relative flex flex-1;
+}
+
+#search-form input {
+  @apply py-2 px-4 rounded-t text-base flex-1 bg-[#333333] text-white focus:outline-none;
+}
+
+#search-everything {
+  @apply absolute top-full rounded-b bg-[#666666] shadow overflow-y-auto max-h-96 w-full flex flex-col gap-2;
+}
+
+#search-everything:not(.show) {
+  @apply hidden;
+}
+
+#search-everything .search-option {
+  @apply px-4 py-2 flex flex-col gap-2;
+}
+
+
+#search-everything .search-option.hide {
+  @apply hidden;
+}
+
+#search-everything .search-option.hover,
+#search-everything .search-option:hover {
+  @apply bg-[#444444];
+}
+
+#search-everything .search-option h3 {
+  @apply text-gray-50;
+}
+
+#search-everything .search-option h4 {
+  @apply text-gray-300;
 }
