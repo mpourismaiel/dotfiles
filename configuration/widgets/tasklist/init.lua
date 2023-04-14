@@ -31,7 +31,8 @@ local function create_buttons(buttons, object)
 end
 
 local function custom_template(client_count)
-  local template = {
+  local l =
+    wibox.widget {
     id = "background",
     border_strategy = "inner",
     widget = wibox.container.background,
@@ -68,9 +69,7 @@ local function custom_template(client_count)
     }
   }
 
-  local l = wibox.widget.base.make_widget_from_value(template)
   local indicator_list = l:get_children_by_id("indicator_list")[1]
-
   for i = 1, client_count do
     indicator_list:add(
       wibox.widget.base.make_widget_from_value {
@@ -91,10 +90,10 @@ local function custom_template(client_count)
   end
 
   return {
+    primary = l,
     background = l:get_children_by_id("background")[1],
     icon = l:get_children_by_id("icon")[1],
     indicator = indicator_list.children,
-    primary = l,
     update_callback = l.update_callback,
     create_callback = l.create_callback
   }
@@ -138,9 +137,11 @@ function tasklist.render(w, buttons, label, widgets_cache, objects, args)
       c.bg = "#ffffff44"
     end
 
-    local children = wibox.layout.fixed.vertical()
-    children.spacing = config.dpi(1)
+    cache.children = wibox.layout.fixed.vertical()
+    cache.children.spacing = config.dpi(1)
+    cache.children:reset()
     for i, c in ipairs(o.clients) do
+      local is_focused, is_urgent = false, false
       if
         c.active or
           (capi.client.focus and capi.client.focus.skip_taskbar and
@@ -150,19 +151,23 @@ function tasklist.render(w, buttons, label, widgets_cache, objects, args)
               end
             ) == c)
        then
+        is_focused = true
         cache.w.indicator[i].bg = "#ffffff88"
-        cache.w.indicator[i]:get_children_by_id("size")[1].height = config.dpi(12)
       end
 
       if c.urgent then
+        is_urgent = true
         cache.w.indicator[i].bg = "#ff000088"
+      end
+
+      if is_focused or is_urgent then
         cache.w.indicator[i]:get_children_by_id("size")[1].height = config.dpi(12)
       end
 
       local w =
         wibox.widget {
         widget = wibox.container.background,
-        bg = "#11111144",
+        bg = is_focused and "#111111ff" or "#11111166",
         {
           widget = wibox.container.margin,
           left = config.dpi(15),
@@ -170,44 +175,47 @@ function tasklist.render(w, buttons, label, widgets_cache, objects, args)
           top = config.dpi(10),
           bottom = config.dpi(10),
           {
-            widget = wibox.container.place,
-            halign = "left",
+            layout = wibox.layout.fixed.horizontal,
+            cache.w.icon,
             {
-              widget = wibox.widget.textbox,
-              markup = "<span color='#ffffff' font='Inter Medium 11'>" .. c.name .. "</span>"
+              widget = wibox.container.margin,
+              left = config.dpi(10),
+              {
+                widget = wibox.widget.textbox,
+                markup = "<span color='#ffffff' font='Inter Medium 11'>" .. c.name .. "</span>"
+              }
             }
           }
         }
       }
 
       w.buttons = create_buttons(buttons.client, c)
-      children:add(w)
+      cache.children:add(w)
     end
 
-    cache.popup =
-      awful.popup {
-      widget = children,
-      ontop = true,
-      visible = false,
-      bg = "#11111144",
-      -- placement = awful.placement.next_to(
-      --   cache.popup,
-      --   {
-      --     preferred_positions = "right",
-      --     preferred_anchors = "front",
-      --     margins = {left = config.dpi(5)}
-      --     -- geometry = {x = cache.w.primary.x, y = cache.w.primary.y}
-      --   }
-      -- ),
-      shape = function(cr, width, height)
-        return gears.shape.rounded_rect(cr, width, height, config.dpi(4))
-      end
-    }
+    if cache.popup == nil then
+      cache.popup =
+        awful.popup {
+        widget = cache.children,
+        ontop = true,
+        visible = false,
+        bg = "#11111166",
+        shape = function(cr, width, height)
+          return gears.shape.rounded_rect(cr, width, height, config.dpi(4))
+        end
+      }
+    end
 
     cache.open_popup = function()
       local s = awful.screen.focused()
       cache.popup.visible = true
       cache.popup.screen = s
+      cache.popup:geometry(
+        {
+          x = config.dpi(54),
+          y = s.geometry.height / 2 - ((#objects * config.dpi(48)) / 2) + ((i - 1) * config.dpi(48))
+        }
+      )
     end
 
     cache.close_popup = function()
