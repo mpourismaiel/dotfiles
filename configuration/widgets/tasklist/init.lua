@@ -3,6 +3,8 @@ local awful = require("awful")
 local wibox = require("wibox")
 local gears = require("gears")
 local config = require("configuration.config")
+local bench = require("helpers.bench")
+local icon_theme = require("helpers.icon_theme")()
 
 local tasklist = {mt = {}}
 
@@ -102,7 +104,10 @@ end
 function tasklist.render(w, buttons, label, widgets_cache, objects, args)
   w:reset()
   for i, o in ipairs(objects) do
-    local cache = widgets_cache[o]
+    local cache = widgets_cache[o.clients[1].class:lower()]
+    if cache and cache.length ~= #o.clients then
+      cache = nil
+    end
 
     if not cache then
       cache = {
@@ -125,23 +130,81 @@ function tasklist.render(w, buttons, label, widgets_cache, objects, args)
       end
 
       cache._buttons = buttons
-      widgets_cache[o] = cache
+
+      local icon = icon_theme:get_client_icon_path(o.clients[1])
+      if icon == nil or icon == "" then
+        icon = o.clients[1].icon
+      end
+      if icon then
+        cache.w.icon:set_image(icon)
+      end
+
+      cache.children = wibox.layout.fixed.vertical()
+      cache.children.spacing = config.dpi(1)
+
+      widgets_cache[o.clients[1].class:lower()] = cache
+
+      for i, c in ipairs(o.clients) do
+        local w =
+          wibox.widget {
+          widget = wibox.container.background,
+          bg = "#11111166",
+          {
+            widget = wibox.container.margin,
+            left = config.dpi(15),
+            right = config.dpi(10),
+            top = config.dpi(10),
+            bottom = config.dpi(10),
+            {
+              layout = wibox.layout.fixed.horizontal,
+              cache.w.icon,
+              {
+                widget = wibox.container.margin,
+                left = config.dpi(10),
+                {
+                  widget = wibox.widget.textbox,
+                  markup = "<span color='#ffffff' font='Inter Medium 11'>" .. c.name .. "</span>"
+                }
+              }
+            }
+          }
+        }
+
+        w.buttons = create_buttons(buttons.client, c)
+        cache.children:add(w)
+      end
+
+      cache.popup =
+        awful.popup {
+        widget = cache.children,
+        ontop = true,
+        visible = false,
+        bg = "#11111166",
+        shape = function(cr, width, height)
+          return gears.shape.rounded_rect(cr, width, height, config.dpi(4))
+        end
+      }
+      cache.open_popup = function()
+        local s = awful.screen.focused()
+        cache.popup.visible = true
+        cache.popup.screen = s
+        cache.popup:geometry(
+          {
+            x = config.dpi(54),
+            y = s.geometry.height / 2 - ((#objects * config.dpi(48)) / 2) + ((i - 1) * config.dpi(48))
+          }
+        )
+      end
+
+      cache.close_popup = function()
+        cache.popup.visible = false
+      end
     end
 
-    if o.clients[1].icon then
-      cache.w.icon:set_image(o.clients[1].icon)
-    end
-
-    -- loop through cache.w.indicator
-    for _, c in ipairs(cache.w.indicator) do
-      c.bg = "#ffffff44"
-    end
-
-    cache.children = wibox.layout.fixed.vertical()
-    cache.children.spacing = config.dpi(1)
-    cache.children:reset()
     for i, c in ipairs(o.clients) do
       local is_focused, is_urgent = false, false
+      cache.w.indicator[i].bg = "#ffffff44"
+      cache.children.children[i].bg = "#11111166"
       if
         c.active or
           (capi.client.focus and capi.client.focus.skip_taskbar and
@@ -153,6 +216,7 @@ function tasklist.render(w, buttons, label, widgets_cache, objects, args)
        then
         is_focused = true
         cache.w.indicator[i].bg = "#ffffff88"
+        cache.children.children[i].bg = "#111111ff"
       end
 
       if c.urgent then
@@ -162,64 +226,9 @@ function tasklist.render(w, buttons, label, widgets_cache, objects, args)
 
       if is_focused or is_urgent then
         cache.w.indicator[i]:get_children_by_id("size")[1].height = config.dpi(12)
+      else
+        cache.w.indicator[i]:get_children_by_id("size")[1].height = config.dpi(5)
       end
-
-      local w =
-        wibox.widget {
-        widget = wibox.container.background,
-        bg = is_focused and "#111111ff" or "#11111166",
-        {
-          widget = wibox.container.margin,
-          left = config.dpi(15),
-          right = config.dpi(10),
-          top = config.dpi(10),
-          bottom = config.dpi(10),
-          {
-            layout = wibox.layout.fixed.horizontal,
-            cache.w.icon,
-            {
-              widget = wibox.container.margin,
-              left = config.dpi(10),
-              {
-                widget = wibox.widget.textbox,
-                markup = "<span color='#ffffff' font='Inter Medium 11'>" .. c.name .. "</span>"
-              }
-            }
-          }
-        }
-      }
-
-      w.buttons = create_buttons(buttons.client, c)
-      cache.children:add(w)
-    end
-
-    if cache.popup == nil then
-      cache.popup =
-        awful.popup {
-        widget = cache.children,
-        ontop = true,
-        visible = false,
-        bg = "#11111166",
-        shape = function(cr, width, height)
-          return gears.shape.rounded_rect(cr, width, height, config.dpi(4))
-        end
-      }
-    end
-
-    cache.open_popup = function()
-      local s = awful.screen.focused()
-      cache.popup.visible = true
-      cache.popup.screen = s
-      cache.popup:geometry(
-        {
-          x = config.dpi(54),
-          y = s.geometry.height / 2 - ((#objects * config.dpi(48)) / 2) + ((i - 1) * config.dpi(48))
-        }
-      )
-    end
-
-    cache.close_popup = function()
-      cache.popup.visible = false
     end
 
     w:add(cache.w.primary)
