@@ -4,6 +4,8 @@ local wibox = require("wibox")
 local gears = require("gears")
 local config = require("configuration.config")
 local bench = require("helpers.bench")
+local lgi = require("lgi")
+local GLib = lgi.GLib
 local icon_theme = require("helpers.icon_theme")()
 
 local tasklist = {mt = {}}
@@ -30,6 +32,18 @@ local function create_buttons(buttons, object)
   end
 
   return btns
+end
+
+local function set_markup_safely(tb, markup, backup_markup)
+  local status, err =
+    pcall(
+    function()
+      tb:set_markup(markup)
+    end
+  )
+  if not status then
+    tb:set_markup(backup_markup)
+  end
 end
 
 local function custom_template(client_count)
@@ -163,12 +177,19 @@ function tasklist.render(w, buttons, label, widgets_cache, objects, args)
                 left = config.dpi(10),
                 {
                   widget = wibox.widget.textbox,
-                  markup = "<span color='#ffffff' font='Inter Medium 11'>" .. c.name .. "</span>"
+                  id = "title",
+                  markup = "<span color='#dddddd' font='Inter Medium 11'>" .. c.class .. "</span>"
                 }
               }
             }
           }
         }
+        local escaped_text = GLib.markup_escape_text(c.name, -1)
+        set_markup_safely(
+          w:get_children_by_id("title")[1],
+          string.format("<span color='#ffffff' font='Inter Medium 11'>%s</span>", escaped_text),
+          string.format("<span color='#ffffff' font='Inter Medium 11'>%s</span>", c.class)
+        )
 
         w.buttons = create_buttons(buttons.client, c)
         cache.children:add(w)
@@ -177,6 +198,7 @@ function tasklist.render(w, buttons, label, widgets_cache, objects, args)
       cache.popup =
         awful.popup {
         widget = cache.children,
+        maximum_width = config.dpi(300),
         ontop = true,
         visible = false,
         bg = "#11111166",
