@@ -1,5 +1,6 @@
 local awful = require("awful")
 local gears = require("gears")
+local bling = require("bling")
 local filesystem = require("gears.filesystem")
 local xresources = require("beautiful.xresources")
 
@@ -88,6 +89,14 @@ function lines_from(file)
   return lines
 end
 
+local bling_layouts = {
+  "mstab",
+  "centered",
+  "vertical",
+  "horizontal",
+  "equalarea",
+  "deck"
+}
 if config.initialized ~= true then
   config.initialized = true
   if file_exists(config.auto_start_extra) then
@@ -122,7 +131,20 @@ if config.initialized ~= true then
               for k2, v2 in pairs(tag) do
                 -- if the key is layout, evaluate the value as a layout
                 if k2 == "layout" then
-                  t[k2] = awful.layout.suit[v2]
+                  -- check if v2 is one of mstab, centered, vertical, horizontal, equalarea, deck
+                  local found = false
+                  for _, layout in ipairs(bling_layouts) do
+                    if layout == v2 then
+                      found = true
+                      break
+                    end
+                  end
+
+                  if found then
+                    t[k2] = bling.layout[v2]
+                  else
+                    t[k2] = awful.layout.suit[v2]
+                  end
                 else
                   t[k2] = v2
                 end
