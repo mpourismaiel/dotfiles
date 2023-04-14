@@ -582,6 +582,10 @@ video {
   visibility: visible;
 }
 
+.\!visible {
+  visibility: visible !important;
+}
+
 .invisible {
   visibility: hidden;
 }
@@ -2631,6 +2635,12 @@ body {
 #search-everything .search-option h4 {
   --tw-text-opacity: 1;
   color: rgb(209 213 219 / var(--tw-text-opacity));
+}
+
+.ghost-draggble {
+  opacity: 0.5;
+  --tw-blur: blur(8px);
+  filter: var(--tw-blur) var(--tw-brightness) var(--tw-contrast) var(--tw-grayscale) var(--tw-hue-rotate) var(--tw-invert) var(--tw-saturate) var(--tw-sepia) var(--tw-drop-shadow);
 }
 
 .hover\:font-bold:hover {

@@ -1,3 +1,4 @@
+const sortable = require("sortablejs");
 const store = require("./store");
 const { shortcutsDefault } = require("./constants");
 
@@ -15,12 +16,13 @@ const {
 
 subscribeShortcuts((shortcuts) => {
   shortcutsContainer.innerHTML = "";
-  shortcuts.forEach(({ title, link, icon, children }) => {
+  shortcuts.forEach(({ title, link, icon, children }, i) => {
     if (children.length > 0) {
       shortcutsContainer.innerHTML += shortcutTemplateWithChildren.innerHTML
         .replace(/%title%/g, title)
         .replace(/%link%/g, link.replace(/^https?:\/\//, ""))
         .replace(/%icon%/g, icon)
+        .replace(/%id%/g, i)
         .replace(
           /%children%/g,
           children
@@ -34,9 +36,25 @@ subscribeShortcuts((shortcuts) => {
       shortcutsContainer.innerHTML += shortcutTemplate.innerHTML
         .replace(/%title%/g, title)
         .replace(/%link%/g, link.replace(/^https?:\/\//, ""))
+        .replace(/%id%/g, i)
         .replace(/%icon%/g, icon);
     }
   });
+});
+
+const changeOrder = (arr, m, n) => {
+  const newArr = [...arr];
+  const [item] = newArr.splice(m, 1);
+  newArr.splice(n, 0, item);
+  return newArr;
+};
+
+sortable.create(shortcutsContainer, {
+  animation: 150,
+  ghostClass: "ghost-draggable",
+  onEnd: (e) => {
+    setShortcuts(changeOrder(getShortcuts(), e.oldIndex, e.newIndex));
+  },
 });
 
 module.exports = { getShortcuts, setShortcuts, subscribeShortcuts };

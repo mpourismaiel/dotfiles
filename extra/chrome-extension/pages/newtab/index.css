@@ -238,3 +238,7 @@ body {
 #search-everything .search-option h4 {
   @apply text-gray-300;
 }
+
+.ghost-draggble {
+  @apply blur opacity-50;
+}
