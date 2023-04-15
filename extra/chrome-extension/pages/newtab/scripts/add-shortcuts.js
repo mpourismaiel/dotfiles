@@ -1,5 +1,5 @@
 const { listenToTab } = require("./tabs");
-const { showModal } = require("./modal");
+const { showModal, hideModal } = require("./modal");
 const { getShortcuts, setShortcuts } = require("./shortcuts");
 const { formValues, stopPropagation, preventDefault } = require("./forms");
 
@@ -31,7 +31,7 @@ const addShortcut =
       mode === "related" ? "add-shortcut-form-related" : "add-shortcut-form";
 
     const emptyFields = Object.keys(formValues[formName].values).filter(
-      (key) => formValues[formName].values[key] === ""
+      (key) => key !== "icon" && formValues[formName].values[key] === ""
     );
     if (emptyFields.length > 0) {
       emptyFields.forEach((field) => {
