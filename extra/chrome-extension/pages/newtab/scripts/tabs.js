@@ -6,9 +6,14 @@ Array.from(tabs || []).forEach((tabContainer) => {
     tabContainer.querySelectorAll(".tabs button") || []
   );
   const tabs = Array.from(tabContainer.querySelectorAll(".tab") || []);
+  tabs.forEach((tab) => tab.classList.add("hide"));
 
   tabButtons.forEach((button) => {
     const tab = tabs.find((tab) => tab.dataset.tab === button.dataset.tab);
+    if (button.classList.contains("active")) {
+      tab.classList.remove("hide");
+    }
+
     if (!tab) {
       console.error("no related tab found", button.dataset.tab, tabContainer);
       return;

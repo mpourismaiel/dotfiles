@@ -106,7 +106,7 @@ body {
 }
 
 .shortcut {
-  @apply border rounded border-[#282828] p-4 text-gray-200 flex flex-col w-full h-80;
+  @apply border rounded overflow-hidden border-[#282828] p-4 text-gray-200 flex flex-col w-full h-80 relative;
 }
 
 .shortcut h1 {
@@ -149,8 +149,41 @@ body {
   @apply truncate;
 }
 
+.shortcut .edit-actions {
+  @apply hidden absolute bottom-2 left-2 gap-2 grid-cols-12;
+  width: calc(100% - 16px);
+}
+
+.shortcut.editing .edit-actions {
+  @apply grid;
+}
+
+.shortcut .edit-actions button {
+  @apply flex items-center justify-center w-full h-full py-2 text-center rounded;
+}
+
+.shortcut .edit-actions .icon {
+  @apply w-6 h-6;
+}
+
+.shortcut .edit-actions .edit {
+  @apply bg-blue-700 col-span-8;
+}
+
+.shortcut .edit-actions .delete {
+  @apply bg-red-700 col-span-4;
+}
+
+#shortcuts-actions {
+  @apply flex items-center justify-between;
+}
+
 #shortcuts-add {
-  @apply flex justify-end text-gray-400 text-sm mt-4;
+  @apply flex text-gray-400 text-sm mt-4;
+}
+
+#shortcuts-edit {
+  @apply flex text-gray-600 text-sm mt-4;
 }
 
 #backdrop {

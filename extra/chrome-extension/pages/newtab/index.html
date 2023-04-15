@@ -33,7 +33,10 @@
       </div>
       <div class="tab no-padding" data-tab="shortcuts">
         <div id="shortcuts"></div>
-        <button id="shortcuts-add">+ Add new shortcut</button>
+        <div id="shortcuts-actions">
+          <button id="shortcuts-add">+ Add new shortcut</button>
+          <button id="shortcuts-edit">Edit shortcuts</button>
+        </div>
       </div>
       <div class="tab no-padding" data-tab="bookmarks">
         <div class="col">
@@ -137,33 +140,6 @@
     </template>
     <template id="bookmarks-template-empty">
       <p class="no-bookmark">No bookmarks found!</p>
-    </template>
-    <template id="shortcut-template">
-      <div class="shortcut" data-id="%id%">
-        <a href="https://%link%">
-          <div>
-            <h1>%title%</h1>
-            <h3>https://%link%</h3>
-          </div>
-        </a>
-        <div class="img">
-          <img src="%icon%" />
-        </div>
-      </div>
-    </template>
-    <template id="shortcut-template-with-children">
-      <div class="shortcut" data-id="%id%">
-        <a href="https://%link%">
-          <div class="header">
-            <img src="%icon%" />
-            <div class="title">
-              <h1>%title%</h1>
-              <h3>https://%link%</h3>
-            </div>
-          </div>
-        </a>
-        <div class="children">%children%</div>
-      </div>
     </template>
     <script src="./build/index.build.js"></script>
   </body>

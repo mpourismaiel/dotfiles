@@ -1,0 +1,35 @@
+<div class="shortcut" data-id="{{id}}">
+  {{#if hasChildren}}
+  <a href="https://{{link}}">
+    <div class="header">
+      <img src="{{icon}}" />
+      <div class="title">
+        <h1>{{title}}</h1>
+        <h3>https://{{link}}</h3>
+      </div>
+    </div>
+  </a>
+  <div class="children">
+    {{#each children}}
+    <a href="{{this.link}}" data-id="child-{{link}}-{{@index}}">
+      <img src="./icons/chevron-right.svg" class="icon" />
+      <span>{{this.title}}</span>
+    </a>
+    {{/each}}
+  </div>
+  {{else}}
+  <a href="https://{{link}}">
+    <div>
+      <h1>{{title}}</h1>
+      <h3>https://{{link}}</h3>
+    </div>
+  </a>
+  <div class="img">
+    <img src="{{icon}}" />
+  </div>
+  {{/if}}
+  <div class="edit-actions">
+    <button class="edit"><img src="./icons/edit.svg" class="icon" /></button>
+    <button class="delete"><img src="./icons/delete.svg" class="icon" /></button>
+  </div>
+</div>

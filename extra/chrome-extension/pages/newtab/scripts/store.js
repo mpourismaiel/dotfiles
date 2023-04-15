@@ -2,15 +2,17 @@ const store = (initial = {}, key) => {
   const subscribers = [];
   let data = initial;
 
-  const memory = localStorage.getItem(key);
-  try {
-    data = JSON.parse(memory);
-    if (!data) {
-      throw new Error();
+  if (key) {
+    const memory = localStorage.getItem(key);
+    try {
+      data = JSON.parse(memory);
+      if (!data) {
+        throw new Error();
+      }
+    } catch (err) {
+      data = initial;
+      localStorage.setItem(key, JSON.stringify(data));
     }
-  } catch (err) {
-    data = initial;
-    localStorage.setItem(key, JSON.stringify(data));
   }
 
   const emit = () => {
@@ -19,7 +21,9 @@ const store = (initial = {}, key) => {
 
   const set = (newData) => {
     data = newData;
-    localStorage.setItem(key, JSON.stringify(data));
+    if (key) {
+      localStorage.setItem(key, JSON.stringify(data));
+    }
     emit();
   };
 
