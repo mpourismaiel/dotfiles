@@ -2,26 +2,36 @@ const { listenToTab } = require("./tabs");
 const { showModal, hideModal } = require("./modal");
 const { getShortcuts, setShortcuts } = require("./shortcuts");
 const { formValues, stopPropagation, preventDefault } = require("./forms");
+const handlebars = require("./handlebars");
 
 const shortcutAddButton = document.querySelector("#shortcuts-add");
-const addShortcutModal = document.querySelector("#add-shortcut-modal");
-const addShortcutModalForm = document.querySelector("#add-shortcut-form");
-const addShortcutModalRelatedForm = document.querySelector(
-  "#add-shortcut-form-related"
-);
 
-shortcutAddButton.addEventListener("click", showModal(addShortcutModal));
-addShortcutModal.addEventListener("click", stopPropagation());
+shortcutAddButton.addEventListener("click", async () => {
+  await showModal(handlebars.templates["add-shortcut-modal"]());
+  const addShortcutModalForm = document.querySelector("#add-shortcut-form");
+  const addShortcutModalRelatedForm = document.querySelector(
+    "#add-shortcut-form-related"
+  );
 
-listenToTab("add-shortcut", "link", () => {
-  const shortcutsSelector = document.querySelector("#shortcut-related");
-  shortcutsSelector.innerHTML = [
-    '<option disabled value=""></option>',
-    ...getShortcuts().map(
-      ({ title, link }) => `<option value="${link}">${title}</option>`
-    ),
-  ];
-  shortcutsSelector.value = "";
+  addShortcutModalForm.addEventListener(
+    "submit",
+    preventDefault(addShortcut())
+  );
+  addShortcutModalRelatedForm.addEventListener(
+    "submit",
+    preventDefault(addShortcut("related"))
+  );
+
+  listenToTab("add-shortcut", "link", () => {
+    const shortcutsSelector = document.querySelector("#shortcut-related");
+    shortcutsSelector.innerHTML = [
+      '<option disabled value=""></option>',
+      ...getShortcuts().map(
+        ({ title, link }) => `<option value="${link}">${title}</option>`
+      ),
+    ];
+    shortcutsSelector.value = "";
+  });
 });
 
 const addShortcut =
@@ -66,9 +76,3 @@ const addShortcut =
     formValues["add-shortcut-form"].reset();
     hideModal(addShortcutModal)();
   };
-
-addShortcutModalForm.addEventListener("submit", preventDefault(addShortcut()));
-addShortcutModalRelatedForm.addEventListener(
-  "submit",
-  preventDefault(addShortcut("related"))
-);

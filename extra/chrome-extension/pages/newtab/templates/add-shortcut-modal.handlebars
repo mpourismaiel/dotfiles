@@ -1,0 +1,75 @@
+<div
+  id="add-shortcut-modal"
+  class="hide"
+  data-modal=""
+  data-tab-container="add-shortcut"
+>
+  <h3>Add new shortcut</h3>
+  <div class="tabs">
+    <button class="active" data-tab="new">Create new shortcut</button>
+    <button data-tab="link">Link to another shortcut</button>
+  </div>
+  <div class="tab" data-tab="new">
+    <form id="add-shortcut-form" data-form>
+      <div class="field">
+        <label for="shortcut-new-title">Title</label>
+        <input
+          type="text"
+          id="shortcut-new-title"
+          placeholder="Eg. Reddit"
+          name="title"
+        />
+      </div>
+      <div class="field">
+        <label for="shortcut-new-link">Link</label>
+        <input
+          type="text"
+          id="shortcut-new-link"
+          placeholder="Eg. reddit.com"
+          name="link"
+        />
+      </div>
+      <div class="field">
+        <label for="shortcut-new-icon">Icon</label>
+        <input
+          type="text"
+          id="shortcut-new-icon"
+          placeholder="Link to the favicon, I have to optimize this somehow"
+          name="icon"
+        />
+      </div>
+      <div class="field-submit">
+        <button type="submit">Submit</button>
+      </div>
+    </form>
+  </div>
+  <div class="tab hide" data-tab="link">
+    <form id="add-shortcut-form-related" data-form>
+      <div class="field">
+        <label for="shortcut-related">Related shortcut</label>
+        <select id="shortcut-related" name="parent"></select>
+      </div>
+      <div class="field">
+        <label for="shortcut-related-title">Title</label>
+        <input
+          type="text"
+          id="shortcut-related-title"
+          placeholder="Eg. Reddit"
+          name="title"
+        />
+      </div>
+      <div class="field">
+        <label for="shortcut-related-link">Link</label>
+        <input
+          type="text"
+          id="shortcut-related-link"
+          placeholder="Eg. reddit.com"
+          name="link"
+        />
+      </div>
+      <div class="field-submit">
+        <button type="submit">Submit</button>
+      </div>
+    </form>
+  </div>
+</div>
