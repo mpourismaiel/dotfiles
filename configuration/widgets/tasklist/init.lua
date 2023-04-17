@@ -46,6 +46,15 @@ local function set_markup_safely(tb, markup, backup_markup)
   end
 end
 
+local function set_title(c, tb)
+  local escaped_text = GLib.markup_escape_text(c.name, -1)
+  set_markup_safely(
+    tb,
+    string.format("<span color='#ffffff' font='Inter Medium 11'>%s</span>", escaped_text),
+    string.format("<span color='#ffffff' font='Inter Medium 11'>%s</span>", c.class)
+  )
+end
+
 local function custom_template(client_count)
   local l =
     wibox.widget {
@@ -184,12 +193,7 @@ function tasklist.render(w, buttons, label, widgets_cache, objects, args)
             }
           }
         }
-        local escaped_text = GLib.markup_escape_text(c.name, -1)
-        set_markup_safely(
-          w:get_children_by_id("title")[1],
-          string.format("<span color='#ffffff' font='Inter Medium 11'>%s</span>", escaped_text),
-          string.format("<span color='#ffffff' font='Inter Medium 11'>%s</span>", c.class)
-        )
+        set_title(c, w:get_children_by_id("title")[1])
 
         w.buttons = create_buttons(buttons.client, c)
         cache.children:add(w)
@@ -251,6 +255,8 @@ function tasklist.render(w, buttons, label, widgets_cache, objects, args)
       else
         cache.w.indicator[i]:get_children_by_id("size")[1].height = config.dpi(5)
       end
+
+      set_title(c, cache.children.children[i]:get_children_by_id("title")[1])
     end
 
     w:add(cache.w.primary)
