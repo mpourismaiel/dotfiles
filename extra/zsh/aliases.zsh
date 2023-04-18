@@ -2,14 +2,51 @@ alias cat="bat"
 alias vim="nvim"
 alias dl="aria2c -x 16 -c"
 
-# read file located in ~/.zsh/extra_config.zsh if it exists
-if [[ -f ~/.zsh/extra_config.zsh ]]; then
-  source ~/.zsh/extra_config.zsh
-fi
+open_repo_in_browser() {
+  # Check if current directory is a git repository
+  if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    # Check if the repository has a remote origin
+    if git config --get remote.origin.url >/dev/null 2>&1; then
+      # Get the remote origin URL
+      local remote_url="$(git config --get remote.origin.url)"
+
+      # Convert the remote URL to the corresponding web URL
+      local web_url="${remote_url%.git}"
+      web_url="${web_url#git@}"
+      web_url="${web_url/:/\/}"
+      web_url="https://${web_url}"
+
+      # Open the repository in the browser based on the platform
+      case "$(uname)" in
+      Darwin*)
+        open "${web_url}"
+        ;;
+      Linux*)
+        xdg-open "${web_url}"
+        ;;
+      CYGWIN* | MINGW32* | MSYS* | MINGW*)
+        start "${web_url}"
+        ;;
+      *)
+        echo "Unsupported platform."
+        ;;
+      esac
+    else
+      echo "No remote origin found for this git repository."
+    fi
+  else
+    echo "Not inside a git repository."
+  fi
+}
 
 _run_cdp_command() {
   if [[ ! -z "$1" ]]; then
     ran_command=0
+
+    if [[ "$1" = "repo" ]]; then
+      open_repo_in_browser
+      ran_command=1
+    fi
 
     if [[ "$1" = "code" ]]; then
       code .
@@ -75,7 +112,7 @@ _get_cdp_commands() {
   local current_dir=$(pwd)
   cdp $2
 
-  local commands=("code")
+  local commands=("code" "repo")
   if [[ -f "./Makefile" ]]; then
     commands+=($(
       make -qp | awk -F':' '/^[a-zA-Z0-9][^$#\/\t=]*:([^=]|$)/ {split($1,A,/ /); print A[1]}' | sort -u

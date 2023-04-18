@@ -122,3 +122,8 @@ export PATH="$BUN_INSTALL/bin:$PATH"
 
 # rbenv
 eval "$(rbenv init - zsh)"
+
+# read file located in ~/.zsh/extra_config.zsh if it exists
+if [[ -f ~/.zsh/extra_config.zsh ]]; then
+  source ~/.zsh/extra_config.zsh
+fi
