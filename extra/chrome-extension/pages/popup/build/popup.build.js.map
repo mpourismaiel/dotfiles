@@ -1,7 +1,0 @@
-{
-  "version": 3,
-  "sources": ["../popup.js"],
-  "sourcesContent": ["chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {\n  var tabsList = document.getElementById(\"tabs-list\");\n\n  tabs.forEach(function (tab) {\n    var listItem = document.createElement(\"li\");\n    var link = document.createElement(\"a\");\n\n    link.textContent = tab.title;\n    link.setAttribute(\"href\", tab.url);\n    link.setAttribute(\"target\", \"_blank\");\n\n    listItem.appendChild(link);\n    tabsList.appendChild(listItem);\n  });\n});\n"],
-  "mappings": "MAAA,OAAO,KAAK,MAAM,CAAE,OAAQ,GAAM,cAAe,EAAK,EAAG,SAAUA,EAAM,CACvE,IAAIC,EAAW,SAAS,eAAe,WAAW,EAElDD,EAAK,QAAQ,SAAUE,EAAK,CAC1B,IAAIC,EAAW,SAAS,cAAc,IAAI,EACtCC,EAAO,SAAS,cAAc,GAAG,EAErCA,EAAK,YAAcF,EAAI,MACvBE,EAAK,aAAa,OAAQF,EAAI,GAAG,EACjCE,EAAK,aAAa,SAAU,QAAQ,EAEpCD,EAAS,YAAYC,CAAI,EACzBH,EAAS,YAAYE,CAAQ,CAC/B,CAAC,CACH,CAAC",
-  "names": ["tabs", "tabsList", "tab", "listItem", "link"]
-}
