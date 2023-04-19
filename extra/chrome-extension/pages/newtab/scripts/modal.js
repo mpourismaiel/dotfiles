@@ -17,8 +17,8 @@ const showModal = async (template) => {
   const modal = await observeElementChanges(() =>
     modalBackdrop.querySelector("[data-modal]")
   );
-  setupTabs(modal);
-  setupForms(modal);
+  setupTabs(modalBackdrop);
+  setupForms(modalBackdrop);
   modal.addEventListener("click", stopPropagation());
 
   modalBackdrop.classList.remove("hide");
@@ -26,14 +26,10 @@ const showModal = async (template) => {
   modalBackdrop.addEventListener("click", hideModal(modal), { once: true });
 };
 
-const hideModal = () => async () => {
+const hideModal = async () => {
   modalBackdrop.innerHTML = "";
   modalBackdrop.classList.add("hide");
-  const modal = await observeElementChanges(
-    () => !modalBackdrop.querySelector("[data-modal]")
-  );
-  removeTabs(modal);
-  removeForms(modal);
+  removeForms(modalBackdrop);
 };
 
 module.exports = { showModal, hideModal };

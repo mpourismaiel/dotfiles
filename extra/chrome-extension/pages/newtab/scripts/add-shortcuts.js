@@ -21,17 +21,17 @@ shortcutAddButton.addEventListener("click", async () => {
     "submit",
     preventDefault(addShortcut("related"))
   );
+});
 
-  listenToTab("add-shortcut", "link", () => {
-    const shortcutsSelector = document.querySelector("#shortcut-related");
-    shortcutsSelector.innerHTML = [
-      '<option disabled value=""></option>',
-      ...getShortcuts().map(
-        ({ title, link }) => `<option value="${link}">${title}</option>`
-      ),
-    ];
-    shortcutsSelector.value = "";
-  });
+listenToTab("add-shortcut", "link", () => {
+  const shortcutsSelector = document.querySelector("#shortcut-related");
+  shortcutsSelector.innerHTML = [
+    '<option disabled value=""></option>',
+    ...getShortcuts().map(
+      ({ title, link }) => `<option value="${link}">${title}</option>`
+    ),
+  ];
+  shortcutsSelector.value = "";
 });
 
 const addShortcut =
@@ -74,5 +74,5 @@ const addShortcut =
 
     formValues["add-shortcut-form-related"].reset();
     formValues["add-shortcut-form"].reset();
-    hideModal(addShortcutModal)();
+    hideModal();
   };
