@@ -89,6 +89,16 @@ local maximize_widget =
 }
 
 client.connect_signal(
+  "manage",
+  function(c)
+    -- c:raise()
+    -- if c.first_tag then
+    --   c.first_tag:view_only()
+    -- end
+  end
+)
+
+client.connect_signal(
   "property::maximized",
   function(c)
     maximize_widget.image = c.maximized and config_dir .. "images/unmaximize.svg" or config_dir .. "images/maximize.svg"

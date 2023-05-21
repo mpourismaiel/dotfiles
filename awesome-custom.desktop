@@ -1,0 +1,5 @@
+[Desktop Entry]
+Name=AwesomeWM (Custom)
+Comment=Highly configurable framework window manager
+Exec=/usr/local/bin/awesome-custom
+Type=Application

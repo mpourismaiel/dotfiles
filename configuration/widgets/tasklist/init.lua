@@ -10,6 +10,19 @@ local icon_theme = require("helpers.icon_theme")()
 
 local tasklist = {mt = {}}
 
+local function get_current_focused_client(cache)
+  local current_focused_client = client.focus
+  local client_index_in_cache
+  for i, c in ipairs(cache.clients) do
+    if c == current_focused_client then
+      client_index_in_cache = i
+      break
+    end
+  end
+
+  return client_index_in_cache
+end
+
 local function create_buttons(buttons, object)
   local btns = {}
   for _, src in ipairs(buttons) do
@@ -127,9 +140,22 @@ end
 function tasklist.render(w, buttons, label, widgets_cache, objects, args)
   w:reset()
   for i, o in ipairs(objects) do
-    local cache = widgets_cache[o.clients[1].class:lower()]
-    if cache and cache.length ~= #o.clients then
-      cache = nil
+    local minKey = math.huge
+    for k in pairs(o.clients) do
+      minKey = math.min(k, minKey)
+    end
+    local first_client = o.clients[minKey]
+    if first_client == nil then
+      gears.debug.dump(o, "=====> o")
+    end
+    local cache = widgets_cache[o.class:lower()]
+    if cache then
+      cache.touched = true
+      if cache.length ~= #o.clients then
+        cache = nil
+      elseif cache.buttons ~= buttons then
+        cache = nil
+      end
     end
 
     if not cache then
@@ -139,11 +165,13 @@ function tasklist.render(w, buttons, label, widgets_cache, objects, args)
         length = #o.clients,
         class = o.class,
         clients = o.clients,
-        popup = nil
+        buttons = buttons,
+        popup = nil,
+        touched = true
       }
 
       if cache.length == 1 then
-        cache.w.primary.buttons = {create_buttons(buttons.client, o.clients[1])}
+        cache.w.primary.buttons = {create_buttons(buttons.client, first_client)}
       else
         cache.w.primary.buttons = {create_buttons(buttons.group, cache)}
       end
@@ -154,9 +182,9 @@ function tasklist.render(w, buttons, label, widgets_cache, objects, args)
 
       cache._buttons = buttons
 
-      local icon = icon_theme:get_client_icon_path(o.clients[1])
+      local icon = icon_theme:get_client_icon_path(first_client)
       if icon == nil or icon == "" then
-        icon = o.clients[1].icon
+        icon = first_client.icon
       end
       if icon then
         cache.w.icon:set_image(icon)
@@ -165,7 +193,7 @@ function tasklist.render(w, buttons, label, widgets_cache, objects, args)
       cache.children = wibox.layout.fixed.vertical()
       cache.children.spacing = config.dpi(1)
 
-      widgets_cache[o.clients[1].class:lower()] = cache
+      widgets_cache[first_client.class:lower()] = cache
 
       for i, c in ipairs(o.clients) do
         local w =
@@ -225,6 +253,9 @@ function tasklist.render(w, buttons, label, widgets_cache, objects, args)
       cache.close_popup = function()
         cache.popup.visible = false
       end
+    else
+      -- cache.popup.widget.children = cache.children
+      -- cache.popup:refresh()
     end
 
     for i, c in ipairs(o.clients) do
@@ -260,6 +291,14 @@ function tasklist.render(w, buttons, label, widgets_cache, objects, args)
     end
 
     w:add(cache.w.primary)
+  end
+
+  for i, o in pairs(widgets_cache) do
+    if not o.touched then
+      widgets_cache[i] = nil
+    else
+      o.touched = false
+    end
   end
 end
 
@@ -314,6 +353,9 @@ function tasklist.new(screen)
           {},
           1,
           function(c)
+            if c == nil then
+              return
+            end
             if c == client.focus then
               c.minimized = true
             else
@@ -368,6 +410,34 @@ function tasklist.new(screen)
               )
             )
             group.open_popup()
+          end
+        ),
+        awful.button(
+          {},
+          4,
+          function(cache)
+            local client_index_in_cache = get_current_focused_client(cache) or 2
+            local prev_client = cache.clients[client_index_in_cache - 1]
+            if not prev_client then
+              prev_client = cache.clients[#cache.clients]
+            end
+            client.focus = prev_client
+            prev_client:raise()
+            prev_client.first_tag:view_only()
+          end
+        ),
+        awful.button(
+          {},
+          5,
+          function(cache)
+            local client_index_in_cache = get_current_focused_client(cache) or 0
+            local next_client = cache.clients[client_index_in_cache + 1]
+            if not next_client then
+              next_client = cache.clients[1]
+            end
+            client.focus = next_client
+            next_client:raise()
+            next_client.first_tag:view_only()
           end
         )
       }

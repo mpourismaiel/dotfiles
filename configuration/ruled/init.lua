@@ -1,12 +1,17 @@
 local awful = require("awful")
 local ruled = require("ruled")
 
+local windows_apps = {
+  class = {"unrealeditor.exe", "UnrealEditor"}
+}
+
 ruled.client.connect_signal(
   "request::rules",
   function()
     ruled.client.append_rule {
       id = "global",
       rule = {},
+      except_any = windows_apps,
       properties = {
         focus = awful.client.focus.filter,
         raise = true,
@@ -24,6 +29,7 @@ ruled.client.connect_signal(
         type = {"dialog"},
         class = {"Wicd-client.py", "calendar.google.com", "xdman-Main"}
       },
+      except_any = windows_apps,
       properties = {
         titlebars_enabled = false,
         floating = true,
@@ -40,6 +46,7 @@ ruled.client.connect_signal(
       rule_any = {
         type = {"modal"}
       },
+      except_any = windows_apps,
       properties = {
         titlebars_enabled = true,
         floating = true,
@@ -55,6 +62,7 @@ ruled.client.connect_signal(
       rule_any = {
         type = {"utility"}
       },
+      except_any = windows_apps,
       properties = {
         titlebars_enabled = false,
         floating = true,
@@ -71,6 +79,7 @@ ruled.client.connect_signal(
         name = {"Discord Updater"},
         class = {"Windscribe"}
       },
+      except_any = windows_apps,
       properties = {
         titlebars_enabled = false,
         round_corners = false,
@@ -94,6 +103,7 @@ ruled.client.connect_signal(
           "Xfce4-terminal"
         }
       },
+      except_any = windows_apps,
       properties = {
         tag = "3",
         switch_to_tags = true,
@@ -115,7 +125,8 @@ ruled.client.connect_signal(
           "Atom",
           "Subl3",
           "code-oss",
-          "Code"
+          "Code",
+          "UnrealEditor"
         },
         name = {
           "LibreOffice",
@@ -126,6 +137,21 @@ ruled.client.connect_signal(
         tag = "2",
         skip_decoration = false,
         titlebars_enabled = true
+      }
+    }
+
+    ruled.client.append_rule {
+      id = "unreal_editor",
+      rule_any = {
+        class = {
+          "UnrealEditor",
+          "unrealeditor.exe"
+        }
+      },
+      properties = {
+        tag = "2",
+        skip_decoration = true,
+        titlebars_enabled = false
       }
     }
 

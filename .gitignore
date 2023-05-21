@@ -4,3 +4,6 @@ extra/zsh/extra_config.zsh
 
 # config directory at the root of the project, if it's nested then it should not be ignored
 config/
+
+# log files
+logs/log-*
