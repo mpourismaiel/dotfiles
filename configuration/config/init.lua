@@ -106,7 +106,7 @@ if config.initialized ~= true then
 
   if file_exists(config_dir .. "/config/configuration.json") then
     -- read config_dir .. "/config/configuration.json" and load the json as config_override_table
-    local json = require("json")
+    local json = require("lib.json")
     local f = io.open(config_dir .. "/config/configuration.json", "rb")
     local content = f:read("*all")
     f:close()
