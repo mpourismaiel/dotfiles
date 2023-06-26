@@ -11,6 +11,7 @@ local clock = require("configuration.widgets.menu.clock")
 local notifications = require("configuration.widgets.menu.notifications")
 local power_button = require("configuration.widgets.menu.power-button")
 local volumeslider = require("configuration.widgets.volume.slider")
+local launcher = require("configuration.widgets.menu.launcher")()
 
 local config_dir = filesystem.get_configuration_dir()
 local menu_icon = config_dir .. "/images/circle.svg"
@@ -88,7 +89,7 @@ function menu.new(screen)
         {
           margins = {
             top = config.dpi(8),
-            left = config.dpi(56)
+            left = config.dpi(40)
           }
         }
       )
@@ -101,15 +102,14 @@ function menu.new(screen)
         {},
         1,
         function()
-          backdrop.visible = false
-          drawer.visible = false
+          awesome.emit_signal("widget::drawer:hide")
         end
       )
     )
   )
 
   drawer:setup {
-    layout = wibox.layout.flex.horizontal,
+    layout = wibox.layout.fixed.horizontal,
     menu_column(
       screen,
       {
@@ -140,13 +140,25 @@ function menu.new(screen)
             }
           }
         }
-      }
+      },
+      400
+    ),
+    menu_column(
+      screen,
+      launcher._private.widget,
+      screen.geometry.width - config.dpi(400) - config.dpi(40) - config.dpi(16) * 3
     )
   }
 
   awesome.connect_signal(
     "widget::drawer:toggle",
     function()
+      local is_visible = backdrop.visible == true
+      if is_visible then
+        launcher:hide()
+      else
+        launcher:show()
+      end
       backdrop.visible = not backdrop.visible
       drawer.visible = not drawer.visible
       notifications.reset()
@@ -156,8 +168,17 @@ function menu.new(screen)
   awesome.connect_signal(
     "widget::drawer:hide",
     function()
+      launcher:hide()
       backdrop.visible = false
       drawer.visible = false
+    end
+  )
+
+  awesome.connect_signal(
+    "widgets::app_launcher::hide",
+    function()
+      launcher:hide()
+      awesome.emit_signal("widget::drawer:hide")
     end
   )
 

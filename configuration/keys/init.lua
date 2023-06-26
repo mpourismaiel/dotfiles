@@ -108,15 +108,8 @@ awful.keyboard.append_global_keybindings(
       {config.modkey},
       "d",
       function()
-        awful.spawn(config.commands.rofi_appmenu, false)
-      end,
-      {description = "open application drawer", group = "launcher"}
-    ),
-    awful.key(
-      {config.modkey, "Shift"},
-      "d",
-      function()
-        awesome.emit_signal("launcher:show")
+        -- awful.spawn(config.commands.rofi_appmenu, false)
+        awesome.emit_signal("widget::drawer:toggle")
       end,
       {description = "open application drawer", group = "launcher"}
     ),

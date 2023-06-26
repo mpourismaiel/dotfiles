@@ -4,15 +4,22 @@ local config = require("configuration.config")
 
 local menu_column = {mt = {}}
 
-function menu_column.new(screen, w)
+local function constraint(screen, w)
   return wibox.widget {
     widget = wibox.container.constraint,
-    width = config.dpi(400),
     height = screen.geometry.height - config.dpi(16),
     strategy = "exact",
-    {
+    w
+  }
+end
+
+local function new(screen, w, width_constraint)
+  local _w =
+    constraint(
+    screen,
+    wibox.widget {
       widget = wibox.container.background,
-      bg = "#181818f0",
+      bg = "#111111f0",
       shape = gears.shape.rounded_rect,
       {
         widget = wibox.container.margin,
@@ -20,11 +27,21 @@ function menu_column.new(screen, w)
         w
       }
     }
+  )
+
+  if width_constraint ~= nil then
+    _w.width = config.dpi(width_constraint)
+  end
+
+  return wibox.widget {
+    widget = wibox.container.margin,
+    left = config.dpi(16),
+    _w
   }
 end
 
 function menu_column.mt:__call(...)
-  return menu_column.new(...)
+  return new(...)
 end
 
 return setmetatable(menu_column, menu_column.mt)
