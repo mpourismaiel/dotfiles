@@ -49,7 +49,12 @@ _run_cdp_command() {
     fi
 
     if [[ "$1" = "code" ]]; then
-      code .
+      # if code-insiders exists, run than
+      if [[ -f "/usr/bin/code-insiders" ]]; then
+        code-insiders .
+      else
+        code .
+      fi
       ran_command=1
     fi
 

@@ -91,10 +91,11 @@ local maximize_widget =
 client.connect_signal(
   "manage",
   function(c)
-    -- c:raise()
-    -- if c.first_tag then
-    --   c.first_tag:view_only()
-    -- end
+    if c.floating and not c.maximized and not c.fullscreen then
+      awful.spawn("xprop -id " .. c.window .. " -f _COMPTON_SHADOW 32c -set _COMPTON_SHADOW 1")
+    else
+      awful.spawn("xprop -id " .. c.window .. " -f _COMPTON_SHADOW 32c -set _COMPTON_SHADOW 0")
+    end
   end
 )
 

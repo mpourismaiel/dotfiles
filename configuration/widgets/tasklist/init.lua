@@ -195,38 +195,6 @@ function tasklist.render(w, buttons, label, widgets_cache, objects, args)
 
       widgets_cache[first_client.class:lower()] = cache
 
-      for i, c in ipairs(o.clients) do
-        local w =
-          wibox.widget {
-          widget = wibox.container.background,
-          bg = "#11111166",
-          {
-            widget = wibox.container.margin,
-            left = config.dpi(15),
-            right = config.dpi(10),
-            top = config.dpi(10),
-            bottom = config.dpi(10),
-            {
-              layout = wibox.layout.fixed.horizontal,
-              cache.w.icon,
-              {
-                widget = wibox.container.margin,
-                left = config.dpi(10),
-                {
-                  widget = wibox.widget.textbox,
-                  id = "title",
-                  markup = "<span color='#dddddd' font='Inter Medium 11'>" .. c.class .. "</span>"
-                }
-              }
-            }
-          }
-        }
-        set_title(c, w:get_children_by_id("title")[1])
-
-        w.buttons = create_buttons(buttons.client, c)
-        cache.children:add(w)
-      end
-
       cache.popup =
         awful.popup {
         widget = cache.children,
@@ -253,9 +221,43 @@ function tasklist.render(w, buttons, label, widgets_cache, objects, args)
       cache.close_popup = function()
         cache.popup.visible = false
       end
-    else
-      -- cache.popup.widget.children = cache.children
-      -- cache.popup:refresh()
+    end
+
+    cache.children:reset()
+    for i, c in ipairs(o.clients) do
+      local w =
+        wibox.widget {
+        widget = wibox.container.background,
+        bg = "#11111166",
+        {
+          widget = wibox.container.margin,
+          left = config.dpi(15),
+          right = config.dpi(10),
+          top = config.dpi(10),
+          bottom = config.dpi(10),
+          {
+            layout = wibox.layout.fixed.horizontal,
+            cache.w.icon,
+            {
+              widget = wibox.container.margin,
+              left = config.dpi(10),
+              {
+                widget = wibox.widget.textbox,
+                id = "title",
+                markup = "<span color='#dddddd' font='Inter Medium 11'>" .. c.class .. "</span>"
+              }
+            }
+          }
+        }
+      }
+      set_title(c, w:get_children_by_id("title")[1])
+
+      w.buttons = create_buttons(buttons.client, c)
+      cache.children:add(w)
+    end
+    if cache.popup.visible then
+      cache.close_popup()
+      cache.open_popup()
     end
 
     for i, c in ipairs(o.clients) do

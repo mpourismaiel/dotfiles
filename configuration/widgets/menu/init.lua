@@ -6,6 +6,7 @@ local config = require("configuration.config")
 local theme = require("configuration.config.theme")
 
 local container = require("configuration.widgets.menu.container")
+local menu_column = require("configuration.widgets.menu.menu_column")
 local clock = require("configuration.widgets.menu.clock")
 local notifications = require("configuration.widgets.menu.notifications")
 local power_button = require("configuration.widgets.menu.power-button")
@@ -77,11 +78,10 @@ function menu.new(screen)
     widget = {},
     ontop = true,
     visible = false,
-    type = "normal",
+    bg = "#ffffff00",
+    type = "utility",
     screen = screen,
-    width = config.dpi(400),
     height = screen.geometry.height - config.dpi(16),
-    shape = gears.shape.rounded_rect,
     placement = function(c)
       return awful.placement.top_left(
         c,
@@ -92,8 +92,7 @@ function menu.new(screen)
           }
         }
       )
-    end,
-    bg = "#44444430"
+    end
   }
 
   backdrop:buttons(
@@ -110,13 +109,9 @@ function menu.new(screen)
   )
 
   drawer:setup {
-    widget = wibox.container.constraint,
-    width = config.dpi(400),
-    height = screen.geometry.height - config.dpi(16),
-    strategy = "exact",
-    {
-      widget = wibox.container.margin,
-      margins = config.dpi(16),
+    layout = wibox.layout.flex.horizontal,
+    menu_column(
+      screen,
       {
         layout = wibox.layout.align.vertical,
         spacing = config.dpi(16),
@@ -146,7 +141,7 @@ function menu.new(screen)
           }
         }
       }
-    }
+    )
   }
 
   awesome.connect_signal(
