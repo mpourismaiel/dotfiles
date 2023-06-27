@@ -1,5 +1,6 @@
 local Gio = require("lgi").Gio
 local awful = require("awful")
+local gears = require("gears")
 local gobject = require("gears.object")
 local gshape = require("gears.shape")
 local gtable = require("gears.table")
@@ -27,6 +28,50 @@ local terminal_commands_lookup = {
   rxvt = "rxvt -e",
   terminator = "terminator -e"
 }
+
+local function history_path(id)
+  return gfilesystem.get_cache_dir() .. "/" .. id
+end
+
+local function history_load(path)
+  self = {}
+
+  local f = io.open(history_path(path), "r")
+  if not f then
+    return self
+  end
+
+  local eol = false
+  local data = ""
+  for line in f:lines() do
+    if eol then
+      self[data] = tonumber(line)
+      eol = false
+    else
+      data = line
+      eol = true
+    end
+  end
+  gears.debug.dump(self, "history")
+  f:close()
+  return self
+end
+
+local function history_save(self, obj, path)
+  path = history_path(path)
+  gfilesystem.make_parent_directories(path)
+  local f = io.open(path, "w")
+  if not f then
+    gdebug.print_warning("Failed to write the history to " .. path)
+    return
+  end
+  for k, v in pairs(obj) do
+    f:write(k .. "\n" .. v .. "\n")
+  end
+  f:close()
+
+  self.generate_apps(self, Gio.AppInfo.get_all())
+end
 
 local function string_levenshtein(str1, str2)
   local len1 = string.len(str1)
@@ -230,6 +275,13 @@ local function create_app_widget(self, entry)
     else
       awful.spawn(entry.executable)
     end
+    -- save to history
+    if self.launched_times[entry.name] == nil then
+      self.launched_times[entry.name] = 0
+    else
+      self.launched_times[entry.name] = self.launched_times[entry.name] + 1
+    end
+    history_save(self, self.launched_times, "launched_times")
   end
 
   app:connect_signal(
@@ -288,6 +340,14 @@ local function create_app_widget(self, entry)
           local pos = self._private.grid:get_widget_position(app)
           select_app(self, pos.row, pos.col)
         end
+      elseif button == 2 then
+        gears.debug.dump("middle click")
+        if self.favorites[entry.name] == nil then
+          self.favorites[entry.name] = 1
+        else
+          self.favorites[entry.name] = nil
+        end
+        history_save(self, self.favorites, "favorites")
       end
     end
   )
@@ -575,25 +635,17 @@ local function reset(self)
   select_app(self, 1, 1)
 end
 
-local function generate_apps(self)
+local function generate_apps(self, apps)
   self._private.all_entries = {}
   self._private.matched_entries = {}
 
   local app_info = Gio.AppInfo
-  local apps = app_info.get_all()
   if self.sort_alphabetically then
     table.sort(
       apps,
       function(a, b)
         local app_a_score = app_info.get_name(a):lower()
-        if has_value(self.favorites, app_info.get_name(a)) then
-          app_a_score = "aaaaaaaaaaa" .. app_a_score
-        end
         local app_b_score = app_info.get_name(b):lower()
-        if has_value(self.favorites, app_info.get_name(b)) then
-          app_b_score = "aaaaaaaaaaa" .. app_b_score
-        end
-
         return app_a_score < app_b_score
       end
     )
@@ -602,36 +654,33 @@ local function generate_apps(self)
       apps,
       function(a, b)
         local app_a_score = app_info.get_name(a):lower()
-        if has_value(self.favorites, app_info.get_name(a)) then
-          app_a_score = "zzzzzzzzzzz" .. app_a_score
-        end
         local app_b_score = app_info.get_name(b):lower()
-        if has_value(self.favorites, app_info.get_name(b)) then
-          app_b_score = "zzzzzzzzzzz" .. app_b_score
-        end
-
         return app_a_score > app_b_score
       end
     )
-  else
-    table.sort(
-      apps,
-      function(a, b)
-        local app_a_favorite = has_value(self.favorites, app_info.get_name(a))
-        local app_b_favorite = has_value(self.favorites, app_info.get_name(b))
-
-        if app_a_favorite and not app_b_favorite then
-          return true
-        elseif app_b_favorite and not app_a_favorite then
-          return false
-        elseif app_a_favorite and app_b_favorite then
-          return app_info.get_name(a):lower() < app_info.get_name(b):lower()
-        else
-          return false
-        end
-      end
-    )
   end
+
+  table.sort(
+    apps,
+    function(a, b)
+      local a_name = app_info.get_name(a)
+      local b_name = app_info.get_name(b)
+      local a_is_favorite = self.favorites[a_name] ~= nil
+      local b_is_favorite = self.favorites[b_name] ~= nil
+      if a_is_favorite and not b_is_favorite then
+        return true
+      elseif not a_is_favorite and b_is_favorite then
+        return false
+      end
+
+      local a_launched_times = self.launched_times[a_name]
+      local b_launched_times = self.launched_times[b_name]
+      a_launched_times = a_launched_times == nil and 0 or a_launched_times
+      b_launched_times = b_launched_times == nil and 0 or b_launched_times
+
+      return a_launched_times > b_launched_times
+    end
+  )
 
   local icon_theme = require("bling.helpers.icon_theme")(self.icon_theme, self.icon_size)
 
@@ -668,7 +717,8 @@ local function generate_apps(self)
               commandline = commandline,
               executable = executable,
               terminal = terminal,
-              icon = icon
+              icon = icon,
+              launched_times = self.launched_times[name] or 0
             }
           )
         end
@@ -695,7 +745,8 @@ local function new(args)
   args = args or {}
 
   args.terminal = args.terminal or nil
-  args.favorites = args.favorites or {}
+  args.favorites = history_load("favorites")
+  args.launched_times = history_load("launched_times")
   args.search_commands = args.search_commands == nil and true or args.search_commands
   args.skip_names = args.skip_names or {}
   args.skip_commands = args.skip_commands or {}
@@ -721,23 +772,15 @@ local function new(args)
   args.icon_theme = args.icon_theme or nil
   args.icon_size = args.icon_size or nil
 
-  args.type = args.type or "dock"
-  args.show_on_focused_screen = args.show_on_focused_screen == nil and true or args.show_on_focused_screen
   args.screen = args.screen or capi.screen.primary
-  args.placement = args.placement or awful.placement.centered
   args.shrink_width = args.shrink_width ~= nil and args.shrink_width or false
   args.shrink_height = args.shrink_height ~= nil and args.shrink_height or false
-  args.background = args.background or "#000000"
-  args.border_width = args.border_width or beautiful.border_width or dpi(0)
-  args.border_color = args.border_color or beautiful.border_color or "#FFFFFF"
-  args.shape = args.shape or nil
 
   args.prompt_height = args.prompt_height or dpi(60)
   args.prompt_margins = args.prompt_margins or dpi(0)
   args.prompt_paddings = args.prompt_paddings or dpi(10)
   args.prompt_shape = args.prompt_shape or gshape.rounded_rect
   args.prompt_color = args.prompt_color or beautiful.fg_normal or "#FFFFFF"
-  args.prompt_border_width = args.prompt_border_width or beautiful.border_width or dpi(0)
   args.prompt_border_color = args.prompt_border_color or beautiful.border_color or args.prompt_color
   args.prompt_text_halign = args.prompt_text_halign or "left"
   args.prompt_text_valign = args.prompt_text_valign or "center"
@@ -754,8 +797,8 @@ local function new(args)
   args.prompt_font = args.prompt_font or beautiful.font
   args.prompt_text_color = args.prompt_text_color or beautiful.bg_normal or "#000000"
 
-  args.apps_per_row = args.apps_per_row or 6
-  args.apps_per_column = args.apps_per_column or 6
+  args.apps_per_row = args.apps_per_row or 8
+  args.apps_per_column = args.apps_per_column or 8
   args.apps_margin = args.apps_margin or dpi(16)
   args.apps_spacing = args.apps_spacing or dpi(16)
 
@@ -779,8 +822,8 @@ local function new(args)
   args.app_content_spacing = args.app_content_spacing or dpi(10)
   args.app_show_icon = args.app_show_icon == nil and true or args.app_show_icon
   args.app_icon_halign = args.app_icon_halign or "center"
-  args.app_icon_width = args.app_icon_width or dpi(70)
-  args.app_icon_height = args.app_icon_height or dpi(70)
+  args.app_icon_width = args.app_icon_width or dpi(48)
+  args.app_icon_height = args.app_icon_height or dpi(48)
   args.app_show_name = args.app_show_name == nil and true or args.app_show_name
   args.app_name_generic_name_spacing = args.app_name_generic_name_spacing or dpi(0)
   args.app_name_halign = args.app_name_halign or "center"
@@ -864,11 +907,12 @@ local function new(args)
     layout = wibox.layout.grid,
     forced_width = grid_width,
     forced_height = grid_height,
-    orientation = "horizontal",
+    orientation = "vertical",
     homogeneous = true,
     expand = ret.expand_apps,
     spacing = ret.apps_spacing,
     forced_num_rows = ret.apps_per_row,
+    forced_num_cols = ret.apps_per_column,
     buttons = {
       awful.button(
         {},
@@ -934,7 +978,8 @@ local function new(args)
   ret._private.pages_count = 0
   ret._private.current_page = 1
 
-  generate_apps(ret)
+  ret.generate_apps = generate_apps
+  generate_apps(ret, Gio.AppInfo.get_all())
   reset(ret)
 
   local kill_old_inotify_process_script =
@@ -948,7 +993,7 @@ local function new(args)
         subscribe_script,
         {
           stdout = function(_)
-            generate_apps(ret)
+            generate_apps(ret, Gio.AppInfo.get_all())
           end
         }
       )
