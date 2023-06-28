@@ -12,6 +12,7 @@ local notifications = require("configuration.widgets.menu.notifications")
 local power_button = require("configuration.widgets.menu.power-button")
 local volumeslider = require("configuration.widgets.volume.slider")
 local launcher = require("configuration.widgets.menu.launcher")()
+local prompt = require("configuration.widgets.menu.launcher.prompt")
 
 local config_dir = filesystem.get_configuration_dir()
 local menu_icon = config_dir .. "/images/circle.svg"
@@ -108,6 +109,42 @@ function menu.new(screen)
     )
   )
 
+  local args = {}
+  args.prompt_height = args.prompt_height or config.dpi(60)
+  args.prompt_paddings = args.prompt_paddings or config.dpi(10)
+  args.prompt_shape = args.prompt_shape or gears.shape.rounded_rect
+  args.prompt_color = args.prompt_color or "#FFFFFF"
+  args.prompt_border_color = args.prompt_border_color or args.prompt_color
+  args.prompt_text_halign = args.prompt_text_halign or "left"
+  args.prompt_text_valign = args.prompt_text_valign or "center"
+  args.prompt_icon_text_spacing = args.prompt_icon_text_spacing or config.dpi(10)
+  args.prompt_show_icon = args.prompt_show_icon == nil and true or args.prompt_show_icon
+  args.prompt_icon_font = args.prompt_icon_font
+  args.prompt_icon_color = args.prompt_icon_color or "#000000"
+  args.prompt_icon = args.prompt_icon or ""
+  args.prompt_icon_markup =
+    args.prompt_icon_markup or
+    string.format("<span size='xx-large' foreground='%s'>%s</span>", args.prompt_icon_color, args.prompt_icon)
+  args.prompt_text = args.prompt_text or "<b>Search</b>: "
+  args.prompt_start_text = args.prompt_start_text or ""
+  args.prompt_font = args.prompt_font
+  args.prompt_text_color = args.prompt_text_color or "#000000"
+
+  local launcher_prompt =
+    prompt {
+    prompt = args.prompt_text,
+    text = args.prompt_start_text,
+    font = args.prompt_font,
+    reset_on_stop = true,
+    history_path = gears.filesystem.get_cache_dir() .. "/history",
+    changed_callback = function(text)
+      awesome.emit_signal("widgets::app_launcher::prompt_changed", text)
+    end,
+    keypressed_callback = function(mod, key, cmd)
+      awesome.emit_signal("widgets::app_launcher::prompt_key_pressed", {mod = mod, key = key, cmd = cmd})
+    end
+  }
+
   drawer:setup {
     layout = wibox.layout.fixed.horizontal,
     menu_column(
@@ -115,7 +152,40 @@ function menu.new(screen)
       {
         layout = wibox.layout.align.vertical,
         spacing = config.dpi(16),
-        container(clock()),
+        {
+          layout = wibox.layout.fixed.vertical,
+          spacing = config.dpi(16),
+          container(clock()),
+          {
+            widget = wibox.container.background,
+            forced_height = args.prompt_height,
+            shape = args.prompt_shape,
+            bg = args.prompt_color,
+            fg = args.prompt_text_color,
+            border_width = args.prompt_border_width,
+            border_color = args.prompt_border_color,
+            {
+              widget = wibox.container.margin,
+              margins = args.prompt_paddings,
+              {
+                widget = wibox.container.place,
+                halign = args.prompt_text_halign,
+                valign = args.prompt_text_valign,
+                {
+                  layout = wibox.layout.fixed.horizontal,
+                  spacing = args.prompt_icon_text_spacing,
+                  {
+                    widget = wibox.widget.textbox,
+                    font = args.prompt_icon_font,
+                    markup = args.prompt_icon_markup
+                  },
+                  launcher_prompt.textbox
+                }
+              }
+            }
+          },
+          launcher._private.widget
+        },
         {
           widget = wibox.container.margin,
           top = config.dpi(16),
@@ -142,11 +212,6 @@ function menu.new(screen)
         }
       },
       400
-    ),
-    menu_column(
-      screen,
-      launcher._private.widget,
-      screen.geometry.width - config.dpi(400) - config.dpi(40) - config.dpi(16) * 3
     )
   }
 
@@ -155,9 +220,10 @@ function menu.new(screen)
     function()
       local is_visible = backdrop.visible == true
       if is_visible then
+        launcher_prompt:stop()
         launcher:hide()
       else
-        launcher:show()
+        launcher_prompt:start()
       end
       backdrop.visible = not backdrop.visible
       drawer.visible = not drawer.visible
@@ -168,6 +234,7 @@ function menu.new(screen)
   awesome.connect_signal(
     "widget::drawer:hide",
     function()
+      launcher_prompt:stop()
       launcher:hide()
       backdrop.visible = false
       drawer.visible = false

@@ -9,7 +9,6 @@ local gfilesystem = require("gears.filesystem")
 local wibox = require("wibox")
 local beautiful = require("beautiful")
 local color = require("bling.helpers.color")
-local prompt = require(... .. ".prompt")
 local dpi = beautiful.xresources.apply_dpi
 local string = string
 local table = table
@@ -623,7 +622,7 @@ local function reset(self)
   self._private.pages_count = math.ceil(#self._private.all_entries / self._private.apps_per_page)
   self._private.current_page = 1
 
-  for index, entry in pairs(self._private.all_entries) do
+  for index, entry in pairs(self._private.favorite_entries) do
     -- Only add the apps that are part of the first page
     if index <= self._private.apps_per_page then
       self._private.grid:add(create_app_widget(self, entry))
@@ -637,6 +636,7 @@ end
 
 local function generate_apps(self, apps)
   self._private.all_entries = {}
+  self._private.favorite_entries = {}
   self._private.matched_entries = {}
 
   local app_info = Gio.AppInfo
@@ -709,35 +709,30 @@ local function generate_apps(self, apps)
           local terminal = Gio.DesktopAppInfo.get_string(desktop_app_info, "Terminal") == "true" and true or false
           local generic_name = Gio.DesktopAppInfo.get_string(desktop_app_info, "GenericName") or nil
 
-          table.insert(
-            self._private.all_entries,
-            {
-              name = name,
-              generic_name = generic_name,
-              commandline = commandline,
-              executable = executable,
-              terminal = terminal,
-              icon = icon,
-              launched_times = self.launched_times[name] or 0
-            }
-          )
+          local entry_details = {
+            name = name,
+            generic_name = generic_name,
+            commandline = commandline,
+            executable = executable,
+            terminal = terminal,
+            icon = icon,
+            launched_times = self.launched_times[name] or 0
+          }
+
+          if self.favorites[name] ~= nil then
+            table.insert(self._private.favorite_entries, entry_details)
+          end
+
+          table.insert(self._private.all_entries, entry_details)
         end
       end
     end
   end
 end
 
-function app_launcher:show()
-  self._private.prompt:start()
-end
-
 --- Hides the app launcher
 function app_launcher:hide()
-  self._private.prompt:stop()
-
-  if self.reset_on_hide == true then
-    reset(self)
-  end
+  reset(self)
 end
 
 -- Returns a new app launcher
@@ -762,7 +757,6 @@ local function new(args)
   args.hide_on_launch = args.hide_on_launch == nil and true or args.hide_on_launch
   args.try_to_keep_index_after_searching =
     args.try_to_keep_index_after_searching ~= nil and args.try_to_keep_index_after_searching or false
-  args.reset_on_hide = args.reset_on_hide == nil and true or args.reset_on_hide
   args.save_history = args.save_history == nil and true or args.save_history
   args.wrap_page_scrolling = args.wrap_page_scrolling == nil and true or args.wrap_page_scrolling
   args.wrap_app_scrolling = args.wrap_app_scrolling == nil and true or args.wrap_app_scrolling
@@ -776,35 +770,14 @@ local function new(args)
   args.shrink_width = args.shrink_width ~= nil and args.shrink_width or false
   args.shrink_height = args.shrink_height ~= nil and args.shrink_height or false
 
-  args.prompt_height = args.prompt_height or dpi(60)
-  args.prompt_margins = args.prompt_margins or dpi(0)
-  args.prompt_paddings = args.prompt_paddings or dpi(10)
-  args.prompt_shape = args.prompt_shape or gshape.rounded_rect
-  args.prompt_color = args.prompt_color or beautiful.fg_normal or "#FFFFFF"
-  args.prompt_border_color = args.prompt_border_color or beautiful.border_color or args.prompt_color
-  args.prompt_text_halign = args.prompt_text_halign or "left"
-  args.prompt_text_valign = args.prompt_text_valign or "center"
-  args.prompt_icon_text_spacing = args.prompt_icon_text_spacing or dpi(10)
-  args.prompt_show_icon = args.prompt_show_icon == nil and true or args.prompt_show_icon
-  args.prompt_icon_font = args.prompt_icon_font or beautiful.font
-  args.prompt_icon_color = args.prompt_icon_color or beautiful.bg_normal or "#000000"
-  args.prompt_icon = args.prompt_icon or ""
-  args.prompt_icon_markup =
-    args.prompt_icon_markup or
-    string.format("<span size='xx-large' foreground='%s'>%s</span>", args.prompt_icon_color, args.prompt_icon)
-  args.prompt_text = args.prompt_text or "<b>Search</b>: "
-  args.prompt_start_text = args.prompt_start_text or ""
-  args.prompt_font = args.prompt_font or beautiful.font
-  args.prompt_text_color = args.prompt_text_color or beautiful.bg_normal or "#000000"
-
-  args.apps_per_row = args.apps_per_row or 8
-  args.apps_per_column = args.apps_per_column or 8
+  args.apps_per_row = args.apps_per_row or 3
+  args.apps_per_column = args.apps_per_column or 3
   args.apps_margin = args.apps_margin or dpi(16)
   args.apps_spacing = args.apps_spacing or dpi(16)
 
   args.expand_apps = args.expand_apps == nil and true or args.expand_apps
-  args.app_width = args.app_width or dpi(300)
-  args.app_height = args.app_height or dpi(120)
+  args.app_width = args.app_width or dpi(100)
+  args.app_height = args.app_height or dpi(100)
   args.app_shape = args.app_shape or gshape.rounded_rect
   args.app_normal_color = args.app_normal_color or "#30303060"
   args.app_normal_hover_color =
@@ -822,12 +795,12 @@ local function new(args)
   args.app_content_spacing = args.app_content_spacing or dpi(10)
   args.app_show_icon = args.app_show_icon == nil and true or args.app_show_icon
   args.app_icon_halign = args.app_icon_halign or "center"
-  args.app_icon_width = args.app_icon_width or dpi(48)
-  args.app_icon_height = args.app_icon_height or dpi(48)
+  args.app_icon_width = args.app_icon_width or dpi(32)
+  args.app_icon_height = args.app_icon_height or dpi(32)
   args.app_show_name = args.app_show_name == nil and true or args.app_show_name
   args.app_name_generic_name_spacing = args.app_name_generic_name_spacing or dpi(0)
   args.app_name_halign = args.app_name_halign or "center"
-  args.app_name_font = args.app_name_font or beautiful.font
+  args.app_name_font = "Inter 10"
   args.app_name_normal_color = args.app_name_normal_color or beautiful.fg_normal or "#FFFFFF"
   args.app_name_selected_color = args.app_name_selected_color or beautiful.bg_normal or "#000000"
   args.app_show_generic_name = args.app_show_generic_name ~= nil and args.app_show_generic_name or false
@@ -850,58 +823,6 @@ local function new(args)
     nil
 
   -- These widgets need to be later accessed
-  ret._private.prompt =
-    prompt {
-    prompt = ret.prompt_text,
-    text = ret.prompt_start_text,
-    font = ret.prompt_font,
-    reset_on_stop = ret.reset_on_hide,
-    history_path = ret.save_history == true and gfilesystem.get_cache_dir() .. "/history" or nil,
-    changed_callback = function(text)
-      if text == ret._private.text then
-        return
-      end
-
-      if ret._private.search_timer ~= nil and ret._private.search_timer.started then
-        ret._private.search_timer:stop()
-      end
-
-      ret._private.search_timer =
-        gtimer {
-        timeout = 0.05,
-        autostart = true,
-        single_shot = true,
-        callback = function()
-          search(ret, text)
-        end
-      }
-
-      ret._private.text = text
-    end,
-    keypressed_callback = function(mod, key, cmd)
-      if key == "Escape" then
-        awesome.emit_signal("widgets::app_launcher::hide", ret)
-      end
-      if key == "Return" then
-        if ret._private.active_widget ~= nil then
-          ret._private.active_widget.spawn()
-        end
-        awesome.emit_signal("widgets::app_launcher::hide", ret)
-      end
-      if key == "Up" then
-        scroll_up(ret)
-      end
-      if key == "Down" then
-        scroll_down(ret)
-      end
-      if key == "Left" then
-        scroll_left(ret)
-      end
-      if key == "Right" then
-        scroll_right(ret)
-      end
-    end
-  }
   ret._private.grid =
     wibox.widget {
     layout = wibox.layout.grid,
@@ -933,43 +854,7 @@ local function new(args)
   ret._private.widget =
     wibox.widget {
     layout = wibox.layout.fixed.vertical,
-    {
-      widget = wibox.container.margin,
-      margins = ret.prompt_margins,
-      {
-        widget = wibox.container.background,
-        forced_height = ret.prompt_height,
-        shape = ret.prompt_shape,
-        bg = ret.prompt_color,
-        fg = ret.prompt_text_color,
-        border_width = ret.prompt_border_width,
-        border_color = ret.prompt_border_color,
-        {
-          widget = wibox.container.margin,
-          margins = ret.prompt_paddings,
-          {
-            widget = wibox.container.place,
-            halign = ret.prompt_text_halign,
-            valign = ret.prompt_text_valign,
-            {
-              layout = wibox.layout.fixed.horizontal,
-              spacing = ret.prompt_icon_text_spacing,
-              {
-                widget = wibox.widget.textbox,
-                font = ret.prompt_icon_font,
-                markup = ret.prompt_icon_markup
-              },
-              ret._private.prompt.textbox
-            }
-          }
-        }
-      }
-    },
-    {
-      widget = wibox.container.margin,
-      margins = ret.apps_margin,
-      ret._private.grid
-    }
+    ret._private.grid
   }
 
   -- Private variables to be used to be used by the scrolling and searching functions
@@ -977,6 +862,61 @@ local function new(args)
   ret._private.apps_per_page = ret._private.max_apps_per_page
   ret._private.pages_count = 0
   ret._private.current_page = 1
+
+  awesome.connect_signal(
+    "widgets::app_launcher::prompt_changed",
+    function(text)
+      if text == ret._private.text then
+        return
+      end
+
+      if ret._private.search_timer ~= nil and ret._private.search_timer.started then
+        ret._private.search_timer:stop()
+      end
+
+      ret._private.search_timer =
+        gtimer {
+        timeout = 0.05,
+        autostart = true,
+        single_shot = true,
+        callback = function()
+          search(ret, text)
+        end
+      }
+
+      ret._private.text = text
+    end
+  )
+
+  awesome.connect_signal(
+    "widgets::app_launcher::prompt_key_pressed",
+    function(args)
+      local mod = args.mod
+      local key = args.key
+      local cmd = args.cmd
+      if key == "Escape" then
+        awesome.emit_signal("widgets::app_launcher::hide", ret)
+      end
+      if key == "Return" then
+        if ret._private.active_widget ~= nil then
+          ret._private.active_widget.spawn()
+        end
+        awesome.emit_signal("widgets::app_launcher::hide", ret)
+      end
+      if key == "Up" then
+        scroll_up(ret)
+      end
+      if key == "Down" then
+        scroll_down(ret)
+      end
+      if key == "Left" then
+        scroll_left(ret)
+      end
+      if key == "Right" then
+        scroll_right(ret)
+      end
+    end
+  )
 
   ret.generate_apps = generate_apps
   generate_apps(ret, Gio.AppInfo.get_all())
@@ -1006,9 +946,6 @@ end
 function app_launcher.text(args)
   args = args or {}
 
-  args.prompt_height = args.prompt_height or dpi(50)
-  args.prompt_margins = args.prompt_margins or dpi(30)
-  args.prompt_paddings = args.prompt_paddings or dpi(15)
   args.app_width = args.app_width or dpi(400)
   args.app_height = args.app_height or dpi(40)
   args.apps_spacing = args.apps_spacing or dpi(10)
