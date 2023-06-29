@@ -1,3 +1,6 @@
 [submodule "bling"]
 	path = bling
 	url = https://github.com/BlingCorp/bling.git
+[submodule "awesome-AnimationFramework"]
+	path = awesome-AnimationFramework
+	url = https://github.com/Aire-One/awesome-AnimationFramework
