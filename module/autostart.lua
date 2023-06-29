@@ -13,7 +13,6 @@ local run_once = function(cmd)
   if firstspace then
     findme = cmd:sub(0, firstspace - 1)
   end
-  gears.debug.dump(cmd, "Starting another app")
   awful.spawn.easy_async_with_shell(
     string.format("pgrep -u $USER -x %s > /dev/null || (%s)", findme, cmd),
     function(stdout, stderr)

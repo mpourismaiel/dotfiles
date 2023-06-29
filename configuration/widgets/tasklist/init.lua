@@ -145,9 +145,6 @@ function tasklist.render(w, buttons, label, widgets_cache, objects, args)
       minKey = math.min(k, minKey)
     end
     local first_client = o.clients[minKey]
-    if first_client == nil then
-      gears.debug.dump(o, "=====> o")
-    end
     local cache = widgets_cache[o.class:lower()]
     if cache then
       cache.touched = true

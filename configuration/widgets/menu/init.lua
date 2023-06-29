@@ -11,6 +11,7 @@ local clock = require("configuration.widgets.menu.clock")
 local notifications = require("configuration.widgets.menu.notifications")
 local power_button = require("configuration.widgets.menu.power-button")
 local volumeslider = require("configuration.widgets.volume.slider")
+local tag_preview = require("configuration.widgets.menu.tag_preview")
 local launcher = require("configuration.widgets.menu.launcher")()
 local prompt = require("configuration.widgets.menu.launcher.prompt")
 
@@ -89,8 +90,8 @@ function menu.new(screen)
         c,
         {
           margins = {
-            top = config.dpi(8),
-            left = config.dpi(40)
+            top = 0,
+            left = config.dpi(48)
           }
         }
       )
@@ -145,74 +146,111 @@ function menu.new(screen)
     end
   }
 
+  tag_preview =
+    tag_preview(
+    {
+      total_width = screen.geometry.width - config.dpi(400) - config.dpi(16) * 4,
+      total_height = screen.geometry.height - config.dpi(16) * 2,
+      spacing = config.dpi(16),
+      padding = config.dpi(32)
+    }
+  )
+
   drawer:setup {
-    layout = wibox.layout.fixed.horizontal,
-    menu_column(
-      screen,
+    layout = wibox.layout.stack,
+    {
+      widget = wibox.container.constraint,
+      strategy = "exact",
+      height = screen.geometry.height,
+      width = screen.geometry.width,
       {
-        layout = wibox.layout.align.vertical,
-        spacing = config.dpi(16),
+        layout = wibox.layout.manual,
         {
-          layout = wibox.layout.fixed.vertical,
+          widget = wibox.widget.imagebox,
+          image = config.wallpaper,
+          point = {
+            x = config.dpi(-48),
+            y = 0
+          }
+        }
+      }
+    },
+    {
+      layout = wibox.layout.fixed.horizontal,
+      menu_column(
+        screen,
+        {
+          layout = wibox.layout.align.vertical,
           spacing = config.dpi(16),
-          container(clock()),
-          {
-            widget = wibox.container.background,
-            forced_height = args.prompt_height,
-            shape = args.prompt_shape,
-            bg = args.prompt_color,
-            fg = args.prompt_text_color,
-            border_width = args.prompt_border_width,
-            border_color = args.prompt_border_color,
-            {
-              widget = wibox.container.margin,
-              margins = args.prompt_paddings,
-              {
-                widget = wibox.container.place,
-                halign = args.prompt_text_halign,
-                valign = args.prompt_text_valign,
-                {
-                  layout = wibox.layout.fixed.horizontal,
-                  spacing = args.prompt_icon_text_spacing,
-                  {
-                    widget = wibox.widget.textbox,
-                    font = args.prompt_icon_font,
-                    markup = args.prompt_icon_markup
-                  },
-                  launcher_prompt.textbox
-                }
-              }
-            }
-          },
-          launcher._private.widget
-        },
-        {
-          widget = wibox.container.margin,
-          top = config.dpi(16),
-          bottom = config.dpi(16),
-          container(notifications)
-        },
-        {
-          widget = wibox.container.place,
-          valign = "bottom",
           {
             layout = wibox.layout.fixed.vertical,
             spacing = config.dpi(16),
-            container(volumeslider),
+            container(clock()),
             {
-              layout = wibox.layout.flex.horizontal,
-              spacing = config.dpi(8),
-              container(power_button("lock")),
-              container(power_button("sleep")),
-              container(power_button("logout")),
-              container(power_button("reboot")),
-              container(power_button("power"))
+              widget = wibox.container.background,
+              forced_height = args.prompt_height,
+              shape = args.prompt_shape,
+              bg = args.prompt_color,
+              fg = args.prompt_text_color,
+              border_width = args.prompt_border_width,
+              border_color = args.prompt_border_color,
+              {
+                widget = wibox.container.margin,
+                margins = args.prompt_paddings,
+                {
+                  widget = wibox.container.place,
+                  halign = args.prompt_text_halign,
+                  valign = args.prompt_text_valign,
+                  {
+                    layout = wibox.layout.fixed.horizontal,
+                    spacing = args.prompt_icon_text_spacing,
+                    {
+                      widget = wibox.widget.textbox,
+                      font = args.prompt_icon_font,
+                      markup = args.prompt_icon_markup
+                    },
+                    launcher_prompt.textbox
+                  }
+                }
+              }
+            },
+            launcher._private.widget
+          },
+          {
+            widget = wibox.container.margin,
+            top = config.dpi(16),
+            bottom = config.dpi(16),
+            container(notifications)
+          },
+          {
+            widget = wibox.container.place,
+            valign = "bottom",
+            {
+              layout = wibox.layout.fixed.vertical,
+              spacing = config.dpi(16),
+              container(volumeslider),
+              {
+                layout = wibox.layout.flex.horizontal,
+                spacing = config.dpi(8),
+                container(power_button("lock")),
+                container(power_button("sleep")),
+                container(power_button("logout")),
+                container(power_button("reboot")),
+                container(power_button("power"))
+              }
             }
           }
-        }
-      },
-      400
-    )
+        },
+        400
+      ),
+      {
+        widget = wibox.container.constraint,
+        height = screen.geometry.height,
+        width = screen.geometry.width - config.dpi(400) - config.dpi(16) * 4,
+        strategy = "exact",
+        tag_preview.widget
+      }
+    }
   }
 
   awesome.connect_signal(
@@ -223,6 +261,7 @@ function menu.new(screen)
         launcher_prompt:stop()
         launcher:hide()
       else
+        tag_preview:show()
         launcher_prompt:start()
       end
       backdrop.visible = not backdrop.visible

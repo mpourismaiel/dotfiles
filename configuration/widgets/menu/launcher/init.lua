@@ -51,7 +51,6 @@ local function history_load(path)
       eol = true
     end
   end
-  gears.debug.dump(self, "history")
   f:close()
   return self
 end
@@ -340,7 +339,6 @@ local function create_app_widget(self, entry)
           select_app(self, pos.row, pos.col)
         end
       elseif button == 2 then
-        gears.debug.dump("middle click")
         if self.favorites[entry.name] == nil then
           self.favorites[entry.name] = 1
         else

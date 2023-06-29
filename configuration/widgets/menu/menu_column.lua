@@ -7,7 +7,7 @@ local menu_column = {mt = {}}
 local function constraint(screen, w)
   return wibox.widget {
     widget = wibox.container.constraint,
-    height = screen.geometry.height - config.dpi(16),
+    height = screen.geometry.height - config.dpi(32),
     strategy = "exact",
     w
   }
@@ -36,6 +36,8 @@ local function new(screen, w, width_constraint)
   return wibox.widget {
     widget = wibox.container.margin,
     left = config.dpi(16),
+    top = config.dpi(16),
+    bottom = config.dpi(16),
     _w
   }
 end
