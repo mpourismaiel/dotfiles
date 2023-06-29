@@ -2,6 +2,7 @@ local awful = require("awful")
 local wibox = require("wibox")
 local gears = require("gears")
 local filesystem = require("gears.filesystem")
+local animation = require("helpers.animation")
 local config = require("configuration.config")
 local theme = require("configuration.config.theme")
 

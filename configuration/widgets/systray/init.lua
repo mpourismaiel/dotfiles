@@ -1,6 +1,7 @@
 local awful = require("awful")
 local gears = require("gears")
 local wibox = require("wibox")
+local animation = require("helpers.animation")
 local config = require("configuration.config")
 local filesystem = require("gears.filesystem")
 local keyboardlayout = require("configuration.widgets.keyboardlayout")
@@ -14,6 +15,19 @@ local systray = {mt = {}}
 
 function systray.new(screen)
   screen = screen == nil and awful.screen.focused() or screen
+
+  local anim_data = {x = config.dpi(48), y = config.dpi(8), opacity = 0}
+  function placement_fn(c)
+    return awful.placement.bottom_left(
+      c,
+      {
+        margins = {
+          bottom = anim_data.y,
+          left = anim_data.x
+        }
+      }
+    )
+  end
 
   local w =
     awful.popup {
@@ -54,18 +68,9 @@ function systray.new(screen)
     shape = function(cr, w, h)
       return gears.shape.rounded_rect(cr, w, h, config.dpi(8))
     end,
-    placement = function(c)
-      return awful.placement.bottom_left(
-        c,
-        {
-          margins = {
-            bottom = config.dpi(8),
-            left = config.dpi(56)
-          }
-        }
-      )
-    end,
-    bg = "#111111ff"
+    placement = placement_fn,
+    bg = "#111111ff",
+    opacity = anim_data.opacity
   }
 
   local toggle_image = wibox.widget.imagebox()
@@ -88,11 +93,39 @@ function systray.new(screen)
     )
   )
 
+  local anim =
+    animation {
+    subject = anim_data,
+    targets = {visible = {x = 56, opacity = 1}, invisible = {x = 48, opacity = 0}},
+    easing = "inOutCubic",
+    duration = 0.25,
+    signals = {
+      ["anim::animation_started"] = function(s)
+        w.visible = true
+      end,
+      ["anim::animation_updated"] = function(s, delta)
+        placement_fn(w)
+        w.opacity = anim_data.opacity
+      end,
+      ["anim::animation_finished"] = function(s)
+        if s.subject.x == 48 then
+          w.visible = false
+        end
+      end
+    }
+  }
+
   awesome.connect_signal(
     "widget::systray:toggle",
     function()
       w.screen = awful.screen.focused()
-      w.visible = not w.visible
+      if w.visible then
+        anim.visible:stopAnimation()
+        anim.invisible:startAnimation()
+      else
+        anim.invisible:stopAnimation()
+        anim.visible:startAnimation()
+      end
       toggle_image.image = w.visible and chevron_left or chevron_right
     end
   )
@@ -101,10 +134,6 @@ function systray.new(screen)
     widget = wibox.container.place,
     {
       layout = wibox.layout.fixed.vertical,
-      -- {
-      --   widget = wibox.container.place,
-      --   w
-      -- },
       toggle
     }
   }

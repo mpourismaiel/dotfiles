@@ -127,7 +127,7 @@ local action_jump = function()
 end
 
 local volume_osd =
-  osd.create(
+  osd(
   wibox.widget {
     widget = wibox.container.background,
     background = "#ff0000",
@@ -150,7 +150,7 @@ timer = nil
 awesome.connect_signal(
   "widget::volume",
   function()
-    volume_osd.visible = true
+    volume_osd:show()
     if timer ~= nil then
       timer:stop()
     end
@@ -160,7 +160,7 @@ awesome.connect_signal(
       gears.timer.start_new(
       3,
       function()
-        volume_osd.visible = false
+        volume_osd:hide()
       end
     )
   end
