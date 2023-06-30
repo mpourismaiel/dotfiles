@@ -8,7 +8,7 @@ local cairo = require("lgi").cairo
 
 local tag_preview = {mt = {}}
 
-local function draw_widget(c, widget_width, widget_height, x, y)
+local function draw_widget(c, widget_width, widget_height)
   if
     not pcall(
       function()
@@ -39,18 +39,19 @@ local function draw_widget(c, widget_width, widget_height, x, y)
 
   local widget =
     wibox.widget {
+    widget = wibox.container.constraint,
     width = widget_width,
     height = widget_height,
-    widget = wibox.container.constraint,
     {
-      shape = helpers.shape.rrect(config.dpi(10)),
+      id = "background_role",
       widget = wibox.container.background,
+      shape = helpers.shape.rrect(config.dpi(10)),
       {
         widget = wibox.container.margin,
         margins = config.dpi(10),
         {
-          fill_space = true,
           layout = wibox.layout.fixed.vertical,
+          fill_space = true,
           {
             widget = wibox.container.margin,
             margins = config.dpi(10),
@@ -61,39 +62,42 @@ local function draw_widget(c, widget_width, widget_height, x, y)
                 layout = wibox.layout.fixed.horizontal,
                 {
                   id = "icon_role",
+                  widget = wibox.widget.imagebox,
                   resize = true,
                   forced_height = config.dpi(20),
-                  forced_width = config.dpi(20),
-                  widget = wibox.widget.imagebox
+                  forced_width = config.dpi(20)
                 },
                 {
+                  widget = wibox.container.margin,
                   left = config.dpi(4),
                   right = config.dpi(4),
-                  widget = wibox.container.margin,
                   {
                     id = "name_role",
-                    align = "center",
-                    widget = wibox.widget.textbox
+                    widget = wibox.widget.textbox,
+                    align = "center"
                   }
                 }
               }
             }
           },
           {
-            id = "image_role",
-            resize = true,
-            clip_shape = helpers.shape.rrect(config.dpi(10)),
-            widget = wibox.widget.imagebox
+            widget = wibox.container.place,
+            halign = "center",
+            valign = "top",
+            {
+              id = "image_role",
+              resize = true,
+              clip_shape = helpers.shape.rrect(config.dpi(10)),
+              widget = wibox.widget.imagebox
+            }
           }
         }
       }
     }
   }
 
-  -- TODO: have something like a create callback here?
-
   for _, w in ipairs(widget:get_children_by_id("image_role")) do
-    w.image = img -- TODO: copy it with gears.surface.xxx or something
+    w.image = img
   end
 
   for _, w in ipairs(widget:get_children_by_id("name_role")) do
@@ -104,64 +108,48 @@ local function draw_widget(c, widget_width, widget_height, x, y)
   end
 
   for _, w in ipairs(widget:get_children_by_id("icon_role")) do
-    w.image = c.icon -- TODO: detect clienticon
+    w.image = c.icon
   end
 
-  widget.point = function(geo, args)
-    return {
-      x = x,
-      y = y
-    }
-  end
+  local background = widget:get_children_by_id("background_role")[1]
+
+  widget:connect_signal(
+    "mouse::enter",
+    function()
+      background.bg = "#333333c0"
+    end
+  )
+
+  widget:connect_signal(
+    "mouse::leave",
+    function()
+      background.bg = "#00000000"
+    end
+  )
+
+  widget:buttons(
+    gears.table.join(
+      awful.button(
+        {},
+        1,
+        nil,
+        function()
+          awesome.emit_signal("widget::drawer:hide")
+
+          if c ~= nil then
+            c:raise()
+            client.focus = c
+          end
+        end
+      )
+    )
+  )
 
   return widget
 end
 
-local function calculateNewDimensions(client, container, spacing, padding, clientsCount)
-  local ratio = client.tag_preview.width / client.tag_preview.height
-  local newWidth = (container.width - (2 * (spacing + padding) * clientsCount)) / clientsCount
-  local newHeight = newWidth / ratio
-
-  if newHeight > (container.height - 2 * (spacing + padding)) then
-    newHeight = (container.height - 2 * (spacing + padding)) / clientsCount
-    newWidth = newHeight * ratio
-  end
-
-  return newWidth, newHeight
-end
-
-local function resizeAndPositionClients(clients, container, spacing, padding)
-  local clientsCount = 0
-  for _ in pairs(clients) do
-    clientsCount = clientsCount + 1
-  end
-
-  local x = padding
-  local y = padding
-
-  for key, client in pairs(clients) do
-    local newWidth, newHeight = calculateNewDimensions(client, container, spacing, padding, clientsCount)
-
-    client.tag_preview.width = newWidth
-    client.tag_preview.height = newHeight
-    client.tag_preview.x = x
-    client.tag_preview.y = y
-
-    x = x + newWidth + spacing
-
-    if x + newWidth + padding > container.width then
-      x = padding
-      y = y + newHeight + spacing
-    end
-
-    if y + newHeight + padding > container.height then
-      break
-    end
-  end
-end
-
-function tag_preview:show()
-  self.list:reset()
+function tag_preview:show(screen)
+  self.grid:reset()
   local clients = awful.screen.focused().selected_tag:clients()
   for _, c in ipairs(clients) do
     c.tag_preview = {
@@ -171,18 +159,10 @@ function tag_preview:show()
       y = c.y
     }
   end
-  resizeAndPositionClients(
-    clients,
-    {
-      width = self.total_width,
-      height = self.total_height
-    },
-    self.spacing,
-    self.padding
-  )
   for _, c in ipairs(clients) do
-    local w = draw_widget(c, c.tag_preview.width, c.tag_preview.height, c.tag_preview.x, c.tag_preview.y)
-    self.list:add(w)
+    local w =
+      draw_widget(c, config.dpi((screen.geometry.width - config.dpi(400) - config.dpi(16) * 9) / 3), config.dpi(300))
+    self.grid:add(w)
   end
 end
 
@@ -196,14 +176,16 @@ local function new(args)
   local ret = {}
   gears.table.crush(ret, tag_preview)
   gears.table.crush(ret, args)
-  ret.list =
+  ret.grid =
     wibox.widget {
-    layout = wibox.layout.fixed.horizontal,
+    layout = wibox.layout.grid,
+    forced_num_cols = 3,
     spacing = config.dpi(16)
   }
   ret.widget =
     wibox.widget {
-    widget = ret.list
+    widget = ret.grid,
+    spacing = config.dpi(20)
   }
 
   tag.connect_signal(

@@ -1,6 +1,7 @@
 local awful = require("awful")
 local wibox = require("wibox")
 local gears = require("gears")
+local cairo = require("lgi").cairo
 local filesystem = require("gears.filesystem")
 local animation = require("helpers.animation")
 local config = require("configuration.config")
@@ -245,11 +246,15 @@ function menu.new(screen)
         400
       ),
       {
-        widget = wibox.container.constraint,
-        height = screen.geometry.height,
-        width = screen.geometry.width - config.dpi(400) - config.dpi(16) * 4,
-        strategy = "exact",
-        tag_preview.widget
+        widget = wibox.container.margin,
+        margins = config.dpi(16),
+        {
+          widget = wibox.container.constraint,
+          height = screen.geometry.height,
+          width = screen.geometry.width - config.dpi(400) - config.dpi(16) * 4,
+          strategy = "exact",
+          tag_preview.widget
+        }
       }
     }
   }
@@ -262,7 +267,7 @@ function menu.new(screen)
         launcher_prompt:stop()
         launcher:hide()
       else
-        tag_preview:show()
+        tag_preview:show(screen)
         launcher_prompt:start()
       end
       backdrop.visible = not backdrop.visible
