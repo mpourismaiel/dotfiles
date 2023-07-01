@@ -23,6 +23,20 @@ local capi = {selection = selection}
 
 local prompt = {mt = {}}
 
+local ignore_keys = {
+    "Print",
+    "XF86ScreenSaver",
+    "XF86AudioLowerVolume",
+    "XF86AudioRaiseVolume",
+    "XF86AudioMute",
+    "XF86AudioPlay",
+    "XF86AudioStop",
+    "XF86AudioPrev",
+    "XF86AudioNext",
+    "XF86AudioPause",
+    "XF86AudioMedia"
+}
+
 --- Private data
 local data = {}
 data.history = {}
@@ -260,6 +274,12 @@ function prompt:start()
     self._private.grabber =
         keygrabber.run(
         function(modifiers, key, event)
+            for _, v in ipairs(ignore_keys) do
+                if v == key then
+                    return false
+                end
+            end
+
             -- Convert index array to hash table
             local mod = {}
             for _, v in ipairs(modifiers) do
