@@ -147,7 +147,7 @@ function menu.new(screen)
     end
   }
 
-  tag_preview =
+  local tag_preview_instance =
     tag_preview(
     {
       total_width = screen.geometry.width - config.dpi(400) - config.dpi(16) * 4,
@@ -266,7 +266,7 @@ function menu.new(screen)
             height = screen.geometry.height,
             width = screen.geometry.width - config.dpi(400) - config.dpi(16) * 4,
             strategy = "exact",
-            tag_preview.widget
+            tag_preview_instance.widget
           }
         }
       }
