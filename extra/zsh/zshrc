@@ -7,7 +7,7 @@ export GOPATH=$HOME/go
 export PATH=$PATH:$GOPATH:$ANDROID_SDK_ROOT/emulator:$HOME/Android/Sdk:$ANDROID_SDK_ROOT/platform-tools:$HOME/bin:$GOPATH/bin:/usr/local/go/bin
 
 # Path to your oh-my-zsh installation.
-export ZSH="/home/mahdi/.oh-my-zsh"
+export ZSH="$HOME/.oh-my-zsh"
 
 # Set list of themes to pick from when loading at random
 # Setting this variable when ZSH_THEME=random will cause zsh to load
@@ -111,10 +111,10 @@ export GAMEMODERUNEXEC="prime-run"
 
 source $HOME/.zsh/aliases.zsh
 
-if [ -e /home/mahdi/.nix-profile/etc/profile.d/nix.sh ]; then . /home/mahdi/.nix-profile/etc/profile.d/nix.sh; fi # added by Nix installer
+if [ -e $HOME/.nix-profile/etc/profile.d/nix.sh ]; then . $HOME/.nix-profile/etc/profile.d/nix.sh; fi # added by Nix installer
 
 # bun completions
-[ -s "/home/mahdi/.bun/_bun" ] && source "/home/mahdi/.bun/_bun"
+[ -s "$HOME/.bun/_bun" ] && source "$HOME/.bun/_bun"
 
 # bun
 export BUN_INSTALL="$HOME/.bun"
