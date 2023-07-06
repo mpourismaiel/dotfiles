@@ -11,6 +11,24 @@ awful.keyboard.append_global_keybindings(
     awful.key({config.modkey}, "s", hotkeys_popup.show_help, {description = "show help", group = "awesome"}),
     awful.key({config.modkey, "Control"}, "r", awesome.restart, {description = "reload awesome", group = "awesome"}),
     awful.key(
+      {
+        config.modkey
+      },
+      "w",
+      function()
+        naughty.notification {
+          title = "Boss asdfasdf!!",
+          app_icon = "/usr/share/icons/hicolor/48x48/apps/google-chrome.png",
+          text = "Am done with the execution",
+          actions = {
+            naughty.action {
+              name = "Confirm"
+            }
+          }
+        }
+      end
+    ),
+    awful.key(
       {config.modkey, "Shift"},
       "q",
       function()

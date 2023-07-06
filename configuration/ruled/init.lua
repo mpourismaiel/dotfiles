@@ -231,8 +231,7 @@ ruled.notification.connect_signal(
     ruled.notification.append_rule {
       rule = {},
       properties = {
-        screen = awful.screen.preferred,
-        implicit_timeout = 5
+        screen = awful.screen.preferred
       }
     }
   end
