@@ -9,7 +9,7 @@ function animation.new(args)
 
   local animations = {}
   for k, v in pairs(args.targets) do
-    animations[k] =
+    local a =
       animation_library {
       subject = args.subject,
       target = v,
@@ -18,6 +18,26 @@ function animation.new(args)
       delay = args.delay,
       signals = args.signals
     }
+
+    a:connect_signal(
+      "anim::animation_started",
+      function(s)
+        s.animating = true
+      end
+    )
+    a:connect_signal(
+      "anim::animation_stopped",
+      function(s)
+        s.animating = false
+      end
+    )
+    a:connect_signal(
+      "anim::animation_finished",
+      function(s)
+        s.animating = false
+      end
+    )
+    animations[k] = a
   end
 
   return animations
