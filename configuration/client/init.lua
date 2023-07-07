@@ -7,6 +7,7 @@ local gears = require("gears")
 local config = require("configuration.config")
 local theme = require("configuration.config.theme")
 local filesystem = require("gears.filesystem")
+local client_menu = require("configuration.widgets.client_menu")
 
 local config_dir = filesystem.get_configuration_dir()
 
@@ -109,6 +110,8 @@ client.connect_signal(
 client.connect_signal(
   "request::titlebars",
   function(c)
+    c.menu = client_menu()
+
     local buttons = {
       awful.button(
         {},
@@ -121,7 +124,8 @@ client.connect_signal(
         {},
         3,
         function()
-          c:activate {context = "titlebar", action = "mouse_resize"}
+          -- get mouse coordinates
+          c.menu:toggle {coords = mouse.coords(), client = c}
         end
       )
     }
@@ -136,13 +140,7 @@ client.connect_signal(
       image = config_dir .. "images/x.svg"
     }
 
-    awful.titlebar(
-      c,
-      {
-        position = "top",
-        size = theme.titlebar_size
-      }
-    ):setup {
+    local w = {
       layout = wibox.layout.flex.horizontal,
       buttons = buttons,
       {
@@ -185,5 +183,13 @@ client.connect_signal(
         }
       }
     }
+
+    awful.titlebar(
+      c,
+      {
+        position = "top",
+        size = theme.titlebar_size
+      }
+    ):setup(w)
   end
 )

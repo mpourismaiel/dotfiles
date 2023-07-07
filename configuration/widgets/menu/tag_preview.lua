@@ -150,7 +150,7 @@ end
 
 function tag_preview:show(screen)
   self.grid:reset()
-  local clients = awful.screen.focused().selected_tag:clients()
+  local clients = screen.selected_tag:clients()
   for _, c in ipairs(clients) do
     c.tag_preview = {
       width = c.width,
