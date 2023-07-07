@@ -5,7 +5,7 @@ local animation = require("helpers.animation")
 
 local item = {mt = {}}
 
-for _, v in pairs({"bg", "bg_hover", "shape"}) do
+for _, v in pairs({"bg", "bg_hover", "shape", "on_release", "checkbox", "value"}) do
   item["set_" .. v] = function(self, val)
     if self._private[v] == val then
       return
@@ -53,6 +53,51 @@ local function rgba2hex(color)
   return hex
 end
 
+function item:set_value(value)
+  local wp = self._private
+
+  wp.state = value
+  local target = wp.animation.unchecked.target
+  if value then
+    target = wp.animation.checked.target
+  end
+  for k, v in pairs(target) do
+    if type(v) == "table" then
+      wp.anim_data[k] = gears.table.clone(v)
+    else
+      wp.anim_data[k] = v
+    end
+  end
+  if wp.checkbox_enabled and wp.checkbox_widget then
+    wp.checkbox_widget.background.bg = rgba2hex(target.checkbox_bg)
+    wp.checkbox_widget.indicator_container:move(
+      1,
+      {
+        x = target.checkbox_indicator.x,
+        y = 0
+      }
+    )
+  end
+end
+
+function item:set_checkbox(value)
+  self._private.checkbox_enabled = value
+  if not self._private.widget then
+    return
+  end
+
+  local wpcontainer = self._private.widget:get_children_by_id("container")[1]
+  if value then
+    wpcontainer:insert(2, self._private.checkbox_widget)
+  else
+    wpcontainer:remove(2)
+  end
+end
+
+function item:set_on_release(on_release)
+  self._private.on_release = on_release
+end
+
 function item:set_bg(bg)
   self._private.bg_normal = bg
   self._private.anim_data.bg = hex2rgba(bg)
@@ -81,10 +126,63 @@ function item:set_widget(widget)
     wibox.widget.base.check_widget(w)
   end
 
-  self._private.widget =
+  local wp = self._private
+
+  wp.checkbox_widget = wibox.widget {}
+  wp.checkbox_widget =
+    wibox.widget {
+    widget = wibox.container.place,
+    halign = "right",
+    {
+      widget = wibox.container.constraint,
+      width = config.dpi(32),
+      height = config.dpi(16),
+      strategy = "exact",
+      {
+        widget = wibox.container.background,
+        id = "background",
+        shape = function(cr, width, height)
+          return gears.shape.rounded_rect(cr, width, height, height / 2)
+        end,
+        bg = rgba2hex(self._private.anim_data.checkbox_bg),
+        {
+          widget = wibox.container.margin,
+          margins = config.dpi(2),
+          {
+            layout = wibox.layout.manual,
+            id = "indicator_container",
+            {
+              widget = wibox.container.constraint,
+              id = "indicator",
+              width = config.dpi(12),
+              height = config.dpi(12),
+              point = {x = self._private.anim_data.checkbox_indicator.x, y = 0},
+              strategy = "exact",
+              {
+                widget = wibox.container.background,
+                shape = gears.shape.circle,
+                bg = "#000000",
+                {
+                  widget = wibox.widget.textbox,
+                  text = " "
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  local wpc = wp.checkbox_widget
+  wpc.background = wpc:get_children_by_id("background")[1]
+  wpc.indicator_container = wpc:get_children_by_id("indicator_container")[1]
+  wpc.indicator = wpc:get_children_by_id("indicator")[1]
+
+  wp.widget =
     wibox.widget {
     widget = wibox.container.background,
-    bg = self._private.bg_normal,
+    bg = wp.bg_normal,
     {
       widget = wibox.container.margin,
       top = config.dpi(10),
@@ -92,10 +190,22 @@ function item:set_widget(widget)
       left = config.dpi(20),
       right = config.dpi(20),
       {
-        widget = w
+        layout = wibox.layout.stack,
+        id = "container",
+        {
+          widget = wibox.container.place,
+          halign = "left",
+          {
+            widget = w
+          }
+        }
       }
     }
   }
+
+  if wp.checkbox_enabled then
+    wp.widget:get_children_by_id("container")[1]:insert(1, wp.checkbox_widget)
+  end
   self:emit_signal("property::widget")
   self:emit_signal("widget::layout_changed")
 end
@@ -105,16 +215,47 @@ local function new()
 
   gears.table.crush(ret, item)
 
-  ret._private.anim_data = {}
+  ret._private.state = false
+
+  ret._private.anim_data = {
+    checkbox_bg = hex2rgba("#888888cc"),
+    checkbox_indicator = {x = 0}
+  }
   ret._private.animation =
     animation {
     subject = ret._private.anim_data,
-    targets = {normal = {bg = hex2rgba(ret._private.bg_normal)}, hover = {bg = hex2rgba(ret._private.bg_hover)}},
+    targets = {
+      normal = {
+        bg = hex2rgba(ret._private.bg_normal)
+      },
+      hover = {
+        bg = hex2rgba(ret._private.bg_hover)
+      },
+      unchecked = {
+        checkbox_bg = hex2rgba("#888888cc"),
+        checkbox_indicator = {x = 0}
+      },
+      checked = {
+        checkbox_bg = hex2rgba("#ffffffcc"),
+        checkbox_indicator = {x = 16}
+      }
+    },
     easing = "inOutCubic",
     duration = 0.25,
     signals = {
       ["anim::animation_updated"] = function(s)
         ret._private.widget.bg = rgba2hex(s.subject.bg)
+
+        if ret._private.checkbox_enabled then
+          ret._private.checkbox_widget.background.bg = rgba2hex(s.subject.checkbox_bg)
+          ret._private.checkbox_widget.indicator_container:move(
+            1,
+            {
+              x = s.subject.checkbox_indicator.x,
+              y = 0
+            }
+          )
+        end
       end
     }
   }
@@ -135,9 +276,31 @@ local function new()
     end
   )
 
+  ret:connect_signal(
+    "button::release",
+    function(self, lx, ly, button, mods)
+      gears.debug.dump(ret._private.state)
+      if ret._private.checkbox_enabled then
+        ret._private.state = not ret._private.state
+        if ret._private.state then
+          ret._private.animation.checked:startAnimation()
+          ret._private.animation.unchecked:stopAnimation()
+        else
+          ret._private.animation.checked:stopAnimation()
+          ret._private.animation.unchecked:startAnimation()
+        end
+      end
+
+      if ret._private.on_release then
+        ret._private.on_release(self, button, mods, ret._private.state)
+      end
+    end
+  )
+
   ret:set_bg("#222222cc")
   ret:set_bg_hover("#333333cc")
   ret:set_shape(gears.shape.rectangle)
+  ret:set_checkbox(false)
 
   return ret
 end
