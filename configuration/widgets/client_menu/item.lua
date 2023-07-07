@@ -6,6 +6,7 @@ local animation = require("helpers.animation")
 local item = {mt = {}}
 
 for _, v in pairs({"bg", "bg_hover", "shape", "on_release", "checkbox", "value"}) do
+  ---@diagnostic disable-next-line: assign-type-mismatch
   item["set_" .. v] = function(self, val)
     if self._private[v] == val then
       return
@@ -15,6 +16,7 @@ for _, v in pairs({"bg", "bg_hover", "shape", "on_release", "checkbox", "value"}
     self:emit_signal("property::" .. v, val)
   end
 
+  ---@diagnostic disable-next-line: assign-type-mismatch
   item["get_" .. v] = function(layout)
     return layout._private[v]
   end
@@ -215,21 +217,22 @@ local function new()
 
   gears.table.crush(ret, item)
 
-  ret._private.state = false
+  local wp = ret._private
+  wp.state = false
 
-  ret._private.anim_data = {
+  wp.anim_data = {
     checkbox_bg = hex2rgba("#888888cc"),
     checkbox_indicator = {x = 0}
   }
-  ret._private.animation =
+  wp.animation =
     animation {
-    subject = ret._private.anim_data,
+    subject = wp.anim_data,
     targets = {
       normal = {
-        bg = hex2rgba(ret._private.bg_normal)
+        bg = hex2rgba(wp.bg_normal)
       },
       hover = {
-        bg = hex2rgba(ret._private.bg_hover)
+        bg = hex2rgba(wp.bg_hover)
       },
       unchecked = {
         checkbox_bg = hex2rgba("#888888cc"),
@@ -244,11 +247,11 @@ local function new()
     duration = 0.25,
     signals = {
       ["anim::animation_updated"] = function(s)
-        ret._private.widget.bg = rgba2hex(s.subject.bg)
+        wp.widget.bg = rgba2hex(s.subject.bg)
 
-        if ret._private.checkbox_enabled then
-          ret._private.checkbox_widget.background.bg = rgba2hex(s.subject.checkbox_bg)
-          ret._private.checkbox_widget.indicator_container:move(
+        if wp.checkbox_enabled then
+          wp.checkbox_widget.background.bg = rgba2hex(s.subject.checkbox_bg)
+          wp.checkbox_widget.indicator_container:move(
             1,
             {
               x = s.subject.checkbox_indicator.x,
@@ -263,36 +266,36 @@ local function new()
   ret:connect_signal(
     "mouse::enter",
     function()
-      ret._private.animation.normal:stopAnimation()
-      ret._private.animation.hover:startAnimation()
+      wp.animation.normal:stopAnimation()
+      wp.animation.hover:startAnimation()
     end
   )
 
   ret:connect_signal(
     "mouse::leave",
     function()
-      ret._private.animation.hover:stopAnimation()
-      ret._private.animation.normal:startAnimation()
+      wp.animation.hover:stopAnimation()
+      wp.animation.normal:startAnimation()
     end
   )
 
   ret:connect_signal(
     "button::release",
     function(self, lx, ly, button, mods)
-      gears.debug.dump(ret._private.state)
-      if ret._private.checkbox_enabled then
-        ret._private.state = not ret._private.state
-        if ret._private.state then
-          ret._private.animation.checked:startAnimation()
-          ret._private.animation.unchecked:stopAnimation()
+      gears.debug.dump(wp.state)
+      if wp.checkbox_enabled then
+        wp.state = not wp.state
+        if wp.state then
+          wp.animation.checked:startAnimation()
+          wp.animation.unchecked:stopAnimation()
         else
-          ret._private.animation.checked:stopAnimation()
-          ret._private.animation.unchecked:startAnimation()
+          wp.animation.checked:stopAnimation()
+          wp.animation.unchecked:startAnimation()
         end
       end
 
-      if ret._private.on_release then
-        ret._private.on_release(self, button, mods, ret._private.state)
+      if wp.on_release then
+        wp.on_release(self, button, mods, wp.state)
       end
     end
   )
@@ -306,7 +309,7 @@ local function new()
 end
 
 function item.mt:__call(...)
-  return new(...)
+  return new()
 end
 
 return setmetatable(item, item.mt)

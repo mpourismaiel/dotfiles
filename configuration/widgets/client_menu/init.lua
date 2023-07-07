@@ -72,6 +72,21 @@ function client_menu:hide()
   self._private.popup.visible = false
 end
 
+local function new_action(self, id, title)
+  return wibox.widget {
+    widget = item,
+    checkbox = true,
+    id = id,
+    on_release = function(_, _, _, checked)
+      self._private.client[id] = checked
+    end,
+    {
+      widget = wibox.widget.textbox,
+      markup = "<span font='Inter Regular 11'>" .. title .. "</span>"
+    }
+  }
+end
+
 local function new(args)
   if instance then
     return instance
@@ -85,6 +100,14 @@ local function new(args)
 
   gears.table.crush(ret, args)
   gears.table.crush(ret, client_menu)
+
+  ret._private.actions = {
+    sticky = new_action(ret, "sticky", "Sticky"),
+    fullscreen = new_action(ret, "fullscreen", "Fullscreen"),
+    ontop = new_action(ret, "ontop", "Ontop"),
+    maximized = new_action(ret, "maximized", "Maximized"),
+    minimized = new_action(ret, "minimized", "Minimized")
+  }
 
   ret._private.widget =
     wibox.widget {
@@ -100,66 +123,11 @@ local function new(args)
         opacity = 1,
         color = "#000000ff"
       },
-      {
-        widget = item,
-        checkbox = true,
-        id = "sticky",
-        on_release = function(_, _, _, checked)
-          ret._private.client.sticky = checked
-        end,
-        {
-          widget = wibox.widget.textbox,
-          markup = "<span font='Inter Regular 11'>Sticky</span>"
-        }
-      },
-      {
-        widget = item,
-        checkbox = true,
-        id = "fullscreen",
-        on_release = function(_, _, _, checked)
-          ret._private.client.fullscreen = checked
-        end,
-        {
-          widget = wibox.widget.textbox,
-          markup = "<span font='Inter Regular 11'>Fullscreen</span>"
-        }
-      },
-      {
-        widget = item,
-        checkbox = true,
-        id = "ontop",
-        on_release = function(_, _, _, checked)
-          ret._private.client.ontop = checked
-        end,
-        {
-          widget = wibox.widget.textbox,
-          markup = "<span font='Inter Regular 11'>On Top</span>"
-        }
-      },
-      {
-        widget = item,
-        checkbox = true,
-        id = "minimized",
-        on_release = function(_, _, _, checked)
-          ret._private.client.minimized = checked
-        end,
-        {
-          widget = wibox.widget.textbox,
-          markup = "<span font='Inter Regular 11'>Minimize</span>"
-        }
-      },
-      {
-        widget = item,
-        checkbox = true,
-        id = "maximized",
-        on_release = function(_, _, _, checked)
-          ret._private.client.maximized = checked
-        end,
-        {
-          widget = wibox.widget.textbox,
-          markup = "<span font='Inter Regular 11'>Maximize</span>"
-        }
-      },
+      ret._private.actions.sticky,
+      ret._private.actions.fullscreen,
+      ret._private.actions.ontop,
+      ret._private.actions.maximized,
+      ret._private.actions.minimized,
       {
         widget = item,
         on_release = function()
@@ -172,19 +140,6 @@ local function new(args)
       }
     }
   }
-
-  ret._private.actions = {}
-  for _, v in ipairs(
-    {
-      "sticky",
-      "fullscreen",
-      "ontop",
-      "minimized",
-      "maximized"
-    }
-  ) do
-    ret._private.actions[v] = ret._private.widget:get_children_by_id(v)[1]
-  end
 
   ret._private.backdrop =
     wibox {
