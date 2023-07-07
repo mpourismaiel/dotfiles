@@ -21,7 +21,6 @@ local function actions_widget(n)
   }
 
   for _, action in ipairs(n.actions) do
-    gears.debug.dump(action)
     local button =
       wibox.widget {
       widget = wibox.container.background,
@@ -82,7 +81,7 @@ end
 naughty.connect_signal(
   "request::display",
   function(n)
-    local screen = awful.screen.preferred()
+    local screen = awful.screen.focused()
     if not screen.notifications then
       screen.notifications = {}
     end
