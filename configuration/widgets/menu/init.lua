@@ -1,11 +1,8 @@
 local awful = require("awful")
 local wibox = require("wibox")
 local gears = require("gears")
-local cairo = require("lgi").cairo
 local filesystem = require("gears.filesystem")
-local animation = require("helpers.animation")
 local config = require("configuration.config")
-local theme = require("configuration.config.theme")
 
 local container = require("configuration.widgets.menu.container")
 local clock = require("configuration.widgets.menu.clock")
@@ -18,8 +15,8 @@ local prompt = require("configuration.widgets.menu.launcher.prompt")
 
 local config_dir = filesystem.get_configuration_dir()
 local menu_icon = config_dir .. "/images/circle.svg"
-local close_icon = config_dir .. "/images/x.svg"
 
+local tag_preview_instance = nil
 local menu = {mt = {}}
 
 function menu.new(screen)
@@ -147,7 +144,7 @@ function menu.new(screen)
     end
   }
 
-  tag_preview =
+  tag_preview_instance =
     tag_preview(
     {
       total_width = screen.geometry.width - config.dpi(400) - config.dpi(16) * 4,
@@ -266,7 +263,7 @@ function menu.new(screen)
             height = screen.geometry.height,
             width = screen.geometry.width - config.dpi(400) - config.dpi(16) * 4,
             strategy = "exact",
-            tag_preview.widget
+            tag_preview_instance.widget
           }
         }
       }
@@ -281,7 +278,7 @@ function menu.new(screen)
         launcher_prompt:stop()
         launcher:hide()
       else
-        tag_preview:show(screen)
+        tag_preview_instance:show(screen)
         launcher_prompt:start()
       end
       backdrop.visible = not backdrop.visible
