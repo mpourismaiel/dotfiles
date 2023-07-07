@@ -282,7 +282,6 @@ local function new()
   ret:connect_signal(
     "button::release",
     function(self, lx, ly, button, mods)
-      gears.debug.dump(wp.state)
       if wp.checkbox_enabled then
         wp.state = not wp.state
         if wp.state then

@@ -55,6 +55,7 @@ function client_menu:show(args)
     wp.popup.y = y - wp.popup.height
   end
 
+  wp.actions["floating"].value = wp.client.floating
   wp.actions["sticky"].value = wp.client.sticky
   wp.actions["fullscreen"].value = wp.client.fullscreen
   wp.actions["ontop"].value = wp.client.ontop
@@ -106,6 +107,7 @@ local function new(args)
   gears.table.crush(ret, client_menu)
 
   ret._private.actions = {
+    floating = new_action(ret, "floating", "Floating"),
     sticky = new_action(ret, "sticky", "Sticky"),
     fullscreen = new_action(ret, "fullscreen", "Fullscreen"),
     ontop = new_action(ret, "ontop", "Ontop"),
@@ -146,6 +148,7 @@ local function new(args)
           markup = "<span font='Inter Regular 11'>Tag</span>"
         }
       },
+      ret._private.actions.floating,
       ret._private.actions.sticky,
       ret._private.actions.fullscreen,
       ret._private.actions.ontop,
