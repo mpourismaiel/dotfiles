@@ -4,6 +4,8 @@ local gears = require("gears")
 local config = require("configuration.config")
 
 local item = require("configuration.widgets.client_menu.item")
+local simple_item = require("configuration.widgets.client_menu.simple_item")
+local dropdown = require("configuration.widgets.client_menu.dropdown")
 
 local instance = nil
 local client_menu = {
@@ -58,6 +60,8 @@ function client_menu:show(args)
   wp.actions["ontop"].value = wp.client.ontop
   wp.actions["minimized"].value = wp.client.minimized
   wp.actions["maximized"].value = wp.client.maximized
+  wp.tag_dropdown.value = wp.client.first_tag.name
+  wp.client_name.markup = "<span font='Inter Bold 11'>" .. wp.client.name .. "</span>"
 
   wp.popup.screen = s
   wp.popup.visible = true
@@ -116,12 +120,31 @@ local function new(args)
     strategy = "exact",
     {
       layout = wibox.layout.fixed.vertical,
-      spacing_widget = wibox.widget {
-        widget = wibox.widget.separator,
-        orientation = "horizontal",
-        forced_height = config.dpi(1),
-        opacity = 1,
-        color = "#000000ff"
+      {
+        widget = simple_item,
+        {
+          widget = wibox.widget.textbox,
+          id = "client_name"
+        }
+      },
+      {
+        widget = dropdown,
+        id = "tag_dropdown",
+        options = function()
+          local tags = {}
+          for _, t in ipairs(awful.screen.focused().tags) do
+            table.insert(tags, t.index)
+          end
+
+          return tags
+        end,
+        on_select = function(tag)
+          ret._private.client:move_to_tag(awful.screen.focused().tags[tag])
+        end,
+        {
+          widget = wibox.widget.textbox,
+          markup = "<span font='Inter Regular 11'>Tag</span>"
+        }
       },
       ret._private.actions.sticky,
       ret._private.actions.fullscreen,
@@ -140,6 +163,9 @@ local function new(args)
       }
     }
   }
+
+  ret._private.tag_dropdown = ret._private.widget:get_children_by_id("tag_dropdown")[1]
+  ret._private.client_name = ret._private.widget:get_children_by_id("client_name")[1]
 
   ret._private.backdrop =
     wibox {
