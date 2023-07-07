@@ -310,7 +310,6 @@ local function new()
     signals = {
       ["anim::animation_updated"] = function(s)
         wp.widget.bg = rgba2hex(s.subject.bg)
-        gears.debug.dump(s.subject)
         wp.dropdown_menu.height = s.subject.height
       end
     }
