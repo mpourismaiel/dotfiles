@@ -110,7 +110,7 @@ local function new(args)
     floating = new_action(ret, "floating", "Floating"),
     sticky = new_action(ret, "sticky", "Sticky"),
     fullscreen = new_action(ret, "fullscreen", "Fullscreen"),
-    ontop = new_action(ret, "ontop", "Ontop"),
+    ontop = new_action(ret, "ontop", "On Top"),
     maximized = new_action(ret, "maximized", "Maximized"),
     minimized = new_action(ret, "minimized", "Minimized")
   }
