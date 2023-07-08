@@ -95,7 +95,9 @@ naughty.connect_signal(
     n:set_timeout(4294967)
     n.anim_data = {y = 0, opacity = 0.0}
     local function placement_fn(w)
-      return awful.placement.bottom_right(w, {margins = {bottom = n.anim_data.y, right = 10}})
+      local result = awful.placement.bottom_right(w, {margins = {bottom = n.anim_data.y, right = 10}, pretend = true})
+      w.x = result.x
+      w.y = result.y
     end
 
     local w =
@@ -103,9 +105,8 @@ naughty.connect_signal(
       maximum_height = 200,
       width = 400,
       ontop = true,
-      bg = "#00000000",
+      bg = "#111111cc",
       opacity = n.anim_data.opacity,
-      placement = placement_fn,
       shape = function(cr, width, height)
         gears.shape.rounded_rect(cr, width, height, 8)
       end,
@@ -145,20 +146,16 @@ naughty.connect_signal(
             }
           },
           {
-            widget = wibox.container.background,
-            bg = "#111111cc",
+            layout = wibox.layout.fixed.vertical,
             {
-              layout = wibox.layout.fixed.vertical,
+              widget = wibox.container.margin,
+              margins = config.dpi(10),
               {
-                widget = wibox.container.margin,
-                margins = config.dpi(10),
-                {
-                  widget = wibox.widget.textbox,
-                  markup = "<span font='Inter Regular 11'>" .. escape_markup_string(n.message) .. "</span>"
-                }
-              },
-              actions_widget(n)
-            }
+                widget = wibox.widget.textbox,
+                markup = "<span font='Inter Regular 11'>" .. escape_markup_string(n.message) .. "</span>"
+              }
+            },
+            actions_widget(n)
           }
         }
       }
