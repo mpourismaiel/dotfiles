@@ -158,6 +158,7 @@ local function new(args)
         widget = item,
         on_release = function()
           ret._private.client:kill()
+          ret:hide()
         end,
         {
           widget = wibox.widget.textbox,
