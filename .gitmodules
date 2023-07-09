@@ -4,3 +4,6 @@
 [submodule "awesome-AnimationFramework"]
 	path = awesome-AnimationFramework
 	url = https://github.com/Aire-One/awesome-AnimationFramework
+[submodule "hudkit"]
+	path = hudkit
+	url = https://github.com/anko/hudkit.git
