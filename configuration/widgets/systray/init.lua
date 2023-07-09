@@ -17,16 +17,21 @@ function systray.new(screen)
   screen = screen == nil and awful.screen.focused() or screen
 
   local anim_data = {x = config.dpi(48), y = config.dpi(8), opacity = 0}
-  function placement_fn(c)
-    return awful.placement.bottom_left(
+  local function placement_fn(c)
+    local result =
+      awful.placement.bottom_left(
       c,
       {
         margins = {
           bottom = anim_data.y,
           left = anim_data.x
-        }
+        },
+        pretend = true
       }
     )
+
+    c.x = result.x
+    c.y = result.y
   end
 
   local w =
@@ -68,7 +73,6 @@ function systray.new(screen)
     shape = function(cr, w, h)
       return gears.shape.rounded_rect(cr, w, h, config.dpi(8))
     end,
-    placement = placement_fn,
     bg = "#111111ff",
     opacity = anim_data.opacity
   }
