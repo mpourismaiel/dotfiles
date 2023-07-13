@@ -89,7 +89,7 @@ function clock.new()
     },
     {
       widget = wibox.container.margin,
-      top = config.dpi(16),
+      top = config.dpi(4),
       {
         layout = wibox.layout.align.horizontal,
         weather,
