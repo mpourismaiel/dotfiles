@@ -13,8 +13,8 @@ function container.new(w, padding_left, padding_right, padding_top, padding_bott
       widget = wibox.container.margin,
       left = config.dpi(padding_left ~= nil and padding_left or 16),
       right = config.dpi(padding_right ~= nil and padding_right or 16),
-      top = config.dpi(padding_top ~= nil and padding_top or 16),
-      bottom = config.dpi(padding_bottom ~= nil and padding_bottom or 16),
+      top = config.dpi(padding_top ~= nil and padding_top or 12),
+      bottom = config.dpi(padding_bottom ~= nil and padding_bottom or 12),
       w
     }
   }
