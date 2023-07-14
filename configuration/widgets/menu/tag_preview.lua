@@ -1,7 +1,8 @@
 local wibox = require("wibox")
 local awful = require("awful")
-local helpers = require("bling.helpers")
 local gears = require("gears")
+local beautiful = require("beautiful")
+local helpers = require("bling.helpers")
 local config = require("configuration.config")
 local theme = require("configuration.config.theme")
 local cairo = require("lgi").cairo
@@ -104,7 +105,8 @@ local function draw_widget(c, widget_width, widget_height)
     w.markup =
       "<span font='" ..
       theme.font ..
-        "' foreground='#ffffff'>" .. c.name:gsub("&", "&amp;"):gsub("<", "&lt;"):gsub(">", "&gt;") .. "</span>"
+        "' foreground='" ..
+          beautiful.fg_primary .. "'>" .. c.name:gsub("&", "&amp;"):gsub("<", "&lt;"):gsub(">", "&gt;") .. "</span>"
   end
 
   for _, w in ipairs(widget:get_children_by_id("icon_role")) do

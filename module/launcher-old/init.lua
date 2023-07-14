@@ -1,8 +1,6 @@
-local gears = require("gears")
 local awful = require("awful")
-local wibox = require("wibox")
+local beautiful = require("beautiful")
 local list = require("module.launcher.list")
-local config = require("configuration.config")
 local theme = require("configuration.config.theme")
 local launcher_widget_template = require("module.launcher.widget")
 local filesystem = require("gears.filesystem")
@@ -21,9 +19,13 @@ function launcher.new(screen)
   local update_query_input = function()
     launcher.input_select.bg = select_all and "#0000ff" or "#00000000"
     if query == nil or query == "" then
-      launcher.input:set_markup("<span foreground='#cccccc' font='Inter Regular 12'>Search...</span>")
+      launcher.input:set_markup(
+        "<span foreground='" .. beautiful.fg_normal .. "' font='Inter Regular 12'>Search...</span>"
+      )
     else
-      launcher.input:set_markup("<span foreground='#ffffff' font='Inter Regular 12'>" .. query .. "</span>")
+      launcher.input:set_markup(
+        "<span foreground='" .. beautiful.fg_primary .. "' font='Inter Regular 12'>" .. query .. "</span>"
+      )
     end
     app_list:emit_signal("launcher:list:update", (query == nil and "" or query), 0, selected)
   end

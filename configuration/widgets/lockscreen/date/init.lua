@@ -5,7 +5,7 @@ local date = {mt = {}}
 function date.new()
   return wibox.widget {
     widget = wibox.widget.textclock,
-    format = "<span font_size='35pt' color='#cccccc'>%F</span>"
+    format = "<span font_size='35pt' color='" .. beautiful.fg_normal .. "'>%F</span>"
   }
 end
 

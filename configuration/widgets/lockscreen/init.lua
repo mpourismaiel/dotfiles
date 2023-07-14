@@ -1,6 +1,7 @@
 local awful = require("awful")
 local wibox = require("wibox")
 local gears = require("gears")
+local beautiful = require("beautiful")
 local config = require("configuration.config")
 local helpers = require("module.helpers")
 local global_state = require("configuration.config.global_state")
@@ -26,12 +27,14 @@ function lockscreen.new(s)
   notifications_count.update_text = function(n)
     if n > 0 then
       notifications_count:set_markup(
-        "<span font='Inter' font_size='10pt' color='#ffffffaa'>" .. n .. " New Notifications</span>"
+        "<span font='Inter' font_size='10pt' color='" .. beautiful.fg_normal .. "'>" .. n .. " New Notifications</span>"
       )
       return
     end
 
-    notifications_count:set_markup("<span font='Inter' font_size='10pt' color='#ffffff88'>No New Notifications</span>")
+    notifications_count:set_markup(
+      "<span font='Inter' font_size='10pt' color='" .. beautiful.fg_normal .. "'>No New Notifications</span>"
+    )
   end
   global_state.cache.listen(
     "notifications",
@@ -54,14 +57,16 @@ function lockscreen.new(s)
     username_margin = 0
   else
     username_text:set_markup(
-      "<span font='Inter Bold' font_size='11pt' color='#ffffff'>" ..
-        username:gsub(
-          "(%l)(%w*)",
-          function(a, b)
-            return string.upper(a) .. b
-          end
-        ) ..
-          "</span>"
+      "<span font='Inter Bold' font_size='11pt' color='" ..
+        beautiful.fg_primary ..
+          "'>" ..
+            username:gsub(
+              "(%l)(%w*)",
+              function(a, b)
+                return string.upper(a) .. b
+              end
+            ) ..
+              "</span>"
     )
   end
 
@@ -179,11 +184,13 @@ function lockscreen.new(s)
     end
 
     if pw == "" then
-      text:set_markup("<span font='Inter' font_size='10pt' color='#ffffff99'>Please input your password...</span>")
+      text:set_markup(
+        "<span font='Inter' font_size='10pt' color='" .. beautiful.fg_normal .. "'>Please input your password...</span>"
+      )
       return
     end
 
-    text:set_markup("<span font='Inter' font_size='6pt' color='#ffffffff'>" .. pw .. "</span>")
+    text:set_markup("<span font='Inter' font_size='6pt' color='" .. beautiful.fg_primary .. "'>" .. pw .. "</span>")
   end
 
   local type_again = true
@@ -306,7 +313,9 @@ function lockscreen.new(s)
   awesome.connect_signal(
     "module::lockscreen:fail",
     function()
-      text:set_markup("<span font='Inter' color='#dc2626' font_size='10pt'><b>Failed to login</b></span>")
+      text:set_markup(
+        "<span font='Inter' color='" .. beautiful.fg_error .. "' font_size='10pt'><b>Failed to login</b></span>"
+      )
 
       gears.timer.start_new(
         2,

@@ -1,6 +1,7 @@
 local wibox = require("wibox")
 local awful = require("awful")
 local gears = require("gears")
+local beautiful = require("beautiful")
 local config = require("configuration.config")
 local global_state = require("configuration.config.global_state")
 local container = require("configuration.widgets.menu.container")
@@ -22,7 +23,7 @@ local clear_notifications =
   halign = "middle",
   {
     widget = wibox.widget.textbox,
-    markup = "<span color='#aaaaaa' font_size='10pt' font_weight='normal'>Clear all</span>"
+    markup = "<span color='" .. beautiful.fg_normal .. "' font_size='10pt' font_weight='normal'>Clear all</span>"
   }
 }
 
@@ -60,7 +61,8 @@ local notifications =
   render_list = list.render_list,
   empty_widget = {
     widget = wibox.widget.textbox,
-    markup = "<span color='#ffffffaa' font_size='12pt' font_weight='normal'>No new notifications</span>"
+    markup = "<span color='" ..
+      beautiful.fg_normal .. "' font_size='12pt' font_weight='normal'>No new notifications</span>"
   },
   template = function()
     local template = {
@@ -130,8 +132,12 @@ local notifications =
     }
   end,
   render_template = function(cached, data)
-    cached.title:set_markup("<span font_size='12pt' font_weight='bold' color='#ffffff'>" .. data.title .. "</span>")
-    cached.text:set_markup("<span font_size='10pt' font_weight='normal' color='#ffffff'>" .. data.message .. "</span>")
+    cached.title:set_markup(
+      "<span font_size='12pt' font_weight='bold' color='" .. beautiful.fg_primary .. "'>" .. data.title .. "</span>"
+    )
+    cached.text:set_markup(
+      "<span font_size='10pt' font_weight='normal' color='" .. beautiful.fg_primary .. "'>" .. data.message .. "</span>"
+    )
 
     if data.icon then
       local icon = gears.surface.load_silently(data.icon)
@@ -205,7 +211,7 @@ local notifications_widget = {
     layout = wibox.layout.align.horizontal,
     {
       widget = wibox.widget.textbox,
-      markup = "<span font='Inter bold 14' color='#ffffff'>Notifications</span>"
+      markup = "<span font='Inter bold 14' color='" .. beautiful.fg_primary .. "'>Notifications</span>"
     },
     nil,
     clear_notifications

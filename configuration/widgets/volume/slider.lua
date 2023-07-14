@@ -1,8 +1,8 @@
 local wibox = require("wibox")
 local gears = require("gears")
 local awful = require("awful")
+local beautiful = require("beautiful")
 local config = require("configuration.config")
-local theme = require("configuration.config.theme")
 local clickable_container = require("configuration.widgets.clickable-container")
 
 local spawn = awful.spawn
@@ -12,7 +12,7 @@ local volume_icon = config_dir .. "/images/volume-high.svg"
 
 local action_name =
   wibox.widget {
-  markup = "<span color='#ffffff'>Volume</span>",
+  markup = "<span color='" .. beautiful.fg_primary .. "'>Volume</span>",
   font = "Inter Bold 12",
   align = "left",
   widget = wibox.widget.textbox

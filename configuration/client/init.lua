@@ -4,6 +4,7 @@ local capi = {
 local awful = require("awful")
 local wibox = require("wibox")
 local gears = require("gears")
+local beautiful = require("beautiful")
 local config = require("configuration.config")
 local theme = require("configuration.config.theme")
 local filesystem = require("gears.filesystem")
@@ -42,7 +43,8 @@ local function client_title_widget(c)
 
   local function update()
     ret:set_markup(
-      "<span font_size='9pt' color='#ffffffaa'>" .. gears.string.xml_escape(c.name or "unknown") .. "</span>"
+      "<span font_size='9pt' color='" ..
+        beautiful.fg_normal .. "'>" .. gears.string.xml_escape(c.name or "unknown") .. "</span>"
     )
   end
   ret.update = update

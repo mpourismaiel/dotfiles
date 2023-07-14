@@ -2,8 +2,8 @@ local capi = {button = button, client = client}
 local awful = require("awful")
 local wibox = require("wibox")
 local gears = require("gears")
+local beautiful = require("beautiful")
 local config = require("configuration.config")
-local bench = require("helpers.bench")
 local lgi = require("lgi")
 local GLib = lgi.GLib
 local icon_theme = require("helpers.icon_theme")()
@@ -63,8 +63,8 @@ local function set_title(c, tb)
   local escaped_text = GLib.markup_escape_text(c.name, -1)
   set_markup_safely(
     tb,
-    string.format("<span color='#ffffff' font='Inter Medium 11'>%s</span>", escaped_text),
-    string.format("<span color='#ffffff' font='Inter Medium 11'>%s</span>", c.class)
+    string.format("<span color='" .. beautiful.fg_primary .. "' font='Inter Medium 11'>%s</span>", escaped_text),
+    string.format("<span color='" .. beautiful.fg_primary .. "' font='Inter Medium 11'>%s</span>", c.class)
   )
 end
 
@@ -241,7 +241,7 @@ function tasklist.render(w, buttons, label, widgets_cache, objects, args)
               {
                 widget = wibox.widget.textbox,
                 id = "title",
-                markup = "<span color='#dddddd' font='Inter Medium 11'>" .. c.class .. "</span>"
+                markup = "<span color='" .. beautiful.fg_primary .. "' font='Inter Medium 11'>" .. c.class .. "</span>"
               }
             }
           }

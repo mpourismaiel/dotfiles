@@ -176,7 +176,9 @@ function launcher.renderApps(w, buttons, data, objects, args)
       end
 
       cache.icon:set_image(o.icon)
-      cache.label:set_markup("<span color='#ffffff' font='Inter Bold 10'><b>" .. o.name .. "</b></span>")
+      cache.label:set_markup(
+        "<span color='" .. beautiful.fg_primary .. "' font='Inter Bold 10'><b>" .. o.name .. "</b></span>"
+      )
       cache.select_indicator.bg = o.selected and "#ffffff33" or "#00000000"
 
       row:add(cache.primary)
