@@ -1,4 +1,5 @@
 local wibox = require("wibox")
+local beautiful = require("beautiful")
 
 local clock = {mt = {}}
 
@@ -9,7 +10,7 @@ function clock.new()
       widget = wibox.container.place,
       {
         widget = wibox.widget.textclock,
-        format = "<b><span font_size='12.5pt' color='#cccccc'>%H</span></b>"
+        format = "<b><span font_size='12.5pt' color='" .. beautiful.fg_normal .. "'>%H</span></b>"
       }
     },
     {

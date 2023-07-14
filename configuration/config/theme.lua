@@ -16,7 +16,9 @@ theme.bg_minimize = "#444444"
 theme.bg_systray = "#111111ff"
 theme.systray_icon_spacing = config.dpi(16)
 
-theme.fg_normal = "#aaaaaa"
+theme.fg_normal = "#cccccc"
+theme.fg_primary = "#ffffff"
+theme.fg_error = "#dc2626"
 theme.fg_focus = "#ffffff"
 theme.fg_urgent = "#ffffff"
 theme.fg_minimize = "#ffffff"

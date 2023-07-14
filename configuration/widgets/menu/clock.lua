@@ -1,4 +1,5 @@
 local wibox = require("wibox")
+local beautiful = require("beautiful")
 local config = require("configuration.config")
 
 local clock = {mt = {}}
@@ -62,8 +63,10 @@ function clock.new()
       end
 
       icon.image = icon_widget
-      temp.markup = "<b><span color='#ffffff' font_size='16pt'>" .. temperature .. weather_temp_symbol .. "</span></b>"
-      desc.markup = "<span color='#ffffff' font_size='12pt'>" .. description .. "</span>"
+      temp.markup =
+        "<b><span color='" ..
+        beautiful.fg_primary .. "' font_size='16pt'>" .. temperature .. weather_temp_symbol .. "</span></b>"
+      desc.markup = "<span color='" .. beautiful.fg_primary .. "' font_size='12pt'>" .. description .. "</span>"
 
       if temperature and temperature ~= 999 then
         weather.visible = true
@@ -79,12 +82,12 @@ function clock.new()
       layout = wibox.layout.align.horizontal,
       {
         widget = wibox.widget.textclock,
-        format = "<b><span font_size='12pt' color='#eeeeee'>%A</span></b>"
+        format = "<b><span font_size='12pt' color='" .. beautiful.fg_normal .. "'>%A</span></b>"
       },
       nil,
       {
         widget = wibox.widget.textclock,
-        format = "<b><span font_size='12pt' color='#eeeeee'>%F</span></b>"
+        format = "<b><span font_size='12pt' color='" .. beautiful.fg_normal .. "'>%F</span></b>"
       }
     },
     {
@@ -96,7 +99,7 @@ function clock.new()
         nil,
         {
           widget = wibox.widget.textclock,
-          format = "<span font_size='40pt' color='#ffffff'>%H:%M</span>"
+          format = "<span font_size='40pt' color='" .. beautiful.fg_primary .. "'>%H:%M</span>"
         }
       }
     }
