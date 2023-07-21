@@ -1,10 +1,10 @@
 local awful = require("awful")
 local wibox = require("wibox")
 local gears = require("gears")
-local beautiful = require("beautiful")
 local config = require("configuration.config")
 local helpers = require("module.helpers")
 local global_state = require("configuration.config.global_state")
+local theme = require("configuration.config.theme")
 
 local lockscreen = {mt = {}}
 
@@ -27,13 +27,13 @@ function lockscreen.new(s)
   notifications_count.update_text = function(n)
     if n > 0 then
       notifications_count:set_markup(
-        "<span font='Inter' font_size='10pt' color='" .. beautiful.fg_normal .. "'>" .. n .. " New Notifications</span>"
+        "<span font='Inter' font_size='10pt' color='" .. theme.fg_normal .. "'>" .. n .. " New Notifications</span>"
       )
       return
     end
 
     notifications_count:set_markup(
-      "<span font='Inter' font_size='10pt' color='" .. beautiful.fg_normal .. "'>No New Notifications</span>"
+      "<span font='Inter' font_size='10pt' color='" .. theme.fg_normal .. "'>No New Notifications</span>"
     )
   end
   global_state.cache.listen(
@@ -58,7 +58,7 @@ function lockscreen.new(s)
   else
     username_text:set_markup(
       "<span font='Inter Bold' font_size='11pt' color='" ..
-        beautiful.fg_primary ..
+        theme.fg_primary ..
           "'>" ..
             username:gsub(
               "(%l)(%w*)",
@@ -185,12 +185,12 @@ function lockscreen.new(s)
 
     if pw == "" then
       text:set_markup(
-        "<span font='Inter' font_size='10pt' color='" .. beautiful.fg_normal .. "'>Please input your password...</span>"
+        "<span font='Inter' font_size='10pt' color='" .. theme.fg_normal .. "'>Please input your password...</span>"
       )
       return
     end
 
-    text:set_markup("<span font='Inter' font_size='6pt' color='" .. beautiful.fg_primary .. "'>" .. pw .. "</span>")
+    text:set_markup("<span font='Inter' font_size='6pt' color='" .. theme.fg_primary .. "'>" .. pw .. "</span>")
   end
 
   local type_again = true
@@ -314,7 +314,7 @@ function lockscreen.new(s)
     "module::lockscreen:fail",
     function()
       text:set_markup(
-        "<span font='Inter' color='" .. beautiful.fg_error .. "' font_size='10pt'><b>Failed to login</b></span>"
+        "<span font='Inter' color='" .. theme.fg_error .. "' font_size='10pt'><b>Failed to login</b></span>"
       )
 
       gears.timer.start_new(
