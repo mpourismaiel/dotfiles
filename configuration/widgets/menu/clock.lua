@@ -62,14 +62,14 @@ function clock.new()
         weather_temp_symbol = "°F"
       end
 
-      icon.image = icon_widget
-      temp.markup =
-        "<b><span color='" ..
-        theme.fg_primary .. "' font_size='16pt'>" .. temperature .. weather_temp_symbol .. "</span></b>"
-      desc.markup = "<span color='" .. theme.fg_primary .. "' font_size='12pt'>" .. description .. "</span>"
-
       if temperature and temperature ~= 999 then
         weather.visible = true
+
+        icon.image = icon_widget
+        temp.markup =
+          "<b><span color='" ..
+          theme.fg_primary .. "' font_size='16pt'>" .. temperature .. weather_temp_symbol .. "</span></b>"
+        desc.markup = "<span color='" .. theme.fg_primary .. "' font_size='12pt'>" .. description .. "</span>"
       else
         weather.visible = false
       end

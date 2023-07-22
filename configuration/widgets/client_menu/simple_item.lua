@@ -1,7 +1,6 @@
 local wibox = require("wibox")
 local gears = require("gears")
 local config = require("configuration.config")
-local animation = require("helpers.animation")
 
 local item = {mt = {}}
 

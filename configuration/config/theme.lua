@@ -9,7 +9,10 @@ local theme = {}
 
 theme.font = "Inter Regular 10"
 
-theme.bg_normal = "#222222"
+theme.bg_normal = "#111111ff"
+theme.bg_primary = "#222222"
+theme.bg_hover = "#333333"
+theme.bg_press = "#3f3f3f"
 theme.bg_focus = "#535d6c"
 theme.bg_urgent = "#ff0000"
 theme.bg_minimize = "#444444"
@@ -18,10 +21,21 @@ theme.systray_icon_spacing = config.dpi(16)
 
 theme.fg_normal = "#cccccc"
 theme.fg_primary = "#ffffff"
+theme.fg_press = "#ffffff"
 theme.fg_error = "#dc2626"
 theme.fg_focus = "#ffffff"
 theme.fg_urgent = "#ffffff"
 theme.fg_minimize = "#ffffff"
+
+theme.rounded_rect_normal = config.dpi(6)
+
+theme.button_shape = "rounded"
+theme.button_halign = "center"
+theme.button_valign = "center"
+theme.button_margin_left = config.dpi(20)
+theme.button_margin_right = config.dpi(20)
+theme.button_margin_top = config.dpi(10)
+theme.button_margin_bottom = config.dpi(10)
 
 theme.useless_gap = config.dpi(0)
 theme.border_width = config.dpi(0)

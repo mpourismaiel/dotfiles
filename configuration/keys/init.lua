@@ -16,16 +16,7 @@ awful.keyboard.append_global_keybindings(
       },
       "w",
       function()
-        naughty.notification {
-          title = "Boss asdfasdf!!",
-          app_icon = "/usr/share/icons/hicolor/48x48/apps/google-chrome.png",
-          text = "Am done with the execution",
-          actions = {
-            naughty.action {
-              name = "Confirm"
-            }
-          }
-        }
+        awesome.emit_signal("module::debug::toggle")
       end
     ),
     awful.key(

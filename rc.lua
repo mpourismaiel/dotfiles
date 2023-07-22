@@ -3,19 +3,11 @@
 -- found (e.g. lgi). If LuaRocks is not installed, do nothing.
 pcall(require, "luarocks.loader")
 
-local gears = require("gears")
-local awful = require("awful")
 require("awful.autofocus")
 
-local filesystem = require("gears.filesystem")
-local config_dir = filesystem.get_configuration_dir()
-
-local wibox = require("wibox")
 local beautiful = require("beautiful")
 local naughty = require("naughty")
-local ruled = require("ruled")
 local bling = require("bling")
-local menubar = require("menubar")
 local helpers = require("module.helpers")
 
 require("configuration.tags")
@@ -44,6 +36,7 @@ beautiful.init(theme)
 
 require("module.autostart")
 require("module.weather")
+require("module.debug")
 require("configuration.bling")
 local widgets = require("configuration.widgets")
 
