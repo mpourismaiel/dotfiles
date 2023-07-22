@@ -49,7 +49,7 @@ local widgets = require("configuration.widgets")
 
 bling.module.wallpaper.setup {
   wallpaper = {beautiful.wallpaper},
-  position = "fit"
+  position = "maximized"
 }
 
 screen.connect_signal(
