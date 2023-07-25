@@ -7,3 +7,6 @@
 [submodule "hudkit"]
 	path = hudkit
 	url = https://github.com/anko/hudkit.git
+[submodule "lua-color"]
+	path = lua-color
+	url = git@github.com:Kasper24/lua-color.git
