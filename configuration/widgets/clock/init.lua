@@ -1,23 +1,35 @@
 local wibox = require("wibox")
 local beautiful = require("beautiful")
+local theme = require("configuration.config.theme")
+local wbutton = require("configuration.widgets.button")
 
 local clock = {mt = {}}
 
 function clock.new()
   return wibox.widget {
-    layout = wibox.layout.fixed.vertical,
+    widget = wbutton,
+    margin = theme.bar_padding,
+    bg_normal = theme.bg_normal,
+    bg_hover = theme.bg_primary,
+    paddings = 0,
+    padding_top = 8,
+    padding_bottom = 8,
+    valign = "center",
     {
-      widget = wibox.container.place,
+      layout = wibox.layout.fixed.vertical,
       {
-        widget = wibox.widget.textclock,
-        format = "<b><span font_size='12.5pt' color='" .. beautiful.fg_normal .. "'>%H</span></b>"
-      }
-    },
-    {
-      widget = wibox.container.place,
+        widget = wibox.container.place,
+        {
+          widget = wibox.widget.textclock,
+          format = "<b><span font_size='12.5pt' color='" .. beautiful.fg_normal .. "'>%H</span></b>"
+        }
+      },
       {
-        widget = wibox.widget.textclock,
-        format = "<span font_size='13pt'>%M</span>"
+        widget = wibox.container.place,
+        {
+          widget = wibox.widget.textclock,
+          format = "<span font_size='13pt'>%M</span>"
+        }
       }
     }
   }

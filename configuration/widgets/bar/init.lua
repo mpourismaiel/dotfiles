@@ -3,12 +3,14 @@ local wibox = require("wibox")
 
 local bar_widget_wrapper = require("configuration.widgets.bar.widget-wrapper")
 local config = require("configuration.config")
+local theme = require("configuration.config.theme")
 local menu = require("configuration.widgets.menu")
 local taglist = require("configuration.widgets.taglist")
 local tasklist = require("configuration.widgets.tasklist")
 local layoutbox = require("configuration.widgets.layoutbox")
 local systray = require("configuration.widgets.systray")
 local clock = require("configuration.widgets.clock")
+local wbutton = require("configuration.widgets.button")
 
 local bar = {mt = {}}
 
@@ -17,7 +19,7 @@ function bar.new(screen)
     position = "left",
     width = 48,
     screen = screen,
-    bg = "#111111ff",
+    bg = theme.bg_normal,
     widget = {
       layout = wibox.layout.stack,
       {
@@ -28,8 +30,17 @@ function bar.new(screen)
           menu.new(screen),
           {
             widget = wibox.container.margin,
-            top = config.dpi(9),
-            taglist.new(screen)
+            top = config.dpi(4),
+            {
+              widget = wbutton,
+              margin = theme.bar_padding,
+              bg_normal = theme.bg_normal,
+              bg_hover = theme.bg_primary,
+              paddings = 0,
+              padding_top = 8,
+              padding_bottom = 8,
+              taglist.new(screen)
+            }
           }
         }
       },
@@ -47,9 +58,9 @@ function bar.new(screen)
           bottom = config.dpi(9),
           {
             layout = wibox.layout.fixed.vertical,
-            bar_widget_wrapper(clock.new()),
-            bar_widget_wrapper(layoutbox.new(screen)),
-            bar_widget_wrapper(systray.new())
+            clock.new(),
+            layoutbox.new(screen),
+            systray.new()
           }
         }
       }

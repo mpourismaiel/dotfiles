@@ -3,6 +3,7 @@ local wibox = require("wibox")
 local gears = require("gears")
 local filesystem = require("gears.filesystem")
 local config = require("configuration.config")
+local theme = require("configuration.config.theme")
 
 local container = require("configuration.widgets.menu.container")
 local clock = require("configuration.widgets.menu.clock")
@@ -12,6 +13,7 @@ local volumeslider = require("configuration.widgets.volume.slider")
 local tag_preview = require("configuration.widgets.menu.tag_preview")
 local launcher = require("configuration.widgets.menu.launcher")()
 local prompt = require("configuration.widgets.menu.launcher.prompt")
+local wbutton = require("configuration.widgets.button")
 
 local config_dir = filesystem.get_configuration_dir()
 local menu_icon = config_dir .. "/images/circle.svg"
@@ -25,42 +27,21 @@ function menu.new(screen)
     strategy = "exact",
     height = config.dpi(48),
     {
-      id = "background",
-      widget = wibox.container.background,
-      bar_widget_wrapper(
-        wibox.widget {
-          widget = wibox.container.margin,
-          margins = config.dpi(4),
-          wibox.widget.imagebox(menu_icon)
-        }
-      )
-    },
-    buttons = {
-      awful.button(
-        {},
-        1,
-        function()
-          awesome.emit_signal("widget::drawer:toggle")
-        end
-      )
+      widget = wbutton,
+      margin = theme.bar_padding,
+      paddings = 12,
+      bg_normal = theme.bg_normal,
+      bg_hover = theme.bg_primary,
+      callback = function()
+        awesome.emit_signal("widget::drawer:toggle")
+      end,
+      {
+        widget = wibox.widget.imagebox(menu_icon)
+      }
     }
   }
 
   local toggle = wibox.widget.base.make_widget_from_value(toggle_template)
-  local background = toggle:get_children_by_id("background")[1]
-
-  toggle:connect_signal(
-    "mouse::enter",
-    function()
-      background.bg = "#eeeeee30"
-    end
-  )
-  toggle:connect_signal(
-    "mouse::leave",
-    function()
-      background.bg = ""
-    end
-  )
 
   local backdrop =
     wibox {
@@ -96,16 +77,11 @@ function menu.new(screen)
     end
   }
 
-  backdrop:buttons(
-    awful.util.table.join(
-      awful.button(
-        {},
-        1,
-        function()
-          awesome.emit_signal("widget::drawer:hide")
-        end
-      )
-    )
+  backdrop:connect_signal(
+    "button::release",
+    function()
+      awesome.emit_signal("widget::drawer:hide")
+    end
   )
 
   local args = {}

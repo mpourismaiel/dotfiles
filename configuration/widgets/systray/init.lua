@@ -3,9 +3,11 @@ local gears = require("gears")
 local wibox = require("wibox")
 local animation = require("helpers.animation")
 local config = require("configuration.config")
+local theme = require("configuration.config.theme")
 local filesystem = require("gears.filesystem")
 local keyboardlayout = require("configuration.widgets.keyboardlayout")
 local bluetooth = require("configuration.widgets.bar.bluetooth")
+local wbutton = require("configuration.widgets.button")
 
 local config_dir = filesystem.get_configuration_dir()
 local chevron_right = config_dir .. "/images/chevron-right.svg"
@@ -47,20 +49,47 @@ function systray.new(screen)
         margins = config.dpi(2),
         {
           layout = wibox.layout.fixed.vertical,
-          spacing = config.dpi(12),
-          wibox.container.place(
+          {
+            widget = wibox.container.margin,
+            bottom = 8,
+            wibox.container.place(
+              {
+                base_size = config.dpi(16),
+                horizontal = false,
+                screen = screen,
+                visible = true,
+                widget = wibox.widget.systray
+              },
+              "center",
+              "center"
+            )
+          },
+          {
+            widget = wbutton,
+            margin = theme.bar_padding,
+            bg_normal = theme.bg_normal,
+            bg_hover = theme.bg_primary,
+            paddings = 8,
             {
-              base_size = config.dpi(16),
-              horizontal = false,
-              screen = screen,
-              visible = true,
-              widget = wibox.widget.systray
-            },
-            "center",
-            "center"
-          ),
-          wibox.container.place(bluetooth, "center", "center"),
-          wibox.container.place(keyboardlayout, "center", "center")
+              widget = bluetooth
+            }
+          },
+          {
+            widget = wibox.container.constraint,
+            strategy = "exact",
+            width = config.dpi(64),
+            height = config.dpi(64),
+            {
+              widget = wbutton,
+              margin = theme.bar_padding,
+              bg_normal = theme.bg_normal,
+              bg_hover = theme.bg_primary,
+              paddings = 0,
+              {
+                widget = keyboardlayout
+              }
+            }
+          }
         }
       }
     },
@@ -68,8 +97,6 @@ function systray.new(screen)
     visible = false,
     type = "dialog",
     screen = screen,
-    width = config.dpi(400),
-    height = screen.geometry.height - config.dpi(16),
     shape = function(cr, w, h)
       return gears.shape.rounded_rect(cr, w, h, config.dpi(8))
     end,
@@ -81,21 +108,16 @@ function systray.new(screen)
   toggle_image.image = chevron_right
   local toggle =
     wibox.widget {
-    widget = wibox.container.margin,
-    top = config.dpi(8),
+    widget = wbutton,
+    margin = theme.bar_padding,
+    bg_normal = theme.bg_normal,
+    bg_hover = theme.bg_primary,
+    paddings = 8,
+    callback = function()
+      awesome.emit_signal("widget::systray:toggle")
+    end,
     toggle_image
   }
-
-  toggle.buttons =
-    require("gears").table.join(
-    awful.button(
-      {},
-      1,
-      function()
-        awesome.emit_signal("widget::systray:toggle")
-      end
-    )
-  )
 
   local anim =
     animation {
