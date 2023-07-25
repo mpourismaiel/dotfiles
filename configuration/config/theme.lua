@@ -11,14 +11,15 @@ theme.font_name = "Inter"
 theme.font_size = config.dpi(10)
 theme.font = theme.font_name .. " Regular " .. theme.font_size
 
-theme.bg_normal = "#111111ff"
+theme.bg_normal = "#111111"
 theme.bg_primary = "#222222"
+theme.bg_secondary = "#181818"
 theme.bg_hover = "#333333"
 theme.bg_press = "#3f3f3f"
 theme.bg_focus = "#535d6c"
 theme.bg_urgent = "#ff0000"
 theme.bg_minimize = "#444444"
-theme.bg_systray = "#111111ff"
+theme.bg_systray = theme.bg_secondary
 theme.systray_icon_spacing = config.dpi(16)
 
 theme.fg_normal = "#cccccc"
@@ -40,6 +41,14 @@ theme.button_padding_top = config.dpi(10)
 theme.button_padding_bottom = config.dpi(10)
 
 theme.bar_padding = config.dpi(3)
+
+theme.menu_position = "bottom_left"
+theme.menu_vertical_spacing = config.dpi(12)
+theme.menu_horizontal_spacing = config.dpi(12)
+theme.menu_container_padding_left = config.dpi(16)
+theme.menu_container_padding_right = config.dpi(16)
+theme.menu_container_padding_top = config.dpi(12)
+theme.menu_container_padding_bottom = config.dpi(12)
 
 theme.useless_gap = config.dpi(0)
 theme.border_width = config.dpi(0)

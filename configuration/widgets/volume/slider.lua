@@ -4,6 +4,7 @@ local awful = require("awful")
 local beautiful = require("beautiful")
 local config = require("configuration.config")
 local clickable_container = require("configuration.widgets.clickable-container")
+local wcontainer = require("configuration.widgets.menu.container")
 
 local spawn = awful.spawn
 local dpi = config.dpi
@@ -161,20 +162,23 @@ awesome.connect_signal(
 
 local volume_setting =
   wibox.widget {
-  layout = wibox.layout.fixed.vertical,
-  spacing = dpi(20),
+  widget = wcontainer,
   {
-    layout = wibox.layout.fixed.horizontal,
-    spacing = dpi(5),
+    layout = wibox.layout.fixed.vertical,
+    spacing = dpi(20),
     {
       layout = wibox.layout.fixed.horizontal,
-      forced_height = dpi(36),
-      forced_width = dpi(36),
-      action_level
+      spacing = dpi(5),
+      {
+        layout = wibox.layout.fixed.horizontal,
+        forced_height = dpi(36),
+        forced_width = dpi(36),
+        action_level
+      },
+      action_name
     },
-    action_name
-  },
-  slider
+    slider
+  }
 }
 
 return volume_setting

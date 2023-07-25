@@ -3,8 +3,9 @@ local awful = require("awful")
 local gears = require("gears")
 local beautiful = require("beautiful")
 local config = require("configuration.config")
+local theme = require("configuration.config.theme")
 local global_state = require("configuration.config.global_state")
-local container = require("configuration.widgets.menu.container")
+local wcontainer = require("configuration.widgets.menu.container")
 local list = require("configuration.widgets.list")
 
 function table.slice(tbl, first, last, step)
@@ -66,61 +67,67 @@ local notifications =
   },
   template = function()
     local template = {
-      layout = wibox.layout.fixed.horizontal,
-      fill_space = true,
+      widget = wcontainer,
+      bg = theme.bg_normal,
+      padding_left = config.dpi(8),
+      padding_right = config.dpi(8),
       {
-        widget = wibox.container.margin,
-        right = config.dpi(16),
-        id = "image_container",
+        layout = wibox.layout.fixed.horizontal,
+        fill_space = true,
         {
-          widget = wibox.container.place,
-          valign = "top",
-          {
-            widget = wibox.widget.imagebox,
-            forced_height = config.dpi(32),
-            forced_width = config.dpi(32),
-            id = "image"
-          }
-        }
-      },
-      {
-        layout = wibox.layout.fixed.vertical,
-        spacing = config.dpi(8),
-        {
-          layout = wibox.layout.stack,
+          widget = wibox.container.margin,
+          right = config.dpi(16),
+          id = "image_container",
           {
             widget = wibox.container.place,
-            halign = "left",
             valign = "top",
             {
-              widget = wibox.widget.textbox,
-              id = "title"
-            }
-          },
-          {
-            widget = wibox.container.place,
-            halign = "right",
-            valign = "top",
-            {
-              widget = wibox.container.margin,
-              margins = config.dpi(4),
-              id = "close",
-              {
-                widget = wibox.widget.imagebox,
-                forced_height = config.dpi(16),
-                forced_width = config.dpi(16),
-                image = close_icon
-              }
+              widget = wibox.widget.imagebox,
+              forced_height = config.dpi(32),
+              forced_width = config.dpi(32),
+              id = "image"
             }
           }
         },
         {
-          widget = wibox.widget.textbox,
-          id = "text"
+          layout = wibox.layout.fixed.vertical,
+          spacing = config.dpi(8),
+          {
+            layout = wibox.layout.stack,
+            {
+              widget = wibox.container.place,
+              halign = "left",
+              valign = "top",
+              {
+                widget = wibox.widget.textbox,
+                id = "title"
+              }
+            },
+            {
+              widget = wibox.container.place,
+              halign = "right",
+              valign = "top",
+              {
+                widget = wibox.container.margin,
+                margins = config.dpi(4),
+                id = "close",
+                {
+                  widget = wibox.widget.imagebox,
+                  forced_height = config.dpi(16),
+                  forced_width = config.dpi(16),
+                  image = close_icon
+                }
+              }
+            }
+          },
+          {
+            widget = wibox.widget.textbox,
+            id = "text"
+          }
         }
       }
     }
-    local l = wibox.widget.base.make_widget_from_value(container(template, 16, 16, 8, 8))
+    local l = wibox.widget.base.make_widget_from_value(template)
 
     return {
       title = l:get_children_by_id("title")[1],

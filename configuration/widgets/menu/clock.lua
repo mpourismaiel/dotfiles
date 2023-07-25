@@ -4,7 +4,7 @@ local theme = require("configuration.config.theme")
 
 local clock = {mt = {}}
 
-function clock.new()
+local function new()
   local weather =
     wibox.widget.base.make_widget_from_value(
     {
@@ -106,8 +106,8 @@ function clock.new()
   }
 end
 
-function clock.mt:__call(...)
-  return clock.new(...)
+function clock.mt:__call()
+  return new()
 end
 
 return setmetatable(clock, clock.mt)

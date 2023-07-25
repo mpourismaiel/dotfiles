@@ -50,21 +50,6 @@ function systray.new(screen)
         {
           layout = wibox.layout.fixed.vertical,
           {
-            widget = wibox.container.margin,
-            bottom = 8,
-            wibox.container.place(
-              {
-                base_size = config.dpi(16),
-                horizontal = false,
-                screen = screen,
-                visible = true,
-                widget = wibox.widget.systray
-              },
-              "center",
-              "center"
-            )
-          },
-          {
             widget = wbutton,
             margin = theme.bar_padding,
             bg_normal = theme.bg_normal,
