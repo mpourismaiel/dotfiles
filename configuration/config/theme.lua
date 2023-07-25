@@ -7,7 +7,9 @@ local themes_path = gfs.get_themes_dir()
 
 local theme = {}
 
-theme.font = "Inter Regular 10"
+theme.font_name = "Inter"
+theme.font_size = config.dpi(10)
+theme.font = theme.font_name .. " Regular " .. theme.font_size
 
 theme.bg_normal = "#111111ff"
 theme.bg_primary = "#222222"
@@ -32,10 +34,12 @@ theme.rounded_rect_normal = config.dpi(6)
 theme.button_shape = "rounded"
 theme.button_halign = "center"
 theme.button_valign = "center"
-theme.button_margin_left = config.dpi(20)
-theme.button_margin_right = config.dpi(20)
-theme.button_margin_top = config.dpi(10)
-theme.button_margin_bottom = config.dpi(10)
+theme.button_padding_left = config.dpi(20)
+theme.button_padding_right = config.dpi(20)
+theme.button_padding_top = config.dpi(10)
+theme.button_padding_bottom = config.dpi(10)
+
+theme.bar_padding = config.dpi(3)
 
 theme.useless_gap = config.dpi(0)
 theme.border_width = config.dpi(0)

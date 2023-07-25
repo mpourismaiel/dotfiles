@@ -2,11 +2,24 @@ local wibox = require("wibox")
 local gears = require("gears")
 local animation = require("helpers.animation")
 local colors = require("helpers.color")
+local config = require("configuration.config")
 local theme = require("configuration.config.theme")
 
 local button = {mt = {}}
 
-for _, v in pairs({"callback"}) do
+for _, v in pairs(
+  {
+    "bg_press",
+    "fg_press",
+    "margin",
+    "padding_top",
+    "padding_bottom",
+    "padding_left",
+    "padding_right",
+    "paddings",
+    "callback"
+  }
+) do
   ---@diagnostic disable-next-line: assign-type-mismatch
   button["set_" .. v] = function(self, val)
     if self._private[v] == val then
@@ -29,7 +42,7 @@ function button:set_halign(halign)
   if not wp.widget then
     return
   end
-  wp.place.halign = halign
+  wp.place_role.halign = halign
 end
 
 function button:set_shape(shape)
@@ -64,7 +77,7 @@ function button:set_bg_normal(bg)
   if not wp.widget then
     return
   end
-  wp.widget.bg = bg
+  wp.background_role.bg = bg
 end
 
 function button:set_fg_normal(fg)
@@ -72,7 +85,7 @@ function button:set_fg_normal(fg)
   wp.fg_normal = fg
   wp.anim_data.fg = colors.hex2rgba(fg)
   wp.animation.normal.target.fg = colors.hex2rgba(fg)
-  if not wp.label then
+  if not wp.label or not wp.label.markup then
     return
   end
   wp.label.foreground = fg
@@ -89,16 +102,6 @@ function button:set_fg_hover(fg)
   local wp = self._private
   wp.fg_hover = fg
   wp.animation.hover.target.fg = colors.hex2rgba(fg)
-end
-
-function button:set_bg_press(bg)
-  local wp = self._private
-  wp.bg_press = bg
-end
-
-function button:set_fg_press(fg)
-  local wp = self._private
-  wp.fg_press = fg
 end
 
 function button:get_markup()
@@ -133,22 +136,26 @@ function button:set_widget(widget)
 
   local w =
     wibox.widget {
-    widget = wibox.container.background,
-    bg = wp.bg_normal,
-    shape = wp.shape,
-    id = "background",
+    widget = wibox.container.margin,
+    margins = wp.margin,
     {
-      widget = wibox.container.margin,
-      top = theme.button_margin_top,
-      bottom = theme.button_margin_bottom,
-      left = theme.button_margin_left,
-      right = theme.button_margin_right,
+      widget = wibox.container.background,
+      bg = wp.bg_normal,
+      shape = wp.shape,
+      id = "background",
       {
-        widget = wibox.container.place,
-        halign = wp.halign,
-        id = "place",
+        widget = wibox.container.margin,
+        top = wp.padding_top or wp.paddings or theme.button_padding_top,
+        bottom = wp.padding_bottom or wp.paddings or theme.button_padding_bottom,
+        left = wp.padding_left or wp.paddings or theme.button_padding_left,
+        right = wp.padding_right or wp.paddings or theme.button_padding_right,
         {
-          widget = wp.label.widget
+          widget = wibox.container.place,
+          halign = wp.halign,
+          id = "place",
+          {
+            widget = wp.label.widget
+          }
         }
       }
     }
@@ -156,7 +163,8 @@ function button:set_widget(widget)
 
   wp.widget_template = widget
   wp.widget = w
-  wp.place = w:get_children_by_id("place")[1]
+  wp.background_role = w:get_children_by_id("background")[1]
+  wp.place_role = w:get_children_by_id("place")[1]
 
   self:emit_signal("property::widget")
   self:emit_signal("widget::layout_changed")
@@ -176,19 +184,23 @@ local function new()
     subject = wp.anim_data,
     targets = {
       normal = {
-        bg = colors.hex2rgba(wp.bg_normal)
+        bg = colors.hex2rgba(wp.bg_normal),
+        fg = colors.hex2rgba(wp.fg_normal)
       },
       hover = {
-        bg = colors.hex2rgba(wp.bg_hover)
+        bg = colors.hex2rgba(wp.bg_hover),
+        fg = colors.hex2rgba(wp.fg_hover)
       }
     },
     easing = "inOutCubic",
     duration = 0.25,
     signals = {
       ["anim::animation_updated"] = function(s)
-        wp.widget.bg = colors.rgba2hex(s.subject.bg)
+        wp.background_role.bg = colors.rgba2hex(s.subject.bg)
         wp.label.foreground = colors.rgba2hex(s.subject.fg)
-        wp.label.widget.markup = ret:get_markup()
+        if wp.label and wp.label.markup then
+          wp.label.widget.markup = ret:get_markup()
+        end
       end
     }
   }
@@ -213,9 +225,11 @@ local function new()
     "button::press",
     function()
       wp.animation.hover:stopAnimation()
-      wp.widget.bg = wp.bg_press
+      wp.background_role.bg = wp.bg_press
       wp.label.foreground = wp.fg_press
-      wp.label.widget.markup = ret:get_markup()
+      if wp.label and wp.label.markup then
+        wp.label.widget.markup = ret:get_markup()
+      end
     end
   )
 
@@ -223,9 +237,11 @@ local function new()
     "button::release",
     function()
       wp.animation.normal:stopAnimation()
-      wp.widget.bg = wp.bg_hover
+      wp.background_role.bg = wp.bg_hover
       wp.label.foreground = wp.fg_hover
-      wp.label.widget.markup = ret:get_markup()
+      if wp.label and wp.label.markup then
+        wp.label.widget.markup = ret:get_markup()
+      end
       if not wp.callback then
         return
       end
@@ -241,6 +257,7 @@ local function new()
   ret:set_fg_press(theme.fg_press)
   ret:set_shape(theme.button_shape)
   ret:set_halign(theme.button_halign)
+  ret:set_margin(config.dpi(0))
 
   return ret
 end

@@ -18,6 +18,8 @@ ruled.client.connect_signal(
         screen = awful.screen.preferred,
         placement = awful.placement.no_overlap + awful.placement.no_offscreen,
         titlebars_enabled = true,
+        honor_workarea = true,
+        honor_padding = true,
         skip_decoration = false
       }
     }
@@ -207,6 +209,20 @@ ruled.client.connect_signal(
         skip_decoration = true,
         switch_to_tags = true,
         placement = awful.placement.centered
+      }
+    }
+
+    ruled.client.append_rule {
+      rule = {
+        class = "Steam"
+      },
+      except = {
+        name = "Steam"
+      },
+      properties = {
+        floating = true,
+        width = awful.screen.focused().geometry.width * 0.3,
+        height = awful.screen.focused().geometry.height * 0.8
       }
     }
 

@@ -37,7 +37,6 @@ beautiful.init(theme)
 require("module.autostart")
 require("module.weather")
 require("module.debug")
-require("configuration.bling")
 local widgets = require("configuration.widgets")
 
 bling.module.wallpaper.setup {

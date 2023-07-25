@@ -41,19 +41,6 @@ end
 local function custom_template(args)
   local template = {
     create_callback = function(self, c3, index, objects)
-      self:connect_signal(
-        "mouse::enter",
-        function()
-          awesome.emit_signal("bling::tag_preview::update", c3)
-          awesome.emit_signal("bling::tag_preview::visibility", s, true)
-        end
-      )
-      self:connect_signal(
-        "mouse::leave",
-        function()
-          awesome.emit_signal("bling::tag_preview::visibility", s, false)
-        end
-      )
     end,
     widget = wibox.container.constraint,
     strategy = "exact",

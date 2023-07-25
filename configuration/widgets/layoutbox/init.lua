@@ -1,39 +1,47 @@
 local awful = require("awful")
-local wibox = require("wibox")
+local theme = require("configuration.config.theme")
+local wbutton = require("configuration.widgets.button")
 local layoutbox = {mt = {}}
 
 function layoutbox.new(screen)
-  return awful.widget.layoutbox {
-    screen = screen,
-    buttons = {
-      awful.button(
-        {},
-        1,
-        function()
-          awful.layout.inc(1)
-        end
-      ),
-      awful.button(
-        {},
-        3,
-        function()
-          awful.layout.inc(-1)
-        end
-      ),
-      awful.button(
-        {},
-        4,
-        function()
-          awful.layout.inc(-1)
-        end
-      ),
-      awful.button(
-        {},
-        5,
-        function()
-          awful.layout.inc(1)
-        end
-      )
+  return {
+    widget = wbutton,
+    margin = theme.bar_padding,
+    bg_normal = theme.bg_normal,
+    bg_hover = theme.bg_primary,
+    paddings = 10,
+    awful.widget.layoutbox {
+      screen = screen,
+      buttons = {
+        awful.button(
+          {},
+          1,
+          function()
+            awful.layout.inc(1)
+          end
+        ),
+        awful.button(
+          {},
+          3,
+          function()
+            awful.layout.inc(-1)
+          end
+        ),
+        awful.button(
+          {},
+          4,
+          function()
+            awful.layout.inc(-1)
+          end
+        ),
+        awful.button(
+          {},
+          5,
+          function()
+            awful.layout.inc(1)
+          end
+        )
+      }
     }
   }
 end
