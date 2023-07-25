@@ -2,6 +2,8 @@ local awful = require("awful")
 local wibox = require("wibox")
 local gears = require("gears")
 local config = require("configuration.config")
+local theme = require("configuration.config.theme")
+local wbutton = require("configuration.widgets.button")
 
 local config_dir = gears.filesystem.get_configuration_dir()
 local power_icon = config_dir .. "/images/power.svg"
@@ -61,16 +63,18 @@ local power_button = function(command)
 
   local w =
     wibox.widget {
-    widget = wibox.container.place,
-    buttons = awful.util.table.join(awful.button({}, 1, fn)),
+    widget = wbutton,
+    callback = fn,
     {
       widget = wibox.container.constraint,
-      width = config.dpi(32),
-      height = config.dpi(32),
+      height = config.dpi(40),
       strategy = "exact",
       {
-        widget = wibox.widget.imagebox,
-        image = icon
+        widget = wibox.container.place,
+        {
+          widget = wibox.widget.imagebox,
+          image = icon
+        }
       }
     }
   }

@@ -7,6 +7,8 @@ local config = require("configuration.config")
 local lgi = require("lgi")
 local GLib = lgi.GLib
 local icon_theme = require("helpers.icon_theme")()
+local theme = require("configuration.config.theme")
+local wbutton = require("configuration.widgets.button")
 
 local tasklist = {mt = {}}
 
@@ -71,14 +73,16 @@ end
 local function custom_template(client_count)
   local l =
     wibox.widget {
-    id = "background",
-    border_strategy = "inner",
-    widget = wibox.container.background,
+    widget = wbutton,
+    bg_normal = theme.bg_normal,
+    bg_hover = theme.bg_primary,
+    paddings = 0,
+    margin = theme.bar_padding,
     {
       widget = wibox.container.constraint,
       strategy = "exact",
       width = config.dpi(48),
-      height = config.dpi(48),
+      height = config.dpi(44),
       {
         widget = wibox.layout.stack,
         {
@@ -91,11 +95,11 @@ local function custom_template(client_count)
           }
         },
         {
-          widget = wibox.container.margin,
-          left = config.dpi(2),
+          widget = wibox.container.place,
+          halign = "left",
           {
-            widget = wibox.container.place,
-            halign = "left",
+            widget = wibox.container.margin,
+            left = config.dpi(2),
             {
               id = "indicator_list",
               layout = wibox.layout.fixed.vertical,

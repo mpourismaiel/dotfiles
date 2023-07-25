@@ -222,11 +222,11 @@ function menu.new(screen)
                       {
                         layout = wibox.layout.flex.horizontal,
                         spacing = config.dpi(8),
-                        container(power_button("lock")),
-                        container(power_button("sleep")),
-                        container(power_button("logout")),
-                        container(power_button("reboot")),
-                        container(power_button("power"))
+                        power_button("lock"),
+                        power_button("sleep"),
+                        power_button("logout"),
+                        power_button("reboot"),
+                        power_button("power")
                       }
                     }
                   }
