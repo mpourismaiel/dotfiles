@@ -9,7 +9,6 @@ local text = {mt = {}}
 for _, v in pairs({"halign", "valign", "foreground", "font_name", "font_size", "font_weight", "text"}) do
   ---@diagnostic disable-next-line: assign-type-mismatch
   text["set_" .. v] = function(self, val)
-    gears.debug.dump(val, "=========== " .. v .. ":")
     if self._private.label[v] == val then
       return
     end
