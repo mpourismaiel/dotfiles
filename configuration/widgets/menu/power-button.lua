@@ -64,6 +64,7 @@ local power_button = function(command)
   local w =
     wibox.widget {
     widget = wbutton,
+    bg_normal = theme.bg_secondary,
     callback = fn,
     {
       widget = wibox.container.constraint,

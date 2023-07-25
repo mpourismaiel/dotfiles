@@ -26,22 +26,14 @@ function bar.new(screen)
         widget = wibox.container.place,
         valign = "top",
         {
-          widget = wibox.layout.fixed.vertical,
-          menu.new(screen),
-          {
-            widget = wibox.container.margin,
-            top = config.dpi(4),
-            {
-              widget = wbutton,
-              margin = theme.bar_padding,
-              bg_normal = theme.bg_normal,
-              bg_hover = theme.bg_primary,
-              paddings = 0,
-              padding_top = 8,
-              padding_bottom = 8,
-              taglist.new(screen)
-            }
-          }
+          widget = wbutton,
+          margin = theme.bar_padding,
+          bg_normal = theme.bg_normal,
+          bg_hover = theme.bg_primary,
+          paddings = 0,
+          padding_top = 8,
+          padding_bottom = 8,
+          taglist.new(screen)
         }
       },
       {
@@ -59,8 +51,7 @@ function bar.new(screen)
           {
             layout = wibox.layout.fixed.vertical,
             clock.new(),
-            layoutbox.new(screen),
-            systray.new()
+            menu
           }
         }
       }

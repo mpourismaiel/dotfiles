@@ -9,6 +9,7 @@ local gfilesystem = require("gears.filesystem")
 local wibox = require("wibox")
 local beautiful = require("beautiful")
 local color = require("bling.helpers.color")
+local theme = require("configuration.config.theme")
 local dpi = beautiful.xresources.apply_dpi
 local string = string
 local table = table
@@ -777,7 +778,7 @@ local function new(args)
   args.app_width = args.app_width or dpi(100)
   args.app_height = args.app_height or dpi(100)
   args.app_shape = args.app_shape or gshape.rounded_rect
-  args.app_normal_color = args.app_normal_color or "#30303060"
+  args.app_normal_color = args.app_normal_color or theme.bg_secondary
   args.app_normal_hover_color =
     args.app_normal_hover_color or
     (color.is_dark(args.app_normal_color) or color.is_opaque(args.app_normal_color)) and
