@@ -95,7 +95,7 @@ local function new()
     wibox {
     ontop = true,
     visible = false,
-    type = "desktop",
+    type = "utility",
     width = config.dpi(460),
     bg = theme.bg_normal,
     shape = gears.shape.rounded_rect,
@@ -116,7 +116,6 @@ local function new()
             {
               base_size = config.dpi(16),
               horizontal = false,
-              visible = true,
               id = "systray",
               widget = wibox.widget.systray
             }
@@ -152,6 +151,25 @@ local function new()
     }
   }
 
+  local keygrabber =
+    awful.keygrabber {
+    auto_start = false,
+    stop_event = "release",
+    keypressed_callback = function(_, _, key, _)
+      if key == "Escape" then
+        awesome.emit_signal("widget::drawer:hide")
+      end
+    end
+  }
+
+  local wp = ret._private
+  wp.backdrop = backdrop
+  wp.drawer = drawer
+  wp.systray = wp.drawer:get_children_by_id("systray")[1]
+  wp.keygrabber = keygrabber
+
+  ret:calculate_position()
+
   backdrop:connect_signal(
     "button::release",
     function()
@@ -163,8 +181,10 @@ local function new()
     "widget::drawer:toggle",
     function()
       local s = awful.screen.focused()
+      keygrabber:stop()
       if not backdrop.visible then
         ret:set_screen(s)
+        keygrabber:start()
       end
       backdrop.visible = not backdrop.visible
       drawer.visible = not drawer.visible
@@ -177,15 +197,9 @@ local function new()
     function()
       backdrop.visible = false
       drawer.visible = false
+      keygrabber:stop()
     end
   )
-
-  local wp = ret._private
-  wp.backdrop = backdrop
-  wp.drawer = drawer
-  wp.systray = wp.drawer:get_children_by_id("systray")[1]
-
-  ret:calculate_position()
   return toggle
 end
 

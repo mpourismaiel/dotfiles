@@ -1,4 +1,5 @@
 local wibox = require("wibox")
+local awful = require("awful")
 local gears = require("gears")
 local animation = require("helpers.animation")
 local colors = require("helpers.color")
@@ -245,8 +246,21 @@ local function new()
       if not wp.callback then
         return
       end
-      wp.callback()
     end
+  )
+
+  ret.buttons =
+    gears.table.join(
+    awful.button(
+      {},
+      1,
+      function()
+        if not wp.callback then
+          return
+        end
+        wp.callback()
+      end
+    )
   )
 
   ret:set_bg_normal(theme.bg_primary)
