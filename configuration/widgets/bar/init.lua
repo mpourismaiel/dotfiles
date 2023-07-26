@@ -46,13 +46,9 @@ function bar.new(screen)
         widget = wibox.container.place,
         valign = "bottom",
         {
-          widget = wibox.container.margin,
-          bottom = config.dpi(9),
-          {
-            layout = wibox.layout.fixed.vertical,
-            clock.new(),
-            menu
-          }
+          layout = wibox.layout.fixed.vertical,
+          clock.new(),
+          menu
         }
       }
     }

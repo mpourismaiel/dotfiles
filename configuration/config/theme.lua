@@ -1,9 +1,9 @@
 local theme_assets = require("beautiful.theme_assets")
-local rnotification = require("ruled.notification")
 local config = require("configuration.config")
 
 local gfs = require("gears.filesystem")
 local themes_path = gfs.get_themes_dir()
+local config_dir = gfs.get_configuration_dir()
 
 local theme = {}
 
@@ -82,43 +82,18 @@ theme.notification_font = theme.font
 theme.notification_bg = ""
 theme.notification_fg = "#ffffff"
 
--- Variables set for theming the menu:
--- menu_[bg|fg]_[normal|focus]
--- menu_[border_color|border_width]
-theme.menu_submenu_icon = themes_path .. "default/submenu.png"
-theme.menu_height = config.dpi(15)
-theme.menu_width = config.dpi(100)
-
 theme.titlebar_size = config.dpi(36)
-theme.titlebar_bg_normal = "#333333ff"
-theme.titlebar_bg_focus = "#111111ff"
-
--- Define the image to load
-theme.titlebar_close_button_normal = themes_path .. "default/titlebar/close_normal.png"
-theme.titlebar_close_button_focus = themes_path .. "default/titlebar/close_focus.png"
-
-theme.titlebar_minimize_button_normal = themes_path .. "default/titlebar/minimize_normal.png"
-theme.titlebar_minimize_button_focus = themes_path .. "default/titlebar/minimize_focus.png"
-
-theme.titlebar_ontop_button_normal_inactive = themes_path .. "default/titlebar/ontop_normal_inactive.png"
-theme.titlebar_ontop_button_focus_inactive = themes_path .. "default/titlebar/ontop_focus_inactive.png"
-theme.titlebar_ontop_button_normal_active = themes_path .. "default/titlebar/ontop_normal_active.png"
-theme.titlebar_ontop_button_focus_active = themes_path .. "default/titlebar/ontop_focus_active.png"
-
-theme.titlebar_sticky_button_normal_inactive = themes_path .. "default/titlebar/sticky_normal_inactive.png"
-theme.titlebar_sticky_button_focus_inactive = themes_path .. "default/titlebar/sticky_focus_inactive.png"
-theme.titlebar_sticky_button_normal_active = themes_path .. "default/titlebar/sticky_normal_active.png"
-theme.titlebar_sticky_button_focus_active = themes_path .. "default/titlebar/sticky_focus_active.png"
-
-theme.titlebar_floating_button_normal_inactive = themes_path .. "default/titlebar/floating_normal_inactive.png"
-theme.titlebar_floating_button_focus_inactive = themes_path .. "default/titlebar/floating_focus_inactive.png"
-theme.titlebar_floating_button_normal_active = themes_path .. "default/titlebar/floating_normal_active.png"
-theme.titlebar_floating_button_focus_active = themes_path .. "default/titlebar/floating_focus_active.png"
-
-theme.titlebar_maximized_button_normal_inactive = themes_path .. "default/titlebar/maximized_normal_inactive.png"
-theme.titlebar_maximized_button_focus_inactive = themes_path .. "default/titlebar/maximized_focus_inactive.png"
-theme.titlebar_maximized_button_normal_active = themes_path .. "default/titlebar/maximized_normal_active.png"
-theme.titlebar_maximized_button_focus_active = themes_path .. "default/titlebar/maximized_focus_active.png"
+theme.titlebar_button_size = config.dpi(24)
+theme.titlebar_buttons_spacing = config.dpi(2)
+theme.titlebar_padding = config.dpi(4)
+theme.titlebar_bg_normal = theme.bg_primary
+theme.titlebar_bg_focus = theme.bg_normal
+theme.titlebar_fg_normal = theme.fg_normal
+theme.titlebar_fg_focus = theme.fg_focus
+theme.titlebar_icon_unmaximize = config_dir .. "images/unmaximize.svg"
+theme.titlebar_icon_maximize = config_dir .. "images/maximize.svg"
+theme.titlebar_icon_minimize = config_dir .. "images/minimize.svg"
+theme.titlebar_icon_x = config_dir .. "images/x.svg"
 
 theme.wallpaper = config.wallpaper
 
@@ -127,19 +102,8 @@ theme.layout_floating = themes_path .. "default/layouts/floatingw.png"
 theme.layout_max = themes_path .. "default/layouts/maxw.png"
 theme.layout_tile = themes_path .. "default/layouts/tilew.png"
 
-theme.tag_preview_widget_border_radius = config.dpi(3) -- Border radius of the widget (With AA)
-theme.tag_preview_client_border_radius = config.dpi(3) -- Border radius of each client in the widget (With AA)
-theme.tag_preview_client_opacity = 0.5 -- Opacity of each client
-theme.tag_preview_client_bg = "#000000" -- The bg color of each client
-theme.tag_preview_client_border_color = "#ffffff" -- The border color of each client
-theme.tag_preview_client_border_width = config.dpi(3) -- The border width of each client
-theme.tag_preview_widget_bg = "#000000" -- The bg color of the widget
-theme.tag_preview_widget_border_color = "#ffffff88" -- The border color of the widget
-theme.tag_preview_widget_border_width = config.dpi(3) -- The border width of the widget
-theme.tag_preview_widget_margin = 0 -- The margin of the widget
-
 -- Generate Awesome icon:
-theme.awesome_icon = theme_assets.awesome_icon(theme.menu_height, theme.bg_focus, theme.fg_focus)
+theme.awesome_icon = theme_assets.awesome_icon(config.dpi(15), theme.bg_focus, theme.fg_focus)
 
 -- Define the icon theme for application icons. If not set then the icons
 -- from /usr/share/icons and /usr/share/icons/hicolor will be used.
@@ -148,17 +112,4 @@ theme.icon_theme = "Papirus"
 theme.osd_height = config.dpi(300)
 theme.osd_width = config.dpi(56)
 
--- Set different colors for urgent notifications.
-rnotification.connect_signal(
-  "request::rules",
-  function()
-    rnotification.append_rule {
-      rule = {urgency = "critical"},
-      properties = {bg = "#ff0000", fg = "#ffffff"}
-    }
-  end
-)
-
 return theme
-
--- vim: filetype=lua:expandtab:shiftwidth=4:tabstop=8:softtabstop=4:textwidth=80

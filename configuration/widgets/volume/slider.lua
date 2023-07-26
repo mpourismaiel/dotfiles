@@ -1,184 +1,122 @@
 local wibox = require("wibox")
 local gears = require("gears")
 local awful = require("awful")
-local beautiful = require("beautiful")
 local config = require("configuration.config")
-local clickable_container = require("configuration.widgets.clickable-container")
 local wcontainer = require("configuration.widgets.menu.container")
 
 local spawn = awful.spawn
-local dpi = config.dpi
 local config_dir = gears.filesystem.get_configuration_dir()
 local volume_icon = config_dir .. "/images/volume-high.svg"
 
-local action_name =
-  wibox.widget {
-  markup = "<span color='" .. beautiful.fg_primary .. "'>Volume</span>",
-  font = "Inter Bold 12",
-  align = "left",
-  widget = wibox.widget.textbox
-}
+local slider = {mt = {}}
 
-local slider =
-  wibox.widget {
-  nil,
-  {
-    id = "volume_slider",
-    bar_shape = gears.shape.rounded_rect,
-    bar_height = dpi(16),
-    bar_color = "#ffffff20",
-    bar_active_color = "#f2f2f2EE",
-    handle_color = "#ffffff",
-    handle_shape = gears.shape.circle,
-    handle_width = dpi(24),
-    handle_border_color = "#00000012",
-    handle_border_width = dpi(1),
-    maximum = 100,
-    widget = wibox.widget.slider
-  },
-  nil,
-  expand = "none",
-  forced_height = dpi(24),
-  layout = wibox.layout.align.vertical
-}
-
-local volume_slider = slider.volume_slider
--- volume | mic
-local mode = "volume"
-
-volume_slider:connect_signal(
-  "property::value",
-  function()
-    local volume_level = volume_slider:get_value()
-
-    if mode == "volume" then
-      spawn("amixer -D pulse sset Master " .. volume_level .. "%", false)
-    end
-
-    -- Update volume osd
-    awesome.emit_signal("widget::volume_osd", volume_level)
-  end
-)
-
-volume_slider:buttons(
-  gears.table.join(
-    awful.button(
-      {},
-      4,
-      nil,
-      function()
-        if volume_slider:get_value() > 100 then
-          volume_slider:set_value(100)
-          return
-        end
-        volume_slider:set_value(volume_slider:get_value() + 5)
-      end
-    ),
-    awful.button(
-      {},
-      5,
-      nil,
-      function()
-        if volume_slider:get_value() < 0 then
-          volume_slider:set_value(0)
-          return
-        end
-        volume_slider:set_value(volume_slider:get_value() - 5)
-      end
-    )
-  )
-)
-
-local update_slider = function()
+function slider:update_slider()
   awful.spawn.easy_async_with_shell(
-    mode == "volume" and [[bash -c "amixer -D pulse sget Master"]] or [[bash -c "amixer get Capture]],
+    [[bash -c "amixer -D pulse sget Master"]],
     function(stdout)
       local volume = string.match(stdout, "(%d?%d?%d)%%")
-      volume_slider:set_value(tonumber(volume))
+      self.volume_slider:set_value(tonumber(volume))
     end
   )
 end
 
--- Update on startup
-update_slider()
+local function new()
+  local ret = wibox.container.background()
+  gears.table.crush(ret, slider)
 
-local action_jump = function()
-  local sli_value = volume_slider:get_value()
-  local new_value = 0
+  local w =
+    wibox.widget {
+    widget = wcontainer,
+    {
+      widget = wibox.container.constraint,
+      strategy = "exact",
+      width = config.dpi(48),
+      height = config.dpi(48),
+      {
+        widget = wibox.container.place,
+        {
+          widget = wibox.container.constraint,
+          strategy = "exact",
+          height = config.dpi(24),
+          {
+            id = "volume_slider",
+            bar_shape = gears.shape.rounded_rect,
+            bar_height = config.dpi(16),
+            bar_color = "#ffffff20",
+            bar_active_color = "#f2f2f2EE",
+            handle_color = "#ffffff",
+            handle_shape = gears.shape.circle,
+            handle_width = config.dpi(24),
+            handle_border_color = "#00000012",
+            handle_border_width = config.dpi(1),
+            maximum = 100,
+            widget = wibox.widget.slider
+          }
+        }
+      }
+    }
+  }
 
-  if sli_value >= 0 and sli_value < 50 then
-    new_value = 50
-  elseif sli_value >= 50 and sli_value < 100 then
-    new_value = 100
-  else
-    new_value = 0
-  end
-  volume_slider:set_value(new_value)
-end
+  local volume_slider = w:get_children_by_id("volume_slider")[1]
+  volume_slider:connect_signal(
+    "property::value",
+    function()
+      local volume_level = volume_slider:get_value()
 
-local icon =
-  wibox.widget {
-  layout = wibox.layout.align.vertical,
-  expand = "none",
-  nil,
-  {
-    image = volume_icon,
-    resize = true,
-    widget = wibox.widget.imagebox
-  },
-  nil
-}
+      spawn("amixer -D pulse sset Master " .. volume_level .. "%", false)
 
-local action_level =
-  wibox.widget {
-  {
-    icon,
-    margins = dpi(5),
-    widget = wibox.container.margin
-  },
-  widget = clickable_container
-}
+      -- Update volume osd
+      awesome.emit_signal("widget::volume_osd", volume_level)
+    end
+  )
 
-action_level:buttons(
-  awful.util.table.join(
-    awful.button(
-      {},
-      1,
-      nil,
-      function()
-        action_jump()
-      end
+  w:buttons(
+    gears.table.join(
+      awful.button(
+        {},
+        4,
+        nil,
+        function()
+          if volume_slider:get_value() > 100 then
+            volume_slider:set_value(100)
+            return
+          end
+          volume_slider:set_value(volume_slider:get_value() + 5)
+        end
+      ),
+      awful.button(
+        {},
+        5,
+        nil,
+        function()
+          if volume_slider:get_value() < 0 then
+            volume_slider:set_value(0)
+            return
+          end
+          volume_slider:set_value(volume_slider:get_value() - 5)
+        end
+      )
     )
   )
-)
 
--- The emit will come from the global keybind
-awesome.connect_signal(
-  "widget::volume",
-  function()
-    update_slider()
-  end
-)
+  awesome.connect_signal(
+    "widget::volume",
+    function()
+      ret:update_slider()
+    end
+  )
 
-local volume_setting =
-  wibox.widget {
-  widget = wcontainer,
-  {
-    layout = wibox.layout.fixed.vertical,
-    spacing = dpi(20),
-    {
-      layout = wibox.layout.fixed.horizontal,
-      spacing = dpi(5),
-      {
-        layout = wibox.layout.fixed.horizontal,
-        forced_height = dpi(36),
-        forced_width = dpi(36),
-        action_level
-      },
-      action_name
-    },
-    slider
-  }
-}
+  ret.widget = w
+  ret.volume_slider = volume_slider
+  ret:emit_signal("property::widget")
+  ret:emit_signal("widget::layout_changed")
+  ret:update_slider()
 
-return volume_setting
+  return ret
+end
+
+function slider.mt:__call()
+  return new()
+end
+
+return setmetatable(slider, slider.mt)

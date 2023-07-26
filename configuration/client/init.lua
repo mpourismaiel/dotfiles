@@ -1,16 +1,15 @@
 local capi = {
-  client = client
+  client = client,
+  mouse = mouse,
+  awesome = awesome
 }
 local awful = require("awful")
 local wibox = require("wibox")
 local gears = require("gears")
-local beautiful = require("beautiful")
 local config = require("configuration.config")
 local theme = require("configuration.config.theme")
-local filesystem = require("gears.filesystem")
 local client_menu = require("configuration.widgets.client_menu")
-
-local config_dir = filesystem.get_configuration_dir()
+local wbutton = require("configuration.widgets.button")
 
 local instances = {}
 local function update_on_signal(c, signal, widget)
@@ -42,54 +41,18 @@ local function client_title_widget(c)
   local ret = wibox.widget.textbox()
 
   local function update()
-    ret:set_markup(
-      "<span font_size='9pt' color='" ..
-        beautiful.fg_normal .. "'>" .. gears.string.xml_escape(c.name or "unknown") .. "</span>"
-    )
+    local font = theme.font_name .. " 9pt"
+    local color = c.active and theme.titlebar_fg_focus or theme.titlebar_fg_normal
+    local label = gears.string.xml_escape(c.name or "unknown")
+    ret:set_markup("<span font='" .. font .. "' color='" .. color .. "'>" .. label .. "</span>")
   end
   ret.update = update
   update_on_signal(c, "property::name", ret)
+  update_on_signal(c, "property::active", ret)
   update()
 
   return ret
 end
-
-local titlebar_button = function(w, hover_color, onclick)
-  local widget =
-    wibox.widget {
-    widget = wibox.container.background,
-    bg = "",
-    {
-      widget = wibox.container.margin,
-      margins = config.dpi(8),
-      buttons = {
-        awful.button({}, 1, onclick)
-      },
-      w
-    }
-  }
-
-  widget:connect_signal(
-    "mouse::enter",
-    function()
-      widget.bg = hover_color
-    end
-  )
-  widget:connect_signal(
-    "mouse::leave",
-    function()
-      widget.bg = ""
-    end
-  )
-
-  return widget
-end
-
-local maximize_widget =
-  wibox.widget {
-  widget = wibox.widget.imagebox,
-  image = config_dir .. "images/maximize.svg"
-}
 
 client.connect_signal(
   "manage",
@@ -105,7 +68,26 @@ client.connect_signal(
 client.connect_signal(
   "property::maximized",
   function(c)
-    maximize_widget.image = c.maximized and config_dir .. "images/unmaximize.svg" or config_dir .. "images/maximize.svg"
+    local wp = c._private
+    if not wp or not wp.titlebar_widgets then
+      return
+    end
+    wp.titlebar_widgets.maximize_widget.image =
+      c.maximized and theme.titlebar_icon_unmaximize or theme.titlebar_icon_maximize
+  end
+)
+
+client.connect_signal(
+  "property::active",
+  function(c, is_active)
+    local wp = c._private
+    if not wp or not wp.titlebar_widgets then
+      return
+    end
+
+    wp.titlebar_widgets.minimize_button.bg_normal = is_active and theme.titlebar_bg_focus or theme.titlebar_bg_normal
+    wp.titlebar_widgets.maximize_button.bg_normal = is_active and theme.titlebar_bg_focus or theme.titlebar_bg_normal
+    wp.titlebar_widgets.close_button.bg_normal = is_active and theme.titlebar_bg_focus or theme.titlebar_bg_normal
   end
 )
 
@@ -114,74 +96,66 @@ client.connect_signal(
   function(c)
     c.menu = client_menu()
 
-    local buttons = {
-      awful.button(
-        {},
-        1,
-        function()
-          c:activate {context = "titlebar", action = "mouse_move"}
-        end
-      ),
-      awful.button(
-        {},
-        3,
-        function()
-          -- get mouse coordinates
-          c.menu:toggle {coords = mouse.coords(), client = c}
-        end
-      )
-    }
     local minimize_widget =
       wibox.widget {
       widget = wibox.widget.imagebox,
-      image = config_dir .. "images/minimize.svg"
+      image = theme.titlebar_icon_minimize
+    }
+    local maximize_widget =
+      wibox.widget {
+      widget = wibox.widget.imagebox,
+      image = theme.titlebar_icon_maximize
     }
     local close_widget =
       wibox.widget {
       widget = wibox.widget.imagebox,
-      image = config_dir .. "images/x.svg"
+      image = theme.titlebar_icon_x
     }
 
-    local w = {
-      layout = wibox.layout.flex.horizontal,
-      buttons = buttons,
+    local actions =
+      wibox.widget {
+      widget = wibox.container.place,
+      halign = "right",
       {
-        widget = wibox.container.margin,
-        left = config.dpi(16),
+        layout = wibox.layout.fixed.horizontal,
+        spacing = theme.titlebar_buttons_spacing,
         {
-          widget = client_title_widget(c)
-        }
-      },
-      nil,
-      {
-        widget = wibox.container.place,
-        halign = "right",
+          widget = wbutton,
+          margin = theme.titlebar_padding,
+          paddings = config.dpi(6),
+          bg_normal = theme.bg_normal,
+          bg_hover = "#ffbd44c0",
+          id = "minimize_button",
+          callback = function()
+            c.ontop = not c.ontop
+            c.floating = c.ontop
+          end,
+          minimize_widget
+        },
         {
-          layout = wibox.layout.fixed.horizontal,
-          titlebar_button(
-            minimize_widget,
-            "#ffbd44c0",
-            function()
-              c.ontop = not c.ontop
-              c.floating = c.ontop
-            end
-          ),
-          titlebar_button(
-            maximize_widget,
-            "#00ca4ec0",
-            function()
-              c.maximized = not c.maximized
-              maximize_widget.image =
-                c.maximized and config_dir .. "images/unmaximize.svg" or config_dir .. "images/maximize.svg"
-            end
-          ),
-          titlebar_button(
-            close_widget,
-            "#ff605cc0",
-            function()
-              c:kill()
-            end
-          )
+          widget = wbutton,
+          margin = theme.titlebar_padding,
+          paddings = config.dpi(6),
+          bg_normal = theme.bg_normal,
+          bg_hover = "#00ca4ec0",
+          id = "maximize_button",
+          callback = function()
+            c.maximized = not c.maximized
+            maximize_widget.image = c.maximized and theme.titlebar_icon_unmaximize or theme.titlebar_icon_maximize
+          end,
+          maximize_widget
+        },
+        {
+          widget = wbutton,
+          margin = theme.titlebar_padding,
+          paddings = config.dpi(6),
+          bg_normal = theme.bg_normal,
+          bg_hover = "#ff605cc0",
+          id = "close_button",
+          callback = function()
+            c:kill()
+          end,
+          close_widget
         }
       }
     }
@@ -192,6 +166,50 @@ client.connect_signal(
         position = "top",
         size = theme.titlebar_size
       }
-    ):setup(w)
+    ):setup(
+      {
+        layout = wibox.layout.flex.horizontal,
+        buttons = {
+          awful.button(
+            {},
+            1,
+            function()
+              c:activate {context = "titlebar", action = "mouse_move"}
+            end
+          ),
+          awful.button(
+            {},
+            3,
+            function()
+              c.menu:toggle {
+                coords = mouse.coords(),
+                client = c
+              }
+            end
+          )
+        },
+        {
+          widget = wibox.container.margin,
+          left = config.dpi(16),
+          {
+            widget = wibox.container.place,
+            halign = "left",
+            valign = "center",
+            {
+              widget = client_title_widget(c)
+            }
+          }
+        },
+        nil,
+        actions
+      }
+    )
+
+    c._private.titlebar_widgets = {
+      minimize_button = actions:get_children_by_id("minimize_button")[1],
+      maximize_button = actions:get_children_by_id("maximize_button")[1],
+      close_button = actions:get_children_by_id("close_button")[1],
+      maximize_widget = maximize_widget
+    }
   end
 )
