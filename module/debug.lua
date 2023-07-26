@@ -5,7 +5,6 @@ local naughty = require("naughty")
 local config = require("configuration.config")
 local theme = require("configuration.config.theme")
 local wbutton = require("configuration.widgets.button")
-local wexpand = require("configuration.widgets.button.expand")
 local wtext = require("configuration.widgets.text")
 local color = require("helpers.color")
 
@@ -111,23 +110,6 @@ for _, v in pairs({"left", "center", "right"}) do
   texts:add(text)
 end
 
-local expands = wibox.widget {layout = wibox.layout.flex.horizontal, spacing = config.dpi(5)}
-for _, v in pairs({"left"}) do
-  local expand =
-    wibox.widget {
-    widget = wexpand,
-    spacing = config.dpi(5),
-    hidden = wibox.widget {
-      widget = wibox.widget.textbox,
-      text = "This was hidden"
-    },
-    {
-      widget = wibox.widget.textbox,
-      text = v:gsub("^%l", string.upper)
-    }
-  }
-end
-
 local function section(text, w)
   return wibox.widget {
     layout = wibox.layout.fixed.vertical,
@@ -172,8 +154,7 @@ local debug_screen =
       section("Buttons with widget", buttons_with_widgets),
       section("Buttons with margin", buttons_with_margin),
       section("Buttons without padding", buttons_without_padding),
-      section("Texts", texts),
-      section("Expands", expands)
+      section("Texts", texts)
     }
   }
 }

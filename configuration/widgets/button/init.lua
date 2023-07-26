@@ -78,6 +78,10 @@ function button:set_bg_normal(bg)
   if not wp.widget then
     return
   end
+
+  if not wp.background_role then
+    gears.debug.dump(wp.widget)
+  end
   wp.background_role.bg = bg
 end
 
