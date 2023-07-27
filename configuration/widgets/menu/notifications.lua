@@ -46,7 +46,7 @@ clear_notifications:buttons(
 
 local function actions_widget(n, cache)
   if not n.actions or #(n.actions) == 0 then
-    return
+    return nil
   end
 
   local actions =
@@ -213,7 +213,10 @@ local notifications =
     end
 
     if not cached.rendered_actions then
-      cached.container:add(actions_widget(data, cached))
+      local actions = actions_widget(data, cached)
+      if actions then
+        cached.container:add()
+      end
       cached.rendered_actions = true
     end
   end
