@@ -4,8 +4,11 @@ local gears = require("gears")
 local beautiful = require("beautiful")
 local config = require("configuration.config")
 local theme = require("configuration.config.theme")
+local color = require("helpers.color")
 local global_state = require("configuration.config.global_state")
+local wbutton = require("configuration.widgets.button")
 local wcontainer = require("configuration.widgets.menu.container")
+local wtext = require("configuration.widgets.text")
 local list = require("configuration.widgets.list")
 
 function table.slice(tbl, first, last, step)
@@ -41,6 +44,46 @@ clear_notifications:buttons(
   )
 )
 
+local function actions_widget(n, cache)
+  if not n.actions or #(n.actions) == 0 then
+    return
+  end
+
+  local actions =
+    wibox.widget {
+    layout = wibox.layout.fixed.horizontal,
+    spacing = config.dpi(15)
+  }
+
+  for _, action in ipairs(n.actions) do
+    local button =
+      wibox.widget {
+      widget = wbutton,
+      bg_normal = color.helpers.change_opacity(theme.bg_primary, 0.6),
+      padding_top = theme.notification_padding_top,
+      padding_bottom = theme.notification_padding_bottom,
+      padding_left = theme.notification_padding_left,
+      padding_right = theme.notification_padding_right,
+      callback = function()
+        action:invoke()
+        cache.container:remove(3)
+      end,
+      label = action.name
+    }
+    actions:add(button)
+  end
+
+  return wibox.widget {
+    widget = wibox.container.margin,
+    margins = config.dpi(10),
+    {
+      widget = wibox.container.place,
+      halign = theme.notification_action_halign,
+      actions
+    }
+  }
+end
+
 local notifications =
   list {
   layout = {
@@ -69,59 +112,65 @@ local notifications =
     local template = {
       widget = wcontainer,
       bg = theme.bg_normal,
-      padding_left = config.dpi(8),
-      padding_right = config.dpi(8),
+      padding_left = 0,
+      padding_right = 0,
+      padding_top = 0,
+      padding_bottom = 0,
       {
-        layout = wibox.layout.fixed.horizontal,
-        fill_space = true,
+        layout = wibox.layout.fixed.vertical,
+        id = "container",
         {
-          widget = wibox.container.margin,
-          right = config.dpi(16),
-          id = "image_container",
+          widget = wibox.container.background,
+          bg = color.helpers.change_opacity(theme.bg_secondary, 0.6),
           {
-            widget = wibox.container.place,
-            valign = "top",
+            widget = wibox.container.margin,
+            margins = config.dpi(10),
             {
-              widget = wibox.widget.imagebox,
-              forced_height = config.dpi(32),
-              forced_width = config.dpi(32),
-              id = "image"
+              layout = wibox.layout.fixed.horizontal,
+              fill_space = true,
+              {
+                widget = wibox.container.margin,
+                right = config.dpi(16),
+                id = "image_container",
+                {
+                  widget = wibox.container.place,
+                  valign = "top",
+                  {
+                    widget = wibox.widget.imagebox,
+                    forced_height = config.dpi(32),
+                    forced_width = config.dpi(32),
+                    id = "image"
+                  }
+                }
+              },
+              {
+                widget = wtext,
+                id = "title"
+              },
+              {
+                widget = wibox.container.place,
+                halign = "right",
+                valign = "top",
+                {
+                  widget = wibox.container.margin,
+                  margins = config.dpi(4),
+                  id = "close",
+                  {
+                    widget = wibox.widget.imagebox,
+                    forced_height = config.dpi(16),
+                    forced_width = config.dpi(16),
+                    image = theme.notification_close_icon
+                  }
+                }
+              }
             }
           }
         },
         {
-          layout = wibox.layout.fixed.vertical,
-          spacing = config.dpi(8),
+          widget = wibox.container.margin,
+          margins = config.dpi(10),
           {
-            layout = wibox.layout.stack,
-            {
-              widget = wibox.container.place,
-              halign = "left",
-              valign = "top",
-              {
-                widget = wibox.widget.textbox,
-                id = "title"
-              }
-            },
-            {
-              widget = wibox.container.place,
-              halign = "right",
-              valign = "top",
-              {
-                widget = wibox.container.margin,
-                margins = config.dpi(4),
-                id = "close",
-                {
-                  widget = wibox.widget.imagebox,
-                  forced_height = config.dpi(16),
-                  forced_width = config.dpi(16),
-                  image = close_icon
-                }
-              }
-            }
-          },
-          {
-            widget = wibox.widget.textbox,
+            widget = wtext,
             id = "text"
           }
         }
@@ -135,16 +184,13 @@ local notifications =
       image = l:get_children_by_id("image")[1],
       image_container = l:get_children_by_id("image_container")[1],
       close = l:get_children_by_id("close")[1],
+      container = l:get_children_by_id("container")[1],
       primary = l
     }
   end,
   render_template = function(cached, data)
-    cached.title:set_markup(
-      "<span font_size='12pt' font_weight='bold' color='" .. beautiful.fg_primary .. "'>" .. data.title .. "</span>"
-    )
-    cached.text:set_markup(
-      "<span font_size='10pt' font_weight='normal' color='" .. beautiful.fg_primary .. "'>" .. data.message .. "</span>"
-    )
+    cached.title:set_text(data.title)
+    cached.text:set_text(data.message)
 
     if data.icon then
       local icon = gears.surface.load_silently(data.icon)
@@ -153,7 +199,7 @@ local notifications =
       cached.image_container.visible = false
     end
 
-    if cached.close._initiated ~= true then
+    if not cached.rendered_close then
       cached.close.buttons = {
         awful.button(
           {},
@@ -163,7 +209,12 @@ local notifications =
           end
         )
       }
-      cached.close._initiated = true
+      cached.rendered_close = true
+    end
+
+    if not cached.rendered_actions then
+      cached.container:add(actions_widget(data, cached))
+      cached.rendered_actions = true
     end
   end
 }

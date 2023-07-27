@@ -11,6 +11,8 @@ theme.font_name = "Inter"
 theme.font_size = config.dpi(10)
 theme.font = theme.font_name .. " Regular " .. theme.font_size
 
+theme.transparency = 0.6
+
 theme.bg_normal = "#111111"
 theme.bg_primary = "#222222"
 theme.bg_secondary = "#181818"
@@ -31,6 +33,7 @@ theme.fg_urgent = "#ffffff"
 theme.fg_minimize = "#ffffff"
 
 theme.rounded_rect_normal = config.dpi(6)
+theme.rounded_rect_large = config.dpi(8)
 
 theme.button_shape = "rounded"
 theme.button_halign = "center"
@@ -49,6 +52,17 @@ theme.menu_container_padding_left = config.dpi(16)
 theme.menu_container_padding_right = config.dpi(16)
 theme.menu_container_padding_top = config.dpi(12)
 theme.menu_container_padding_bottom = config.dpi(12)
+
+theme.notification_position = "bottom_right"
+theme.notification_padding_top = config.dpi(8)
+theme.notification_padding_bottom = config.dpi(8)
+theme.notification_padding_left = config.dpi(16)
+theme.notification_padding_right = config.dpi(16)
+theme.notification_width = config.dpi(400)
+theme.notification_max_height = config.dpi(400)
+theme.notification_icon_size = config.dpi(24)
+theme.notification_action_halign = "right"
+theme.notification_close_icon = config_dir .. "images/x.svg"
 
 theme.useless_gap = config.dpi(0)
 theme.border_width = config.dpi(0)
