@@ -4,6 +4,10 @@ local awful = require("awful")
 local wibox = require("wibox")
 local animation = require("helpers.animation")
 local config = require("configuration.config")
+local theme = require("configuration.config.theme")
+local color = require("helpers.color")
+local wbutton = require("configuration.widgets.button")
+local wtext = require("configuration.widgets.text")
 local global_state = require("configuration.config.global_state")
 
 local c = global_state.cache
@@ -23,54 +27,28 @@ local function actions_widget(n)
   for _, action in ipairs(n.actions) do
     local button =
       wibox.widget {
-      widget = wibox.container.background,
-      shape = function(cr, width, height)
-        gears.shape.rounded_rect(cr, width, height, 5)
+      widget = wbutton,
+      bg_normal = color.helpers.change_opacity(theme.bg_primary, 0.6),
+      padding_top = theme.notification_padding_top,
+      padding_bottom = theme.notification_padding_bottom,
+      padding_left = theme.notification_padding_left,
+      padding_right = theme.notification_padding_right,
+      callback = function()
+        action:invoke()
       end,
-      bg = "#222222cc",
-      {
-        widget = wibox.container.margin,
-        left = config.dpi(15),
-        right = config.dpi(15),
-        top = config.dpi(5),
-        bottom = config.dpi(5),
-        {
-          widget = wibox.widget.textbox,
-          markup = "<span font='Inter Regular 11'>" .. action.name .. "</span>"
-        }
-      }
+      label = action.name
     }
-    button.buttons =
-      gears.table.join(
-      awful.button(
-        {},
-        1,
-        function()
-          action:invoke()
-        end
-      )
-    )
-
-    button:connect_signal(
-      "mouse::enter",
-      function()
-        button.bg = "#333333cc"
-      end
-    )
-
-    button:connect_signal(
-      "mouse::leave",
-      function()
-        button.bg = "#222222cc"
-      end
-    )
     actions:add(button)
   end
 
   return wibox.widget {
     widget = wibox.container.margin,
     margins = config.dpi(10),
-    actions
+    {
+      widget = wibox.container.place,
+      halign = theme.notification_action_halign,
+      actions
+    }
   }
 end
 
@@ -95,64 +73,80 @@ naughty.connect_signal(
     n:set_timeout(4294967)
     n.anim_data = {y = 0, opacity = 0.0}
     local function placement_fn(w)
-      local result = awful.placement.bottom_right(w, {margins = {bottom = n.anim_data.y, right = 10}, pretend = true})
+      local theme_position = theme.notification_position
+      local position = {}
+      if theme_position == "bottom_right" then
+        position.fn = awful.placement.bottom_right
+        position.margins = {bottom = n.anim_data.y, right = config.dpi(10)}
+      end
+      local result = position.fn(w, {margins = position.margins, pretend = true})
       w.x = result.x
       w.y = result.y
     end
 
     local w =
       awful.popup {
-      maximum_height = 200,
-      width = 400,
+      maximum_height = theme.notification_max_height,
+      width = theme.notification_width,
       ontop = true,
-      bg = "#111111cc",
+      screen = screen,
+      bg = color.helpers.change_opacity(theme.bg_normal, theme.transparency),
       opacity = n.anim_data.opacity,
       shape = function(cr, width, height)
-        gears.shape.rounded_rect(cr, width, height, 8)
+        gears.shape.rounded_rect(cr, width, height, theme.rounded_rect_large)
       end,
       widget = {
         widget = wibox.container.constraint,
-        width = config.dpi(400),
+        width = theme.notification_width,
         strategy = "exact",
         {
           layout = wibox.layout.fixed.vertical,
-          {
-            widget = wibox.container.background,
-            bg = "#181818cc",
+          (n.title ~= "" or n.icon ~= nil) and
             {
-              widget = wibox.container.margin,
-              margins = config.dpi(10),
+              widget = wibox.container.background,
+              bg = color.helpers.change_opacity(theme.bg_secondary, 0.6),
               {
-                layout = wibox.layout.fixed.horizontal,
+                widget = wibox.container.margin,
+                margins = config.dpi(10),
                 {
-                  widget = wibox.container.margin,
-                  right = config.dpi(10),
-                  {
-                    widget = wibox.container.constraint,
-                    width = config.dpi(24),
-                    height = config.dpi(24),
-                    strategy = "exact",
+                  layout = wibox.layout.fixed.horizontal,
+                  n.icon and
                     {
-                      widget = wibox.widget.imagebox,
-                      image = n.icon or n.app_icon
-                    }
-                  }
-                },
-                {
-                  widget = wibox.widget.textbox,
-                  markup = "<span font='Inter Bold 11'>" .. escape_markup_string(n.title) .. "</span>"
+                      widget = wibox.container.margin,
+                      right = config.dpi(10),
+                      {
+                        widget = wibox.container.constraint,
+                        width = theme.notification_icon_size,
+                        height = theme.notification_icon_size,
+                        strategy = "exact",
+                        {
+                          widget = wibox.widget.imagebox,
+                          image = n.icon or n.app_icon
+                        }
+                      }
+                    } or
+                    nil,
+                  n.title and
+                    {
+                      widget = wtext,
+                      foreground = theme.fg_primary,
+                      font_weight = "Bold",
+                      text = escape_markup_string(n.title)
+                    } or
+                    nil
                 }
               }
-            }
-          },
+            } or
+            nil,
           {
             layout = wibox.layout.fixed.vertical,
             {
               widget = wibox.container.margin,
               margins = config.dpi(10),
               {
-                widget = wibox.widget.textbox,
-                markup = "<span font='Inter Regular 11'>" .. escape_markup_string(n.message) .. "</span>"
+                widget = wtext,
+                foreground = theme.fg_normal,
+                text = escape_markup_string(n.message)
               }
             },
             actions_widget(n)

@@ -12,6 +12,9 @@ for _, v in pairs({"halign", "valign", "foreground", "font_name", "font_size", "
     if self._private.label[v] == val then
       return
     end
+    if v == "text" and val == nil then
+      val = ""
+    end
     self._private.label[v] = val
     self:emit_signal("widget::layout_changed")
     self:emit_signal("property::" .. v, val)
@@ -82,7 +85,8 @@ local function new()
     font_name = theme.font_name,
     font_size = theme.font_size,
     font_weight = "Regular",
-    foreground = wp.fg_normal
+    foreground = wp.fg_normal,
+    text = ""
   }
 
   ret:connect_signal(
