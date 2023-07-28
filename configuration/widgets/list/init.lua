@@ -4,33 +4,12 @@ local capi = {
   client = client
 }
 local setmetatable = setmetatable
-local pairs = pairs
 local ipairs = ipairs
-local table = table
-local common = require("awful.widget.common")
-local awful = require("awful")
-local beautiful = require("beautiful")
 local wibox = require("wibox")
-local gears = require("gears")
-local surface = require("gears.surface")
 local timer = require("gears.timer")
-local gcolor = require("gears.color")
-local gstring = require("gears.string")
-local gdebug = require("gears.debug")
-local filesystem = require("gears.filesystem")
 local base = require("wibox.widget.base")
-local json = require("lib.json")
-local fuzzy = require("lib.fuzzy")
-local config = require("configuration.config")
-local helpers = require("module.helpers")
-local open = io.open
-local config_dir = filesystem.get_configuration_dir()
 
 local list = {mt = {}}
-
-local function create_callback(w, app)
-  common._set_common_property(w, "app", app)
-end
 
 local function create_buttons(buttons, object)
   local is_formatted = buttons and buttons[1] and (type(buttons[1]) == "button" or buttons[1]._is_capi_button) or false

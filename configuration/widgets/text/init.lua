@@ -6,7 +6,7 @@ local theme = require("configuration.config.theme")
 
 local text = {mt = {}}
 
-for _, v in pairs({"halign", "valign", "foreground", "font_name", "font_size", "font_weight", "text"}) do
+for _, v in pairs({"halign", "valign", "foreground", "font_name", "font_size", "font_weight", "text", "ellipsize"}) do
   ---@diagnostic disable-next-line: assign-type-mismatch
   text["set_" .. v] = function(self, val)
     if self._private.label[v] == val then
@@ -52,6 +52,11 @@ function text:set_valign(valign)
     return
   end
   wp.label.valign = valign
+end
+
+function text:set_ellipsize(ellipsize)
+  local wp = self._private
+  wp.ellipsize = ellipsize
 end
 
 function text:get_markup()

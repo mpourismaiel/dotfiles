@@ -122,56 +122,27 @@ function taglist.render(w, buttons, label, data, objects, args)
 end
 
 function taglist.new(screen)
-  return awful.widget.taglist {
-    screen = screen,
-    filter = awful.widget.taglist.filter.all,
-    update_function = taglist.render,
-    layout = {
-      layout = wibox.layout.fixed.vertical
-    },
-    buttons = {
-      awful.button(
-        {},
-        1,
-        function(t)
-          t:view_only()
-        end
-      ),
-      awful.button(
-        {modkey},
-        1,
-        function(t)
-          if client.focus then
-            client.focus:move_to_tag(t)
-          end
-        end
-      ),
-      awful.button({}, 3, awful.tag.viewtoggle),
-      awful.button(
-        {modkey},
-        3,
-        function(t)
-          if client.focus then
-            client.focus:toggle_tag(t)
-          end
-        end
-      ),
-      awful.button(
-        {},
-        4,
-        function(t)
-          awful.tag.viewprev(t.screen)
-        end
-      ),
-      awful.button(
-        {},
-        5,
-        function(t)
-          awful.tag.viewnext(t.screen)
-        end
-      )
+  local widget =
+    wibox.widget {
+    widget = wibox.container.background,
+    awful.widget.taglist {
+      screen = screen,
+      filter = awful.widget.taglist.filter.all,
+      update_function = taglist.render,
+      layout = {
+        layout = wibox.layout.fixed.vertical
+      }
     }
   }
+
+  widget:connect_signal(
+    "button::press",
+    function()
+      awesome.emit_signal("module::launcher::show", screen)
+    end
+  )
+
+  return widget
 end
 
 function taglist.mt:__call(...)
