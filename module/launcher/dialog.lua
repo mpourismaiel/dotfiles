@@ -13,6 +13,14 @@ local color = require("helpers.color")
 
 local dialog = {instance = nil, mt = {}}
 
+local terminal_commands_lookup = {
+  ["xfce4-terminal"] = "xfce4-terminal",
+  alacritty = "alacritty -e",
+  termite = "termite -e",
+  rxvt = "rxvt -e",
+  terminator = "terminator -e"
+}
+
 for _, v in pairs(
   {
     "col_count",
@@ -241,7 +249,21 @@ function dialog:run()
       return val + 1
     end
   )
-  awful.spawn.easy_async("gtk-launch " .. entry.executable)
+
+  gears.debug.dump(entry)
+  if entry.terminal == true and config.terminal ~= nil then
+    local terminal_command = terminal_commands_lookup[config.terminal] or config.terminal
+    awful.spawn(terminal_command .. " " .. entry.executable)
+  else
+    awful.spawn.easy_async(
+      "gtk-launch " .. entry.executable,
+      function(stdout, stderr)
+        if stderr:match("^%s*(.-)%s*$") ~= "" then
+          awful.spawn(entry.executable)
+        end
+      end
+    )
+  end
 
   awesome.emit_signal("module::launcher::hide")
 end
