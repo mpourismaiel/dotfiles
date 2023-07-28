@@ -20,7 +20,6 @@ theme.bg_hover = "#333333"
 theme.bg_press = "#3f3f3f"
 theme.bg_focus = "#535d6c"
 theme.bg_urgent = "#ff0000"
-theme.bg_minimize = "#444444"
 theme.bg_systray = theme.bg_secondary
 theme.systray_icon_spacing = config.dpi(16)
 
@@ -30,7 +29,6 @@ theme.fg_press = "#ffffff"
 theme.fg_error = "#dc2626"
 theme.fg_focus = "#ffffff"
 theme.fg_urgent = "#ffffff"
-theme.fg_minimize = "#ffffff"
 
 theme.rounded_rect_normal = config.dpi(6)
 theme.rounded_rect_large = config.dpi(8)
@@ -44,6 +42,8 @@ theme.button_padding_top = config.dpi(10)
 theme.button_padding_bottom = config.dpi(10)
 
 theme.bar_padding = config.dpi(3)
+
+theme.launcher_star_icon = config_dir .. "images/x.svg"
 
 theme.menu_position = "bottom_left"
 theme.menu_vertical_spacing = config.dpi(12)

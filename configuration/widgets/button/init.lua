@@ -118,6 +118,28 @@ function button:set_label(label)
   self:set_widget(label)
 end
 
+function button:hover()
+  local wp = self._private
+  if wp.hovered then
+    return
+  end
+
+  wp.hovered = true
+  wp.animation.normal:stopAnimation()
+  wp.animation.hover:startAnimation()
+  self:emit_signal("widget::hover")
+end
+
+function button:unhover()
+  local wp = self._private
+  if not wp.hovered then
+    return
+  end
+  wp.hovered = false
+  wp.animation.hover:stopAnimation()
+  wp.animation.normal:startAnimation()
+end
+
 function button:set_widget(widget)
   local wp = self._private
   if type(widget) == "string" then
@@ -213,16 +235,14 @@ local function new()
   ret:connect_signal(
     "mouse::enter",
     function()
-      wp.animation.normal:stopAnimation()
-      wp.animation.hover:startAnimation()
+      ret:hover()
     end
   )
 
   ret:connect_signal(
     "mouse::leave",
     function()
-      wp.animation.hover:stopAnimation()
-      wp.animation.normal:startAnimation()
+      ret:unhover()
     end
   )
 

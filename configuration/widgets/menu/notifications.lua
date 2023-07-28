@@ -215,7 +215,7 @@ local notifications =
     if not cached.rendered_actions then
       local actions = actions_widget(data, cached)
       if actions then
-        cached.container:add()
+        cached.container:add(actions)
       end
       cached.rendered_actions = true
     end

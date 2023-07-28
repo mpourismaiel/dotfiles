@@ -6,6 +6,8 @@ local config = require("configuration.config")
 local theme = require("configuration.config.theme")
 local wbutton = require("configuration.widgets.button")
 local wtext = require("configuration.widgets.text")
+local wtext_input = require("configuration.widgets.text_input")
+local woverflow = require("wibox.layout.overflow")
 local color = require("helpers.color")
 
 local buttons = wibox.widget {layout = wibox.layout.flex.horizontal, spacing = config.dpi(5)}
@@ -99,6 +101,36 @@ for _, v in pairs({"left", "center", "right"}) do
   buttons_without_padding:add(button)
 end
 
+local inputs = wibox.widget {layout = wibox.layout.flex.horizontal, spacing = config.dpi(5)}
+local input =
+  wibox.widget {
+  widget = wtext_input,
+  unfocus_on_client_clicked = true,
+  initial = "",
+  widget_template = wibox.widget {
+    widget = wibox.container.background,
+    shape = gears.shape.rounded_rect,
+    bg = theme.bg_primary,
+    {
+      widget = wibox.container.margin,
+      margins = config.dpi(15),
+      {
+        layout = wibox.layout.stack,
+        {
+          widget = wibox.widget.textbox,
+          id = "placeholder_role",
+          text = "Placeholder"
+        },
+        {
+          widget = wibox.widget.textbox,
+          id = "text_role"
+        }
+      }
+    }
+  }
+}
+inputs:add(input)
+
 local texts = wibox.widget {layout = wibox.layout.flex.horizontal, spacing = config.dpi(5)}
 for _, v in pairs({"left", "center", "right"}) do
   local text =
@@ -112,7 +144,7 @@ end
 
 local function section(text, w)
   return wibox.widget {
-    layout = wibox.layout.fixed.vertical,
+    layout = wibox.layout.align.vertical,
     spacing = config.dpi(5),
     {
       widget = wibox.container.margin,
@@ -140,7 +172,7 @@ local debug_screen =
     widget = wibox.container.margin,
     margins = config.dpi(10),
     {
-      layout = wibox.layout.fixed.vertical,
+      layout = woverflow.vertical,
       spacing = config.dpi(20),
       {
         widget = wibox.container.margin,
@@ -150,6 +182,7 @@ local debug_screen =
           text = "Debug screen"
         }
       },
+      section("Inputs", inputs),
       section("Buttons", buttons),
       section("Buttons with widget", buttons_with_widgets),
       section("Buttons with margin", buttons_with_margin),
@@ -158,6 +191,13 @@ local debug_screen =
     }
   }
 }
+
+debug_screen:connect_signal(
+  "button::press",
+  function()
+    input:unfocus()
+  end
+)
 
 local geo =
   awful.placement.centered(

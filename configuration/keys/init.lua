@@ -117,6 +117,14 @@ awful.keyboard.append_global_keybindings(
       {config.modkey},
       "d",
       function()
+        awesome.emit_signal("module::launcher::show")
+      end,
+      {description = "open application drawer", group = "launcher"}
+    ),
+    awful.key(
+      {config.modkey},
+      "Escape",
+      function()
         awesome.emit_signal("widget::drawer:toggle")
       end,
       {description = "open application drawer", group = "launcher"}
@@ -128,17 +136,6 @@ awful.keyboard.append_global_keybindings(
         awful.spawn(config.commands.rofi_appmenu, false)
       end,
       {description = "open application drawer", group = "launcher"}
-    ),
-    awful.key(
-      {config.modkey},
-      "Escape",
-      function()
-        awesome.emit_signal("widget::systray:toggle")
-      end,
-      {
-        description = "toggle systray",
-        group = "systray"
-      }
     ),
     awful.key(
       {},

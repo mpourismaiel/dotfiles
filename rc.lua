@@ -36,6 +36,7 @@ beautiful.init(theme)
 
 require("module.autostart")
 require("module.weather")
+require("module.launcher.dialog")()
 require("module.debug")
 local widgets = require("configuration.widgets")
 

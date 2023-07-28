@@ -327,21 +327,23 @@ function tasklist.new(screen)
       local tags = s.tags
       for k, v in ipairs(tags) do
         for i, c in ipairs(v:clients()) do
-          local class = c.class
+          if not c.skip_taskbar then
+            local class = c.class
 
-          local found_group = nil
-          for _, v in ipairs(list) do
-            if v.class == class then
-              found_group = v
-              break
+            local found_group = nil
+            for _, v in ipairs(list) do
+              if v.class == class then
+                found_group = v
+                break
+              end
             end
-          end
 
-          if found_group ~= nil then
-            table.insert(found_group.clients, c)
-          else
-            -- create group
-            table.insert(list, {class = class, clients = {c}})
+            if found_group ~= nil then
+              table.insert(found_group.clients, c)
+            else
+              -- create group
+              table.insert(list, {class = class, clients = {c}})
+            end
           end
         end
       end

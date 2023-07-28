@@ -1,10 +1,10 @@
 local Gio = require("lgi").Gio
 local awful = require("awful")
-local gears = require("gears")
 local gtable = require("gears.table")
 local gobject = require("gears.object")
 local icon_theme = require("bling.helpers.icon_theme")
-local path = ...
+
+local launcher = {mt = {}}
 
 local function case_insensitive_pattern(pattern)
   -- find an optional '%' (group 1) followed by any character (group 2)
@@ -34,63 +34,27 @@ local function has_value(tab, val)
   return false
 end
 
-local function generate_apps(self)
-  self._private.all_entries = {}
-  self._private.matched_entries = {}
+function launcher:generate_apps()
+  self.all_entries = {}
+  self.matched_entries = {}
 
   local app_info = Gio.AppInfo
   local apps = app_info.get_all()
-  if self.sort_alphabetically then
-    table.sort(
-      apps,
-      function(a, b)
-        local app_a_score = app_info.get_name(a):lower()
-        if has_value(self.favorites, app_info.get_name(a)) then
-          app_a_score = "aaaaaaaaaaa" .. app_a_score
-        end
-        local app_b_score = app_info.get_name(b):lower()
-        if has_value(self.favorites, app_info.get_name(b)) then
-          app_b_score = "aaaaaaaaaaa" .. app_b_score
-        end
-
-        return app_a_score < app_b_score
+  table.sort(
+    apps,
+    function(a, b)
+      local app_a_score = app_info.get_name(a):lower()
+      if has_value(self.favorites, app_info.get_name(a)) then
+        app_a_score = "aaaaaaaaaaa" .. app_a_score
       end
-    )
-  elseif self.reverse_sort_alphabetically then
-    table.sort(
-      apps,
-      function(a, b)
-        local app_a_score = app_info.get_name(a):lower()
-        if has_value(self.favorites, app_info.get_name(a)) then
-          app_a_score = "zzzzzzzzzzz" .. app_a_score
-        end
-        local app_b_score = app_info.get_name(b):lower()
-        if has_value(self.favorites, app_info.get_name(b)) then
-          app_b_score = "zzzzzzzzzzz" .. app_b_score
-        end
-
-        return app_a_score > app_b_score
+      local app_b_score = app_info.get_name(b):lower()
+      if has_value(self.favorites, app_info.get_name(b)) then
+        app_b_score = "aaaaaaaaaaa" .. app_b_score
       end
-    )
-  else
-    table.sort(
-      apps,
-      function(a, b)
-        local app_a_favorite = has_value(self.favorites, app_info.get_name(a))
-        local app_b_favorite = has_value(self.favorites, app_info.get_name(b))
 
-        if app_a_favorite and not app_b_favorite then
-          return true
-        elseif app_b_favorite and not app_a_favorite then
-          return false
-        elseif app_a_favorite and app_b_favorite then
-          return app_info.get_name(a):lower() < app_info.get_name(b):lower()
-        else
-          return false
-        end
-      end
-    )
-  end
+      return app_a_score < app_b_score
+    end
+  )
 
   local icon_theme = icon_theme(self.icon_theme, self.icon_size)
 
@@ -115,30 +79,29 @@ local function generate_apps(self)
       local terminal = Gio.DesktopAppInfo.get_string(desktop_app_info, "Terminal") == "true" and true or false
       local generic_name = Gio.DesktopAppInfo.get_string(desktop_app_info, "GenericName") or nil
 
-      table.insert(
-        self._private.all_entries,
-        {
-          name = name,
-          generic_name = generic_name,
-          commandline = commandline,
-          executable = executable,
-          terminal = terminal,
-          icon = icon
-        }
-      )
+      local data = {
+        name = name,
+        generic_name = generic_name,
+        commandline = commandline,
+        executable = executable,
+        terminal = terminal,
+        icon = icon
+      }
+
+      table.insert(self.all_entries, data)
+      table.insert(self.matched_entries, data)
     end
   end
 end
 
-local launcher = {mt = {}}
-
-function launcher.new()
+local function new()
   local ret = gobject({})
-  ret._private = {}
-  ret._private.text = ""
+  ret.all_entries = {}
+  ret.matched_entries = {}
   ret.favorites = {}
-  ret.sort_alphabetically = false
-  ret.reverse_sort_alphabetically = false
+  ret._private = {
+    text = ""
+  }
 
   gtable.crush(ret, launcher)
 
@@ -153,20 +116,20 @@ function launcher.new()
         subscribe_script,
         {
           stdout = function(_)
-            generate_apps(ret)
+            ret:generate_apps()
           end
         }
       )
     end
   )
 
-  generate_apps(ret)
+  ret:generate_apps()
 
   return ret
 end
 
 function launcher.mt:__call(...)
-  return launcher.new(...)
+  return new(...)
 end
 
 return setmetatable(launcher, launcher.mt)

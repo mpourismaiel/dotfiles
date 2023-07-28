@@ -8,6 +8,7 @@ local config_dir = filesystem.get_configuration_dir()
 local images_dir = filesystem.get_configuration_dir() .. "/images"
 
 local config = {
+  dir = config_dir .. "/config",
   terminal = "xfce4-terminal",
   taskManager = "system-monitoring-center",
   modkey = "Mod4",
@@ -66,7 +67,7 @@ local config = {
   }
 }
 
-config.auto_start_extra = config_dir .. "/config/autostart"
+config.auto_start_extra = config.dir .. "/autostart"
 
 function file_exists(file)
   local f = io.open(file, "rb")
@@ -104,10 +105,10 @@ if config.initialized ~= true then
     config.auto_start.apps = gears.table.join(config.auto_start.apps, lines)
   end
 
-  if file_exists(config_dir .. "/config/configuration.json") then
-    -- read config_dir .. "/config/configuration.json" and load the json as config_override_table
+  if file_exists(config.dir .. "/configuration.json") then
+    -- read config.dir .. "/configuration.json" and load the json as config_override_table
     local json = require("lib.json")
-    local f = io.open(config_dir .. "/config/configuration.json", "rb")
+    local f = io.open(config.dir .. "/configuration.json", "rb")
     local content = f:read("*all")
     f:close()
     local config_override_table = json.decode(content)
