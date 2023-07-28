@@ -129,18 +129,27 @@ function taglist.new(screen)
       screen = screen,
       filter = awful.widget.taglist.filter.all,
       update_function = taglist.render,
+      buttons = {
+        awful.button(
+          {},
+          4,
+          function(t)
+            awful.tag.viewprev(t.screen)
+          end
+        ),
+        awful.button(
+          {},
+          5,
+          function(t)
+            awful.tag.viewnext(t.screen)
+          end
+        )
+      },
       layout = {
         layout = wibox.layout.fixed.vertical
       }
     }
   }
-
-  widget:connect_signal(
-    "button::press",
-    function()
-      awesome.emit_signal("module::launcher::show", screen)
-    end
-  )
 
   return widget
 end

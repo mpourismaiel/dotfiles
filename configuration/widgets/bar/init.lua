@@ -33,6 +33,9 @@ function bar.new(screen)
           paddings = 0,
           padding_top = 8,
           padding_bottom = 8,
+          callback = function()
+            awesome.emit_signal("module::launcher::show", screen)
+          end,
           taglist.new(screen)
         }
       },
