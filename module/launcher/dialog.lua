@@ -41,6 +41,9 @@ end
 function dialog:calculate_position()
   local wp = self._private
   local s = awful.screen.focused()
+  wp.backdrop.screen = s
+  wp.widget.screen = s
+
   wp.backdrop.x = s.geometry.x
   wp.backdrop.y = s.geometry.y
   wp.backdrop.width = s.geometry.width
