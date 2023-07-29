@@ -138,6 +138,7 @@ function dialog:render_apps()
           paddings = config.dpi(5),
           id = "button",
           bg_normal = color.helpers.change_opacity(theme.bg_hover, 0.4),
+          disable_hover = true,
           callback = function()
             if wp.selected == i then
               self:run()
@@ -272,6 +273,7 @@ function dialog:search(text)
   local wp = self._private
   wp.query = text or ""
   wp.query = wp.query:gsub("%W", "")
+  self:select(1)
   self:render_apps()
 end
 

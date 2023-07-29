@@ -18,7 +18,8 @@ for _, v in pairs(
     "padding_left",
     "padding_right",
     "paddings",
-    "callback"
+    "callback",
+    "disable_hover"
   }
 ) do
   ---@diagnostic disable-next-line: assign-type-mismatch
@@ -235,6 +236,9 @@ local function new()
   ret:connect_signal(
     "mouse::enter",
     function()
+      if wp.disable_hover then
+        return
+      end
       ret:hover()
     end
   )
@@ -242,6 +246,9 @@ local function new()
   ret:connect_signal(
     "mouse::leave",
     function()
+      if wp.disable_hover then
+        return
+      end
       ret:unhover()
     end
   )
