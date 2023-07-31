@@ -70,6 +70,8 @@ theme.border_color_normal = "#000000"
 theme.border_color_active = "#535d6c"
 theme.border_color_marked = "#91231c"
 
+theme.shutdown_icon = config_dir .. "/images/power.svg"
+
 -- There are other variable sets
 -- overriding the default one when
 -- defined, the sets are:

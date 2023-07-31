@@ -14,6 +14,7 @@ local config = {
   modkey = "Mod4",
   dpi = xresources.apply_dpi,
   wallpaper = os.getenv("HOME") .. "/Pictures/wallpaper.jpg",
+  profile_image = nil,
   images_dir = images_dir,
   auto_start = {
     debug_mode = false,

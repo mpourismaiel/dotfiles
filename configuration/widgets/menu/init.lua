@@ -1,3 +1,6 @@
+local capi = {
+  awesome = awesome
+}
 local awful = require("awful")
 local wibox = require("wibox")
 local gears = require("gears")
@@ -6,6 +9,8 @@ local config = require("configuration.config")
 local theme = require("configuration.config.theme")
 
 local wcontainer = require("configuration.widgets.menu.container")
+local profile = require("configuration.widgets.menu.profile")
+local power = require("configuration.widgets.menu.power")
 local notifications = require("configuration.widgets.menu.notifications")
 local power_button = require("configuration.widgets.menu.power-button")
 local volumeslider = require("configuration.widgets.volume.slider")
@@ -76,7 +81,7 @@ local function new()
       bg_normal = theme.bg_normal,
       bg_hover = theme.bg_primary,
       callback = function()
-        awesome.emit_signal("widget::drawer:toggle")
+        capi.awesome.emit_signal("widget::drawer:toggle")
       end,
       {
         widget = wibox.widget.imagebox(menu_icon)
@@ -109,21 +114,47 @@ local function new()
         layout = wibox.layout.fixed.horizontal,
         spacing = theme.menu_horizontal_spacing,
         {
-          widget = wcontainer,
+          widget = wibox.container.constraint,
+          strategy = "exact",
+          width = config.dpi(60),
           {
-            widget = wibox.container.place,
-            valign = "bottom",
+            widget = wcontainer,
             {
-              base_size = config.dpi(16),
-              horizontal = false,
-              id = "systray",
-              widget = wibox.widget.systray
+              widget = wibox.container.place,
+              valign = "bottom",
+              {
+                widget = wibox.widget.systray,
+                base_size = config.dpi(16),
+                horizontal = false,
+                id = "systray"
+              }
             }
           }
         },
         {
           layout = wibox.layout.align.vertical,
-          nil,
+          {
+            widget = wibox.container.margin,
+            bottom = theme.menu_vertical_spacing,
+            {
+              layout = wibox.layout.fixed.horizontal,
+              spacing = theme.menu_horizontal_spacing,
+              {
+                widget = wibox.container.constraint,
+                strategy = "exact",
+                width = config.dpi(292),
+                height = config.dpi(48),
+                profile
+              },
+              {
+                widget = wibox.container.constraint,
+                strategy = "exact",
+                width = config.dpi(60),
+                height = config.dpi(60),
+                power
+              }
+            }
+          },
           {
             widget = wibox.container.margin,
             bottom = theme.menu_vertical_spacing,
@@ -157,7 +188,7 @@ local function new()
     stop_event = "release",
     keypressed_callback = function(_, _, key, _)
       if key == "Escape" then
-        awesome.emit_signal("widget::drawer:hide")
+        capi.awesome.emit_signal("widget::drawer:hide")
       end
     end
   }
@@ -173,11 +204,11 @@ local function new()
   backdrop:connect_signal(
     "button::release",
     function()
-      awesome.emit_signal("widget::drawer:hide")
+      capi.awesome.emit_signal("widget::drawer:hide")
     end
   )
 
-  awesome.connect_signal(
+  capi.awesome.connect_signal(
     "widget::drawer:toggle",
     function()
       local s = awful.screen.focused()
@@ -192,7 +223,7 @@ local function new()
     end
   )
 
-  awesome.connect_signal(
+  capi.awesome.connect_signal(
     "widget::drawer:hide",
     function()
       backdrop.visible = false
