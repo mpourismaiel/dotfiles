@@ -19,7 +19,8 @@ for _, v in pairs(
     "padding_right",
     "paddings",
     "callback",
-    "disable_hover"
+    "disable_hover",
+    "rounded"
   }
 ) do
   ---@diagnostic disable-next-line: assign-type-mismatch
@@ -38,6 +39,12 @@ for _, v in pairs(
   end
 end
 
+function button:set_rounded(rounded)
+  local wp = self._private
+  wp.rounded = rounded
+  self:set_shape(wp.shape_value)
+end
+
 function button:set_halign(halign)
   local wp = self._private
   wp.halign = halign
@@ -49,10 +56,11 @@ end
 
 function button:set_shape(shape)
   local wp = self._private
+  wp.shape_value = shape
   if type(shape) == "string" then
     if shape == "rounded" then
       shape = function(cr, width, height)
-        gears.shape.rounded_rect(cr, width, height, theme.rounded_rect_normal)
+        gears.shape.rounded_rect(cr, width, height, wp.rounded or theme.rounded_rect_normal)
       end
     elseif shape == "circle" then
       shape = function(cr, width, height)

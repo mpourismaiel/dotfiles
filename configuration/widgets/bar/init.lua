@@ -1,14 +1,10 @@
 local awful = require("awful")
 local wibox = require("wibox")
 
-local bar_widget_wrapper = require("configuration.widgets.bar.widget-wrapper")
-local config = require("configuration.config")
 local theme = require("configuration.config.theme")
 local menu = require("configuration.widgets.menu")
 local taglist = require("configuration.widgets.taglist")
 local tasklist = require("configuration.widgets.tasklist")
-local layoutbox = require("configuration.widgets.layoutbox")
-local systray = require("configuration.widgets.systray")
 local clock = require("configuration.widgets.clock")
 local wbutton = require("configuration.widgets.button")
 
@@ -51,7 +47,7 @@ function bar.new(screen)
         {
           layout = wibox.layout.fixed.vertical,
           clock.new(),
-          menu
+          menu(screen)
         }
       }
     }

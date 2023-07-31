@@ -27,7 +27,9 @@ function container:set_widget(w)
     wibox.widget {
     widget = wibox.container.background,
     bg = wp.bg,
-    shape = gears.shape.rounded_rect,
+    shape = function(cr, width, height)
+      gears.shape.rounded_rect(cr, width, height, theme.rounded_rect_large)
+    end,
     {
       widget = wibox.container.margin,
       left = wp.padding_left,
