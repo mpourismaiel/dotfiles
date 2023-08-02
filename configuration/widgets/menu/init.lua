@@ -182,22 +182,10 @@ local function new()
     }
   }
 
-  local keygrabber =
-    awful.keygrabber {
-    auto_start = false,
-    stop_event = "release",
-    keypressed_callback = function(_, _, key, _)
-      if key == "Escape" then
-        capi.awesome.emit_signal("widget::drawer:hide")
-      end
-    end
-  }
-
   local wp = ret._private
   wp.backdrop = backdrop
   wp.drawer = drawer
   wp.systray = wp.drawer:get_children_by_id("systray")[1]
-  wp.keygrabber = keygrabber
 
   ret:calculate_position()
 
@@ -212,13 +200,13 @@ local function new()
     "widget::drawer:toggle",
     function()
       local s = awful.screen.focused()
-      keygrabber:stop()
-      if not backdrop.visible then
+      local is_visible = backdrop.visible
+      if not is_visible then
         ret:set_screen(s)
-        keygrabber:start()
       end
-      backdrop.visible = not backdrop.visible
-      drawer.visible = not drawer.visible
+
+      wp.backdrop.visible = not is_visible
+      wp.drawer.visible = not is_visible
       notifications.reset()
     end
   )
@@ -226,9 +214,8 @@ local function new()
   capi.awesome.connect_signal(
     "widget::drawer:hide",
     function()
-      backdrop.visible = false
+      wp.backdrop.visible = false
       drawer.visible = false
-      keygrabber:stop()
     end
   )
   return toggle
