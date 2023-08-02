@@ -19,6 +19,8 @@ for _, v in pairs(
     "padding_right",
     "paddings",
     "callback",
+    "middle_click_callback",
+    "right_click_callback",
     "disable_hover",
     "rounded"
   }
@@ -298,6 +300,26 @@ local function new()
           return
         end
         wp.callback()
+      end
+    ),
+    awful.button(
+      {},
+      2,
+      function()
+        if not wp.middle_click_callback then
+          return
+        end
+        wp.middle_click_callback()
+      end
+    ),
+    awful.button(
+      {},
+      3,
+      function()
+        if not wp.right_click_callback then
+          return
+        end
+        wp.right_click_callback()
       end
     )
   )
