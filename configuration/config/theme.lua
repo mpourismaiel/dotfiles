@@ -25,6 +25,7 @@ theme.systray_icon_spacing = config.dpi(16)
 
 theme.fg_normal = "#cccccc"
 theme.fg_primary = "#ffffff"
+theme.fg_secondary = "#dddddd"
 theme.fg_press = "#ffffff"
 theme.fg_error = "#dc2626"
 theme.fg_focus = "#ffffff"
@@ -43,6 +44,10 @@ theme.button_padding_bottom = config.dpi(10)
 
 theme.bar_padding = config.dpi(3)
 theme.bar_width = config.dpi(48)
+theme.bar_clock_hour_font_size = config.dpi(12)
+theme.bar_clock_hour_bold = true
+theme.bar_clock_minute_font_size = config.dpi(13)
+theme.bar_clock_minute_bold = false
 
 theme.launcher_star_icon = config_dir .. "images/x.svg"
 
@@ -56,6 +61,16 @@ theme.menu_container_padding_right = config.dpi(16)
 theme.menu_container_padding_top = config.dpi(12)
 theme.menu_container_padding_bottom = config.dpi(12)
 theme.menu_height = config.dpi(600)
+
+theme.calendar_position = "bottom_left"
+theme.calendar_vertical_spacing = config.dpi(12)
+theme.calendar_vertical_spacing = config.dpi(12)
+theme.calendar_horizontal_spacing = config.dpi(12)
+theme.calendar_horizontal_spacing = config.dpi(12)
+theme.calendar_margin_left = config.dpi(16)
+theme.calendar_margin_bottom = config.dpi(8)
+theme.calendar_width = config.dpi(400)
+theme.calendar_height = config.dpi(400)
 
 theme.notification_position = "bottom_right"
 theme.notification_padding_top = config.dpi(8)

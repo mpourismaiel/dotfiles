@@ -151,6 +151,66 @@ function button:unhover()
   wp.animation.normal:startAnimation()
 end
 
+function button:set_margin(margin)
+  local wp = self._private
+  wp.margin = margin
+  if not wp.margin_role then
+    return
+  end
+  wp.margin_role.top = margin
+  wp.margin_role.bottom = margin
+  wp.margin_role.left = margin
+  wp.margin_role.right = margin
+end
+
+function button:set_paddings(paddings)
+  local wp = self._private
+  wp.paddings = paddings
+  if not wp.padding_role then
+    return
+  end
+  wp.padding_role.top = paddings
+  wp.padding_role.bottom = paddings
+  wp.padding_role.left = paddings
+  wp.padding_role.right = paddings
+end
+
+function button:set_padding_left(padding_left)
+  local wp = self._private
+  wp.padding_left = padding_left
+  if not wp.padding_role then
+    return
+  end
+  wp.padding_role.left = padding_left
+end
+
+function button:set_padding_right(padding_right)
+  local wp = self._private
+  wp.padding_right = padding_right
+  if not wp.padding_role then
+    return
+  end
+  wp.padding_role.right = padding_right
+end
+
+function button:set_padding_top(padding_top)
+  local wp = self._private
+  wp.padding_top = padding_top
+  if not wp.padding_role then
+    return
+  end
+  wp.padding_role.top = padding_top
+end
+
+function button:set_padding_bottom(padding_bottom)
+  local wp = self._private
+  wp.padding_bottom = padding_bottom
+  if not wp.padding_role then
+    return
+  end
+  wp.padding_role.bottom = padding_bottom
+end
+
 function button:set_widget(widget)
   local wp = self._private
   if type(widget) == "string" then
@@ -176,6 +236,7 @@ function button:set_widget(widget)
     wibox.widget {
     widget = wibox.container.margin,
     margins = wp.margin,
+    id = "margins",
     {
       widget = wibox.container.background,
       bg = wp.bg_normal,
@@ -183,6 +244,7 @@ function button:set_widget(widget)
       id = "background",
       {
         widget = wibox.container.margin,
+        id = "paddings",
         top = wp.padding_top or wp.paddings or theme.button_padding_top,
         bottom = wp.padding_bottom or wp.paddings or theme.button_padding_bottom,
         left = wp.padding_left or wp.paddings or theme.button_padding_left,
@@ -202,6 +264,8 @@ function button:set_widget(widget)
   wp.widget_template = widget
   wp.widget = w
   wp.background_role = w:get_children_by_id("background")[1]
+  wp.padding_role = w:get_children_by_id("paddings")[1]
+  wp.margin_role = w:get_children_by_id("margins")[1]
   wp.place_role = w:get_children_by_id("place")[1]
 
   self:emit_signal("property::widget")
