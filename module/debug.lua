@@ -7,6 +7,7 @@ local theme = require("configuration.config.theme")
 local wbutton = require("configuration.widgets.button")
 local wtext = require("configuration.widgets.text")
 local wtext_input = require("configuration.widgets.text_input")
+local wcalendar = require("configuration.widgets.calendar")
 local woverflow = require("wibox.layout.overflow")
 local color = require("helpers.color")
 
@@ -142,6 +143,23 @@ for _, v in pairs({"left", "center", "right"}) do
   texts:add(text)
 end
 
+local contained_texts = wibox.widget {layout = wibox.layout.fixed.horizontal, spacing = config.dpi(5)}
+for _, v in pairs({"left", "center", "right"}) do
+  local text =
+    wibox.widget {
+    widget = wibox.container.background,
+    border_width = config.dpi(2),
+    border_color = "#000000",
+    {
+      widget = wtext,
+      text = v:gsub("^%l", string.upper),
+      halign = v,
+      forced_width = config.dpi(50)
+    }
+  }
+  contained_texts:add(text)
+end
+
 local function section(text, w)
   return wibox.widget {
     layout = wibox.layout.align.vertical,
@@ -187,7 +205,8 @@ local debug_screen =
       section("Buttons with widget", buttons_with_widgets),
       section("Buttons with margin", buttons_with_margin),
       section("Buttons without padding", buttons_without_padding),
-      section("Texts", texts)
+      section("Texts", texts),
+      section("Texts with forced dimensions", contained_texts)
     }
   }
 }

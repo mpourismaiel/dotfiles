@@ -5,8 +5,8 @@ local theme = require("configuration.config.theme")
 local menu = require("configuration.widgets.menu")
 local taglist = require("configuration.widgets.taglist")
 local tasklist = require("configuration.widgets.tasklist")
-local clock = require("configuration.widgets.clock")
 local wbutton = require("configuration.widgets.button")
+local datetime = require("configuration.widgets.bar.datetime")
 
 local bar = {mt = {}}
 
@@ -46,8 +46,8 @@ function bar.new(screen)
         valign = "bottom",
         {
           layout = wibox.layout.fixed.vertical,
-          clock.new(),
-          menu()
+          datetime,
+          menu
         }
       }
     }
