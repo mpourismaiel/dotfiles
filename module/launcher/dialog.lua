@@ -76,31 +76,21 @@ function dialog:render_apps()
   table.sort(
     apps,
     function(a, b)
-      local app_a_score = a.name:lower()
-      local app_b_score = b.name:lower()
+      local aFav = wp.favorites:get(a.name .. a.executable) ~= nil
+      local bFav = wp.favorites:get(b.name .. b.executable) ~= nil
 
-      local app_a_favorite = wp.favorites:get(a.executable)
-      app_a_favorite = app_a_favorite == nil and false or true
-      local app_b_favorite = wp.favorites:get(b.executable)
-      app_b_favorite = app_b_favorite == nil and false or true
-      if app_a_favorite and not app_b_favorite then
-        return true
-      elseif app_b_favorite and not app_a_favorite then
-        return false
-      elseif app_a_favorite and app_b_favorite then
-        return app_a_score < app_b_score
+      if aFav ~= bFav then
+        return aFav
       end
 
-      local app_a_history_score = wp.history:get(a.executable)
-      app_a_history_score = app_a_history_score == nil and 0 or app_a_history_score
-      local app_b_history_score = wp.history:get(b.executable)
-      app_b_history_score = app_b_history_score == nil and 0 or app_b_history_score
+      local aHist = wp.history:get(a.executable) or 0
+      local bHist = wp.history:get(b.executable) or 0
 
-      if app_a_history_score == app_b_history_score then
-        return app_a_score < app_b_score
+      if aHist ~= bHist then
+        return aHist > bHist
       end
 
-      return app_a_history_score > app_b_history_score
+      return a.executable < b.executable
     end
   )
 
@@ -139,6 +129,18 @@ function dialog:render_apps()
           id = "button",
           bg_normal = color.helpers.change_opacity(theme.bg_hover, 0.4),
           disable_hover = true,
+          middle_click_callback = function()
+            wp.favorites:add(
+              v.name .. v.executable,
+              function(val)
+                if val then
+                  return nil
+                end
+
+                return true
+              end
+            )
+          end,
           callback = function()
             if wp.selected == i then
               self:run()
