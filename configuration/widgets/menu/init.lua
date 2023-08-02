@@ -285,8 +285,8 @@ local function new()
 
       if not is_visible then
         ret:set_screen(s)
-        wp.animation.open:startAnimation()
         wp.animation.close:stopAnimation()
+        wp.animation.open:startAnimation()
       else
         wp.animation.open:stopAnimation()
         wp.animation.close:startAnimation()
@@ -297,6 +297,8 @@ local function new()
   capi.awesome.connect_signal(
     "widget::drawer:hide",
     function()
+      wp.animation.open:stopAnimation()
+      wp.animation.close:startAnimation()
       wp.backdrop.visible = false
       wp.drawer.visible = false
       if wp.systray then
