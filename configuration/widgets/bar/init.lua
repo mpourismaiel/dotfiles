@@ -13,7 +13,7 @@ local bar = {mt = {}}
 function bar.new(screen)
   return awful.wibar {
     position = "left",
-    width = 48,
+    width = theme.bar_width,
     screen = screen,
     bg = theme.bg_normal,
     widget = {
@@ -47,7 +47,7 @@ function bar.new(screen)
         {
           layout = wibox.layout.fixed.vertical,
           clock.new(),
-          menu(screen)
+          menu()
         }
       }
     }
