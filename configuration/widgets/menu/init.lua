@@ -1,5 +1,6 @@
 local capi = {
-  awesome = awesome
+  awesome = awesome,
+  screen = screen
 }
 local awful = require("awful")
 local wibox = require("wibox")
@@ -7,6 +8,7 @@ local gears = require("gears")
 local filesystem = require("gears.filesystem")
 local config = require("configuration.config")
 local theme = require("configuration.config.theme")
+local animation = require("helpers.animation")
 
 local wcontainer = require("configuration.widgets.menu.container")
 local profile = require("configuration.widgets.menu.profile")
@@ -19,6 +21,7 @@ local wbutton = require("configuration.widgets.button")
 local config_dir = filesystem.get_configuration_dir()
 local menu_icon = config_dir .. "/images/circle.svg"
 
+local instance = nil
 local menu = {mt = {}}
 
 function menu:calculate_position()
@@ -31,9 +34,13 @@ function menu:calculate_position()
 
   if theme_position == "bottom_left" then
     position.fn = awful.placement.bottom_left
+    position.origin = {
+      bottom = config.dpi(0),
+      left = theme.bar_width
+    }
     position.margins = {
-      bottom = config.dpi(8),
-      left = config.dpi(64)
+      bottom = theme.menu_margin_bottom,
+      left = theme.bar_width + theme.menu_margin_left
     }
   end
 
@@ -45,14 +52,12 @@ function menu:set_screen(screen)
 
   wp.drawer.screen = screen
   wp.backdrop.screen = screen
-  wp.systray.screen = screen
 
   wp.backdrop.x = screen.geometry.x
   wp.backdrop.y = screen.geometry.y
   wp.backdrop.width = screen.geometry.width
   wp.backdrop.height = screen.geometry.height
 
-  wp.drawer.height = config.dpi(600)
   local geo =
     wp.position.fn(
     wp.drawer,
@@ -61,13 +66,59 @@ function menu:set_screen(screen)
       pretend = true
     }
   )
-  wp.drawer.x = geo.x
+
+  local offset_x = 0
+  if wp.systray then
+    wp.animation.open.target.systray.x = geo.x
+    wp.systray.y = geo.y
+    offset_x = wp.systray_box + theme.menu_horizontal_spacing
+  end
+  wp.animation.open.target.drawer.x = geo.x + offset_x
   wp.drawer.y = geo.y
 end
 
+function menu:init_animation()
+  local wp = self._private
+  wp.anim_data = {
+    systray = {x = wp.position.origin.left, opacity = 0},
+    drawer = {x = wp.position.origin.left, opacity = 0}
+  }
+  wp.animation =
+    animation {
+    subject = wp.anim_data,
+    targets = {
+      open = {
+        systray = {x = 0, opacity = 1},
+        drawer = {x = 0, opacity = 1}
+      },
+      close = {
+        systray = {x = wp.position.origin.left, opacity = 0},
+        drawer = {x = wp.position.origin.left, opacity = 0}
+      }
+    },
+    easing = "inOutCubic",
+    duration = 0.25,
+    signals = {
+      ["anim::animation_updated"] = function(s)
+        if wp.systray then
+          wp.systray.x = s.subject.systray.x
+          wp.opacity = s.subject.systray.opacity
+        end
+        wp.drawer.x = s.subject.drawer.x
+        wp.drawer.opacity = s.subject.drawer.opacity
+      end
+    }
+  }
+end
+
 local function new()
+  if instance then
+    return instance._private.toggle
+  end
   local ret = {_private = {}}
   gears.table.crush(ret, menu)
+  local wp = ret._private
+  wp.primary_screen = capi.screen.primary
 
   local toggle =
     wibox.widget {
@@ -96,12 +147,15 @@ local function new()
     type = "utility"
   }
 
-  local drawer =
+  wp.systray_width = config.dpi(60)
+  wp.systray_box = wp.systray_width + theme.menu_horizontal_spacing * 2
+  local systray =
     wibox {
     ontop = true,
     visible = false,
     type = "utility",
-    width = config.dpi(460),
+    width = wp.systray_box,
+    height = theme.menu_height,
     bg = theme.bg_normal,
     shape = gears.shape.rounded_rect,
     widget = {
@@ -111,70 +165,19 @@ local function new()
       left = theme.menu_horizontal_spacing,
       right = theme.menu_horizontal_spacing,
       {
-        layout = wibox.layout.fixed.horizontal,
-        spacing = theme.menu_horizontal_spacing,
+        widget = wibox.container.constraint,
+        strategy = "exact",
+        width = wp.systray_width,
         {
-          widget = wibox.container.constraint,
-          strategy = "exact",
-          width = config.dpi(60),
+          widget = wcontainer,
           {
-            widget = wcontainer,
+            widget = wibox.container.place,
+            valign = "bottom",
             {
-              widget = wibox.container.place,
-              valign = "bottom",
-              {
-                widget = wibox.widget.systray,
-                base_size = config.dpi(16),
-                horizontal = false,
-                id = "systray"
-              }
-            }
-          }
-        },
-        {
-          layout = wibox.layout.align.vertical,
-          {
-            widget = wibox.container.margin,
-            bottom = theme.menu_vertical_spacing,
-            {
-              layout = wibox.layout.fixed.horizontal,
-              spacing = theme.menu_horizontal_spacing,
-              {
-                widget = wibox.container.constraint,
-                strategy = "exact",
-                width = config.dpi(292),
-                height = config.dpi(48),
-                profile
-              },
-              {
-                widget = wibox.container.constraint,
-                strategy = "exact",
-                width = config.dpi(60),
-                height = config.dpi(60),
-                power
-              }
-            }
-          },
-          {
-            widget = wibox.container.margin,
-            bottom = theme.menu_vertical_spacing,
-            {
-              widget = wcontainer,
-              notifications
-            }
-          },
-          {
-            layout = wibox.layout.fixed.vertical,
-            spacing = theme.menu_vertical_spacing,
-            volumeslider,
-            {
-              layout = wibox.layout.flex.horizontal,
-              spacing = config.dpi(8),
-              power_button("lock"),
-              power_button("sleep"),
-              power_button("logout"),
-              power_button("reboot"),
-              power_button("power")
+              widget = wibox.widget.systray,
+              base_size = config.dpi(16),
+              horizontal = false,
+              id = "systray"
             }
           }
         }
@@ -182,12 +185,81 @@ local function new()
     }
   }
 
-  local wp = ret._private
+  wp.drawer_width = config.dpi(380)
+  wp.drawer_box = wp.drawer_width + theme.menu_horizontal_spacing * 2
+
+  local drawer =
+    wibox {
+    ontop = true,
+    visible = false,
+    type = "utility",
+    width = wp.drawer_box,
+    height = theme.menu_height,
+    bg = theme.bg_normal,
+    shape = gears.shape.rounded_rect,
+    widget = {
+      widget = wibox.container.margin,
+      top = theme.menu_vertical_spacing,
+      bottom = theme.menu_vertical_spacing,
+      left = theme.menu_horizontal_spacing,
+      right = theme.menu_horizontal_spacing,
+      {
+        layout = wibox.layout.align.vertical,
+        {
+          widget = wibox.container.margin,
+          bottom = theme.menu_vertical_spacing,
+          {
+            layout = wibox.layout.fixed.horizontal,
+            spacing = theme.menu_horizontal_spacing,
+            {
+              widget = wibox.container.constraint,
+              strategy = "exact",
+              width = config.dpi(308),
+              height = config.dpi(48),
+              profile
+            },
+            {
+              widget = wibox.container.constraint,
+              strategy = "exact",
+              width = config.dpi(60),
+              height = config.dpi(60),
+              power
+            }
+          }
+        },
+        {
+          widget = wibox.container.margin,
+          bottom = theme.menu_vertical_spacing,
+          {
+            widget = wcontainer,
+            notifications
+          }
+        },
+        {
+          layout = wibox.layout.fixed.vertical,
+          spacing = theme.menu_vertical_spacing,
+          volumeslider,
+          {
+            layout = wibox.layout.flex.horizontal,
+            spacing = config.dpi(8),
+            power_button("lock"),
+            power_button("sleep"),
+            power_button("logout"),
+            power_button("reboot"),
+            power_button("power")
+          }
+        }
+      }
+    }
+  }
+
   wp.backdrop = backdrop
   wp.drawer = drawer
-  wp.systray = wp.drawer:get_children_by_id("systray")[1]
+  wp.systray_instance = systray
+  wp.toggle = toggle
 
   ret:calculate_position()
+  ret:init_animation()
 
   backdrop:connect_signal(
     "button::release",
@@ -201,13 +273,24 @@ local function new()
     function()
       local s = awful.screen.focused()
       local is_visible = backdrop.visible
-      if not is_visible then
-        ret:set_screen(s)
-      end
+      notifications.reset()
+      wp.systray = nil
 
       wp.backdrop.visible = not is_visible
       wp.drawer.visible = not is_visible
-      notifications.reset()
+      if s == wp.primary_screen then
+        wp.systray = wp.systray_instance
+        wp.systray.visible = not is_visible
+      end
+
+      if not is_visible then
+        ret:set_screen(s)
+        wp.animation.open:startAnimation()
+        wp.animation.close:stopAnimation()
+      else
+        wp.animation.open:stopAnimation()
+        wp.animation.close:startAnimation()
+      end
     end
   )
 
@@ -215,14 +298,19 @@ local function new()
     "widget::drawer:hide",
     function()
       wp.backdrop.visible = false
-      drawer.visible = false
+      wp.drawer.visible = false
+      if wp.systray then
+        wp.systray.visible = false
+      end
     end
   )
+
+  instance = ret
   return toggle
 end
 
-function menu.mt:__call()
-  return new()
+function menu.mt:__call(...)
+  return new(...)
 end
 
 return setmetatable(menu, menu.mt)

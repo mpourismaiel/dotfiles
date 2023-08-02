@@ -42,16 +42,20 @@ theme.button_padding_top = config.dpi(10)
 theme.button_padding_bottom = config.dpi(10)
 
 theme.bar_padding = config.dpi(3)
+theme.bar_width = config.dpi(48)
 
 theme.launcher_star_icon = config_dir .. "images/x.svg"
 
 theme.menu_position = "bottom_left"
 theme.menu_vertical_spacing = config.dpi(12)
 theme.menu_horizontal_spacing = config.dpi(12)
+theme.menu_margin_left = config.dpi(16)
+theme.menu_margin_bottom = config.dpi(8)
 theme.menu_container_padding_left = config.dpi(16)
 theme.menu_container_padding_right = config.dpi(16)
 theme.menu_container_padding_top = config.dpi(12)
 theme.menu_container_padding_bottom = config.dpi(12)
+theme.menu_height = config.dpi(600)
 
 theme.notification_position = "bottom_right"
 theme.notification_padding_top = config.dpi(8)

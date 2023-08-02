@@ -195,7 +195,7 @@ naughty.connect_signal(
       "reposition",
       function()
         if n.reposition_animation then
-          n.reposition_animation.resposition:stopAnimation()
+          n.reposition_animation.reposition:stopAnimation()
         end
 
         local targetY = 10
@@ -210,7 +210,7 @@ naughty.connect_signal(
         n.reposition_animation =
           animation {
           subject = n.anim_data,
-          targets = {resposition = {y = targetY}},
+          targets = {reposition = {y = targetY}},
           easing = "inOutCubic",
           duration = 0.25,
           signals = {
@@ -220,7 +220,7 @@ naughty.connect_signal(
           }
         }
 
-        n.reposition_animation.resposition:startAnimation()
+        n.reposition_animation.reposition:startAnimation()
       end
     )
 
@@ -252,8 +252,8 @@ naughty.connect_signal(
       callback = function()
         if
           time_remaining <= 0 and
-            (not n.reposition_animation or not n.reposition_animation.resposition or
-              not n.reposition_animation.resposition.animating)
+            (not n.reposition_animation or not n.reposition_animation.reposition or
+              not n.reposition_animation.reposition.animating)
          then
           disapearing = true
           n.animation.invisible:startAnimation()
