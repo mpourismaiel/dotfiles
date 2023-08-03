@@ -5,6 +5,7 @@ local animation = require("helpers.animation")
 local colors = require("helpers.color")
 local config = require("configuration.config")
 local theme = require("configuration.config.theme")
+local console = require("helpers.console")
 
 local button = {mt = {}}
 
@@ -45,6 +46,7 @@ function button:set_rounded(rounded)
   local wp = self._private
   wp.rounded = rounded
   self:set_shape(wp.shape_value)
+  self:emit_signal("widget::layout_changed")
 end
 
 function button:set_halign(halign)
@@ -54,6 +56,7 @@ function button:set_halign(halign)
     return
   end
   wp.place_role.halign = halign
+  self:emit_signal("widget::layout_changed")
 end
 
 function button:set_shape(shape)
@@ -79,6 +82,7 @@ function button:set_shape(shape)
     return
   end
   wp.widget.shape = shape
+  self:emit_signal("widget::layout_changed")
 end
 
 function button:set_bg_normal(bg)
@@ -94,6 +98,7 @@ function button:set_bg_normal(bg)
     gears.debug.dump(wp.widget)
   end
   wp.background_role.bg = bg
+  self:emit_signal("widget::layout_changed")
 end
 
 function button:set_fg_normal(fg)
@@ -106,18 +111,21 @@ function button:set_fg_normal(fg)
   end
   wp.label.foreground = fg
   wp.label.widget.markup = self:get_markup()
+  self:emit_signal("widget::layout_changed")
 end
 
 function button:set_bg_hover(bg)
   local wp = self._private
   wp.bg_hover = bg
   wp.animation.hover.target.bg = colors.hex2rgba(bg)
+  self:emit_signal("widget::layout_changed")
 end
 
 function button:set_fg_hover(fg)
   local wp = self._private
   wp.fg_hover = fg
   wp.animation.hover.target.fg = colors.hex2rgba(fg)
+  self:emit_signal("widget::layout_changed")
 end
 
 function button:get_markup()
@@ -161,6 +169,7 @@ function button:set_margin(margin)
   wp.margin_role.bottom = margin
   wp.margin_role.left = margin
   wp.margin_role.right = margin
+  self:emit_signal("widget::layout_changed")
 end
 
 function button:set_paddings(paddings)
@@ -173,6 +182,7 @@ function button:set_paddings(paddings)
   wp.padding_role.bottom = paddings
   wp.padding_role.left = paddings
   wp.padding_role.right = paddings
+  self:emit_signal("widget::layout_changed")
 end
 
 function button:set_padding_left(padding_left)
@@ -182,6 +192,7 @@ function button:set_padding_left(padding_left)
     return
   end
   wp.padding_role.left = padding_left
+  self:emit_signal("widget::layout_changed")
 end
 
 function button:set_padding_right(padding_right)
@@ -191,6 +202,7 @@ function button:set_padding_right(padding_right)
     return
   end
   wp.padding_role.right = padding_right
+  self:emit_signal("widget::layout_changed")
 end
 
 function button:set_padding_top(padding_top)
@@ -200,6 +212,7 @@ function button:set_padding_top(padding_top)
     return
   end
   wp.padding_role.top = padding_top
+  self:emit_signal("widget::layout_changed")
 end
 
 function button:set_padding_bottom(padding_bottom)
@@ -209,6 +222,22 @@ function button:set_padding_bottom(padding_bottom)
     return
   end
   wp.padding_role.bottom = padding_bottom
+  self:emit_signal("widget::layout_changed")
+end
+
+function button:get_paddings()
+  local wp = self._private
+  local default = theme.button_padding_top
+  if wp.paddings ~= nil then
+    default = wp.paddings
+  end
+
+  return {
+    top = wp.padding_top or default,
+    bottom = wp.padding_bottom or default,
+    left = wp.padding_left or default,
+    right = wp.padding_right or default
+  }
 end
 
 function button:set_widget(widget)
@@ -232,6 +261,7 @@ function button:set_widget(widget)
     wibox.widget.base.check_widget(w)
   end
 
+  local paddings = self:get_paddings()
   local w =
     wibox.widget {
     widget = wibox.container.margin,
@@ -245,10 +275,10 @@ function button:set_widget(widget)
       {
         widget = wibox.container.margin,
         id = "paddings",
-        top = wp.padding_top or wp.paddings or theme.button_padding_top,
-        bottom = wp.padding_bottom or wp.paddings or theme.button_padding_bottom,
-        left = wp.padding_left or wp.paddings or theme.button_padding_left,
-        right = wp.padding_right or wp.paddings or theme.button_padding_right,
+        top = paddings.top,
+        bottom = paddings.bottom,
+        left = paddings.left,
+        right = paddings.right,
         {
           widget = wibox.container.place,
           halign = wp.halign,

@@ -28,6 +28,7 @@ for _, v in pairs(
     end
     self._private.label[v] = val
     self._private.textbox_widget.markup = self:get_markup()
+    self._private.textbox_widget:emit_signal("widget::redraw_needed")
     self:emit_signal("widget::layout_changed")
     self:emit_signal("property::" .. v, val)
   end
