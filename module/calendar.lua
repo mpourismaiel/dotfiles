@@ -6,6 +6,7 @@ local gears = require("gears")
 local awful = require("awful")
 local config = require("configuration.config")
 local theme = require("configuration.config.theme")
+local wdate = require("configuration.widgets.calendar.date")
 local wcalendar = require("configuration.widgets.calendar")
 
 local instance
@@ -122,7 +123,30 @@ local function new()
       bottom = theme.calendar_vertical_spacing,
       left = theme.calendar_horizontal_spacing,
       right = theme.calendar_horizontal_spacing,
-      wcalendar
+      {
+        layout = wibox.layout.fixed.horizontal,
+        spacing = config.dpi(16),
+        {
+          widget = wibox.container.constraint,
+          strategy = "exact",
+          width = theme.calendar_widget_width,
+          {
+            layout = wibox.layout.fixed.vertical,
+            spacing = config.dpi(16),
+            wdate,
+            {
+              widget = wcalendar,
+              id = "calendar_role"
+            }
+          }
+        },
+        -- separator
+        {
+          widget = wibox.container.background,
+          bg = theme.bg_primary,
+          forced_width = config.dpi(1)
+        }
+      }
     }
   }
   wp.popup = popup
@@ -132,12 +156,18 @@ local function new()
   capi.awesome.connect_signal(
     "module::calendar::toggle",
     function(screen)
-      gears.debug.dump("toggle")
       if wp.is_visible then
         ret:hide()
       else
         ret:show(screen)
       end
+    end
+  )
+
+  capi.awesome.connect_signal(
+    "module::calendar::today",
+    function()
+      popup:get_children_by_id("calendar_role")[1]:set_date_current()
     end
   )
 

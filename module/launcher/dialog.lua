@@ -253,7 +253,6 @@ function dialog:run()
     end
   )
 
-  gears.debug.dump(entry)
   if entry.terminal == true and config.terminal ~= nil then
     local terminal_command = terminal_commands_lookup[config.terminal] or config.terminal
     awful.spawn(terminal_command .. " " .. entry.executable)

@@ -51,8 +51,9 @@ local function date_widget(self, index)
     width = config.dpi(35),
     height = config.dpi(35),
     {
-      widget = wibox.container.background,
+      widget = wbutton,
       id = "background_role",
+      paddings = 0,
       shape = gears.shape.circle,
       {
         widget = wibox.container.place,
@@ -66,18 +67,25 @@ local function date_widget(self, index)
 
   self:connect_signal(
     index .. "::updated",
-    function(self, date, is_current, is_another_month)
+    function(self, date, is_current, month_difference)
       text:set_text(date)
 
       if is_current == true then
-        widget.bg_role.bg = theme.bg_normal
+        -- today
+        widget.bg_role.bg_normal = theme.bg_primary
+        widget.bg_role.callback = nil
         text:set_foreground(theme.fg_primary)
-      elseif is_another_month == true then
-        widget.bg_role.bg = theme.bg_normal
-        text:set_foreground(theme.fg_secondary)
+      elseif month_difference ~= 0 then
+        widget.bg_role.bg_normal = theme.bg_normal
+        widget.bg_role.callback = function()
+          self:change_month(month_difference)
+        end
+        text:set_foreground(theme.fg_inactive)
       else
-        widget.bg_role.bg = theme.bg_normal
-        text:set_foreground(theme.fg_secondary)
+        -- this month
+        widget.bg_role.bg_normal = theme.bg_normal
+        widget.bg_role.callback = nil
+        text:set_foreground(theme.fg_primary)
       end
     end
   )
@@ -131,19 +139,19 @@ function calendar:set_date(date)
     }
   ).day
   for day = previous_month_last_day - days_to_add_at_month_start, previous_month_last_day - 1, 1 do
-    self:emit_signal(index .. "::updated", day, false, true)
+    self:emit_signal(index .. "::updated", day, false, -1)
     index = index + 1
   end
 
   local current_date = os.date("*t")
   for day = 1, month_days do
     local is_current = day == current_date.day and date.month == current_date.month and date.year == current_date.year
-    self:emit_signal(index .. "::updated", day, is_current, false)
+    self:emit_signal(index .. "::updated", day, is_current, 0)
     index = index + 1
   end
 
   for day = 1, days_to_add_at_month_end do
-    self:emit_signal(index .. "::updated", day, false, true)
+    self:emit_signal(index .. "::updated", day, false, 1)
     index = index + 1
   end
 end
@@ -205,13 +213,13 @@ local function new()
     spacing = config.dpi(15),
     {
       layout = wibox.layout.align.horizontal,
-      forced_height = config.dpi(40),
+      forced_height = config.dpi(36),
       {
         layout = wibox.layout.align.horizontal,
         {
           widget = wibox.container.constraint,
           strategy = "exact",
-          width = config.dpi(35),
+          width = config.dpi(36),
           {
             widget = wbutton,
             bg_normal = theme.bg_normal,
@@ -230,7 +238,7 @@ local function new()
         {
           widget = wibox.container.constraint,
           strategy = "exact",
-          width = config.dpi(120),
+          width = config.dpi(85),
           {
             widget = wbutton,
             paddings = 0,
@@ -250,7 +258,7 @@ local function new()
         {
           widget = wibox.container.constraint,
           strategy = "exact",
-          width = config.dpi(35),
+          width = config.dpi(36),
           {
             widget = wbutton,
             paddings = 0,
@@ -273,7 +281,7 @@ local function new()
         {
           widget = wibox.container.constraint,
           strategy = "exact",
-          width = config.dpi(35),
+          width = config.dpi(36),
           {
             widget = wbutton,
             paddings = 0,
@@ -292,7 +300,7 @@ local function new()
         {
           widget = wibox.container.constraint,
           strategy = "exact",
-          width = config.dpi(120),
+          width = config.dpi(50),
           {
             widget = wbutton,
             paddings = 0,
@@ -312,7 +320,7 @@ local function new()
         {
           widget = wibox.container.constraint,
           strategy = "exact",
-          width = config.dpi(35),
+          width = config.dpi(36),
           {
             widget = wbutton,
             paddings = 0,
@@ -335,7 +343,7 @@ local function new()
       id = "days",
       forced_num_rows = 6,
       forced_num_cols = 7,
-      spacing = config.dpi(15),
+      spacing = config.dpi(4),
       expand = true,
       day_name_widget("Su"),
       day_name_widget("Mo"),
