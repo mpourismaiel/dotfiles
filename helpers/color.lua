@@ -1,5 +1,5 @@
 -- Thanks to https://github.com/Kasper24/KwesomeDE/blob/b46a4bc9ae67a10c0e512a2acec13c4e7454042c/helpers/color.lua
-local Color = require("lua-color")
+local Color = require("external.lua-color")
 local clip = require("helpers.math").clip
 local format = string.format
 local floor = math.floor
