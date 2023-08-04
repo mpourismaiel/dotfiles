@@ -161,6 +161,38 @@ for _, v in pairs({"left", "center", "right"}) do
   contained_texts:add(text)
 end
 
+local notifications = wibox.widget {layout = wibox.layout.flex.vertical, spacing = config.dpi(5)}
+notifications:add(
+  wibox.widget {
+    widget = wbutton,
+    label = "Small notification",
+    margin = theme.bar_padding,
+    callback = function()
+      naughty.notify {
+        title = "Notification",
+        text = "Small notification",
+        preset = naughty.config.presets.normal,
+        timeout = 1
+      }
+    end
+  }
+)
+notifications:add(
+  wibox.widget {
+    widget = wbutton,
+    label = "Large notification",
+    margin = theme.bar_padding,
+    callback = function()
+      naughty.notify {
+        title = "Notification",
+        text = "Small notification\nMultiple lines\nWith a lot of text that exceeds the width of the notification\nAnother text\nAnd even more text",
+        preset = naughty.config.presets.normal,
+        timeout = 1
+      }
+    end
+  }
+)
+
 local function section(text, w)
   return wibox.widget {
     layout = wibox.layout.align.vertical,
@@ -201,6 +233,7 @@ local debug_screen =
           text = "Debug screen"
         }
       },
+      section("Notifications", notifications),
       section("Inputs", inputs),
       section("Buttons", buttons),
       section("Buttons with widget", buttons_with_widgets),
