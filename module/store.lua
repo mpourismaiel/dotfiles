@@ -1,5 +1,5 @@
 local gears = require("gears")
-local json = require("lib.json")
+local json = require("external.json")
 local config = require("configuration.config")
 
 local store = {mt = {}}
