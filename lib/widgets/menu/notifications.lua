@@ -6,20 +6,12 @@ local config = require("lib.configuration")
 local theme = require("lib.configuration.theme")
 local color = require("lib.helpers.color")
 local global_state = require("lib.configuration.global_state")
+local woverflow = require("wibox.layout.overflow")
 local wbutton = require("lib.widgets.button")
 local wcontainer = require("lib.widgets.menu.container")
+local wscrollbar = require("lib.widgets.scrollbar")
 local wtext = require("lib.widgets.text")
 local list = require("lib.widgets.list")
-
-function table.slice(tbl, first, last, step)
-  local sliced = {}
-
-  for i = first or 1, last or #tbl, step or 1 do
-    sliced[#sliced + 1] = tbl[i]
-  end
-
-  return sliced
-end
 
 local clear_notifications =
   wibox.widget {
@@ -87,91 +79,98 @@ end
 local notifications =
   list {
   layout = {
-    layout = wibox.layout.fixed.vertical,
-    spacing = config.dpi(8),
-    fill_space = true
+    layout = woverflow.vertical,
+    forced_width = config.dpi(1000),
+    spacing = config.dpi(10),
+    scrollbar_widget = wscrollbar,
+    scrollbar_width = config.dpi(10),
+    step = 50
   },
-  source = function(start, finish)
-    local s = start or 1
-    local f = finish or #global_state.cache.get("notifications")
-    if f - s < 3 then
-      s = f - 3
-    end
-    if s < 1 then
-      s = 1
-    end
-    return table.slice(global_state.cache.get("notifications"), s, f)
+  source = function()
+    return global_state.cache.get("notifications")
   end,
   render_list = list.render_list,
   empty_widget = {
-    widget = wibox.widget.textbox,
-    markup = "<span color='" ..
-      beautiful.fg_normal .. "' font_size='12pt' font_weight='normal'>No new notifications</span>"
+    widget = wtext,
+    text = "No new notifications"
   },
   template = function()
     local template = {
-      widget = wcontainer,
-      bg = theme.bg_normal,
-      padding_left = 0,
-      padding_right = 0,
-      padding_top = 0,
-      padding_bottom = 0,
+      widget = wibox.container.constraint,
+      height = config.dpi(150),
+      strategy = "max",
       {
-        layout = wibox.layout.fixed.vertical,
-        id = "container",
+        widget = wcontainer,
+        bg = theme.bg_normal,
+        padding_left = 0,
+        padding_right = 0,
+        padding_top = 0,
+        padding_bottom = 0,
         {
-          widget = wibox.container.background,
-          bg = color.helpers.change_opacity(theme.bg_secondary, 0.6),
+          layout = wibox.layout.fixed.vertical,
+          id = "container",
           {
-            widget = wibox.container.margin,
-            margins = config.dpi(10),
+            widget = wibox.container.background,
+            bg = color.helpers.change_opacity(theme.bg_secondary, 0.6),
             {
-              layout = wibox.layout.fixed.horizontal,
-              fill_space = true,
+              widget = wibox.container.margin,
+              margins = config.dpi(10),
               {
-                widget = wibox.container.margin,
-                right = config.dpi(16),
-                id = "image_container",
-                {
-                  widget = wibox.container.place,
-                  valign = "top",
-                  {
-                    widget = wibox.widget.imagebox,
-                    forced_height = config.dpi(32),
-                    forced_width = config.dpi(32),
-                    id = "image"
-                  }
-                }
-              },
-              {
-                widget = wtext,
-                id = "title"
-              },
-              {
-                widget = wibox.container.place,
-                halign = "right",
-                valign = "top",
+                layout = wibox.layout.fixed.horizontal,
+                fill_space = true,
                 {
                   widget = wibox.container.margin,
-                  margins = config.dpi(4),
-                  id = "close",
+                  right = config.dpi(16),
+                  id = "image_container",
                   {
-                    widget = wibox.widget.imagebox,
-                    forced_height = config.dpi(16),
-                    forced_width = config.dpi(16),
-                    image = theme.notification_close_icon
+                    widget = wibox.container.place,
+                    valign = "top",
+                    {
+                      widget = wibox.widget.imagebox,
+                      forced_height = config.dpi(32),
+                      forced_width = config.dpi(32),
+                      id = "image"
+                    }
+                  }
+                },
+                {
+                  widget = wtext,
+                  id = "title"
+                },
+                {
+                  widget = wibox.container.place,
+                  halign = "right",
+                  valign = "top",
+                  {
+                    widget = wibox.container.margin,
+                    margins = config.dpi(4),
+                    id = "close",
+                    {
+                      widget = wibox.widget.imagebox,
+                      forced_height = config.dpi(16),
+                      forced_width = config.dpi(16),
+                      image = theme.notification_close_icon
+                    }
                   }
                 }
               }
             }
-          }
-        },
-        {
-          widget = wibox.container.margin,
-          margins = config.dpi(10),
+          },
           {
-            widget = wtext,
-            id = "text"
+            layout = woverflow.vertical,
+            forced_width = config.dpi(1000),
+            spacing = config.dpi(10),
+            scrollbar_widget = wscrollbar,
+            scrollbar_width = config.dpi(10),
+            step = 50,
+            {
+              widget = wibox.container.margin,
+              margins = config.dpi(10),
+              {
+                widget = wtext,
+                id = "text"
+              }
+            }
           }
         }
       }
@@ -222,38 +221,9 @@ local notifications =
   end
 }
 
-notifications.buttons =
-  gears.table.join(
-  awful.button(
-    {},
-    5,
-    nil,
-    function()
-      notifications.start = (notifications.start or 1) + 1
-      if notifications.start > (notifications.finish or 1) then
-        notifications.start = notifications.finish
-      end
-      notifications:emit_signal("update")
-    end
-  ),
-  awful.button(
-    {},
-    4,
-    nil,
-    function()
-      notifications.start = (notifications.start or 1) - 1
-      if notifications.start < 1 then
-        notifications.start = 1
-      end
-      notifications:emit_signal("update")
-    end
-  )
-)
-
 notifications:connect_signal(
   "updated",
   function()
-    notifications.finish = #global_state.cache.get("notifications")
     clear_notifications.visible = #global_state.cache.get("notifications") > 0
   end
 )
@@ -281,7 +251,7 @@ local notifications_widget = {
 }
 
 notifications_widget.reset = function()
-  notifications.start = 1
+  notifications:set_scroll_factor(0)
   notifications:emit_signal("update")
 end
 
