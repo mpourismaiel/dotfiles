@@ -1,6 +1,6 @@
 local awful = require("awful")
 local gears = require("gears")
-local bling = require("bling")
+local bling = require("external.bling")
 local filesystem = require("gears.filesystem")
 local xresources = require("beautiful.xresources")
 

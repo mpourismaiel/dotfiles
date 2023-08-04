@@ -1,4 +1,4 @@
-local animation_library = require("awesome-AnimationFramework.Animation")
+local animation_library = require("external.awesome-AnimationFramework.Animation")
 
 local animation = {mt = {}}
 

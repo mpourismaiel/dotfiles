@@ -1,8 +1,8 @@
 [submodule "bling"]
-	path = bling
+	path = external/bling
 	url = https://github.com/BlingCorp/bling.git
 [submodule "awesome-AnimationFramework"]
-	path = awesome-AnimationFramework
+	path = external/awesome-AnimationFramework
 	url = https://github.com/Aire-One/awesome-AnimationFramework
 [submodule "hudkit"]
 	path = hudkit
