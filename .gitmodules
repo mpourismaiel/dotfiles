@@ -5,7 +5,7 @@
 	path = external/awesome-AnimationFramework
 	url = https://github.com/Aire-One/awesome-AnimationFramework
 [submodule "hudkit"]
-	path = hudkit
+	path = external/hudkit
 	url = https://github.com/anko/hudkit.git
 [submodule "lua-color"]
 	path = external/lua-color

@@ -9,7 +9,7 @@ local wtext = require("lib.widgets.text")
 local wtext_input = require("lib.widgets.text_input")
 local wcalendar = require("lib.widgets.calendar")
 local woverflow = require("wibox.layout.overflow")
-local color = require("helpers.color")
+local color = require("lib.helpers.color")
 
 local buttons = wibox.widget {layout = wibox.layout.flex.horizontal, spacing = config.dpi(5)}
 for _, v in pairs({"left", "center", "right"}) do
