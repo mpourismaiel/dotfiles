@@ -11,7 +11,6 @@ local gears = require("gears")
 
 local config_dir = gears.filesystem.get_configuration_dir()
 package.path = package.path .. ";" .. config_dir .. "/external/?.lua;" .. config_dir .. "/external/?/init.lua"
-print("package.path:", package.path)
 
 local helpers = require("lib.module.helpers")
 

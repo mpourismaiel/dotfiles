@@ -13,3 +13,6 @@
 [submodule "external/filesystem"]
 	path = external/filesystem
 	url = https://github.com/Kasper24/lgi-async-extra
+[submodule "external/tween-lua"]
+	path = external/tween-lua
+	url = git@github.com:kikito/tween.lua.git
