@@ -5,7 +5,7 @@
 --      icon_code (string)
 local awful = require("awful")
 local naughty = require("naughty")
-local helpers = require("module.helpers")
+local helpers = require("lib.module.helpers")
 local filesystem = require("gears.filesystem")
 local config = require("lib.configuration")
 

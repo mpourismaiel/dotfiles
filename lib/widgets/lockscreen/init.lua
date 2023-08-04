@@ -2,7 +2,7 @@ local awful = require("awful")
 local wibox = require("wibox")
 local gears = require("gears")
 local config = require("lib.configuration")
-local helpers = require("module.helpers")
+local helpers = require("lib.module.helpers")
 local global_state = require("lib.configuration.global_state")
 local theme = require("lib.configuration.theme")
 
