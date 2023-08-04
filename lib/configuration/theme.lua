@@ -69,7 +69,7 @@ theme.calendar_horizontal_spacing = config.dpi(12)
 theme.calendar_horizontal_spacing = config.dpi(12)
 theme.calendar_margin_left = config.dpi(16)
 theme.calendar_margin_bottom = config.dpi(8)
-theme.calendar_width = config.dpi(700)
+theme.calendar_width = config.dpi(320)
 theme.calendar_height = config.dpi(400)
 theme.calendar_widget_width = config.dpi(320)
 

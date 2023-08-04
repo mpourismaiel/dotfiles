@@ -139,13 +139,13 @@ local function new()
               id = "calendar_role"
             }
           }
-        },
-        -- separator
-        {
-          widget = wibox.container.background,
-          bg = theme.bg_primary,
-          forced_width = config.dpi(1)
         }
+        -- separator
+        -- {
+        --   widget = wibox.container.background,
+        --   bg = theme.bg_primary,
+        --   forced_width = config.dpi(1)
+        -- }
       }
     }
   }
