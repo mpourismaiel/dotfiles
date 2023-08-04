@@ -10,16 +10,16 @@ local naughty = require("naughty")
 local bling = require("bling")
 local helpers = require("module.helpers")
 
-require("configuration.tags")
-require("configuration.keys")
-require("configuration.ruled")
-require("configuration.client")
-require("configuration.notifications")
-require("configuration.widgets.lockscreen")
-require("configuration.widgets.volume.osd")
+require("lib.tags")
+require("lib.keys")
+require("lib.ruled")
+require("lib.client")
+require("lib.notifications")
+require("lib.widgets.lockscreen")
+require("lib.widgets.volume.osd")
 
-local theme = require("configuration.config.theme")
-local global_state = require("configuration.config.global_state")
+local theme = require("lib.config.theme")
+local global_state = require("lib.config.global_state")
 
 naughty.connect_signal(
   "request::display_error",
@@ -39,7 +39,7 @@ require("module.weather")
 require("module.launcher.dialog")()
 require("module.calendar")()
 require("module.debug")
-local widgets = require("configuration.widgets")
+local widgets = require("lib.widgets")
 
 bling.module.wallpaper.setup {
   wallpaper = {beautiful.wallpaper},
