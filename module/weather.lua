@@ -7,7 +7,7 @@ local awful = require("awful")
 local naughty = require("naughty")
 local helpers = require("module.helpers")
 local filesystem = require("gears.filesystem")
-local config = require("configuration.config")
+local config = require("lib.config")
 
 local config_dir = filesystem.get_configuration_dir()
 -- Configuration
@@ -19,7 +19,7 @@ if key == "" then
   naughty.notify(
     {
       title = "Weather",
-      text = "OpenWeatherMap key is not set in config/configuration.json",
+      text = "OpenWeatherMap key is not set in config/lib.json",
       preset = naughty.config.presets.critical
     }
   )

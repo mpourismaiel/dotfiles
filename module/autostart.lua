@@ -1,10 +1,7 @@
--- MODULE AUTO-START
--- Run all the apps listed in configuration/apps.lua as run_on_start_up only once when awesome start
-
 local awful = require("awful")
 local gears = require("gears")
 local naughty = require("naughty")
-local config = require("configuration.config")
+local config = require("lib.config")
 local debug_mode = config.auto_start.debug_mode or false
 
 local run_once = function(cmd)

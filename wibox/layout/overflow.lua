@@ -17,8 +17,8 @@ local base = require("wibox.widget.base")
 local fixed = require("wibox.layout.fixed")
 local gtable = require("gears.table")
 local gobject = require("gears.object")
-local config = require("configuration.config")
-local wscrollbar = require("configuration.widgets.scrollbar")
+local config = require("lib.config")
+local wscrollbar = require("lib.widgets.scrollbar")
 local mousegrabber = mousegrabber
 
 local overflow = {

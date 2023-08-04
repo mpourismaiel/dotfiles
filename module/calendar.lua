@@ -4,10 +4,10 @@ local capi = {
 local wibox = require("wibox")
 local gears = require("gears")
 local awful = require("awful")
-local config = require("configuration.config")
-local theme = require("configuration.config.theme")
-local wdate = require("configuration.widgets.calendar.date")
-local wcalendar = require("configuration.widgets.calendar")
+local config = require("lib.config")
+local theme = require("lib.config.theme")
+local wdate = require("lib.widgets.calendar.date")
+local wcalendar = require("lib.widgets.calendar")
 
 local instance
 local calendar = {mt = {}}
