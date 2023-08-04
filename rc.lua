@@ -8,7 +8,7 @@ require("awful.autofocus")
 local beautiful = require("beautiful")
 local naughty = require("naughty")
 local bling = require("bling")
-local helpers = require("module.helpers")
+local helpers = require("lib.module.helpers")
 
 require("lib.tags")
 require("lib.keys")
@@ -34,11 +34,11 @@ naughty.connect_signal(
 
 beautiful.init(theme)
 
-require("module.autostart")
-require("module.weather")
-require("module.launcher.dialog")()
-require("module.calendar")()
-require("module.debug")
+require("lib.module.autostart")
+require("lib.module.weather")
+require("lib.module.launcher.dialog")()
+require("lib.module.calendar")()
+require("lib.module.debug")
 local widgets = require("lib.widgets")
 
 bling.module.wallpaper.setup {
@@ -50,7 +50,7 @@ screen.connect_signal(
   "request::desktop_decoration",
   function(s)
     global_state.bar = widgets.bar.new(s)
-    require("module.launcher")(s)
+    require("lib.module.launcher")(s)
   end
 )
 

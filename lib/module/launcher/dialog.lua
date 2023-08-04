@@ -7,8 +7,8 @@ local wbutton = require("lib.widgets.button")
 local wtext = require("lib.widgets.text")
 local wtext_input = require("lib.widgets.text_input")
 local woverflow = require("wibox.layout.overflow")
-local launcher = require("module.launcher")
-local store = require("module.store")
+local launcher = require("lib.module.launcher")
+local store = require("lib.module.store")
 local color = require("helpers.color")
 
 local dialog = {instance = nil, mt = {}}
