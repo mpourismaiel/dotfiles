@@ -9,12 +9,13 @@ local filesystem = require("gears.filesystem")
 local config = require("lib.configuration")
 local theme = require("lib.configuration.theme")
 local animation = require("lib.helpers.animation")
+local animation_new = require("lib.helpers.animation-new")
+local console = require("lib.helpers.console")
 
 local wcontainer = require("lib.widgets.menu.container")
 local profile = require("lib.widgets.menu.profile")
 local power = require("lib.widgets.menu.power")
 local notifications = require("lib.widgets.menu.notifications")
-local power_button = require("lib.widgets.menu.power-button")
 local volumeslider = require("lib.widgets.volume.slider")
 local wbutton = require("lib.widgets.button")
 
@@ -75,6 +76,9 @@ function menu:set_screen(screen)
   end
   wp.animation.open.target.drawer.x = geo.x + offset_x
   wp.drawer.y = geo.y
+
+  wp.menu_x = wp.animation.open.target.drawer.x + wp.drawer_box + theme.menu_horizontal_spacing
+  wp.menu_y = geo.y
 end
 
 function menu:init_animation()
@@ -109,6 +113,51 @@ function menu:init_animation()
       end
     }
   }
+end
+
+function menu:show_dropdown(menu)
+  local wp = self._private
+
+  if wp.menu then
+    self:hide_dropdown()
+    return
+  end
+
+  wp.menu = menu
+  wp.menu.visible = true
+  animation_new(
+    {
+      subject = {
+        x = wp.menu_x - theme.menu_horizontal_spacing,
+        opacity = 0.0
+      }
+    }
+  ):add(
+    "visible",
+    {
+      target = {
+        x = wp.menu_x,
+        opacity = 1.0
+      }
+    }
+  ):onUpdate(
+    function(name, new_subject)
+      if name == "visible" then
+        wp.menu.x = new_subject.x
+      end
+    end
+  ):startAnimation("visible", {from_start = true})
+  wp.menu.y = wp.menu_y
+end
+
+function menu:hide_dropdown()
+  local wp = self._private
+  if not wp.menu then
+    return
+  end
+
+  wp.menu.visible = false
+  wp.menu = nil
 end
 
 local function new()
@@ -223,7 +272,13 @@ local function new()
               strategy = "exact",
               width = config.dpi(60),
               height = config.dpi(60),
-              power
+              power(
+                {
+                  callback = function(menu)
+                    ret:show_dropdown(menu)
+                  end
+                }
+              ).toggle
             }
           }
         },
@@ -238,16 +293,7 @@ local function new()
         {
           layout = wibox.layout.fixed.vertical,
           spacing = theme.menu_vertical_spacing,
-          volumeslider,
-          {
-            layout = wibox.layout.flex.horizontal,
-            spacing = config.dpi(8),
-            power_button("lock"),
-            power_button("sleep"),
-            power_button("logout"),
-            power_button("reboot"),
-            power_button("power")
-          }
+          volumeslider
         }
       }
     }
@@ -274,6 +320,7 @@ local function new()
       local s = awful.screen.focused()
       local is_visible = backdrop.visible
       notifications.reset()
+      ret:hide_dropdown()
       wp.systray = nil
 
       wp.backdrop.visible = not is_visible
@@ -299,6 +346,7 @@ local function new()
     function()
       wp.animation.open:stopAnimation()
       wp.animation.close:startAnimation()
+      ret:hide_dropdown()
       wp.backdrop.visible = false
       wp.drawer.visible = false
       if wp.systray then

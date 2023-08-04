@@ -56,12 +56,18 @@ function console:disable_divider()
   return self
 end
 
+function console:depth(depth)
+  self._private.depth = depth
+  return self
+end
+
 local function new()
   local ret = {
     _private = {
       title = "",
       with_trace = false,
-      divider = "================================================"
+      divider = "================================================",
+      depth = 1
     }
   }
   gears.table.crush(ret, console, true)
