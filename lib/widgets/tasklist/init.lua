@@ -6,7 +6,7 @@ local beautiful = require("beautiful")
 local config = require("lib.configuration")
 local lgi = require("lgi")
 local GLib = lgi.GLib
-local icon_theme = require("helpers.icon_theme")()
+local icon_theme = require("lib.helpers.icon_theme")()
 local theme = require("lib.configuration.theme")
 local wbutton = require("lib.widgets.button")
 

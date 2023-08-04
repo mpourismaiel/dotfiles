@@ -8,7 +8,7 @@ local gears = require("gears")
 local filesystem = require("gears.filesystem")
 local config = require("lib.configuration")
 local theme = require("lib.configuration.theme")
-local animation = require("helpers.animation")
+local animation = require("lib.helpers.animation")
 
 local wcontainer = require("lib.widgets.menu.container")
 local profile = require("lib.widgets.menu.profile")
