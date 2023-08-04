@@ -3,8 +3,8 @@ local awful = require("awful")
 local gears = require("gears")
 local beautiful = require("beautiful")
 local helpers = require("bling.helpers")
-local config = require("lib.config")
-local theme = require("lib.config.theme")
+local config = require("lib.configuration")
+local theme = require("lib.configuration.theme")
 local cairo = require("lgi").cairo
 
 local tag_preview = {mt = {}}

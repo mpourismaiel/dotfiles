@@ -1,8 +1,8 @@
 local awful = require("awful")
 local wibox = require("wibox")
 local gears = require("gears")
-local config = require("lib.config")
-local theme = require("lib.config.theme")
+local config = require("lib.configuration")
+local theme = require("lib.configuration.theme")
 local wbutton = require("lib.widgets.button")
 
 local config_dir = gears.filesystem.get_configuration_dir()

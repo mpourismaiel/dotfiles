@@ -1,5 +1,5 @@
 local wibox = require("wibox")
-local config = require("lib.config")
+local config = require("lib.configuration")
 
 function bar_widget_wrapper(w)
   return wibox.widget {

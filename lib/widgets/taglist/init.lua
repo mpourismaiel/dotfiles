@@ -2,7 +2,7 @@ local capi = {button = button, client = client}
 local awful = require("awful")
 local wibox = require("wibox")
 local gears = require("gears")
-local config = require("lib.config")
+local config = require("lib.configuration")
 
 local taglist = {mt = {}}
 local function create_buttons(buttons, object)

@@ -1,7 +1,7 @@
 local awful = require("awful")
 local wibox = require("wibox")
 
-local theme = require("lib.config.theme")
+local theme = require("lib.configuration.theme")
 local menu = require("lib.widgets.menu")
 local taglist = require("lib.widgets.taglist")
 local tasklist = require("lib.widgets.tasklist")

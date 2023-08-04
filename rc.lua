@@ -18,8 +18,8 @@ require("lib.notifications")
 require("lib.widgets.lockscreen")
 require("lib.widgets.volume.osd")
 
-local theme = require("lib.config.theme")
-local global_state = require("lib.config.global_state")
+local theme = require("lib.configuration.theme")
+local global_state = require("lib.configuration.global_state")
 
 naughty.connect_signal(
   "request::display_error",

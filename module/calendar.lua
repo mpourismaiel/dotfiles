@@ -4,8 +4,8 @@ local capi = {
 local wibox = require("wibox")
 local gears = require("gears")
 local awful = require("awful")
-local config = require("lib.config")
-local theme = require("lib.config.theme")
+local config = require("lib.configuration")
+local theme = require("lib.configuration.theme")
 local wdate = require("lib.widgets.calendar.date")
 local wcalendar = require("lib.widgets.calendar")
 

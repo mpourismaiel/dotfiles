@@ -1,5 +1,5 @@
 local awful = require("awful")
-local config = require("lib.config")
+local config = require("lib.configuration")
 
 tag.connect_signal(
   "request::default_layouts",

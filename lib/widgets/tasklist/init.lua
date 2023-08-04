@@ -3,11 +3,11 @@ local awful = require("awful")
 local wibox = require("wibox")
 local gears = require("gears")
 local beautiful = require("beautiful")
-local config = require("lib.config")
+local config = require("lib.configuration")
 local lgi = require("lgi")
 local GLib = lgi.GLib
 local icon_theme = require("helpers.icon_theme")()
-local theme = require("lib.config.theme")
+local theme = require("lib.configuration.theme")
 local wbutton = require("lib.widgets.button")
 
 local tasklist = {mt = {}}

@@ -1,6 +1,6 @@
 local wibox = require("wibox")
 local gears = require("gears")
-local config = require("lib.config")
+local config = require("lib.configuration")
 
 local item = {mt = {}}
 

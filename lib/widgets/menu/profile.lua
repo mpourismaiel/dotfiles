@@ -1,7 +1,7 @@
 local wibox = require("wibox")
 local gears = require("gears")
-local config = require("lib.config")
-local theme = require("lib.config.theme")
+local config = require("lib.configuration")
+local theme = require("lib.configuration.theme")
 local wcontainer = require("lib.widgets.menu.container")
 local wtext = require("lib.widgets.text")
 

@@ -1,7 +1,7 @@
 local wibox = require("wibox")
 local awful = require("awful")
 local gears = require("gears")
-local config = require("lib.config")
+local config = require("lib.configuration")
 
 local item = require("lib.widgets.client_menu.item")
 local simple_item = require("lib.widgets.client_menu.simple_item")

@@ -3,12 +3,12 @@ local gears = require("gears")
 local awful = require("awful")
 local wibox = require("wibox")
 local animation = require("helpers.animation")
-local config = require("lib.config")
-local theme = require("lib.config.theme")
+local config = require("lib.configuration")
+local theme = require("lib.configuration.theme")
 local color = require("helpers.color")
 local wbutton = require("lib.widgets.button")
 local wtext = require("lib.widgets.text")
-local global_state = require("lib.config.global_state")
+local global_state = require("lib.configuration.global_state")
 
 local c = global_state.cache
 local notification_timeout = 5

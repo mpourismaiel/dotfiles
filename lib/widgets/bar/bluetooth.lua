@@ -2,7 +2,7 @@ local awful = require("awful")
 local wibox = require("wibox")
 local gears = require("gears")
 local naughty = require("naughty")
-local config = require("lib.config")
+local config = require("lib.configuration")
 
 local bar_widget_wrapper = require("lib.widgets.bar.widget-wrapper")
 

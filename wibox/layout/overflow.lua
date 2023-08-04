@@ -17,7 +17,7 @@ local base = require("wibox.widget.base")
 local fixed = require("wibox.layout.fixed")
 local gtable = require("gears.table")
 local gobject = require("gears.object")
-local config = require("lib.config")
+local config = require("lib.configuration")
 local wscrollbar = require("lib.widgets.scrollbar")
 local mousegrabber = mousegrabber
 

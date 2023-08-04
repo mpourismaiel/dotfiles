@@ -2,8 +2,8 @@ local wibox = require("wibox")
 local gears = require("gears")
 local awful = require("awful")
 local animation = require("helpers.animation")
-local theme = require("lib.config.theme")
-local config = require("lib.config")
+local theme = require("lib.configuration.theme")
+local config = require("lib.configuration")
 
 local osd = {mt = {}}
 
