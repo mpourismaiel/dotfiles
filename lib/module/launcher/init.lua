@@ -2,7 +2,7 @@ local Gio = require("lgi").Gio
 local awful = require("awful")
 local gtable = require("gears.table")
 local gobject = require("gears.object")
-local icon_theme = require("bling.helpers.icon_theme")
+local icon_theme = require("external.bling.helpers.icon_theme")
 
 local launcher = {mt = {}}
 
