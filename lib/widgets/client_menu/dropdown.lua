@@ -1,7 +1,7 @@
 local wibox = require("wibox")
 local gears = require("gears")
 local filesystem = require("gears.filesystem")
-local config = require("lib.config")
+local config = require("lib.configuration")
 local animation = require("helpers.animation")
 
 local dropdown = {mt = {}}

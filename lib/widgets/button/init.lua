@@ -3,8 +3,8 @@ local awful = require("awful")
 local gears = require("gears")
 local animation = require("helpers.animation")
 local colors = require("helpers.color")
-local config = require("lib.config")
-local theme = require("lib.config.theme")
+local config = require("lib.configuration")
+local theme = require("lib.configuration.theme")
 local console = require("helpers.console")
 
 local button = {mt = {}}

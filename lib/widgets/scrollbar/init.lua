@@ -4,7 +4,7 @@
 -------------------------------------------
 local wibox = require("wibox")
 local gears = require("gears")
-local theme = require("lib.config.theme")
+local theme = require("lib.configuration.theme")
 local setmetatable = setmetatable
 local capi = {
   awesome = awesome

@@ -1,5 +1,5 @@
 local awful = require("awful")
-local theme = require("lib.config.theme")
+local theme = require("lib.configuration.theme")
 local wbutton = require("lib.widgets.button")
 local layoutbox = {mt = {}}
 

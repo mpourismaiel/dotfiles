@@ -7,7 +7,7 @@ local awful = require("awful")
 local naughty = require("naughty")
 local helpers = require("module.helpers")
 local filesystem = require("gears.filesystem")
-local config = require("lib.config")
+local config = require("lib.configuration")
 
 local config_dir = filesystem.get_configuration_dir()
 -- Configuration

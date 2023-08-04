@@ -6,8 +6,8 @@ local capi = {
 local awful = require("awful")
 local wibox = require("wibox")
 local gears = require("gears")
-local config = require("lib.config")
-local theme = require("lib.config.theme")
+local config = require("lib.configuration")
+local theme = require("lib.configuration.theme")
 local client_menu = require("lib.widgets.client_menu")
 local wbutton = require("lib.widgets.button")
 

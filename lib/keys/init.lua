@@ -1,8 +1,8 @@
 local awful = require("awful")
 local naughty = require("naughty")
 local hotkeys_popup = require("awful.hotkeys_popup")
-local config = require("lib.config")
-local global_state = require("lib.config.global_state")
+local config = require("lib.configuration")
+local global_state = require("lib.configuration.global_state")
 
 require("awful.hotkeys_popup.keys")
 
@@ -35,7 +35,7 @@ awful.keyboard.append_global_keybindings(
           naughty.notify(
             {
               title = "Task Manager not set",
-              text = "Please set config.taskManager in lib/config/init.lua",
+              text = "Please set config.taskManager in lib/configuration/init.lua",
               preset = naughty.config.presets.critical
             }
           )
@@ -70,7 +70,7 @@ awful.keyboard.append_global_keybindings(
           naughty.notify(
             {
               title = "Terminal not set",
-              text = "Please set config.terminal in lib/config/init.lua",
+              text = "Please set config.terminal in lib/configuration/init.lua",
               preset = naughty.config.presets.critical
             }
           )
@@ -146,7 +146,7 @@ awful.keyboard.append_global_keybindings(
           naughty.notify(
             {
               title = "Screenshot command not set",
-              text = "Please set config.commands.full_screenshot in lib/config/init.lua",
+              text = "Please set config.commands.full_screenshot in lib/configuration/init.lua",
               preset = naughty.config.presets.critical
             }
           )
@@ -181,7 +181,7 @@ awful.keyboard.append_global_keybindings(
           naughty.notify(
             {
               title = "Screenshot command not set",
-              text = "Please set config.commands.area_screenshot in lib/config/init.lua",
+              text = "Please set config.commands.area_screenshot in lib/configuration/init.lua",
               preset = naughty.config.presets.critical
             }
           )
