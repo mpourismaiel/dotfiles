@@ -16,7 +16,7 @@ local wcontainer = require("lib.widgets.menu.container")
 local profile = require("lib.widgets.menu.profile")
 local power = require("lib.widgets.menu.power")
 local notifications = require("lib.widgets.menu.notifications")
-local volumeslider = require("lib.widgets.volume.slider")
+local volume = require("lib.widgets.menu.volume")
 local wbutton = require("lib.widgets.button")
 
 local config_dir = filesystem.get_configuration_dir()
@@ -291,9 +291,21 @@ local function new()
           }
         },
         {
-          layout = wibox.layout.fixed.vertical,
+          layout = wibox.layout.fixed.horizontal,
           spacing = theme.menu_vertical_spacing,
-          volumeslider
+          {
+            widget = wibox.container.constraint,
+            strategy = "exact",
+            width = config.dpi(60),
+            height = config.dpi(60),
+            volume(
+              {
+                callback = function(menu)
+                  ret:show_dropdown(menu)
+                end
+              }
+            ).toggle
+          }
         }
       }
     }
