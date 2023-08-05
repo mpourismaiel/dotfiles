@@ -60,7 +60,9 @@ local function new(args)
     width = config.dpi(120),
     height = config.dpi(36) * 5,
     bg = theme.bg_normal,
-    shape = gears.shape.rounded_rect,
+    shape = function(cr, width, height)
+      gears.shape.rounded_rect(cr, width, height, theme.rounded_rect_large)
+    end,
     widget = {
       layout = wibox.layout.fixed.vertical,
       power_button("lock"),

@@ -84,6 +84,8 @@ theme.notification_icon_size = config.dpi(24)
 theme.notification_action_halign = "right"
 theme.notification_close_icon = config_dir .. "images/x.svg"
 
+theme.volume_icon = config_dir .. "images/volume-high.svg"
+
 theme.useless_gap = config.dpi(0)
 theme.border_width = config.dpi(0)
 theme.border_color_normal = "#000000"
