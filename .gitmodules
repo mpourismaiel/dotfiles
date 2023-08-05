@@ -17,5 +17,5 @@
 	path = external/tween-lua
 	url = git@github.com:kikito/tween.lua.git
 [submodule "external/dbus-proxy"]
-	path = external/dbus-proxy
+	path = external/dbus_proxy
 	url = https://github.com/Kasper24/lua-dbus_proxy

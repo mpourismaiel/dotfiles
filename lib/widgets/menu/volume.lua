@@ -31,7 +31,6 @@ end
 
 function slider:set_volume_text(volume)
   local wp = self._private
-  console():title("Volume"):log(volume)
   wp.volume_text:set_text(volume)
 end
 
