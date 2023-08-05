@@ -84,6 +84,13 @@ theme.notification_icon_size = config.dpi(24)
 theme.notification_action_halign = "right"
 theme.notification_close_icon = config_dir .. "images/x.svg"
 
+theme.battery_icon = config_dir .. "images/battery.svg"
+theme.battery_10_icon = config_dir .. "images/battery-10.svg"
+theme.battery_25_icon = config_dir .. "images/battery-25.svg"
+theme.battery_50_icon = config_dir .. "images/battery-50.svg"
+theme.battery_75_icon = config_dir .. "images/battery-75.svg"
+theme.battery_100_icon = config_dir .. "images/battery-100.svg"
+theme.battery_charging_icon = config_dir .. "images/battery-charging.svg"
 theme.volume_icon = config_dir .. "images/volume-high.svg"
 
 theme.useless_gap = config.dpi(0)
