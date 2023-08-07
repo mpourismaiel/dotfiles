@@ -61,6 +61,7 @@ theme.menu_container_padding_right = config.dpi(16)
 theme.menu_container_padding_top = config.dpi(12)
 theme.menu_container_padding_bottom = config.dpi(12)
 theme.menu_height = config.dpi(600)
+theme.menu_close_icon = config_dir .. "images/x.svg"
 
 theme.calendar_position = "bottom_left"
 theme.calendar_vertical_spacing = config.dpi(12)
