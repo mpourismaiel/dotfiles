@@ -19,6 +19,7 @@ local notifications = require("lib.widgets.menu.notifications")
 local battery = require("lib.widgets.menu.battery")
 local volume = require("lib.widgets.menu.volume")
 local wbutton = require("lib.widgets.button")
+local wtext = require("lib.widgets.text")
 
 local config_dir = filesystem.get_configuration_dir()
 local menu_icon = config_dir .. "/images/circle.svg"
@@ -78,8 +79,8 @@ function menu:set_screen(screen)
   wp.animation.open.target.drawer.x = geo.x + offset_x
   wp.drawer.y = geo.y
 
-  wp.menu_x = wp.animation.open.target.drawer.x + wp.drawer_box + theme.menu_horizontal_spacing
-  wp.menu_y = geo.y
+  wp.dropdown_x = wp.animation.open.target.drawer.x + wp.drawer_box + theme.menu_horizontal_spacing
+  wp.dropdown_y = geo.y
 end
 
 function menu:init_animation()
@@ -114,22 +115,44 @@ function menu:init_animation()
       end
     }
   }
+
+  wp.slide_main =
+    animation_new(
+    {
+      subject = {x = 0, y = -theme.menu_height},
+      duration = 0.2
+    }
+  ):add(
+    "visible",
+    {
+      target = {y = 0}
+    }
+  ):add(
+    "invisible",
+    {
+      target = {y = -theme.menu_height}
+    }
+  ):onUpdate(
+    function(name, new_subject)
+      wp.menu_display:move(1, new_subject)
+    end
+  )
 end
 
-function menu:show_dropdown(menu)
+function menu:show_dropdown(dropdown)
   local wp = self._private
 
-  if wp.menu then
+  if wp.dropdown then
     self:hide_dropdown()
     return
   end
 
-  wp.menu = menu
-  wp.menu.visible = true
+  wp.dropdown = dropdown
+  wp.dropdown.visible = true
   animation_new(
     {
       subject = {
-        x = wp.menu_x - theme.menu_horizontal_spacing,
+        x = wp.dropdown_x - theme.menu_horizontal_spacing,
         opacity = 0.0
       }
     }
@@ -137,27 +160,149 @@ function menu:show_dropdown(menu)
     "visible",
     {
       target = {
-        x = wp.menu_x,
+        x = wp.dropdown_x,
         opacity = 1.0
       }
     }
   ):onUpdate(
     function(name, new_subject)
       if name == "visible" then
-        wp.menu.x = new_subject.x
+        wp.dropdown.x = new_subject.x
       end
     end
   ):startAnimation("visible", {from_start = true})
-  wp.menu.y = wp.menu_y
+  wp.dropdown.y = wp.dropdown_y
 end
 
 function menu:hide_dropdown()
+  local wp = self._private
+  if not wp.dropdown then
+    return
+  end
+
+  wp.dropdown.visible = false
+  wp.dropdown = nil
+end
+
+function menu:show_menu(title, menu)
+  local wp = self._private
+
+  if wp.menu then
+    self:hide_menu()
+    return
+  end
+
+  wp.menu =
+    wibox.widget {
+    widget = wibox.container.constraint,
+    strategy = "exact",
+    width = wp.drawer_box,
+    height = theme.menu_height,
+    {
+      widget = wibox.container.margin,
+      top = theme.menu_vertical_spacing,
+      bottom = theme.menu_vertical_spacing,
+      left = theme.menu_horizontal_spacing,
+      right = theme.menu_horizontal_spacing,
+      {
+        layout = wibox.layout.fixed.vertical,
+        spacing = theme.menu_vertical_spacing,
+        {
+          layout = wibox.layout.fixed.horizontal,
+          spacing = theme.menu_horizontal_spacing,
+          {
+            widget = wibox.container.constraint,
+            strategy = "exact",
+            width = config.dpi(380 - 12 - 48),
+            {
+              widget = wcontainer,
+              {
+                widget = wtext,
+                bold = true,
+                text = title,
+                font_size = config.dpi(12)
+              }
+            }
+          },
+          {
+            widget = wibox.container.constraint,
+            strategy = "exact",
+            width = config.dpi(48),
+            height = config.dpi(48),
+            {
+              widget = wbutton,
+              bg_normal = theme.bg_secondary,
+              paddings = 0,
+              callback = function()
+                self:hide_menu()
+              end,
+              {
+                widget = wibox.container.place,
+                {
+                  widget = wibox.container.constraint,
+                  strategy = "exact",
+                  width = config.dpi(16),
+                  height = config.dpi(16),
+                  {
+                    widget = wibox.widget.imagebox,
+                    image = theme.menu_close_icon
+                  }
+                }
+              }
+            }
+          }
+        },
+        menu
+      }
+    }
+  }
+  wp.menu.point = {x = 0, y = theme.menu_height}
+  wp.menu_display:insert(2, wp.menu)
+  wp.slide_main:startAnimation(
+    "invisible",
+    {
+      callback = function()
+        wp.menu_animation =
+          animation_new(
+          {
+            subject = {x = 0, y = theme.menu_height},
+            duration = 0.2
+          }
+        ):add(
+          "visible",
+          {
+            target = {y = 0}
+          }
+        ):add(
+          "invisible",
+          {
+            target = {y = theme.menu_height}
+          }
+        ):onUpdate(
+          function(name, new_subject)
+            wp.menu_display:move(2, new_subject)
+          end
+        ):startAnimation("visible")
+      end
+    }
+  )
+end
+
+function menu:hide_menu()
   local wp = self._private
   if not wp.menu then
     return
   end
 
-  wp.menu.visible = false
+  wp.menu_animation:startAnimation(
+    "invisible",
+    {
+      callback = function()
+        wp.menu_display:remove(2)
+        wp.slide_main:startAnimation("visible")
+      end
+    }
+  )
   wp.menu = nil
 end
 
@@ -238,16 +383,13 @@ local function new()
   wp.drawer_width = config.dpi(380)
   wp.drawer_box = wp.drawer_width + theme.menu_horizontal_spacing * 2
 
-  local drawer =
-    wibox {
-    ontop = true,
-    visible = false,
-    type = "utility",
+  local main =
+    wibox.widget {
+    widget = wibox.container.constraint,
+    strategy = "exact",
     width = wp.drawer_box,
     height = theme.menu_height,
-    bg = theme.bg_normal,
-    shape = gears.shape.rounded_rect,
-    widget = {
+    {
       widget = wibox.container.margin,
       top = theme.menu_vertical_spacing,
       bottom = theme.menu_vertical_spacing,
@@ -291,6 +433,15 @@ local function new()
             notifications
           }
         },
+        volume(
+          {
+            width = wp.drawer_box,
+            height = theme.menu_height - theme.menu_vertical_spacing * 2 - config.dpi(48),
+            callback = function(title, menu)
+              ret:show_menu(title, menu)
+            end
+          }
+        ).toggle,
         {
           layout = wibox.layout.fixed.horizontal,
           spacing = theme.menu_vertical_spacing,
@@ -300,27 +451,36 @@ local function new()
             width = config.dpi(60),
             height = config.dpi(60),
             battery().widget
-          },
-          {
-            widget = wibox.container.constraint,
-            strategy = "exact",
-            width = config.dpi(60),
-            height = config.dpi(60),
-            volume(
-              {
-                callback = function(menu)
-                  ret:show_dropdown(menu)
-                end
-              }
-            ).toggle
           }
         }
       }
     }
   }
+  main.point = {
+    x = 0,
+    y = 0
+  }
+
+  local drawer =
+    wibox {
+    ontop = true,
+    visible = false,
+    type = "utility",
+    width = wp.drawer_box,
+    height = theme.menu_height,
+    bg = theme.bg_normal,
+    shape = gears.shape.rounded_rect,
+    widget = {
+      layout = wibox.layout.manual,
+      id = "menu_display",
+      main
+    }
+  }
 
   wp.backdrop = backdrop
   wp.drawer = drawer
+  wp.menu_display = drawer:get_children_by_id("menu_display")[1]
+  wp.main = main
   wp.systray_instance = systray
   wp.toggle = toggle
 
@@ -341,6 +501,7 @@ local function new()
       local is_visible = backdrop.visible
       notifications.reset()
       ret:hide_dropdown()
+      ret:hide_menu()
       wp.systray = nil
 
       wp.backdrop.visible = not is_visible

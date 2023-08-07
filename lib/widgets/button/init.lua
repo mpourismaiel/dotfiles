@@ -94,9 +94,6 @@ function button:set_bg_normal(bg)
     return
   end
 
-  if not wp.background_role then
-    gears.debug.dump(wp.widget)
-  end
   wp.background_role.bg = bg
   self:emit_signal("widget::layout_changed")
 end

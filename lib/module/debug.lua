@@ -6,6 +6,8 @@ local config = require("lib.configuration")
 local theme = require("lib.configuration.theme")
 local console = require("lib.helpers.console")
 local animation_new = require("lib.helpers.animation-new")
+local wtabs = require("lib.widgets.tabs")
+local wcontainer = require("lib.widgets.menu.container")
 local wbutton = require("lib.widgets.button")
 local wtext = require("lib.widgets.text")
 local wtext_input = require("lib.widgets.text_input")
@@ -193,6 +195,41 @@ notifications:add(
   }
 )
 
+local tabs = wibox.widget {layout = wibox.layout.fixed.vertical, spacing = config.dpi(5)}
+tabs:add(
+  wibox.widget {
+    widget = wtabs,
+    forced_width = config.dpi(400),
+    forced_height = config.dpi(200),
+    tabs = {
+      {
+        id = "devices",
+        title = "Devices",
+        widget = wibox.widget {
+          widget = wcontainer,
+          {
+            widget = wtext,
+            text = "devices",
+            valign = "top"
+          }
+        }
+      },
+      {
+        id = "applications",
+        title = "Applications",
+        widget = wibox.widget {
+          widget = wcontainer,
+          {
+            widget = wtext,
+            text = "applications",
+            valign = "top"
+          }
+        }
+      }
+    }
+  }
+)
+
 local function section(text, w)
   return wibox.widget {
     layout = wibox.layout.align.vertical,
@@ -234,6 +271,16 @@ local debug_screen =
         }
       },
       section("Notifications", notifications),
+      section(
+        "Tabs",
+        wibox.widget {
+          widget = wibox.container.constraint,
+          strategy = "exact",
+          width = config.dpi(400),
+          height = config.dpi(200),
+          tabs
+        }
+      ),
       section("Inputs", inputs),
       section("Buttons", buttons),
       section("Buttons with widget", buttons_with_widgets),

@@ -87,6 +87,17 @@ function Animation:startAnimation(name, args)
       animation.tween = tween.new(animation.duration, wp.subject, animation.target, animation.easing)
       animation.timer = glib.timeout_add(glib.PRIORITY_DEFAULT, self.ANIMATION_FRAME_DELAY, animation.timer_function)
 
+      if args and args.callback then
+        args.callback(
+          {
+            subject = wp.subject,
+            target = animation.target,
+            easing = animation.easing,
+            duration = animation.duration
+          }
+        )
+      end
+
       for _, fn in pairs(wp.on_start_listeners) do
         fn(
           name,
