@@ -107,14 +107,6 @@ awful.keyboard.append_global_keybindings(
     ),
     awful.key(
       {config.modkey},
-      "b",
-      function()
-        global_state.bar.visible = not global_state.bar.visible
-      end,
-      {description = "open application drawer", group = "launcher"}
-    ),
-    awful.key(
-      {config.modkey},
       "d",
       function()
         awesome.emit_signal("module::launcher::show")

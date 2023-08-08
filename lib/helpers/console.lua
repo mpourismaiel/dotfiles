@@ -39,6 +39,8 @@ function console:log(...)
   if self._private.with_trace then
     gears.debug.dump("\n" .. _G.debug.traceback() .. "\n")
   end
+
+  return self
 end
 
 function console:with_trace()
