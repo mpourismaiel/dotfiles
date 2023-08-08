@@ -88,8 +88,10 @@ function launcher:generate_apps()
         icon = icon
       }
 
-      table.insert(self.all_entries, data)
-      table.insert(self.matched_entries, data)
+      if data.icon and data.icon ~= "" then
+        table.insert(self.all_entries, data)
+        table.insert(self.matched_entries, data)
+      end
     end
   end
 end

@@ -7,7 +7,7 @@ local osd = require("lib.widgets.osd")
 local spawn = awful.spawn
 local dpi = config.dpi
 local config_dir = gears.filesystem.get_configuration_dir()
-local volume_icon = config_dir .. "/images/volume-high.svg"
+local volume_icon = config_dir .. "/images/volume-2.svg"
 
 local icon =
   wibox.widget {

@@ -1,3 +1,6 @@
+local capi = {
+  screen = screen
+}
 local collectgarbage = collectgarbage
 collectgarbage("incremental", 110, 1000)
 pcall(require, "luarocks.loader")
@@ -23,7 +26,6 @@ require("lib.widgets.lockscreen")
 require("lib.widgets.volume.osd")
 
 local theme = require("lib.configuration.theme")
-local global_state = require("lib.configuration.global_state")
 
 naughty.connect_signal(
   "request::display_error",
@@ -43,17 +45,16 @@ require("lib.module.weather")
 require("lib.module.launcher.dialog")()
 require("lib.module.calendar")()
 require("lib.module.debug")
-local widgets = require("lib.widgets")
 
 bling.module.wallpaper.setup {
   wallpaper = {beautiful.wallpaper},
   position = "maximized"
 }
 
-screen.connect_signal(
+capi.screen.connect_signal(
   "request::desktop_decoration",
   function(s)
-    global_state.bar = widgets.bar.new(s)
+    require("lib.widgets.bar")(s)
     require("lib.module.launcher")(s)
   end
 )

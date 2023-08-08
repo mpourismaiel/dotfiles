@@ -1,3 +1,6 @@
+local capi = {
+  awesome = awesome
+}
 local awful = require("awful")
 local wibox = require("wibox")
 
@@ -7,10 +10,12 @@ local taglist = require("lib.widgets.taglist")
 local tasklist = require("lib.widgets.tasklist")
 local wbutton = require("lib.widgets.button")
 local datetime = require("lib.widgets.bar.datetime")
+local console = require("lib.helpers.console")
 
 local bar = {mt = {}}
 
-function bar.new(screen)
+local function new(screen)
+  console():log("showing wibar")
   return awful.wibar {
     position = "left",
     width = theme.bar_width,
@@ -30,7 +35,7 @@ function bar.new(screen)
           padding_top = 8,
           padding_bottom = 8,
           callback = function()
-            awesome.emit_signal("module::launcher::show", screen)
+            capi.awesome.emit_signal("module::launcher::show", screen)
           end,
           taglist.new(screen)
         }
@@ -55,7 +60,7 @@ function bar.new(screen)
 end
 
 function bar.mt:__call(...)
-  return bar.new(...)
+  return new(...)
 end
 
 return setmetatable(bar, bar.mt)

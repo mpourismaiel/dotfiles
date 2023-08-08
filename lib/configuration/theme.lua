@@ -9,6 +9,7 @@ local theme = {}
 
 theme.font_name = "Inter"
 theme.font_size = config.dpi(10)
+theme.font_size_large = config.dpi(12)
 theme.font = theme.font_name .. " Regular " .. theme.font_size
 
 theme.transparency = 0.6
@@ -41,6 +42,7 @@ theme.button_padding_left = config.dpi(20)
 theme.button_padding_right = config.dpi(20)
 theme.button_padding_top = config.dpi(10)
 theme.button_padding_bottom = config.dpi(10)
+theme.button_check_icon = config_dir .. "images/check.svg"
 
 theme.bar_padding = config.dpi(3)
 theme.bar_width = config.dpi(48)
@@ -92,7 +94,9 @@ theme.battery_50_icon = config_dir .. "images/battery-50.svg"
 theme.battery_75_icon = config_dir .. "images/battery-75.svg"
 theme.battery_100_icon = config_dir .. "images/battery-100.svg"
 theme.battery_charging_icon = config_dir .. "images/battery-charging.svg"
-theme.volume_icon = config_dir .. "images/volume-high.svg"
+
+theme.volume_icon = config_dir .. "images/volume-2.svg"
+theme.volume_mute_icon = config_dir .. "images/volume-x.svg"
 
 theme.useless_gap = config.dpi(0)
 theme.border_width = config.dpi(0)
