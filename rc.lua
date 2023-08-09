@@ -45,6 +45,7 @@ require("lib.module.weather")
 require("lib.module.launcher.dialog")()
 require("lib.module.calendar")()
 require("lib.module.debug")
+require("lib.widgets.bar")()
 
 bling.module.wallpaper.setup {
   wallpaper = {beautiful.wallpaper},
@@ -54,7 +55,6 @@ bling.module.wallpaper.setup {
 capi.screen.connect_signal(
   "request::desktop_decoration",
   function(s)
-    require("lib.widgets.bar")(s)
     require("lib.module.launcher")(s)
   end
 )

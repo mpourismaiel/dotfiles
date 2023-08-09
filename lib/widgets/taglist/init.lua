@@ -121,7 +121,7 @@ function taglist.render(w, buttons, label, data, objects, args)
   end
 end
 
-function taglist.new(screen)
+local function new(screen)
   local widget =
     wibox.widget {
     widget = wibox.container.background,
@@ -155,7 +155,7 @@ function taglist.new(screen)
 end
 
 function taglist.mt:__call(...)
-  return taglist.new(...)
+  return new(...)
 end
 
 return setmetatable(taglist, taglist.mt)
