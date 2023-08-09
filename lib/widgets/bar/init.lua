@@ -1,5 +1,6 @@
 local capi = {
-  awesome = awesome
+  awesome = awesome,
+  screen = screen
 }
 local awful = require("awful")
 local wibox = require("wibox")
@@ -14,8 +15,7 @@ local console = require("lib.helpers.console")
 
 local bar = {mt = {}}
 
-local function new(screen)
-  console():log("showing wibar")
+local function create_new_bar(screen)
   return awful.wibar {
     position = "left",
     width = theme.bar_width,
@@ -37,13 +37,16 @@ local function new(screen)
           callback = function()
             capi.awesome.emit_signal("module::launcher::show", screen)
           end,
-          taglist.new(screen)
+          taglist(screen)
         }
       },
       {
         layout = wibox.layout.align.vertical,
         nil,
-        wibox.container.place(tasklist.new(screen)),
+        {
+          widget = wibox.container.place,
+          tasklist(screen)
+        },
         nil
       },
       {
@@ -57,6 +60,15 @@ local function new(screen)
       }
     }
   }
+end
+
+local function new()
+  capi.screen.connect_signal(
+    "request::desktop_decoration",
+    function(s)
+      create_new_bar(s)
+    end
+  )
 end
 
 function bar.mt:__call(...)

@@ -26,18 +26,18 @@ function console:log(...)
   end
 
   if self._private.divider then
-    gears.debug.dump(self._private.divider)
+    print(self._private.divider)
   end
 
   if self._private.title then
     local title_formatted = string.format("\27[1;37m%s\27[0m", self._private.title)
-    gears.debug.dump(title_formatted)
+    print(title_formatted)
   end
 
-  gears.debug.dump(str)
+  print(str .. "\n")
 
   if self._private.with_trace then
-    gears.debug.dump("\n" .. _G.debug.traceback() .. "\n")
+    print("\n" .. _G.debug.traceback() .. "\n")
   end
 
   return self
@@ -66,7 +66,7 @@ end
 local function new()
   local ret = {
     _private = {
-      title = "",
+      title = nil,
       with_trace = false,
       divider = "================================================",
       depth = 1

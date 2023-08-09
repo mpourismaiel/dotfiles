@@ -20,7 +20,7 @@ local config = {
     debug_mode = false,
     apps = {
       -- Compositor
-      "picom -b --dbus --config " .. config_dir .. "/lib/picom.conf",
+      "picom --config " .. config_dir .. "/lib/picom.conf",
       -- Polkit and keyring
       "/usr/bin/lxqt-policykit-agent &" .. " eval $(gnome-keyring-daemon -s --components=pkcs11,secrets,ssh,gpg)",
       -- Load X colors
