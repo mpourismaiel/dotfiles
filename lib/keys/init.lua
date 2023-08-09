@@ -1,8 +1,8 @@
 local awful = require("awful")
+local gears = require("gears")
 local naughty = require("naughty")
 local hotkeys_popup = require("awful.hotkeys_popup")
 local config = require("lib.configuration")
-local global_state = require("lib.configuration.global_state")
 
 require("awful.hotkeys_popup.keys")
 
@@ -324,21 +324,77 @@ awful.keyboard.append_global_keybindings(
       {description = "focus right", group = "client"}
     ),
     awful.key(
+      {config.modkey, "Ctrl"},
+      "Left",
+      function()
+        awful.screen.focus_bydirection("left")
+      end,
+      {description = "focus the left screen", group = "screen"}
+    ),
+    awful.key(
+      {config.modkey, "Ctrl"},
+      "Right",
+      function()
+        awful.screen.focus_bydirection("right")
+      end,
+      {description = "focus the right screen", group = "screen"}
+    ),
+    awful.key(
+      {config.modkey, "Ctrl"},
+      "Up",
+      function()
+        awful.screen.focus_bydirection("up")
+      end,
+      {description = "focus the upper screen", group = "screen"}
+    ),
+    awful.key(
+      {config.modkey, "Ctrl"},
+      "Down",
+      function()
+        awful.screen.focus_bydirection("down")
+      end,
+      {description = "focus the lower screen", group = "screen"}
+    ),
+    awful.key(
       {config.modkey, "Shift"},
       "Left",
       function()
-        awful.client.swap.global_bydirection("left")
+        local c = client.focus
+        awful.screen.focus_bydirection("left")
+        local s = awful.screen.focused()
+
+        for _, t in ipairs(s.tags) do
+          if t.name == c.first_tag.name then
+            t:view_only()
+            break
+          end
+        end
+
+        c:move_to_screen(s)
+        c:activate {raise = true}
       end,
-      {description = "swap with left client", group = "client"}
+      {description = "move client to the left screen", group = "client"}
     ),
     awful.key(
       {config.modkey, "Shift"},
       "Right",
       function()
-        awful.client.swap.global_bydirection("right")
+        local c = client.focus
+        awful.screen.focus_bydirection("right")
+        local s = awful.screen.focused()
+
+        for _, t in ipairs(s.tags) do
+          if t.name == c.first_tag.name then
+            t:view_only()
+            break
+          end
+        end
+
+        c:move_to_screen(s)
+        c:activate {raise = true}
       end,
       {
-        description = "swap with right client",
+        description = "move client to the right screen",
         group = "client"
       }
     ),
@@ -346,20 +402,41 @@ awful.keyboard.append_global_keybindings(
       {config.modkey, "Shift"},
       "Up",
       function()
-        awful.client.swap.global_bydirection("up")
+        local c = client.focus
+        awful.screen.focus_bydirection("up")
+        local s = awful.screen.focused()
+
+        for _, t in ipairs(s.tags) do
+          if t.name == c.first_tag.name then
+            t:view_only()
+            break
+          end
+        end
+
+        c:move_to_screen(s)
+        c:activate {raise = true}
       end,
-      {description = "swap with upper client", group = "client"}
+      {description = "move client to the upper screen", group = "client"}
     ),
     awful.key(
       {config.modkey, "Shift"},
       "Down",
       function()
-        awful.client.swap.global_bydirection("down")
+        local c = client.focus
+        awful.screen.focus_bydirection("down")
+        local s = awful.screen.focused()
+
+        for _, t in ipairs(s.tags) do
+          if t.name == c.first_tag.name then
+            t:view_only()
+            break
+          end
+        end
+
+        c:move_to_screen(s)
+        c:activate {raise = true}
       end,
-      {
-        description = "swap with bottom client",
-        group = "client"
-      }
+      {description = "move client to the lower screen", group = "client"}
     )
   }
 )
