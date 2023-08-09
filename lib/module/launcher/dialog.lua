@@ -11,7 +11,8 @@ local launcher = require("lib.module.launcher")
 local store = require("lib.module.store")
 local color = require("lib.helpers.color")
 
-local dialog = {instance = nil, mt = {}}
+local instance = nil
+local dialog = {mt = {}}
 
 local terminal_commands_lookup = {
   ["xfce4-terminal"] = "xfce4-terminal",
@@ -296,8 +297,8 @@ local function run_keygrabber(self, modifiers, key, event)
 end
 
 local function new()
-  if dialog.instance then
-    return dialog.instance
+  if instance then
+    return instance
   end
 
   local ret = {}
@@ -431,7 +432,6 @@ local function new()
   wp.widget = widget
   wp.grid = widget:get_children_by_id("grid")[1]
   ret:render_apps()
-  ret:calculate_position()
 
   wp.search:connect_signal(
     "key::press",
@@ -461,6 +461,8 @@ local function new()
     function()
       wp.backdrop.visible = true
       wp.widget.visible = true
+      ret:calculate_position()
+
       wp.grid:set_scroll_factor(0)
       ret:select(1)
       wp.search:focus()
@@ -473,12 +475,13 @@ local function new()
       wp.search:unfocus()
       wp.search:set_text("")
       wp.query = ""
-      ret:render_apps()
       wp.backdrop.visible = false
       wp.widget.visible = false
+      ret:render_apps()
     end
   )
 
+  instance = ret
   return ret
 end
 

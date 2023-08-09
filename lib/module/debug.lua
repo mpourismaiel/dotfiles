@@ -299,21 +299,21 @@ debug_screen:connect_signal(
   end
 )
 
-local geo =
-  awful.placement.centered(
-  debug_screen,
-  {
-    honor_workarea = true,
-    pretend = true
-  }
-)
-debug_screen.x = geo.x
-debug_screen.y = geo.y
-
 awesome.connect_signal(
   "module::debug::toggle",
   function()
     debug_screen.visible = not debug_screen.visible
     debug_screen.screen = awful.screen.focused()
+
+    local geo =
+      awful.placement.centered(
+      debug_screen,
+      {
+        honor_workarea = true,
+        pretend = true
+      }
+    )
+    debug_screen.x = geo.x
+    debug_screen.y = geo.y
   end
 )
