@@ -213,7 +213,7 @@ function tasklist.render(w, buttons, label, widgets_cache, objects, args)
         cache.popup.screen = s
         cache.popup:geometry(
           {
-            x = config.dpi(54),
+            x = s.geometry.x + config.dpi(54),
             y = s.geometry.height / 2 - ((#objects * config.dpi(48)) / 2) + ((i - 1) * config.dpi(48))
           }
         )
