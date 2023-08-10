@@ -7,9 +7,10 @@ pcall(require, "luarocks.loader")
 
 require("awful.autofocus")
 
+local wibox = require("wibox")
+local awful = require("awful")
 local beautiful = require("beautiful")
 local naughty = require("naughty")
-local bling = require("external.bling")
 local gears = require("gears")
 
 local config_dir = gears.filesystem.get_configuration_dir()
@@ -47,15 +48,23 @@ require("lib.module.calendar")()
 require("lib.module.debug")
 require("lib.widgets.bar")()
 
-bling.module.wallpaper.setup {
-  wallpaper = {beautiful.wallpaper},
-  position = "maximized"
-}
-
-capi.screen.connect_signal(
-  "request::desktop_decoration",
+awful.screen.connect_for_each_screen(
   function(s)
     require("lib.module.launcher")(s)
+
+    local widget =
+      wibox.widget {
+      widget = wibox.widget.imagebox,
+      resize = true,
+      horizontal_fit_policy = "fit",
+      vertical_fit_policy = "fit",
+      image = theme.wallpaper
+    }
+
+    awful.wallpaper {
+      screen = s,
+      widget = widget
+    }
   end
 )
 

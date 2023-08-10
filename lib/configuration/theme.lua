@@ -95,6 +95,9 @@ theme.battery_75_icon = config_dir .. "images/battery-75.svg"
 theme.battery_100_icon = config_dir .. "images/battery-100.svg"
 theme.battery_charging_icon = config_dir .. "images/battery-charging.svg"
 
+theme.volume_low_icon = config_dir .. "images/volume.svg"
+theme.volume_medium_icon = config_dir .. "images/volume-1.svg"
+theme.volume_high_icon = config_dir .. "images/volume-2.svg"
 theme.volume_icon = config_dir .. "images/volume-2.svg"
 theme.volume_mute_icon = config_dir .. "images/volume-x.svg"
 
@@ -106,28 +109,6 @@ theme.border_color_marked = "#91231c"
 
 theme.shutdown_icon = config_dir .. "/images/power.svg"
 
--- There are other variable sets
--- overriding the default one when
--- defined, the sets are:
--- taglist_[bg|fg]_[focus|urgent|occupied|empty|volatile]
--- tasklist_[bg|fg]_[focus|urgent]
--- titlebar_[bg|fg]_[normal|focus]
--- tooltip_[font|opacity|fg_color|bg_color|border_width|border_color]
--- prompt_[fg|bg|fg_cursor|bg_cursor|font]
--- hotkeys_[bg|fg|border_width|border_color|shape|opacity|modifiers_fg|label_bg|label_fg|group_margin|font|description_font]
--- Example:
---theme.taglist_bg_focus = "#ff0000"
-
--- Generate taglist squares:
-local taglist_square_size = config.dpi(4)
-theme.taglist_squares_sel = theme_assets.taglist_squares_sel(taglist_square_size, theme.fg_normal)
-theme.taglist_squares_unsel = theme_assets.taglist_squares_unsel(taglist_square_size, theme.fg_normal)
-
--- Variables set for theming notifications:
--- notification_font
--- notification_[bg|fg]
--- notification_[width|height|margin]
--- notification_[border_color|border_width|shape|opacity]
 theme.notification_font = theme.font
 theme.notification_bg = ""
 theme.notification_fg = "#ffffff"
@@ -147,7 +128,6 @@ theme.titlebar_icon_x = config_dir .. "images/x.svg"
 
 theme.wallpaper = config.wallpaper
 
--- You can use your own layout icons like this:
 theme.layout_floating = themes_path .. "default/layouts/floatingw.png"
 theme.layout_max = themes_path .. "default/layouts/maxw.png"
 theme.layout_tile = themes_path .. "default/layouts/tilew.png"

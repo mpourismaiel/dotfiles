@@ -2,12 +2,10 @@ local wibox = require("wibox")
 local gears = require("gears")
 local awful = require("awful")
 local config = require("lib.configuration")
+local theme = require("lib.configuration.theme")
 local osd = require("lib.widgets.osd")
 
 local spawn = awful.spawn
-local dpi = config.dpi
-local config_dir = gears.filesystem.get_configuration_dir()
-local volume_icon = config_dir .. "/images/volume-2.svg"
 
 local icon =
   wibox.widget {
@@ -20,7 +18,8 @@ local icon =
     height = config.dpi(24),
     strategy = "exact",
     {
-      image = volume_icon,
+      image = theme.volume_icon,
+      id = "image_role",
       resize = true,
       widget = wibox.widget.imagebox
     }
@@ -37,14 +36,14 @@ local slider =
       {
         id = "volume_slider",
         bar_shape = gears.shape.rounded_rect,
-        bar_height = dpi(4),
+        bar_height = config.dpi(4),
         bar_color = "#ffffff20",
         bar_active_color = "#f2f2f2EE",
         handle_color = "#ffffff",
         handle_shape = gears.shape.circle,
-        handle_width = dpi(16),
+        handle_width = config.dpi(16),
         handle_border_color = "#00000012",
-        handle_border_width = dpi(1),
+        handle_border_width = config.dpi(1),
         maximum = 100,
         widget = wibox.widget.slider
       }
@@ -64,6 +63,17 @@ volume_slider:connect_signal(
     local volume_level = volume_slider:get_value()
 
     spawn("amixer -D pulse sset Master " .. volume_level .. "%", false)
+    local image = theme.volume_mute_icon
+    if volume_level == 0 then
+      image = theme.volume_mute_icon
+    elseif volume_level > 0 and volume_level < 30 then
+      image = theme.volume_low_icon
+    elseif volume_level >= 30 and volume_level < 70 then
+      image = theme.volume_medium_icon
+    elseif volume_level >= 70 then
+      image = theme.volume_high_icon
+    end
+    icon:get_children_by_id("image_role")[1].image = image
 
     -- Update volume osd
     awesome.emit_signal("module::volume_osd", volume_level)
@@ -112,20 +122,6 @@ end
 -- Update on startup
 update_slider()
 
-local action_jump = function()
-  local sli_value = volume_slider:get_value()
-  local new_value = 0
-
-  if sli_value >= 0 and sli_value < 50 then
-    new_value = 50
-  elseif sli_value >= 50 and sli_value < 100 then
-    new_value = 100
-  else
-    new_value = 0
-  end
-  volume_slider:set_value(new_value)
-end
-
 local volume_osd =
   osd(
   wibox.widget {
@@ -137,7 +133,7 @@ local volume_osd =
       bottom = config.dpi(16),
       {
         layout = wibox.layout.fixed.vertical,
-        spacing = dpi(20),
+        spacing = config.dpi(20),
         icon,
         slider
       }
@@ -145,7 +141,7 @@ local volume_osd =
   }
 )
 
-timer = nil
+local timer = nil
 -- The emit will come from the global keybind
 awesome.connect_signal(
   "widget::volume",

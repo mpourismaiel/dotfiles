@@ -73,10 +73,12 @@ function menu:set_screen(screen)
   local offset_x = 0
   if wp.systray then
     wp.animation.open.target.systray.x = geo.x
+    wp.anim_data.systray.x = wp.animation.open.target.systray.x - config.dpi(10)
     wp.systray.y = geo.y
     offset_x = wp.systray_box + theme.menu_horizontal_spacing
   end
   wp.animation.open.target.drawer.x = geo.x + offset_x
+  wp.anim_data.drawer.x = wp.animation.open.target.drawer.x - config.dpi(10)
   wp.drawer.y = geo.y
 
   wp.dropdown_x = wp.animation.open.target.drawer.x + wp.drawer_box + theme.menu_horizontal_spacing
@@ -490,7 +492,7 @@ local function new()
   backdrop:connect_signal(
     "button::release",
     function()
-      capi.awesome.emit_signal("widget::drawer:hide")
+      capi.awesome.emit_signal("widget::drawer::hide")
     end
   )
 
@@ -523,7 +525,7 @@ local function new()
   )
 
   capi.awesome.connect_signal(
-    "widget::drawer:hide",
+    "widget::drawer::hide",
     function()
       wp.animation.open:stopAnimation()
       wp.animation.close:startAnimation()
