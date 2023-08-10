@@ -23,14 +23,19 @@ function osd.new(w)
 
   ret.anim_data = {x = 0, opacity = 0.0}
   local function placement_fn(c)
-    return awful.placement.right(
+    local geo =
+      awful.placement.right(
       c,
       {
         margins = {
           right = ret.anim_data.x
-        }
+        },
+        pretend = true
       }
     )
+
+    c.x = geo.x
+    c.y = geo.y
   end
 
   ret.w =
@@ -44,8 +49,7 @@ function osd.new(w)
     visible = false,
     shape = gears.shape.rounded_rect,
     bg = "#44444430",
-    opacity = ret.anim_data.opacity,
-    placement = placement_fn
+    opacity = ret.anim_data.opacity
   }
 
   ret.w:setup {

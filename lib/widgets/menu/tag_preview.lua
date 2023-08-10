@@ -136,7 +136,7 @@ local function draw_widget(c, widget_width, widget_height)
         1,
         nil,
         function()
-          awesome.emit_signal("widget::drawer:hide")
+          awesome.emit_signal("widget::drawer::hide")
 
           if c ~= nil then
             c:raise()

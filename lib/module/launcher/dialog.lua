@@ -1,3 +1,6 @@
+local capi = {
+  awesome = awesome
+}
 local wibox = require("wibox")
 local awful = require("awful")
 local gears = require("gears")
@@ -104,7 +107,7 @@ function dialog:render_apps()
   for i, v in ipairs(apps) do
     if
       wp.query == "" or
-        (string.find(v.name:lower(), wp.query:lower(), 1, true) ~= nil and self.search_commands or
+        (string.find(v.name:lower(), wp.query:lower(), 1, true) ~= nil or
           string.find(v.commandline, wp.query:lower(), 1, true) ~= nil)
      then
       last_index = last_index + 1
@@ -268,7 +271,7 @@ function dialog:run()
     )
   end
 
-  awesome.emit_signal("module::launcher::hide")
+  capi.awesome.emit_signal("module::launcher::hide")
 end
 
 function dialog:search(text)
@@ -292,7 +295,7 @@ local function run_keygrabber(self, modifiers, key, event)
   elseif key == "Return" then
     self:run()
   elseif key == "Escape" then
-    awesome.emit_signal("module::launcher::hide")
+    capi.awesome.emit_signal("module::launcher::hide")
   end
 end
 
@@ -421,7 +424,7 @@ local function new()
         {},
         1,
         function()
-          awesome.emit_signal("module::launcher::hide")
+          capi.awesome.emit_signal("module::launcher::hide")
         end
       )
     )
@@ -456,7 +459,7 @@ local function new()
     end
   )
 
-  awesome.connect_signal(
+  capi.awesome.connect_signal(
     "module::launcher::show",
     function()
       wp.backdrop.visible = true
@@ -469,7 +472,7 @@ local function new()
     end
   )
 
-  awesome.connect_signal(
+  capi.awesome.connect_signal(
     "module::launcher::hide",
     function()
       wp.search:unfocus()
