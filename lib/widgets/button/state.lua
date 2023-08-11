@@ -19,7 +19,6 @@ end
 function state:turn_on()
   local wp = self._private
   if wp.widget_on then
-    wp.off_widget = wp.label.widget
     self:set_widget(wp.widget_on)
   end
 
@@ -29,8 +28,8 @@ end
 
 function state:turn_off()
   local wp = self._private
-  if wp.off_widget then
-    self:set_widget(wp.off_widget)
+  if wp.widget_off then
+    self:set_widget(wp.widget_off)
   end
 
   if wp.off_bg_normal then
@@ -87,11 +86,29 @@ end
 function state:set_widget_on(widget)
   local wp = self._private
   wp.widget_on = widget
+
+  if wp.state then
+    self:set_widget(widget)
+  end
 end
 
 function state:get_widget_on()
   local wp = self._private
   return wp.widget_on
+end
+
+function state:set_widget_off(widget)
+  local wp = self._private
+  wp.widget_off = widget
+
+  if not wp.state then
+    self:set_widget(widget)
+  end
+end
+
+function state:get_widget_off()
+  local wp = self._private
+  return wp.widget_off
 end
 
 local function new()
