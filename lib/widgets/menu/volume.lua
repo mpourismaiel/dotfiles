@@ -179,7 +179,7 @@ local function radio_button(group, device_widget, id, callback)
         image = theme.button_check_icon
       }
     },
-    {
+    widget_off = wibox.widget {
       widget = wibox.container.constraint,
       strategy = "exact",
       width = config.dpi(16),
@@ -323,7 +323,7 @@ local function section(title, widget)
     {
       widget = wibox.container.constraint,
       strategy = "max",
-      height = config.dpi(200),
+      height = config.dpi(180),
       widget
     }
   }
@@ -337,6 +337,16 @@ local function devices(args)
       spacing = config.dpi(20),
       section("Outputs", sinks(args)),
       section("Inputs", sources(args))
+    }
+  }
+end
+
+local function applications(args)
+  return wibox.widget {
+    widget = wcontainer,
+    {
+      layout = wibox.layout.fixed.vertical,
+      spacing = config.dpi(20)
     }
   }
 end
@@ -453,7 +463,7 @@ local function new(args)
         {
           id = "applications",
           title = "Applications",
-          widget = wibox.widget {widget = wtext, text = "applications"}
+          widget = applications(args)
         }
       }
     }
