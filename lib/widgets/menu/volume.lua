@@ -59,7 +59,7 @@ local function device_widget(device, args)
         image = theme.volume_mute_icon
       }
     },
-    {
+    widget_off = wibox.widget {
       widget = wibox.container.constraint,
       strategy = "exact",
       width = config.dpi(16),
