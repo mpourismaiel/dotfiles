@@ -90,6 +90,7 @@ naughty.connect_signal(
       width = theme.notification_width,
       ontop = true,
       screen = screen,
+      visible = false,
       bg = color.helpers.change_opacity(theme.bg_normal, theme.transparency),
       opacity = n.anim_data.opacity,
       shape = function(cr, width, height)
@@ -189,7 +190,18 @@ naughty.connect_signal(
     }
 
     table.insert(screen.notifications, n)
-    n.animation.visible:startAnimation()
+    -- check if any application in current tag is fullscreen
+    local fullscreen = false
+    for _, c in ipairs(screen.clients) do
+      if c.fullscreen then
+        fullscreen = true
+        break
+      end
+    end
+
+    if not fullscreen then
+      n.animation.visible:startAnimation()
+    end
 
     n:connect_signal(
       "reposition",

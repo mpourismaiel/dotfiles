@@ -78,7 +78,7 @@ function menu:set_screen(screen)
     offset_x = wp.systray_box + theme.menu_horizontal_spacing
   end
   wp.animation.open.target.drawer.x = geo.x + offset_x
-  wp.anim_data.drawer.x = wp.animation.open.target.drawer.x - config.dpi(10)
+  wp.anim_data.drawer.x = wp.animation.open.target.drawer.x - config.dpi(50)
   wp.drawer.y = geo.y
 
   wp.dropdown_x = wp.animation.open.target.drawer.x + wp.drawer_box + theme.menu_horizontal_spacing
