@@ -110,7 +110,7 @@ awful.keyboard.append_global_keybindings(
       {config.modkey},
       "l",
       function()
-        awesome.emit_signal("module::lockscreen:show")
+        awesome.emit_signal("module::lockscreen::show")
       end,
       {description = "lock desktop", group = "launcher"}
     ),
