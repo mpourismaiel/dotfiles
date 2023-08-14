@@ -7,23 +7,33 @@ local theme = require("lib.configuration.theme")
 
 local wallpaper = require("lib.widgets.desktop.wallpaper")
 
+local boxes = {}
 local desktop = {mt = {}}
 
 local function new(screen)
   local ret =
-    wibox.widget {
-    layout = wibox.layout.stack,
-    wallpaper(screen)
+    wibox {
+    visible = true,
+    ontop = false,
+    screen = screen,
+    type = "desktop",
+    widget = wibox.widget {
+      layout = wibox.layout.stack,
+      {
+        widget = wallpaper
+      }
+    }
   }
+
+  awful.placement.maximize(ret)
 
   return ret
 end
 
 awful.screen.connect_for_each_screen(
   function(screen)
-    awful.wallpaper {
-      screen = screen,
-      widget = new(screen)
-    }
+    if not boxes[screen] then
+      boxes[screen] = new(screen)
+    end
   end
 )

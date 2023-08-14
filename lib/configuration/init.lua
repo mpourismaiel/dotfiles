@@ -1,9 +1,15 @@
+local capi = {
+  awesome = awesome
+}
 local awful = require("awful")
 local gears = require("gears")
 local bling = require("external.bling")
 local filesystem = require("gears.filesystem")
+local inotify = require("lib.helpers.inotify")
 local xresources = require("beautiful.xresources")
 local machi = require("layout-machi")
+local debounce = require("lib.helpers.debounce")
+local table_helpers = require("lib.helpers.table")
 
 local config_dir = filesystem.get_configuration_dir()
 local images_dir = filesystem.get_configuration_dir() .. "/images"
@@ -19,7 +25,7 @@ local bling_layouts = {
 }
 
 local config = {
-  dir = config_dir .. "/config",
+  dir = config_dir .. "config",
   terminal = "xfce4-terminal",
   taskManager = "system-monitoring-center",
   modkey = "Mod4",
@@ -169,10 +175,6 @@ end
 
 local function initialize_config_file()
   config.initialized = true
-  if file_exists(config.auto_start_extra) then
-    local lines = lines_from(config.auto_start_extra)
-    config.auto_start.apps = gears.table.join(config.auto_start.apps, lines)
-  end
 
   if file_exists(config.dir .. configuration_override_filename) then
     local json = require("external.json")
@@ -197,8 +199,44 @@ local function initialize_config_file()
   load_layout_functions()
 end
 
+local function watch_changes()
+  inotify:watch(
+    config.dir .. configuration_override_filename,
+    {
+      inotify.events.create,
+      inotify.events.modify,
+      inotify.events.delete,
+      inotify.events.moved_from,
+      inotify.events.moved_to,
+      inotify.events.move_self,
+      inotify.events.delete_self,
+      inotify.events.attrib
+    }
+  ):connect_signal(
+    "event",
+    debounce(
+      function()
+        local old_config = table_helpers.deepClone(config)
+        initialize_config_file()
+        capi.awesome.emit_signal("module::config::changed", config)
+
+        local diff = table_helpers.generateTableDiff(old_config, config)
+        for k, v in pairs(diff) do
+          capi.awesome.emit_signal("module::config::changed_" .. k, v)
+        end
+      end,
+      0.2
+    )
+  )
+end
+
 if config.initialized ~= true then
+  if file_exists(config.auto_start_extra) then
+    local lines = lines_from(config.auto_start_extra)
+    config.auto_start.apps = gears.table.join(config.auto_start.apps, lines)
+  end
   initialize_config_file()
+  watch_changes()
 end
 
 return config
