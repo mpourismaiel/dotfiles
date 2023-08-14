@@ -19,3 +19,6 @@
 [submodule "external/dbus-proxy"]
 	path = external/dbus_proxy
 	url = https://github.com/Kasper24/lua-dbus_proxy
+[submodule "external/layout-machi"]
+	path = external/layout-machi
+	url = https://github.com/xinhaoyuan/layout-machi

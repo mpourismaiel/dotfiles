@@ -42,7 +42,6 @@ naughty.connect_signal(
 beautiful.init(theme)
 
 require("lib.module.autostart")
-require("lib.module.weather")
 require("lib.module.launcher.dialog")()
 require("lib.module.calendar")()
 require("lib.module.debug")

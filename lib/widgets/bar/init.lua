@@ -55,7 +55,7 @@ local function create_new_bar(screen)
         {
           layout = wibox.layout.fixed.vertical,
           datetime,
-          menu
+          menu(screen)
         }
       }
     }

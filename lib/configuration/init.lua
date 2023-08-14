@@ -3,6 +3,7 @@ local gears = require("gears")
 local bling = require("external.bling")
 local filesystem = require("gears.filesystem")
 local xresources = require("beautiful.xresources")
+local machi = require("layout-machi")
 
 local config_dir = filesystem.get_configuration_dir()
 local images_dir = filesystem.get_configuration_dir() .. "/images"
@@ -40,6 +41,7 @@ local config = {
     area_screenshot = "flameshot gui",
     bluetooth = "blueman-manager"
   },
+  available_layouts = {"max", "tile", "floating"},
   tags = {
     {
       name = "1",
@@ -129,7 +131,7 @@ if config.initialized ~= true then
             -- if tag is not table, skip it
             if type(tag) == "table" then
               -- append the tag to the config.tags
-              t = {}
+              local configured_tag = {}
               for k2, v2 in pairs(tag) do
                 -- if the key is layout, evaluate the value as a layout
                 if k2 == "layout" then
@@ -143,15 +145,17 @@ if config.initialized ~= true then
                   end
 
                   if found then
-                    t[k2] = bling.layout[v2]
+                    configured_tag[k2] = bling.layout[v2]
+                  elseif v2 == "machi" then
+                    configured_tag[k2] = machi.default_layout
                   else
-                    t[k2] = awful.layout.suit[v2]
+                    configured_tag[k2] = awful.layout.suit[v2]
                   end
                 else
-                  t[k2] = v2
+                  configured_tag[k2] = v2
                 end
               end
-              table.insert(tags, t)
+              table.insert(tags, configured_tag)
             end
           end
           config.tags = tags
@@ -165,6 +169,27 @@ if config.initialized ~= true then
       end
     end
   end
+
+  local available_layouts = {}
+  for _, layout in ipairs(config.available_layouts) do
+    local found = false
+    for _, bling_layout in ipairs(bling_layouts) do
+      if bling_layout == layout then
+        found = true
+        break
+      end
+    end
+
+    if found then
+      table.insert(available_layouts, bling.layout[layout])
+    elseif layout == "machi" then
+      table.insert(available_layouts, machi.default_layout)
+    else
+      table.insert(available_layouts, awful.layout.suit[layout])
+    end
+  end
+  gears.debug.dump(available_layouts)
+  config.available_layouts = available_layouts
 end
 
 return config
