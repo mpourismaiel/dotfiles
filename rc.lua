@@ -46,24 +46,11 @@ require("lib.module.launcher.dialog")()
 require("lib.module.calendar")()
 require("lib.module.debug")
 require("lib.widgets.bar")()
+require("lib.widgets.desktop")
 
 awful.screen.connect_for_each_screen(
   function(s)
     require("lib.module.launcher")(s)
-
-    local widget =
-      wibox.widget {
-      widget = wibox.widget.imagebox,
-      resize = true,
-      horizontal_fit_policy = "fit",
-      vertical_fit_policy = "fit",
-      image = theme.wallpaper
-    }
-
-    awful.wallpaper {
-      screen = s,
-      widget = widget
-    }
   end
 )
 

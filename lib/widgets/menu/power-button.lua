@@ -19,7 +19,7 @@ local logout_icon = config_dir .. "/images/logout.svg"
 local suspend_command = function()
   capi.awesome.emit_signal("module::exit_screen:hide")
   capi.awesome.emit_signal("widget::drawer::hide")
-  capi.awesome.emit_signal("module::lockscreen:show")
+  capi.awesome.emit_signal("module::lockscreen::show")
   awful.spawn.with_shell("systemctl suspend")
 end
 
@@ -30,7 +30,7 @@ end
 local lock_command = function()
   capi.awesome.emit_signal("module::exit_screen:hide")
   capi.awesome.emit_signal("widget::drawer::hide")
-  capi.awesome.emit_signal("module::lockscreen:show")
+  capi.awesome.emit_signal("module::lockscreen::show")
 end
 
 local power_command = function()

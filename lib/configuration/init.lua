@@ -7,6 +7,16 @@ local machi = require("layout-machi")
 
 local config_dir = filesystem.get_configuration_dir()
 local images_dir = filesystem.get_configuration_dir() .. "/images"
+local auto_start_file_name = "/autostart"
+local configuration_override_filename = "/configuration.json"
+local bling_layouts = {
+  "mstab",
+  "centered",
+  "vertical",
+  "horizontal",
+  "equalarea",
+  "deck"
+}
 
 local config = {
   dir = config_dir .. "/config",
@@ -31,7 +41,7 @@ local config = {
       -- Lockscreen timer
       [[
       xidlehook --not-when-fullscreen --not-when-audio --timer 600 \
-      "awesome-client 'awesome.emit_signal(\"module::lockscreen:show\")'" ""
+      "awesome-client 'awesome.emit_signal(\"module::lockscreen::show\")'" ""
       ]]
     }
   },
@@ -70,9 +80,9 @@ local config = {
   }
 }
 
-config.auto_start_extra = config.dir .. "/autostart"
+config.auto_start_extra = config.dir .. auto_start_file_name
 
-function file_exists(file)
+local function file_exists(file)
   local f = io.open(file, "rb")
   if f then
     f:close()
@@ -80,7 +90,7 @@ function file_exists(file)
   return f ~= nil
 end
 
-function lines_from(file)
+local function lines_from(file)
   if not file_exists(file) then
     return {}
   end
@@ -93,83 +103,49 @@ function lines_from(file)
   return lines
 end
 
-local bling_layouts = {
-  "mstab",
-  "centered",
-  "vertical",
-  "horizontal",
-  "equalarea",
-  "deck"
-}
-if config.initialized ~= true then
-  config.initialized = true
-  if file_exists(config.auto_start_extra) then
-    local lines = lines_from(config.auto_start_extra)
-    config.auto_start.apps = gears.table.join(config.auto_start.apps, lines)
+local function handle_nested_config_values(k, v)
+  if config[k] == nil then
+    config[k] = {}
   end
 
-  if file_exists(config.dir .. "/configuration.json") then
-    -- read config.dir .. "/configuration.json" and load the json as config_override_table
-    local json = require("external.json")
-    local f = io.open(config.dir .. "/configuration.json", "rb")
-    local content = f:read("*all")
-    f:close()
-    local config_override_table = json.decode(content)
-    -- iterate over the table and override config
-    for k, v in pairs(config_override_table) do
-      -- if the key is a table, iterate over it and override the config
-      if type(v) == "table" then
-        -- if the key is not present in config, create it
-        if config[k] == nil then
-          config[k] = {}
-        end
-
-        if k == "tags" then
-          local tags = {}
-          -- read the tags from the json file
-          for i, tag in pairs(v) do
-            -- if tag is not table, skip it
-            if type(tag) == "table" then
-              -- append the tag to the config.tags
-              local configured_tag = {}
-              for k2, v2 in pairs(tag) do
-                -- if the key is layout, evaluate the value as a layout
-                if k2 == "layout" then
-                  -- check if v2 is one of mstab, centered, vertical, horizontal, equalarea, deck
-                  local found = false
-                  for _, layout in ipairs(bling_layouts) do
-                    if layout == v2 then
-                      found = true
-                      break
-                    end
-                  end
-
-                  if found then
-                    configured_tag[k2] = bling.layout[v2]
-                  elseif v2 == "machi" then
-                    configured_tag[k2] = machi.default_layout
-                  else
-                    configured_tag[k2] = awful.layout.suit[v2]
-                  end
-                else
-                  configured_tag[k2] = v2
-                end
+  if k == "tags" then
+    local tags = {}
+    for _, tag in pairs(v) do
+      if type(tag) == "table" then
+        local configured_tag = {}
+        for tag_key, tag_name in pairs(tag) do
+          if tag_key == "layout" then
+            local found = false
+            for _, layout in ipairs(bling_layouts) do
+              if layout == tag_name then
+                found = true
+                break
               end
-              table.insert(tags, configured_tag)
             end
-          end
-          config.tags = tags
-        else
-          for k2, v2 in pairs(v) do
-            config[k][k2] = v2
+
+            if found then
+              configured_tag[tag_key] = bling.layout[tag_name]
+            elseif tag_name == "machi" then
+              configured_tag[tag_key] = machi.default_layout
+            else
+              configured_tag[tag_key] = awful.layout.suit[tag_name]
+            end
+          else
+            configured_tag[tag_key] = tag_name
           end
         end
-      else
-        config[k] = v
+        table.insert(tags, configured_tag)
       end
     end
+    config.tags = tags
+  else
+    for nested_key, nested_value in pairs(v) do
+      config[k][nested_key] = nested_value
+    end
   end
+end
 
+local function load_layout_functions()
   local available_layouts = {}
   for _, layout in ipairs(config.available_layouts) do
     local found = false
@@ -188,8 +164,41 @@ if config.initialized ~= true then
       table.insert(available_layouts, awful.layout.suit[layout])
     end
   end
-  gears.debug.dump(available_layouts)
   config.available_layouts = available_layouts
+end
+
+local function initialize_config_file()
+  config.initialized = true
+  if file_exists(config.auto_start_extra) then
+    local lines = lines_from(config.auto_start_extra)
+    config.auto_start.apps = gears.table.join(config.auto_start.apps, lines)
+  end
+
+  if file_exists(config.dir .. configuration_override_filename) then
+    local json = require("external.json")
+    local f = io.open(config.dir .. configuration_override_filename, "rb")
+    if not f then
+      return
+    end
+
+    local content = f:read("*all")
+    f:close()
+
+    local config_override_table = json.decode(content)
+    for k, v in pairs(config_override_table) do
+      if type(v) == "table" then
+        handle_nested_config_values(k, v)
+      else
+        config[k] = v
+      end
+    end
+  end
+
+  load_layout_functions()
+end
+
+if config.initialized ~= true then
+  initialize_config_file()
 end
 
 return config
