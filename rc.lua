@@ -45,8 +45,8 @@ require("lib.module.autostart")
 require("lib.module.launcher.dialog")()
 require("lib.module.calendar")()
 require("lib.module.debug")
-require("lib.widgets.bar")()
 require("lib.widgets.desktop")
+require("lib.widgets.bar")()
 
 awful.screen.connect_for_each_screen(
   function(s)

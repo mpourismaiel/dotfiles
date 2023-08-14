@@ -3,13 +3,22 @@ local capi = {
 }
 local wibox = require("wibox")
 local gears = require("gears")
-local awful = require("awful")
-local config = require("lib.configuration")
+local naughty = require("naughty")
 local theme = require("lib.configuration.theme")
 
 local wallpaper = {mt = {}}
 
-local function new(screen)
+function wallpaper:set_callback(callback)
+  local wp = self._private
+  wp.callback = callback
+end
+
+function wallpaper:get_callback()
+  local wp = self._private
+  return wp.callback
+end
+
+local function new()
   local widget =
     wibox.widget {
     widget = wibox.widget.imagebox,
@@ -19,10 +28,30 @@ local function new(screen)
     image = theme.wallpaper
   }
 
+  gears.table.crush(widget, wallpaper)
+  local wp = widget._private
+
   capi.awesome.connect_signal(
-    "module::config::wallpaper_changed",
-    function(self, config)
-      widget.image = config.wallpaper
+    "module::config::changed_wallpaper",
+    function(path)
+      if path then
+        local f = io.open(path, "rb")
+        if f then
+          f:close()
+        end
+        if f == nil then
+          naughty.notify {
+            title = "Configuration error",
+            text = "Wallpaper not found: " .. path
+          }
+          return
+        end
+
+        widget:set_image(path)
+        if wp.callback then
+          wp.callback()
+        end
+      end
     end
   )
 
