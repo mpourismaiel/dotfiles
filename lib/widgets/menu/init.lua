@@ -13,6 +13,7 @@ local animation_new = require("lib.helpers.animation-new")
 local console = require("lib.helpers.console")
 
 local wcontainer = require("lib.widgets.menu.container")
+local layoutbox = require("lib.widgets.menu.layoutbox")
 local profile = require("lib.widgets.menu.profile")
 local power = require("lib.widgets.menu.power")
 local notifications = require("lib.widgets.menu.notifications")
@@ -308,10 +309,7 @@ function menu:hide_menu()
   wp.menu = nil
 end
 
-local function new()
-  if instance then
-    return instance._private.toggle
-  end
+local function new(screen)
   local ret = {_private = {}}
   gears.table.crush(ret, menu)
   local wp = ret._private
@@ -319,23 +317,37 @@ local function new()
 
   local toggle =
     wibox.widget {
-    widget = wibox.container.constraint,
-    strategy = "exact",
-    height = config.dpi(48),
+    layout = wibox.layout.stack,
     {
-      widget = wbutton,
-      margin = theme.bar_padding,
-      paddings = 12,
-      bg_normal = theme.bg_normal,
-      bg_hover = theme.bg_primary,
-      callback = function()
-        capi.awesome.emit_signal("widget::drawer:toggle")
-      end,
+      widget = wibox.container.constraint,
+      strategy = "exact",
+      height = config.dpi(48),
       {
-        widget = wibox.widget.imagebox(menu_icon)
+        widget = wbutton,
+        margin = theme.bar_padding,
+        paddings = 12,
+        bg_normal = theme.bg_normal,
+        bg_hover = theme.bg_primary,
+        callback = function()
+          capi.awesome.emit_signal("widget::drawer:toggle")
+        end,
+        {
+          widget = wibox.widget.imagebox(menu_icon)
+        }
+      }
+    },
+    {
+      widget = wibox.container.place,
+      valign = "bottom",
+      {
+        widget = layoutbox(screen, config.dpi(48))
       }
     }
   }
+
+  if instance then
+    return toggle
+  end
 
   local backdrop =
     wibox {

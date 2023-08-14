@@ -4,13 +4,7 @@ local config = require("lib.configuration")
 tag.connect_signal(
   "request::default_layouts",
   function()
-    awful.layout.append_default_layouts(
-      {
-        awful.layout.suit.max,
-        awful.layout.suit.tile,
-        awful.layout.suit.floating
-      }
-    )
+    awful.layout.append_default_layouts(config.available_layouts)
   end
 )
 
@@ -22,7 +16,7 @@ screen.connect_signal(
         i,
         {
           screen = s,
-          layout = tag.layout or awful.layout.suit.max,
+          layout = tag.layout or config.available_layouts[0],
           selected = i == 1
         }
       )

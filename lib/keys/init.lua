@@ -3,11 +3,28 @@ local gears = require("gears")
 local naughty = require("naughty")
 local hotkeys_popup = require("awful.hotkeys_popup")
 local config = require("lib.configuration")
+local machi = require("layout-machi")
 
 require("awful.hotkeys_popup.keys")
 
 awful.keyboard.append_global_keybindings(
   {
+    awful.key(
+      {config.modkey},
+      ".",
+      function()
+        machi.default_editor.start_interactive()
+      end,
+      {description = "edit the current layout if it is a machi layout", group = "layout"}
+    ),
+    awful.key(
+      {config.modkey},
+      "/",
+      function()
+        machi.switcher.start(client.focus)
+      end,
+      {description = "switch between windows for a machi layout", group = "layout"}
+    ),
     awful.key({config.modkey}, "s", hotkeys_popup.show_help, {description = "show help", group = "awesome"}),
     awful.key({config.modkey, "Control"}, "r", awesome.restart, {description = "reload awesome", group = "awesome"}),
     awful.key(
@@ -18,14 +35,6 @@ awful.keyboard.append_global_keybindings(
       function()
         awesome.emit_signal("module::debug::toggle")
       end
-    ),
-    awful.key(
-      {config.modkey, "Shift"},
-      "q",
-      function()
-        awesome.emit_signal("widget::drawer:toggle")
-      end,
-      {description = "quit awesome", group = "awesome"}
     ),
     awful.key(
       {"Ctrl", "Shift"},
@@ -360,6 +369,10 @@ awful.keyboard.append_global_keybindings(
       "Left",
       function()
         local c = client.focus
+        if not c then
+          return
+        end
+
         awful.screen.focus_bydirection("left")
         local s = awful.screen.focused()
 
@@ -380,6 +393,10 @@ awful.keyboard.append_global_keybindings(
       "Right",
       function()
         local c = client.focus
+        if not c then
+          return
+        end
+
         awful.screen.focus_bydirection("right")
         local s = awful.screen.focused()
 
@@ -403,6 +420,10 @@ awful.keyboard.append_global_keybindings(
       "Up",
       function()
         local c = client.focus
+        if not c then
+          return
+        end
+
         awful.screen.focus_bydirection("up")
         local s = awful.screen.focused()
 
@@ -423,6 +444,10 @@ awful.keyboard.append_global_keybindings(
       "Down",
       function()
         local c = client.focus
+        if not c then
+          return
+        end
+
         awful.screen.focus_bydirection("down")
         local s = awful.screen.focused()
 
