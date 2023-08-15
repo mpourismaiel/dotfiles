@@ -13,6 +13,7 @@ local woverflow = require("wibox.layout.overflow")
 local launcher = require("lib.module.launcher")
 local store = require("lib.module.store")
 local color = require("lib.helpers.color")
+local debounce = require("lib.helpers.debounce")
 
 local instance = nil
 local dialog = {mt = {}}
@@ -445,9 +446,12 @@ local function new()
 
   wp.search:connect_signal(
     "property::text",
-    function(w)
-      ret:search(w.text)
-    end
+    debounce(
+      function(w)
+        ret:search(w.text)
+      end,
+      0.2
+    )
   )
 
   wp.grid:connect_signal(
