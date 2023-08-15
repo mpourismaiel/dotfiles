@@ -1,8 +1,10 @@
 local gears = require("gears")
 local json = require("external.json")
 local config = require("lib.configuration")
+local debounce = require("lib.helpers.debounce")
 
 local store = {mt = {}}
+local cache = {}
 
 function store:load()
   local wp = self._private
@@ -17,14 +19,19 @@ function store:load()
 end
 
 function store:save()
-  local wp = self._private
-  local file = io.open(wp.name, "w+")
-  if not file then
-    return
-  end
-  local data = json.encode(wp.value)
-  file:write(data)
-  file:close()
+  debounce(
+    function()
+      local wp = self._private
+      local file = io.open(wp.name, "w+")
+      if not file then
+        return
+      end
+      local data = json.encode(wp.value)
+      file:write(data)
+      file:close()
+    end,
+    0.5
+  )
 end
 
 function store:add(key, update_callback)
@@ -40,12 +47,38 @@ function store:add(key, update_callback)
   self:save()
 end
 
-function store:get(key)
+function store:get(key, default)
   local wp = self._private
-  return wp.value[key]
+  return wp.value[key] or default
+end
+
+function store:set(key, value)
+  local wp = self._private
+  wp.value[key] = value
+  self:save()
+end
+
+function store:toggle(key)
+  local wp = self._private
+  local value = wp.value[key]
+
+  if type(value) ~= "boolean" then
+    gears.debug.print_warning("store:toggle() called on non-boolean value, [key]: " .. key)
+  end
+
+  if value then
+    wp.value[key] = false
+  else
+    wp.value[key] = true
+  end
+  self:save()
 end
 
 local function new(name, initial_value)
+  if cache[name] then
+    return cache[name]
+  end
+
   local ret = {_private = {}}
   gears.table.crush(ret, store)
 
@@ -55,6 +88,7 @@ local function new(name, initial_value)
 
   ret:load()
 
+  cache[name] = ret
   return ret
 end
 

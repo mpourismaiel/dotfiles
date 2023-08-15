@@ -12,29 +12,25 @@ local wcontainer = require("lib.widgets.menu.container")
 local wscrollbar = require("lib.widgets.scrollbar")
 local wtext = require("lib.widgets.text")
 local list = require("lib.widgets.list")
+local store = require("lib.module.store")
+
+local preferences = store("preferences")
 
 local clear_notifications =
   wibox.widget {
-  widget = wibox.container.place,
-  halign = "middle",
+  widget = wbutton,
+  padding_top = config.dpi(4),
+  padding_bottom = config.dpi(4),
+  padding_left = config.dpi(8),
+  padding_right = config.dpi(8),
+  callback = function()
+    global_state.cache.update("notifications", {})
+  end,
   {
     widget = wibox.widget.textbox,
     markup = "<span color='" .. beautiful.fg_normal .. "' font_size='10pt' font_weight='normal'>Clear all</span>"
   }
 }
-
-clear_notifications:buttons(
-  gears.table.join(
-    awful.button(
-      {},
-      1,
-      nil,
-      function()
-        global_state.cache.update("notifications", {})
-      end
-    )
-  )
-)
 
 local function actions_widget(n, cache)
   if not n.actions or #(n.actions) == 0 then
@@ -235,14 +231,42 @@ global_state.cache.listen(
   end
 )
 
-local notifications_widget = {
+local wp = {}
+local notifications_widget =
+  wibox.widget {
   layout = wibox.layout.fixed.vertical,
   spacing = config.dpi(16),
   {
     layout = wibox.layout.align.horizontal,
     {
-      widget = wibox.widget.textbox,
-      markup = "<span font='Inter bold 14' color='" .. beautiful.fg_primary .. "'>Notifications</span>"
+      layout = wibox.layout.fixed.horizontal,
+      spacing = config.dpi(10),
+      {
+        widget = wbutton,
+        paddings = config.dpi(8),
+        callback = function()
+          preferences:toggle("dnd")
+          wp.update_icon()
+        end,
+        {
+          widget = wibox.container.constraint,
+          strategy = "exact",
+          width = config.dpi(16),
+          height = config.dpi(16),
+          {
+            widget = wibox.widget.imagebox,
+            id = "icon_role",
+            image = theme.notification_icon
+          }
+        }
+      },
+      {
+        widget = wtext,
+        text = "Notifications",
+        bold = true,
+        font_size = config.dpi(14),
+        foreground = theme.fg_primary
+      }
     },
     nil,
     clear_notifications
@@ -250,9 +274,15 @@ local notifications_widget = {
   notifications
 }
 
+wp.icon_role = notifications_widget:get_children_by_id("icon_role")[1]
+wp.update_icon = function()
+  wp.icon_role.image = preferences:get("dnd") and theme.notification_title_dnd_icon or theme.notification_title_icon
+end
+
 notifications_widget.reset = function()
   notifications:set_scroll_factor(0)
   notifications:emit_signal("update")
 end
 
+wp.update_icon()
 return notifications_widget

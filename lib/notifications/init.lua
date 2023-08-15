@@ -9,6 +9,9 @@ local color = require("lib.helpers.color")
 local wbutton = require("lib.widgets.button")
 local wtext = require("lib.widgets.text")
 local global_state = require("lib.configuration.global_state")
+local store = require("lib.module.store")
+
+local preferences = store("preferences")
 
 local c = global_state.cache
 local notification_timeout = 5
@@ -66,7 +69,15 @@ naughty.connect_signal(
 
     c.add("notifications", n)
 
-    if global_state.cache.get("lockscreen") then
+    -- check if any application in current tag is fullscreen
+    local fullscreen = false
+    for _, c in ipairs(screen.clients) do
+      if c.fullscreen then
+        fullscreen = true
+        break
+      end
+    end
+    if global_state.cache.get("lockscreen") or preferences:get("dnd", false) or fullscreen then
       return
     end
 
@@ -190,18 +201,8 @@ naughty.connect_signal(
     }
 
     table.insert(screen.notifications, n)
-    -- check if any application in current tag is fullscreen
-    local fullscreen = false
-    for _, c in ipairs(screen.clients) do
-      if c.fullscreen then
-        fullscreen = true
-        break
-      end
-    end
 
-    if not fullscreen then
-      n.animation.visible:startAnimation()
-    end
+    n.animation.visible:startAnimation()
 
     n:connect_signal(
       "reposition",
