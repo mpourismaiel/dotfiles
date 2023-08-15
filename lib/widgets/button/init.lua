@@ -54,17 +54,12 @@ function button:set_rounded(rounded)
   local wp = self._private
   wp.rounded = rounded
   self:set_shape(wp.shape_value)
-  self:emit_signal("widget::layout_changed")
 end
 
 function button:set_halign(halign)
   local wp = self._private
   wp.halign = halign
-  if not wp.widget then
-    return
-  end
   wp.place_role.halign = halign
-  self:emit_signal("widget::layout_changed")
 end
 
 function button:set_shape(shape)
@@ -86,11 +81,7 @@ function button:set_shape(shape)
     end
   end
   wp.shape = shape
-  if not wp.widget then
-    return
-  end
-  wp.widget.shape = shape
-  self:emit_signal("widget::layout_changed")
+  wp.background_role.shape = shape
 end
 
 function button:set_bg_normal(bg)
@@ -98,12 +89,7 @@ function button:set_bg_normal(bg)
   wp.bg_normal = bg
   wp.anim_data.bg = colors.hex2rgba(bg)
   wp.animation.normal.target.bg = colors.hex2rgba(bg)
-  if not wp.widget then
-    return
-  end
-
   wp.background_role.bg = bg
-  self:emit_signal("widget::layout_changed")
 end
 
 function button:set_fg_normal(fg)
@@ -116,30 +102,23 @@ function button:set_fg_normal(fg)
   end
   wp.label.foreground = fg
   wp.label.widget.markup = self:get_markup()
-  self:emit_signal("widget::layout_changed")
 end
 
 function button:set_bg_hover(bg)
   local wp = self._private
   wp.bg_hover = bg
   wp.animation.hover.target.bg = colors.hex2rgba(bg)
-  self:emit_signal("widget::layout_changed")
 end
 
 function button:set_fg_hover(fg)
   local wp = self._private
   wp.fg_hover = fg
   wp.animation.hover.target.fg = colors.hex2rgba(fg)
-  self:emit_signal("widget::layout_changed")
 end
 
 function button:get_markup()
   local wp = self._private
   return "<span foreground='" .. wp.label.foreground .. "'>" .. wp.label.text .. "</span>"
-end
-
-function button:set_label(label)
-  self:set_widget(label)
 end
 
 function button:hover()
@@ -167,82 +146,58 @@ end
 function button:set_margin(margin)
   local wp = self._private
   wp.margin = margin
-  if not wp.margin_role then
-    return
-  end
   wp.margin_role.top = margin
   wp.margin_role.bottom = margin
   wp.margin_role.left = margin
   wp.margin_role.right = margin
-  self:emit_signal("widget::layout_changed")
 end
 
 function button:set_paddings(paddings)
   local wp = self._private
   wp.paddings = paddings
-  if not wp.padding_role then
-    return
-  end
   wp.padding_role.top = paddings
   wp.padding_role.bottom = paddings
   wp.padding_role.left = paddings
   wp.padding_role.right = paddings
-  self:emit_signal("widget::layout_changed")
 end
 
 function button:set_padding_left(padding_left)
   local wp = self._private
   wp.padding_left = padding_left
-  if not wp.padding_role then
-    return
-  end
   wp.padding_role.left = padding_left
-  self:emit_signal("widget::layout_changed")
 end
 
 function button:set_padding_right(padding_right)
   local wp = self._private
   wp.padding_right = padding_right
-  if not wp.padding_role then
-    return
-  end
   wp.padding_role.right = padding_right
-  self:emit_signal("widget::layout_changed")
 end
 
 function button:set_padding_top(padding_top)
   local wp = self._private
   wp.padding_top = padding_top
-  if not wp.padding_role then
-    return
-  end
   wp.padding_role.top = padding_top
-  self:emit_signal("widget::layout_changed")
 end
 
 function button:set_padding_bottom(padding_bottom)
   local wp = self._private
   wp.padding_bottom = padding_bottom
-  if not wp.padding_role then
-    return
-  end
   wp.padding_role.bottom = padding_bottom
-  self:emit_signal("widget::layout_changed")
 end
 
 function button:get_paddings()
   local wp = self._private
-  local default = theme.button_padding_top
-  if wp.paddings ~= nil then
-    default = wp.paddings
-  end
-
+  local default = wp.paddings or 0
   return {
     top = wp.padding_top or default,
     bottom = wp.padding_bottom or default,
     left = wp.padding_left or default,
     right = wp.padding_right or default
   }
+end
+
+function button:set_label(label)
+  self:set_widget(label)
 end
 
 function button:set_widget(widget)
@@ -261,57 +216,39 @@ function button:set_widget(widget)
     wp.label = {widget = widget}
   end
 
-  local w = widget and wibox.widget.base.make_widget_from_value(widget)
+  local w = wp.label.widget and wibox.widget.base.make_widget_from_value(wp.label.widget)
   if w then
     wibox.widget.base.check_widget(w)
   end
 
-  local paddings = self:get_paddings()
-  local w =
+  wp.place_role:set_widget(w)
+end
+
+local function new()
+  local ret =
     wibox.widget {
     widget = wibox.container.margin,
-    margins = wp.margin,
     id = "margins",
     {
       widget = wibox.container.background,
-      bg = wp.bg_normal,
-      shape = wp.shape,
       id = "background",
       {
         widget = wibox.container.margin,
         id = "paddings",
-        top = paddings.top,
-        bottom = paddings.bottom,
-        left = paddings.left,
-        right = paddings.right,
         {
           widget = wibox.container.place,
-          halign = wp.halign,
-          id = "place",
-          {
-            widget = wp.label.widget
-          }
+          id = "place"
         }
       }
     }
   }
-
-  wp.widget_template = widget
-  wp.widget = w
-  wp.background_role = w:get_children_by_id("background")[1]
-  wp.padding_role = w:get_children_by_id("paddings")[1]
-  wp.margin_role = w:get_children_by_id("margins")[1]
-  wp.place_role = w:get_children_by_id("place")[1]
-
-  self:emit_signal("property::widget")
-  self:emit_signal("widget::layout_changed")
-end
-
-local function new()
-  local ret = wibox.container.background()
   gears.table.crush(ret, button)
 
   local wp = ret._private
+  wp.background_role = ret:get_children_by_id("background")[1]
+  wp.padding_role = ret:get_children_by_id("paddings")[1]
+  wp.margin_role = ret:get_children_by_id("margins")[1]
+  wp.place_role = ret:get_children_by_id("place")[1]
   wp.anim_data = {
     bg = colors.hex2rgba(wp.bg_normal)
   }
@@ -431,6 +368,10 @@ local function new()
   ret:set_fg_press(theme.fg_press)
   ret:set_shape(theme.button_shape)
   ret:set_halign(theme.button_halign)
+  ret:set_padding_top(theme.button_padding_top)
+  ret:set_padding_bottom(theme.button_padding_bottom)
+  ret:set_padding_left(theme.button_padding_left)
+  ret:set_padding_right(theme.button_padding_right)
   ret:set_margin(config.dpi(0))
 
   return ret
