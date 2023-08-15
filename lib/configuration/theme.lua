@@ -77,6 +77,8 @@ theme.calendar_height = config.dpi(400)
 theme.calendar_widget_width = config.dpi(320)
 
 theme.notification_position = "bottom_right"
+theme.notification_title_icon = config_dir .. "images/bell.svg"
+theme.notification_title_dnd_icon = config_dir .. "images/bell-off.svg"
 theme.notification_padding_top = config.dpi(8)
 theme.notification_padding_bottom = config.dpi(8)
 theme.notification_padding_left = config.dpi(16)
