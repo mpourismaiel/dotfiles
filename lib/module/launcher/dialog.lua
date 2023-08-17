@@ -13,6 +13,7 @@ local woverflow = require("wibox.layout.overflow")
 local launcher = require("lib.module.launcher")
 local store = require("lib.module.store")
 local color = require("lib.helpers.color")
+local console = require("lib.helpers.console")
 local debounce = require("lib.helpers.debounce")
 
 local instance = nil
@@ -75,6 +76,79 @@ function dialog:calculate_position()
   wp.widget.y = geo.y
 end
 
+function dialog:create_cache()
+  local wp = self._private
+  wp.cache = {}
+  local apps = gears.table.clone(wp.launcher.all_entries)
+  for i, v in ipairs(apps) do
+    local w =
+      wibox.widget {
+      widget = wibox.container.constraint,
+      strategy = "exact",
+      width = wp.icon_size + config.dpi(80),
+      height = wp.icon_size + config.dpi(36),
+      {
+        widget = wbutton,
+        margin = 0,
+        paddings = config.dpi(5),
+        id = "button",
+        bg_normal = color.helpers.change_opacity(theme.bg_hover, 0.4),
+        disable_hover = true,
+        middle_click_callback = function()
+          wp.favorites:add(
+            v.name .. v.executable,
+            function(val)
+              if val then
+                return nil
+              end
+
+              return true
+            end
+          )
+        end,
+        callback = function()
+          if wp.selected == i then
+            self:run()
+          else
+            self:select(i)
+          end
+        end,
+        {
+          layout = wibox.layout.fixed.vertical,
+          spacing = config.dpi(5),
+          {
+            widget = wibox.container.place,
+            halign = "center",
+            {
+              widget = wibox.container.constraint,
+              strategy = "exact",
+              width = wp.icon_size,
+              height = wp.icon_size,
+              {
+                widget = wibox.widget.imagebox,
+                image = v.icon
+              }
+            }
+          },
+          {
+            widget = wtext,
+            text = v.name,
+            halign = "center",
+            ellipsize = true
+          }
+        }
+      }
+    }
+
+    w.button = w:get_children_by_id("button")[1]
+    wp.cache[self:get_cache_key(v)] = w
+  end
+end
+
+function dialog:get_cache_key(entry)
+  return entry.name .. entry.executable
+end
+
 function dialog:render_apps()
   local wp = self._private
   local apps = gears.table.clone(wp.launcher.all_entries)
@@ -105,7 +179,7 @@ function dialog:render_apps()
 
   local row = nil
   local last_index = 0
-  for i, v in ipairs(apps) do
+  for _, v in ipairs(apps) do
     if
       wp.query == "" or
         (string.find(v.name:lower(), wp.query:lower(), 1, true) ~= nil or
@@ -121,69 +195,12 @@ function dialog:render_apps()
         wp.grid:add(row)
       end
 
-      local w =
-        wibox.widget {
-        widget = wibox.container.constraint,
-        strategy = "exact",
-        width = wp.icon_size + config.dpi(80),
-        height = wp.icon_size + config.dpi(36),
-        {
-          widget = wbutton,
-          margin = 0,
-          paddings = config.dpi(5),
-          id = "button",
-          bg_normal = color.helpers.change_opacity(theme.bg_hover, 0.4),
-          disable_hover = true,
-          middle_click_callback = function()
-            wp.favorites:add(
-              v.name .. v.executable,
-              function(val)
-                if val then
-                  return nil
-                end
-
-                return true
-              end
-            )
-          end,
-          callback = function()
-            if wp.selected == i then
-              self:run()
-            else
-              self:select(i)
-            end
-          end,
-          {
-            layout = wibox.layout.fixed.vertical,
-            spacing = config.dpi(5),
-            {
-              widget = wibox.container.place,
-              halign = "center",
-              {
-                widget = wibox.container.constraint,
-                strategy = "exact",
-                width = wp.icon_size,
-                height = wp.icon_size,
-                {
-                  widget = wibox.widget.imagebox,
-                  image = v.icon
-                }
-              }
-            },
-            {
-              widget = wtext,
-              text = v.name,
-              halign = "center",
-              ellipsize = true
-            }
-          }
-        }
-      }
-
-      w.button = w:get_children_by_id("button")[1]
-      table.insert(wp.grid.buttons, w.button)
-      table.insert(wp.grid.apps, v)
-      row:add(w)
+      local w = wp.cache[self:get_cache_key(v)]
+      if w then
+        table.insert(wp.grid.buttons, w.button)
+        table.insert(wp.grid.apps, v)
+        row:add(w)
+      end
     end
   end
 
@@ -202,19 +219,20 @@ function dialog:render_apps()
     return
   end
 
+  local empty =
+    wibox.widget {
+    widget = wibox.container.place,
+    halign = "center",
+    {
+      widget = wibox.container.constraint,
+      strategy = "exact",
+      width = wp.icon_size + config.dpi(60),
+      height = wp.icon_size + config.dpi(36)
+    }
+  }
+
   for i = 1, wp.col_count - (last_index % wp.col_count) do
-    row:add(
-      wibox.widget {
-        widget = wibox.container.place,
-        halign = "center",
-        {
-          widget = wibox.container.constraint,
-          strategy = "exact",
-          width = wp.icon_size + config.dpi(60),
-          height = wp.icon_size + config.dpi(36)
-        }
-      }
-    )
+    row:add(empty)
   end
 end
 
@@ -315,9 +333,9 @@ local function new()
     selected = 1,
     query = "",
     history = store("launcher-history", {}),
-    favorites = store("launcher-favorites", {})
+    favorites = store("launcher-favorites", {}),
+    cache = {}
   }
-  ret._private.launcher = launcher()
   gears.table.crush(ret, dialog)
 
   local wp = ret._private
@@ -435,7 +453,12 @@ local function new()
   wp.backdrop = backdrop
   wp.widget = widget
   wp.grid = widget:get_children_by_id("grid")[1]
-  ret:render_apps()
+  wp.launcher = launcher()
+  wp.launcher.callback = function()
+    ret:create_cache()
+    ret:render_apps()
+  end
+  wp.launcher:generate_apps()
 
   wp.search:connect_signal(
     "key::press",
@@ -446,12 +469,12 @@ local function new()
 
   wp.search:connect_signal(
     "property::text",
-    debounce(
-      function(w)
-        ret:search(w.text)
-      end,
-      0.2
-    )
+    -- debounce(
+    function(w)
+      ret:search(w.text)
+    end
+    --   ,0.2
+    -- )
   )
 
   wp.grid:connect_signal(
