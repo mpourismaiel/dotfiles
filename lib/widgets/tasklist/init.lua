@@ -141,7 +141,7 @@ local function custom_template(client_count)
   }
 end
 
-function tasklist.render(w, buttons, label, widgets_cache, objects, args)
+local function render(w, buttons, label, widgets_cache, objects, args)
   w:reset()
   for i, o in ipairs(objects) do
     local minKey = math.huge
@@ -305,7 +305,7 @@ function tasklist.render(w, buttons, label, widgets_cache, objects, args)
   end
 end
 
-function tasklist.new(screen)
+local function new(screen)
   local backdrop =
     wibox {
     ontop = true,
@@ -321,7 +321,7 @@ function tasklist.new(screen)
   return awful.widget.tasklist {
     screen = screen,
     filter = awful.widget.tasklist.filter.allscreen,
-    update_function = tasklist.render,
+    update_function = render,
     source = function(s, args)
       local list = {}
       local tags = s.tags
@@ -400,6 +400,28 @@ function tasklist.new(screen)
           {},
           1,
           function(group)
+            if #group.clients == 1 then
+              group.clients[1]:emit_signal("request::activate", "tasklist", {raise = true})
+              group.close_popup()
+              return
+            end
+
+            local group_has_focus = false
+            for _, c in ipairs(group.clients) do
+              if c == client.focus then
+                group_has_focus = true
+                break
+              end
+            end
+
+            if not group_has_focus then
+              client.focus = group.clients[1]
+              group.clients[1]:emit_signal("request::activate", "tasklist", {raise = true})
+              group.clients[1].first_tag:view_only()
+              group.close_popup()
+              return
+            end
+
             backdrop.visible = true
             backdrop.screen = awful.screen.focused()
             backdrop:buttons(
@@ -451,7 +473,7 @@ function tasklist.new(screen)
 end
 
 function tasklist.mt:__call(...)
-  return tasklist.new(...)
+  return new(...)
 end
 
 return setmetatable(tasklist, tasklist.mt)
