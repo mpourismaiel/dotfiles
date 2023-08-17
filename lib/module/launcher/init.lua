@@ -36,26 +36,9 @@ end
 
 function launcher:generate_apps()
   self.all_entries = {}
-  self.matched_entries = {}
 
   local app_info = Gio.AppInfo
   local apps = app_info.get_all()
-  table.sort(
-    apps,
-    function(a, b)
-      local app_a_score = app_info.get_name(a):lower()
-      if has_value(self.favorites, app_info.get_name(a)) then
-        app_a_score = "aaaaaaaaaaa" .. app_a_score
-      end
-      local app_b_score = app_info.get_name(b):lower()
-      if has_value(self.favorites, app_info.get_name(b)) then
-        app_b_score = "aaaaaaaaaaa" .. app_b_score
-      end
-
-      return app_a_score < app_b_score
-    end
-  )
-
   local icon_theme = icon_theme(self.icon_theme, self.icon_size)
 
   for _, app in ipairs(apps) do
@@ -90,20 +73,24 @@ function launcher:generate_apps()
 
       if data.icon and data.icon ~= "" then
         table.insert(self.all_entries, data)
-        table.insert(self.matched_entries, data)
       end
     end
   end
+
+  self.callback()
 end
 
-local function new()
+local function new(args)
+  args = args or {}
   local ret = gobject({})
+
   ret.all_entries = {}
-  ret.matched_entries = {}
   ret.favorites = {}
   ret._private = {
     text = ""
   }
+  ret.callback = args.callback or function()
+    end
 
   gtable.crush(ret, launcher)
 
@@ -124,8 +111,6 @@ local function new()
       )
     end
   )
-
-  ret:generate_apps()
 
   return ret
 end
