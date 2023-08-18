@@ -301,7 +301,11 @@ local function new()
 
   ret:connect_signal(
     "button::press",
-    function()
+    function(_, _, _, button)
+      if button ~= 1 then
+        return
+      end
+
       wp.animation.hover:stopAnimation()
       wp.background_role.bg = wp.bg_press
       wp.label.foreground = wp.fg_press
