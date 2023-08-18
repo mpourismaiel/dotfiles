@@ -6,6 +6,7 @@ local config = require("lib.configuration")
 local theme = require("lib.configuration.theme")
 local console = require("lib.helpers.console")
 local animation_new = require("lib.helpers.animation-new")
+local wdialog = require("lib.widgets.dialog")
 local wtabs = require("lib.widgets.tabs")
 local wcontainer = require("lib.widgets.menu.container")
 local wbutton = require("lib.widgets.button")
@@ -247,9 +248,8 @@ local function section(text, w)
 end
 
 local debug_screen =
-  wibox {
-  ontop = true,
-  visible = false,
+  wdialog {
+  name = "debug_screen",
   width = config.dpi(400),
   height = config.dpi(600),
   shape = function(cr, width, height)
@@ -292,28 +292,9 @@ local debug_screen =
   }
 }
 
-debug_screen:connect_signal(
-  "button::press",
-  function()
-    input:unfocus()
-  end
-)
-
 awesome.connect_signal(
   "module::debug::toggle",
   function()
-    debug_screen.visible = not debug_screen.visible
-    debug_screen.screen = awful.screen.focused()
-
-    local geo =
-      awful.placement.centered(
-      debug_screen,
-      {
-        honor_workarea = true,
-        pretend = true
-      }
-    )
-    debug_screen.x = geo.x
-    debug_screen.y = geo.y
+    debug_screen:toggle(awful.screen.focused())
   end
 )
