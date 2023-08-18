@@ -106,13 +106,6 @@ function dialog:create_cache()
             end
           )
         end,
-        callback = function()
-          if wp.selected == i then
-            self:run()
-          else
-            self:select(i)
-          end
-        end,
         {
           layout = wibox.layout.fixed.vertical,
           spacing = config.dpi(5),
@@ -141,6 +134,7 @@ function dialog:create_cache()
     }
 
     w.button = w:get_children_by_id("button")[1]
+    w.button.v = v
     wp.cache[self:get_cache_key(v)] = w
   end
 end
@@ -179,7 +173,7 @@ function dialog:render_apps()
 
   local row = nil
   local last_index = 0
-  for _, v in ipairs(apps) do
+  for i, v in ipairs(apps) do
     if
       wp.query == "" or
         (string.find(v.name:lower(), wp.query:lower(), 1, true) ~= nil or
@@ -197,8 +191,16 @@ function dialog:render_apps()
 
       local w = wp.cache[self:get_cache_key(v)]
       if w then
+        w.button.callback = function()
+          if wp.selected == i then
+            self:run()
+          else
+            self:select(i)
+          end
+        end
         table.insert(wp.grid.buttons, w.button)
         table.insert(wp.grid.apps, v)
+        w.button:unhover()
         row:add(w)
       end
     end
