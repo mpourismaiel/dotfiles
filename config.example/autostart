@@ -1,3 +1,6 @@
 # each line in this file will run if it's not already running.
 # example:
 # pulseeffects --gapplication-service
+xrandr --output eDP-1 --scale 0.67x0.67
+nm-applet
+blueman-applet

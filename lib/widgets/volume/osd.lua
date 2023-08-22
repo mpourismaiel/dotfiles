@@ -4,6 +4,7 @@ local awful = require("awful")
 local config = require("lib.configuration")
 local theme = require("lib.configuration.theme")
 local osd = require("lib.widgets.osd")
+local audio_daemon = require("lib.daemons.hardware.audio")
 
 local spawn = awful.spawn
 
@@ -62,7 +63,6 @@ volume_slider:connect_signal(
   function()
     local volume_level = volume_slider:get_value()
 
-    spawn("amixer -D pulse sset Master " .. volume_level .. "%", false)
     local image = theme.volume_mute_icon
     if volume_level == 0 then
       image = theme.volume_mute_icon
@@ -74,53 +74,12 @@ volume_slider:connect_signal(
       image = theme.volume_high_icon
     end
     icon:get_children_by_id("image_role")[1].image = image
-
-    -- Update volume osd
-    awesome.emit_signal("module::volume_osd", volume_level)
   end
 )
 
-volume_slider:buttons(
-  gears.table.join(
-    awful.button(
-      {},
-      4,
-      nil,
-      function()
-        if volume_slider:get_value() > 100 then
-          volume_slider:set_value(100)
-          return
-        end
-        volume_slider:set_value(volume_slider:get_value() + 5)
-      end
-    ),
-    awful.button(
-      {},
-      5,
-      nil,
-      function()
-        if volume_slider:get_value() < 0 then
-          volume_slider:set_value(0)
-          return
-        end
-        volume_slider:set_value(volume_slider:get_value() - 5)
-      end
-    )
-  )
-)
-
-local update_slider = function()
-  awful.spawn.easy_async_with_shell(
-    [[bash -c "amixer -D pulse sget Master"]],
-    function(stdout)
-      local volume = string.match(stdout, "(%d?%d?%d)%%")
-      volume_slider:set_value(tonumber(volume))
-    end
-  )
+local update_slider = function(volume)
+  volume_slider:set_value(tonumber(volume))
 end
-
--- Update on startup
-update_slider()
 
 local volume_osd =
   osd(
@@ -142,16 +101,15 @@ local volume_osd =
 )
 
 local timer = nil
--- The emit will come from the global keybind
-awesome.connect_signal(
-  "widget::volume",
-  function()
+audio_daemon:connect_signal(
+  "sinks::default",
+  function(_, sink)
     volume_osd:show()
     if timer ~= nil then
       timer:stop()
     end
 
-    update_slider()
+    update_slider(sink.volume)
     timer =
       gears.timer.start_new(
       3,

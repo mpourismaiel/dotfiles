@@ -19,15 +19,8 @@ local console = require("lib.helpers.console")
 
 local slider = {mt = {}}
 
-function slider:reset_slider()
-  local wp = self._private
-  awful.spawn.easy_async_with_shell(
-    [[bash -c "amixer -D pulse sget Master"]],
-    function(stdout)
-      local volume = string.match(stdout, "(%d?%d?%d)%%")
-      self:set_volume(volume)
-    end
-  )
+function slider:reset_slider(volume)
+  self:set_volume(volume)
 end
 
 function slider:set_volume(volume)
@@ -475,7 +468,7 @@ local function new(args)
     function()
       local volume_level = volume_slider:get_value()
       ret:set_volume_text(volume_level)
-      awful.spawn("amixer -D pulse sset Master " .. volume_level .. "%", false)
+      audio_daemon:get_default_sink():set_volume(volume_level)
 
       capi.awesome.emit_signal("widget::volume_osd", volume_level)
     end
@@ -516,12 +509,10 @@ local function new(args)
   wp.volume_text = toggle:get_children_by_id("volume_text")[1]
 
   ret.toggle = toggle
-  ret:reset_slider()
-
-  capi.awesome.connect_signal(
-    "widget::volume",
-    function()
-      ret:reset_slider()
+  audio_daemon:connect_signal(
+    "sinks::default",
+    function(_, sink)
+      ret:reset_slider(sink.volume)
     end
   )
 

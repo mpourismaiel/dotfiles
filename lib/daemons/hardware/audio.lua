@@ -42,6 +42,33 @@ function audio:get_default_sink()
   end
 end
 
+function audio:default_sink_toggle_mute()
+  local default_sink = self:get_default_sink()
+  if default_sink then
+    default_sink:toggle_mute()
+  else
+    gears.debug.print_warning("Couldn't find default sink")
+  end
+end
+
+function audio:default_sink_volume_up(step)
+  local default_sink = self:get_default_sink()
+  if default_sink then
+    default_sink:volume_up(step)
+  else
+    gears.debug.print_warning("Couldn't find default sink")
+  end
+end
+
+function audio:default_sink_volume_down(step)
+  local default_sink = self:get_default_sink()
+  if default_sink then
+    default_sink:volume_down(step)
+  else
+    gears.debug.print_warning("Couldn't find default sink")
+  end
+end
+
 function audio:get_default_source()
   for _, source in pairs(self:get_sources()) do
     if source.default then

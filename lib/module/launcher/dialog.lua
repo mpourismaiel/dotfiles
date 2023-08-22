@@ -352,7 +352,8 @@ local function new()
   local widget =
     wibox {
     ontop = true,
-    bg = color.helpers.change_opacity(theme.bg_normal, 0.25),
+    bg = theme.enable_blur and color.helpers.change_opacity(theme.bg_normal, 0.25) or
+      color.helpers.lighten(theme.bg_normal, 0.05),
     type = "dialog",
     visible = false,
     width = config.dpi(600),

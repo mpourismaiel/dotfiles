@@ -13,7 +13,6 @@ local run_once = function(cmd)
   awful.spawn.easy_async_with_shell(
     string.format("pgrep -u $USER -x %s > /dev/null || (%s)", findme, cmd),
     function(stdout, stderr)
-      -- Debugger
       if not stderr or stderr == "" or not debug_mode then
         return
       end
