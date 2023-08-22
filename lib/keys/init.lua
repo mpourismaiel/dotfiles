@@ -4,6 +4,7 @@ local naughty = require("naughty")
 local hotkeys_popup = require("awful.hotkeys_popup")
 local config = require("lib.configuration")
 local machi = require("layout-machi")
+local audio_daemon = require("lib.daemons.hardware.audio")
 
 require("awful.hotkeys_popup.keys")
 
@@ -213,7 +214,7 @@ awful.keyboard.append_global_keybindings(
       {},
       "XF86AudioRaiseVolume",
       function()
-        awful.spawn("amixer -D pulse sset Master 5%+", false)
+        audio_daemon:default_sink_volume_up(5)
         awesome.emit_signal("widget::volume")
       end,
       {description = "increase volume up by 5%", group = "hotkeys"}
@@ -222,7 +223,7 @@ awful.keyboard.append_global_keybindings(
       {},
       "XF86AudioLowerVolume",
       function()
-        awful.spawn("amixer -D pulse sset Master 5%-", false)
+        audio_daemon:default_sink_volume_down(5)
         awesome.emit_signal("widget::volume")
       end,
       {description = "decrease volume up by 5%", group = "hotkeys"}

@@ -128,6 +128,7 @@ ruled.client.connect_signal(
           "Subl3",
           "code-oss",
           "Code",
+          "Code - Insiders",
           "UnrealEditor"
         },
         name = {
