@@ -57,7 +57,7 @@ local function new(args)
     ontop = true,
     visible = false,
     type = "utility",
-    width = config.dpi(120),
+    width = config.dpi(160),
     height = config.dpi(36) * 5,
     bg = theme.bg_normal,
     shape = function(cr, width, height)

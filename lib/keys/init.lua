@@ -26,6 +26,14 @@ awful.keyboard.append_global_keybindings(
       end,
       {description = "switch between windows for a machi layout", group = "layout"}
     ),
+    awful.key(
+      {config.modkey},
+      "b",
+      function()
+        awesome.emit_signal("widget::bar::toggle")
+      end,
+      {description = "toggle bars", group = "awesome"}
+    ),
     awful.key({config.modkey}, "s", hotkeys_popup.show_help, {description = "show help", group = "awesome"}),
     awful.key({config.modkey, "Control"}, "r", awesome.restart, {description = "reload awesome", group = "awesome"}),
     awful.key(

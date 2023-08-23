@@ -13,7 +13,7 @@ local wbutton = require("lib.widgets.button")
 local datetime = require("lib.widgets.bar.datetime")
 local console = require("lib.helpers.console")
 
-local bar = {mt = {}}
+local bar = {visible = true, screens = {}}
 
 local function create_new_bar(screen)
   return awful.wibar {
@@ -62,17 +62,29 @@ local function create_new_bar(screen)
   }
 end
 
-local function new()
-  capi.screen.connect_signal(
-    "request::desktop_decoration",
-    function(s)
-      create_new_bar(s)
+capi.screen.connect_signal(
+  "request::desktop_decoration",
+  function(s)
+    bar.screens[s] = create_new_bar(s)
+  end
+)
+
+function bar.toggle()
+  bar.visible = not bar.visible
+  if bar.visible then
+    for _, box in pairs(bar.screens) do
+      box.visible = true
     end
-  )
+  else
+    for _, box in pairs(bar.screens) do
+      box.visible = false
+    end
+  end
 end
 
-function bar.mt:__call(...)
-  return new(...)
-end
-
-return setmetatable(bar, bar.mt)
+capi.awesome.connect_signal(
+  "widget::bar::toggle",
+  function()
+    bar.toggle()
+  end
+)
