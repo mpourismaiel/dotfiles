@@ -61,3 +61,5 @@ if helpers.module_check("liblua_pam") == false then
     timeout = 5
   }
 end
+
+require("lib.daemons.hardware.display")

@@ -19,6 +19,7 @@ local power = require("lib.widgets.menu.power")
 local notifications = require("lib.widgets.menu.notifications")
 local battery = require("lib.widgets.menu.battery")
 local volume = require("lib.widgets.menu.volume")
+local displays = require("lib.widgets.menu.displays")
 local wbutton = require("lib.widgets.button")
 local wtext = require("lib.widgets.text")
 
@@ -283,6 +284,9 @@ function menu:show_menu(title, menu)
           }
         ):onUpdate(
           function(name, new_subject)
+            if #wp.menu_display:get_children() < 2 then
+              return
+            end
             wp.menu_display:move(2, new_subject)
           end
         ):startAnimation("visible")
@@ -447,24 +451,37 @@ local function new(screen)
             notifications
           }
         },
-        volume(
-          {
-            width = wp.drawer_box,
-            height = theme.menu_height - theme.menu_vertical_spacing * 2 - config.dpi(48),
-            callback = function(title, menu)
-              ret:show_menu(title, menu)
-            end
-          }
-        ).toggle,
         {
-          layout = wibox.layout.fixed.horizontal,
+          layout = wibox.layout.fixed.vertical,
           spacing = theme.menu_vertical_spacing,
+          volume(
+            {
+              width = wp.drawer_box,
+              height = theme.menu_height - theme.menu_vertical_spacing * 2 - config.dpi(48),
+              callback = function(title, menu)
+                ret:show_menu(title, menu)
+              end
+            }
+          ).toggle,
           {
-            widget = wibox.container.constraint,
-            strategy = "exact",
-            width = config.dpi(60),
-            height = config.dpi(60),
-            battery().widget
+            layout = wibox.layout.fixed.horizontal,
+            spacing = theme.menu_vertical_spacing,
+            {
+              widget = wibox.container.constraint,
+              strategy = "exact",
+              width = config.dpi(60),
+              height = config.dpi(60),
+              battery().widget
+            },
+            displays(
+              {
+                width = wp.drawer_box,
+                height = theme.menu_height - theme.menu_vertical_spacing * 2 - config.dpi(48),
+                callback = function(title, menu)
+                  ret:show_menu(title, menu)
+                end
+              }
+            ).toggle
           }
         }
       }

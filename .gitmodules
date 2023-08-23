@@ -22,3 +22,6 @@
 [submodule "external/layout-machi"]
 	path = external/layout-machi
 	url = https://github.com/xinhaoyuan/layout-machi
+[submodule "external/async-git"]
+	path = external/async-git
+	url = https://github.com/Kasper24/async.lua
