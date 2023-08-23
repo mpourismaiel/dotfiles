@@ -2,6 +2,7 @@ local gears = require("gears")
 local json = require("external.json")
 local config = require("lib.configuration")
 local debounce = require("lib.helpers.debounce")
+local console = require("lib.helpers.console")
 
 local store = {mt = {}}
 local cache = {}
@@ -19,19 +20,8 @@ function store:load()
 end
 
 function store:save()
-  debounce(
-    function()
-      local wp = self._private
-      local file = io.open(wp.name, "w+")
-      if not file then
-        return
-      end
-      local data = json.encode(wp.value)
-      file:write(data)
-      file:close()
-    end,
-    0.5
-  )
+  local wp = self._private
+  wp.save()
 end
 
 function store:add(key, update_callback)
@@ -85,6 +75,20 @@ local function new(name, initial_value)
   local wp = ret._private
   wp.name = config.dir .. "/store-" .. name .. ".json"
   wp.value = initial_value or {}
+
+  wp.save =
+    debounce(
+    function()
+      local file = io.open(wp.name, "w+")
+      if not file then
+        return
+      end
+      local data = json.encode(wp.value)
+      file:write(data)
+      file:close()
+    end,
+    0.5
+  )
 
   ret:load()
 
