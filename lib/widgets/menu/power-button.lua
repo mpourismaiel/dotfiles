@@ -51,7 +51,7 @@ local power_button = function(command)
   local fn = nil
   if command == "power" then
     icon = power_icon
-    label = "Power"
+    label = "Shutdown"
     fn = power_command
   elseif command == "lock" then
     icon = lock_icon
