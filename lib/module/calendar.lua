@@ -107,7 +107,7 @@ local function new()
   wp.backdrop = backdrop
 
   local popup =
-    wibox {
+    awful.popup {
     ontop = true,
     visible = false,
     type = "utility",
@@ -132,7 +132,26 @@ local function new()
           width = theme.calendar_widget_width,
           {
             layout = wibox.layout.fixed.vertical,
-            spacing = config.dpi(16),
+            spacing = config.dpi(8),
+            wdate,
+            {
+              widget = wcalendar,
+              id = "calendar_role"
+            }
+          }
+        },
+        {
+          widget = wibox.container.background,
+          bg = theme.bg_primary,
+          forced_width = config.dpi(1)
+        },
+        {
+          widget = wibox.container.constraint,
+          strategy = "exact",
+          width = theme.calendar_widget_width,
+          {
+            layout = wibox.layout.fixed.vertical,
+            spacing = config.dpi(8),
             wdate,
             {
               widget = wcalendar,
@@ -140,12 +159,6 @@ local function new()
             }
           }
         }
-        -- separator
-        -- {
-        --   widget = wibox.container.background,
-        --   bg = theme.bg_primary,
-        --   forced_width = config.dpi(1)
-        -- }
       }
     }
   }

@@ -44,6 +44,9 @@ require("lib.module.autostart")
 require("lib.module.launcher.dialog")()
 require("lib.module.calendar")()
 require("lib.module.debug")
+
+require("lib.daemons.system.picom")
+
 require("lib.widgets.desktop")
 require("lib.widgets.bar")
 
