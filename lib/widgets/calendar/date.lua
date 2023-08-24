@@ -21,37 +21,35 @@ local function new()
     margin = theme.bar_padding,
     bg_normal = theme.bg_normal,
     bg_hover = theme.bg_primary,
-    paddings = 0,
-    padding_top = 8,
-    padding_bottom = 8,
+    padding_top = config.dpi(8),
+    padding_bottom = config.dpi(8),
+    padding_left = config.dpi(16),
+    padding_right = config.dpi(16),
     valign = "center",
+    halign = "left",
     callback = function()
       capi.awesome.emit_signal("module::calendar::today")
     end,
     {
       layout = wibox.layout.fixed.vertical,
       {
-        widget = wibox.container.place,
-        {
-          widget = wclock,
-          format = "%a %d %B %Y",
-          font_size = config.dpi(12),
-          bold = false,
-          foreground = theme.fg_primary
-        }
+        widget = wclock,
+        format = "%a %d %B %Y",
+        font_size = config.dpi(12),
+        halign = "left",
+        bold = false,
+        foreground = theme.fg_primary
       },
       {
         widget = wibox.container.margin,
         top = config.dpi(8),
         {
-          widget = wibox.container.place,
-          {
-            widget = wclock,
-            format = "%H:%M",
-            font_size = config.dpi(16),
-            bold = true,
-            foreground = theme.fg_normal
-          }
+          widget = wclock,
+          format = "%H:%M",
+          font_size = config.dpi(16),
+          halign = "left",
+          bold = true,
+          foreground = theme.fg_normal
         }
       }
     }

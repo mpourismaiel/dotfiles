@@ -19,7 +19,7 @@ local power = require("lib.widgets.menu.power")
 local notifications = require("lib.widgets.menu.notifications")
 local battery = require("lib.widgets.menu.battery")
 local volume = require("lib.widgets.menu.volume")
-local displays = require("lib.widgets.menu.displays")
+local compositor = require("lib.widgets.menu.compositor")
 local wbutton = require("lib.widgets.button")
 local wtext = require("lib.widgets.text")
 
@@ -495,15 +495,7 @@ local function new(screen)
               height = config.dpi(60),
               battery().widget
             },
-            displays(
-              {
-                width = wp.drawer_box,
-                height = theme.menu_height - theme.menu_vertical_spacing * 2 - config.dpi(48),
-                callback = function(title, menu)
-                  ret:show_menu(title, menu)
-                end
-              }
-            ).toggle
+            compositor
           }
         }
       }

@@ -105,6 +105,8 @@ theme.volume_mute_icon = config_dir .. "images/volume-x.svg"
 
 theme.displays_icon = config_dir .. "images/monitor.svg"
 
+theme.compositor_icon = config_dir .. "images/compositor.svg"
+
 theme.useless_gap = config.dpi(0)
 theme.border_width = config.dpi(0)
 theme.border_color_normal = "#000000"
