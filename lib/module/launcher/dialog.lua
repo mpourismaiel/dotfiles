@@ -134,7 +134,6 @@ function dialog:create_cache()
     }
 
     w.button = w:get_children_by_id("button")[1]
-    w.button.v = v
     wp.cache[self:get_cache_key(v)] = w
   end
 end
@@ -167,46 +166,49 @@ function dialog:render_apps()
     end
   )
 
+  local results = {}
+  for _, app in pairs(apps) do
+    if
+      wp.query == "" or
+        (string.find(app.name:lower(), wp.query:lower(), 1, true) ~= nil or
+          string.find(app.commandline, wp.query:lower(), 1, true) ~= nil)
+     then
+      table.insert(results, app)
+    end
+  end
+
   wp.grid:reset()
   wp.grid.buttons = {}
   wp.grid.apps = {}
 
   local row = nil
-  local last_index = 0
-  for i, v in ipairs(apps) do
-    if
-      wp.query == "" or
-        (string.find(v.name:lower(), wp.query:lower(), 1, true) ~= nil or
-          string.find(v.commandline, wp.query:lower(), 1, true) ~= nil)
-     then
-      last_index = last_index + 1
-      if last_index % wp.col_count == 1 then
-        row =
-          wibox.widget {
-          layout = wibox.layout.fixed.horizontal,
-          spacing = wp.col_spacing
-        }
-        wp.grid:add(row)
-      end
+  for i, app in ipairs(results) do
+    if i % wp.col_count == 1 then
+      row =
+        wibox.widget {
+        layout = wibox.layout.fixed.horizontal,
+        spacing = wp.col_spacing
+      }
+      wp.grid:add(row)
+    end
 
-      local w = wp.cache[self:get_cache_key(v)]
-      if w then
-        w.button.callback = function()
-          if wp.selected == i then
-            self:run()
-          else
-            self:select(i)
-          end
+    local w = wp.cache[self:get_cache_key(app)]
+    if w then
+      w.button.callback = function()
+        if wp.selected == i then
+          self:run()
+        else
+          self:select(i)
         end
-        table.insert(wp.grid.buttons, w.button)
-        table.insert(wp.grid.apps, v)
-        w.button:unhover()
-        row:add(w)
       end
+      table.insert(wp.grid.buttons, w.button)
+      table.insert(wp.grid.apps, app)
+      w.button:unhover()
+      row:add(w)
     end
   end
 
-  if last_index == 0 then
+  if #results == 0 then
     wp.grid:add(
       wibox.widget {
         widget = wtext,
@@ -217,7 +219,7 @@ function dialog:render_apps()
     return
   end
 
-  if wp.col_count - (last_index % wp.col_count) == wp.col_count then
+  if wp.col_count - (#results % wp.col_count) == wp.col_count then
     return
   end
 
@@ -233,7 +235,7 @@ function dialog:render_apps()
     }
   }
 
-  for i = 1, wp.col_count - (last_index % wp.col_count) do
+  for i = 1, wp.col_count - (#results % wp.col_count) do
     row:add(empty)
   end
 end
