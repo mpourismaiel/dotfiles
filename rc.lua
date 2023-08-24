@@ -7,7 +7,6 @@ pcall(require, "luarocks.loader")
 
 require("awful.autofocus")
 
-local wibox = require("wibox")
 local awful = require("awful")
 local beautiful = require("beautiful")
 local naughty = require("naughty")
