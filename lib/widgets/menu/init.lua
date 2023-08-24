@@ -17,7 +17,7 @@ local layoutbox = require("lib.widgets.menu.layoutbox")
 local profile = require("lib.widgets.menu.profile")
 local power = require("lib.widgets.menu.power")
 local notifications = require("lib.widgets.menu.notifications")
-local battery = require("lib.widgets.menu.battery")
+local info = require("lib.widgets.menu.info")
 local volume = require("lib.widgets.menu.volume")
 local compositor = require("lib.widgets.menu.compositor")
 local wbutton = require("lib.widgets.button")
@@ -476,6 +476,12 @@ local function new(screen)
         {
           layout = wibox.layout.fixed.vertical,
           spacing = theme.menu_vertical_spacing,
+          info,
+          {
+            layout = wibox.layout.fixed.horizontal,
+            spacing = theme.menu_vertical_spacing,
+            compositor
+          },
           volume(
             {
               width = wp.drawer_box,
@@ -484,19 +490,7 @@ local function new(screen)
                 ret:show_menu(title, menu)
               end
             }
-          ).toggle,
-          {
-            layout = wibox.layout.fixed.horizontal,
-            spacing = theme.menu_vertical_spacing,
-            {
-              widget = wibox.container.constraint,
-              strategy = "exact",
-              width = config.dpi(60),
-              height = config.dpi(60),
-              battery().widget
-            },
-            compositor
-          }
+          ).toggle
         }
       }
     }

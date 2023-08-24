@@ -3,6 +3,7 @@ local capi = {
 }
 local awful = require("awful")
 local gears = require("gears")
+local gtimer = require("gears.timer")
 local config_dir = gears.filesystem.get_configuration_dir()
 
 local picom = {}
@@ -42,19 +43,14 @@ local function new()
   ret._private = {}
   gears.timer.delayed_call(
     function()
-      gears.timer.new {
+      gtimer.poller {
         timeout = 2,
         callback = function()
           if ret._private.state ~= capi.awesome.composite_manager_running then
             ret:emit_signal("state", capi.awesome.composite_manager_running)
             ret._private.state = capi.awesome.composite_manager_running
           end
-        end,
-        wake_up = true,
-        autostart = true,
-        single_shot = false,
-        call_now = true,
-        randomized = true
+        end
       }
     end
   )
