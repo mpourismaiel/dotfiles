@@ -42,7 +42,10 @@ local function new()
 
   local widget =
     wibox.widget {
-    widget = wibox.container.background,
+    widget = wibox.container.constraint,
+    strategy = "exact",
+    width = config.dpi(60),
+    height = config.dpi(60),
     {
       widget = wbutton,
       bg_normal = theme.bg_secondary,

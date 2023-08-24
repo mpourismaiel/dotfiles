@@ -104,8 +104,10 @@ theme.volume_icon = config_dir .. "images/volume-2.svg"
 theme.volume_mute_icon = config_dir .. "images/volume-x.svg"
 
 theme.displays_icon = config_dir .. "images/monitor.svg"
-
 theme.compositor_icon = config_dir .. "images/compositor.svg"
+theme.cpu_icon = config_dir .. "images/cpu.svg"
+theme.ram_icon = config_dir .. "images/ram.svg"
+theme.keyboard_icon = config_dir .. "images/keyboard.svg"
 
 theme.useless_gap = config.dpi(0)
 theme.border_width = config.dpi(0)

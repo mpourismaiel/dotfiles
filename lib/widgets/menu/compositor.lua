@@ -58,7 +58,7 @@ local function new()
             widget = wibox.container.place,
             {
               widget = wibox.widget.imagebox,
-              image = theme.displays_icon
+              image = theme.compositor_icon
             }
           }
         },
@@ -83,7 +83,6 @@ local function new()
   picom_daemon:connect_signal(
     "state",
     function(self, state)
-      console():log(self):log(state)
       if state then
         wp.state:turn_on()
       else
