@@ -52,6 +52,18 @@ function menu:calculate_position()
   wp.position = position
 end
 
+function menu:calculate_geo()
+  local wp = self._private
+
+  return wp.position.fn(
+    wp.drawer,
+    {
+      margins = wp.position.margins,
+      pretend = true
+    }
+  )
+end
+
 function menu:set_screen(screen)
   local wp = self._private
 
@@ -63,14 +75,7 @@ function menu:set_screen(screen)
   wp.backdrop.width = screen.geometry.width
   wp.backdrop.height = screen.geometry.height
 
-  local geo =
-    wp.position.fn(
-    wp.drawer,
-    {
-      margins = wp.position.margins,
-      pretend = true
-    }
-  )
+  local geo = self:calculate_geo()
 
   local offset_x = 0
   if wp.systray then
@@ -188,7 +193,7 @@ function menu:hide_dropdown()
   wp.dropdown = nil
 end
 
-function menu:show_menu(title, menu)
+function menu:show_menu(title, menu, new_size)
   local wp = self._private
 
   if wp.menu then
@@ -261,6 +266,19 @@ function menu:show_menu(title, menu)
     }
   }
   wp.menu.point = {x = 0, y = theme.menu_height}
+  if new_size then
+    if type(new_size) == "string" then
+      if new_size == "full-height" then
+        new_size = {
+          height = wp.drawer.screen.geometry.height - theme.menu_vertical_spacing * 2
+        }
+      end
+    end
+    wp.drawer.width = new_size.width or wp.drawer.width
+    wp.drawer.height = new_size.height or wp.drawer.height
+    wp.drawer.y = self:calculate_geo().y
+  end
+
   wp.menu_display:insert(2, wp.menu)
   wp.slide_main:startAnimation(
     "invisible",
@@ -300,6 +318,10 @@ function menu:hide_menu()
   if not wp.menu then
     return
   end
+
+  wp.drawer.width = wp.drawer_box
+  wp.drawer.height = theme.menu_height
+  wp.drawer.y = self:calculate_geo().y
 
   wp.menu_animation:startAnimation(
     "invisible",

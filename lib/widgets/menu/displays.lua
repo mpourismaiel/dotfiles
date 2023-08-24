@@ -69,7 +69,8 @@ local function new(args)
         if not wp.callback then
           return
         end
-        wp.callback("Display Manager", wp.menu)
+        local screen_height = wp.callback("Display Manager", wp.menu)
+        wp.menu.height = screen_height
       end,
       paddings = 0,
       {

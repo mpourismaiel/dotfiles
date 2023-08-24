@@ -76,7 +76,7 @@ function display:startup()
           single_shot = true,
           callback = function()
             wp.startup_tries = wp.startup_tries + 1
-            self:on_default_change()
+            self:startup()
           end
         }
       end

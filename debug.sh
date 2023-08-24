@@ -9,7 +9,7 @@ CONFIG=$LOC/rc.lua
 sleep 1.5
 
 echo "Started Xephyer on :1"
-Xephyr -br -ac -noreset -screen 960x540 :2 &
+Xephyr -br -ac -noreset -screen 1200x675 :2 &
 XEPHYER_PID=$!
 DISPLAY=:2
 
