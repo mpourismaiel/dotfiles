@@ -6,6 +6,10 @@ local colors = require("lib.helpers.color")
 local config = require("lib.configuration")
 local theme = require("lib.configuration.theme")
 local console = require("lib.helpers.console")
+local margin = require("lib.widgets.components.margin")
+local place = require("lib.widgets.components.place")
+local shape = require("lib.widgets.components.shape")
+local constraint = require("lib.widgets.components.constraint")
 
 local button = {mt = {}}
 
@@ -13,25 +17,16 @@ for _, v in pairs(
   {
     "bg_press",
     "fg_press",
-    "margin",
-    "padding_top",
-    "padding_bottom",
-    "padding_left",
-    "padding_right",
-    "paddings",
     "bg_normal",
     "fg_normal",
     "bg_hover",
     "fg_hover",
     "bg_press",
     "fg_press",
-    "shape",
-    "halign",
     "callback",
     "middle_click_callback",
     "right_click_callback",
-    "disable_hover",
-    "rounded"
+    "disable_hover"
   }
 ) do
   ---@diagnostic disable-next-line: assign-type-mismatch
@@ -48,40 +43,6 @@ for _, v in pairs(
   button["get_" .. v] = function(layout)
     return layout._private[v]
   end
-end
-
-function button:set_rounded(rounded)
-  local wp = self._private
-  wp.rounded = rounded
-  self:set_shape(wp.shape_value)
-end
-
-function button:set_halign(halign)
-  local wp = self._private
-  wp.halign = halign
-  wp.place_role.halign = halign
-end
-
-function button:set_shape(shape)
-  local wp = self._private
-  wp.shape_value = shape
-  if type(shape) == "string" then
-    if shape == "rounded" then
-      shape = function(cr, width, height)
-        gears.shape.rounded_rect(cr, width, height, wp.rounded or theme.rounded_rect_normal)
-      end
-    elseif shape == "circle" then
-      shape = function(cr, width, height)
-        gears.shape.circle(cr, width, height)
-      end
-    elseif shape == "rectangle" then
-      shape = function(cr, width, height)
-        gears.shape.rectangle(cr, width, height)
-      end
-    end
-  end
-  wp.shape = shape
-  wp.background_role.shape = shape
 end
 
 function button:set_bg_normal(bg)
@@ -143,59 +104,6 @@ function button:unhover()
   wp.animation.normal:startAnimation()
 end
 
-function button:set_margin(margin)
-  local wp = self._private
-  wp.margin = margin
-  wp.margin_role.top = margin
-  wp.margin_role.bottom = margin
-  wp.margin_role.left = margin
-  wp.margin_role.right = margin
-end
-
-function button:set_paddings(paddings)
-  local wp = self._private
-  wp.paddings = paddings
-  wp.padding_role.top = paddings
-  wp.padding_role.bottom = paddings
-  wp.padding_role.left = paddings
-  wp.padding_role.right = paddings
-end
-
-function button:set_padding_left(padding_left)
-  local wp = self._private
-  wp.padding_left = padding_left
-  wp.padding_role.left = padding_left
-end
-
-function button:set_padding_right(padding_right)
-  local wp = self._private
-  wp.padding_right = padding_right
-  wp.padding_role.right = padding_right
-end
-
-function button:set_padding_top(padding_top)
-  local wp = self._private
-  wp.padding_top = padding_top
-  wp.padding_role.top = padding_top
-end
-
-function button:set_padding_bottom(padding_bottom)
-  local wp = self._private
-  wp.padding_bottom = padding_bottom
-  wp.padding_role.bottom = padding_bottom
-end
-
-function button:get_paddings()
-  local wp = self._private
-  local default = wp.paddings or 0
-  return {
-    top = wp.padding_top or default,
-    bottom = wp.padding_bottom or default,
-    left = wp.padding_left or default,
-    right = wp.padding_right or default
-  }
-end
-
 function button:set_label(label)
   self:set_widget(label)
 end
@@ -227,28 +135,37 @@ end
 local function new()
   local ret =
     wibox.widget {
-    widget = wibox.container.margin,
-    id = "margins",
+    widget = wibox.container.constraint,
+    id = "constraint",
     {
-      widget = wibox.container.background,
-      id = "background",
+      widget = wibox.container.margin,
+      id = "margins",
       {
-        widget = wibox.container.margin,
-        id = "paddings",
+        widget = wibox.container.background,
+        id = "background",
         {
-          widget = wibox.container.place,
-          id = "place"
+          widget = wibox.container.margin,
+          id = "paddings",
+          {
+            widget = wibox.container.place,
+            id = "place"
+          }
         }
       }
     }
   }
-  gears.table.crush(ret, button)
 
   local wp = ret._private
   wp.background_role = ret:get_children_by_id("background")[1]
   wp.padding_role = ret:get_children_by_id("paddings")[1]
   wp.margin_role = ret:get_children_by_id("margins")[1]
   wp.place_role = ret:get_children_by_id("place")[1]
+  gears.table.crush(ret, button)
+  gears.table.crush(ret, margin.build_properties(wp.padding_role, "paddings", "padding"))
+  gears.table.crush(ret, margin.build_properties(wp.margin_role, "margin", "margin"))
+  gears.table.crush(ret, place.build_properties(wp.place_role))
+  gears.table.crush(ret, shape.build_properties(wp.background_role))
+
   wp.anim_data = {
     bg = colors.hex2rgba(wp.bg_normal)
   }

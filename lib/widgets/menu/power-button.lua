@@ -73,40 +73,37 @@ local power_button = function(command)
 
   local w =
     wibox.widget {
-    widget = wibox.container.constraint,
+    widget = wbutton,
     width = config.dpi(120),
     height = config.dpi(36),
     strategy = "exact",
+    bg_normal = theme.bg_normal,
+    paddings = 0,
+    padding_left = config.dpi(16),
+    callback = fn,
+    halign = "left",
+    shape = "rectangle",
     {
-      widget = wbutton,
-      bg_normal = theme.bg_normal,
-      paddings = 0,
-      padding_left = config.dpi(16),
-      callback = fn,
-      halign = "left",
-      shape = "rectangle",
+      layout = wibox.layout.fixed.horizontal,
+      spacing = config.dpi(16),
       {
-        layout = wibox.layout.fixed.horizontal,
-        spacing = config.dpi(16),
+        widget = wibox.container.constraint,
+        width = config.dpi(16),
+        height = config.dpi(16),
+        strategy = "exact",
         {
-          widget = wibox.container.constraint,
-          width = config.dpi(16),
-          height = config.dpi(16),
-          strategy = "exact",
+          widget = wibox.container.place,
           {
-            widget = wibox.container.place,
-            {
-              widget = wibox.widget.imagebox,
-              image = icon
-            }
+            widget = wibox.widget.imagebox,
+            image = icon
           }
-        },
-        {
-          widget = wtext,
-          text = label,
-          halign = "left",
-          valign = "center"
         }
+      },
+      {
+        widget = wtext,
+        text = label,
+        halign = "left",
+        valign = "center"
       }
     }
   }

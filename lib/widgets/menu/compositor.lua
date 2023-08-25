@@ -13,59 +13,56 @@ local instance = nil
 local function new()
   local ret =
     wibox.widget {
-    widget = wibox.container.constraint,
+    widget = wbutton_state,
     strategy = "exact",
     width = config.dpi(60),
     height = config.dpi(60),
-    {
-      widget = wbutton_state,
-      rounded = theme.rounded_rect_large,
-      id = "state",
-      paddings = 0,
-      callback = function()
-        picom_daemon:toggle()
-      end,
-      widget_on = {
-        layout = wibox.layout.fixed.vertical,
-        spacing = config.dpi(8),
+    rounded = theme.rounded_rect_large,
+    id = "state",
+    paddings = 0,
+    callback = function()
+      picom_daemon:toggle()
+    end,
+    widget_on = {
+      layout = wibox.layout.fixed.vertical,
+      spacing = config.dpi(8),
+      {
+        widget = wibox.container.constraint,
+        strategy = "exact",
+        width = config.dpi(16),
+        height = config.dpi(16),
         {
-          widget = wibox.container.constraint,
-          strategy = "exact",
-          width = config.dpi(16),
-          height = config.dpi(16),
+          widget = wibox.container.place,
           {
-            widget = wibox.container.place,
-            {
-              widget = wibox.widget.imagebox,
-              image = theme.compositor_icon
-            }
+            widget = wibox.widget.imagebox,
+            image = theme.compositor_icon
           }
-        },
-        {
-          widget = wtext,
-          text = "On"
         }
       },
-      widget_off = {
-        layout = wibox.layout.fixed.vertical,
-        spacing = config.dpi(8),
+      {
+        widget = wtext,
+        text = "On"
+      }
+    },
+    widget_off = {
+      layout = wibox.layout.fixed.vertical,
+      spacing = config.dpi(8),
+      {
+        widget = wibox.container.constraint,
+        strategy = "exact",
+        width = config.dpi(16),
+        height = config.dpi(16),
         {
-          widget = wibox.container.constraint,
-          strategy = "exact",
-          width = config.dpi(16),
-          height = config.dpi(16),
+          widget = wibox.container.place,
           {
-            widget = wibox.container.place,
-            {
-              widget = wibox.widget.imagebox,
-              image = theme.compositor_icon
-            }
+            widget = wibox.widget.imagebox,
+            image = theme.compositor_icon
           }
-        },
-        {
-          widget = wtext,
-          text = "Off"
         }
+      },
+      {
+        widget = wtext,
+        text = "Off"
       }
     }
   }
