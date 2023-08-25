@@ -193,7 +193,7 @@ function menu:hide_dropdown()
   wp.dropdown = nil
 end
 
-function menu:show_menu(title, menu, new_size)
+function menu:show_menu(title, menu, widget, new_size)
   local wp = self._private
 
   if wp.menu then
@@ -271,8 +271,10 @@ function menu:show_menu(title, menu, new_size)
         }
       end
     end
-    wp.drawer.width = new_size.width or wp.drawer.width
+    wp.drawer.width = new_size.width or wp.drawer_box
     wp.drawer.height = new_size.height or wp.drawer.height
+    widget:emit_signal("menu::property::width", wp.drawer.width)
+    widget:emit_signal("menu::property::height", wp.drawer.height - config.dpi(48))
     wp.drawer.y = self:calculate_geo().y
   end
 
@@ -480,8 +482,8 @@ local function new(screen)
             {
               width = wp.drawer_box,
               height = theme.menu_height - theme.menu_vertical_spacing * 2 - config.dpi(48),
-              callback = function(title, menu)
-                ret:show_menu(title, menu)
+              callback = function(title, menu, widget)
+                ret:show_menu(title, menu, widget)
               end
             }
           ).toggle
@@ -498,7 +500,7 @@ local function new(screen)
     wibox {
     ontop = true,
     visible = false,
-    type = "utility",
+    type = "dialog",
     width = wp.drawer_box,
     height = theme.menu_height,
     bg = theme.bg_normal,
