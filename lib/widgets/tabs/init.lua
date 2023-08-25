@@ -117,7 +117,7 @@ function tabs:set_forced_width(width)
   end
 
   for _, w in ipairs(wp.tabs) do
-    w.widget:set_width(wp.tab_constraint_width)
+    w.widget:set_width(width)
   end
 end
 
@@ -136,7 +136,7 @@ function tabs:set_forced_height(height)
   end
 
   for _, w in ipairs(wp.tabs) do
-    w.widget:set_height(wp.tab_constraint_height)
+    w.widget:set_height(wp.height)
   end
 end
 

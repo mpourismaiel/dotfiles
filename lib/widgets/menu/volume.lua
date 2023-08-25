@@ -303,8 +303,10 @@ local function sources(args)
   return group
 end
 
-local function section(title, widget)
-  return wibox.widget {
+function slider:section(title, widget)
+  local wp = self._private
+  local w =
+    wibox.widget {
     layout = wibox.layout.fixed.vertical,
     spacing = config.dpi(12),
     {
@@ -315,22 +317,34 @@ local function section(title, widget)
     },
     {
       widget = wibox.container.constraint,
-      strategy = "max",
-      height = config.dpi(180),
+      id = "widget_container",
+      strategy = "exact",
+      height = wp.height,
       widget
     }
   }
+
+  self:connect_signal(
+    "menu::property::height",
+    function(_, height)
+      -- w:get_children_by_id("widget_container")[1].height = height / 2 - 100
+    end
+  )
+
+  return w
 end
 
-local function devices(args)
+function slider:output_devices(args)
   return wibox.widget {
     widget = wcontainer,
-    {
-      layout = wibox.layout.fixed.vertical,
-      spacing = config.dpi(20),
-      section("Outputs", sinks(args)),
-      section("Inputs", sources(args))
-    }
+    self:section("Speaker", sinks(args))
+  }
+end
+
+function slider:input_devices(args)
+  return wibox.widget {
+    widget = wcontainer,
+    self:section("Microphone", sources(args))
   }
 end
 
@@ -349,11 +363,14 @@ local function new(args)
   args.width = args.width or config.dpi(400)
   args.height = args.height or config.dpi(400)
 
-  local ret = {_private = {}}
+  local ret = gears.object({})
+  ret._private = {}
   gears.table.crush(ret, slider)
 
   local wp = ret._private
   wp.callback = args.callback or nil
+  wp.width = args.width
+  wp.height = args.width
 
   local toggle =
     wibox.widget {
@@ -376,7 +393,7 @@ local function new(args)
           if not wp.callback then
             return
           end
-          wp.callback("Volume Manager", wp.menu)
+          wp.callback("Volume Manager", wp.menu, ret)
         end,
         paddings = 0,
         {
@@ -442,22 +459,39 @@ local function new(args)
     height = args.height,
     {
       widget = wtabs,
+      id = "tabs",
       forced_width = args.width,
       forced_height = args.height,
       tabs = {
         {
-          id = "devices",
-          title = "Devices",
-          widget = devices(args)
+          id = "speaker",
+          title = "Speaker",
+          widget = ret:output_devices(args)
         },
         {
-          id = "applications",
-          title = "Applications",
-          widget = applications(args)
+          id = "microphone",
+          title = "Microphone",
+          widget = ret:input_devices(args)
         }
       }
     }
   }
+
+  ret:connect_signal(
+    "menu::property::width",
+    function(_, height)
+      menu:get_children_by_id("tabs")[1].forced_height = height
+      menu.height = height
+    end
+  )
+
+  ret:connect_signal(
+    "menu::property::height",
+    function(_, height)
+      menu:get_children_by_id("tabs")[1].forced_height = height
+      menu.height = height
+    end
+  )
 
   local volume_slider = toggle:get_children_by_id("volume_slider")[1]
   volume_slider:connect_signal(
