@@ -60,19 +60,16 @@ function systray.new(screen)
             }
           },
           {
-            widget = wibox.container.constraint,
+            widget = wbutton,
             strategy = "exact",
             width = config.dpi(64),
             height = config.dpi(64),
+            margin = theme.bar_padding,
+            bg_normal = theme.bg_normal,
+            bg_hover = theme.bg_primary,
+            paddings = 0,
             {
-              widget = wbutton,
-              margin = theme.bar_padding,
-              bg_normal = theme.bg_normal,
-              bg_hover = theme.bg_primary,
-              paddings = 0,
-              {
-                widget = keyboardlayout
-              }
+              widget = keyboardlayout
             }
           }
         }

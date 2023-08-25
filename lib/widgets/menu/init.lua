@@ -234,28 +234,25 @@ function menu:show_menu(title, menu, new_size)
             }
           },
           {
-            widget = wibox.container.constraint,
+            widget = wbutton,
             strategy = "exact",
             width = config.dpi(48),
             height = config.dpi(48),
+            bg_normal = theme.bg_secondary,
+            paddings = 0,
+            callback = function()
+              self:hide_menu()
+            end,
             {
-              widget = wbutton,
-              bg_normal = theme.bg_secondary,
-              paddings = 0,
-              callback = function()
-                self:hide_menu()
-              end,
+              widget = wibox.container.place,
               {
-                widget = wibox.container.place,
+                widget = wibox.container.constraint,
+                strategy = "exact",
+                width = config.dpi(16),
+                height = config.dpi(16),
                 {
-                  widget = wibox.container.constraint,
-                  strategy = "exact",
-                  width = config.dpi(16),
-                  height = config.dpi(16),
-                  {
-                    widget = wibox.widget.imagebox,
-                    image = theme.menu_close_icon
-                  }
+                  widget = wibox.widget.imagebox,
+                  image = theme.menu_close_icon
                 }
               }
             }
@@ -345,21 +342,18 @@ local function new(screen)
     wibox.widget {
     layout = wibox.layout.stack,
     {
-      widget = wibox.container.constraint,
+      widget = wbutton,
+      margin = theme.bar_padding,
       strategy = "exact",
       height = config.dpi(48),
+      paddings = 12,
+      bg_normal = theme.bg_normal,
+      bg_hover = theme.bg_primary,
+      callback = function()
+        capi.awesome.emit_signal("widget::drawer:toggle")
+      end,
       {
-        widget = wbutton,
-        margin = theme.bar_padding,
-        paddings = 12,
-        bg_normal = theme.bg_normal,
-        bg_hover = theme.bg_primary,
-        callback = function()
-          capi.awesome.emit_signal("widget::drawer:toggle")
-        end,
-        {
-          widget = wibox.widget.imagebox(menu_icon)
-        }
+        widget = wibox.widget.imagebox(menu_icon)
       }
     },
     {

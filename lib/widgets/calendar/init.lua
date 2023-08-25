@@ -46,21 +46,18 @@ local function date_widget(self, index)
 
   local widget =
     wibox.widget {
-    widget = wibox.container.constraint,
+    widget = wbutton,
     strategy = "exact",
     width = config.dpi(35),
     height = config.dpi(35),
+    id = "background_role",
+    paddings = 0,
+    shape = gears.shape.circle,
     {
-      widget = wbutton,
-      id = "background_role",
-      paddings = 0,
-      shape = gears.shape.circle,
-      {
-        widget = wibox.container.place,
-        halign = "center",
-        valign = "center",
-        text
-      }
+      widget = wibox.container.place,
+      halign = "center",
+      valign = "center",
+      text
     }
   }
   widget.bg_role = widget:get_children_by_id("background_role")[1]
@@ -217,61 +214,52 @@ local function new()
       {
         layout = wibox.layout.align.horizontal,
         {
-          widget = wibox.container.constraint,
+          widget = wbutton,
           strategy = "exact",
           width = config.dpi(36),
+          bg_normal = theme.bg_normal,
+          bg_hover = theme.bg_primary,
+          paddings = 0,
+          callback = function()
+            widget:change_month(-1)
+          end,
           {
-            widget = wbutton,
-            bg_normal = theme.bg_normal,
-            bg_hover = theme.bg_primary,
-            paddings = 0,
-            callback = function()
-              widget:change_month(-1)
-            end,
-            {
-              widget = wtext,
-              font_size = config.dpi(10),
-              text = "&lt;"
-            }
+            widget = wtext,
+            font_size = config.dpi(10),
+            text = "&lt;"
           }
         },
         {
-          widget = wibox.container.constraint,
+          widget = wbutton,
           strategy = "exact",
           width = config.dpi(85),
+          paddings = 0,
+          bg_normal = theme.bg_normal,
+          bg_hover = theme.bg_primary,
+          id = "current_month_button",
+          callback = function()
+            widget:set_month_current()
+          end,
           {
-            widget = wbutton,
-            paddings = 0,
-            bg_normal = theme.bg_normal,
-            bg_hover = theme.bg_primary,
-            id = "current_month_button",
-            callback = function()
-              widget:set_month_current()
-            end,
-            {
-              widget = wtext,
-              font_size = config.dpi(10),
-              text = os.date("%B")
-            }
+            widget = wtext,
+            font_size = config.dpi(10),
+            text = os.date("%B")
           }
         },
         {
-          widget = wibox.container.constraint,
+          widget = wbutton,
           strategy = "exact",
           width = config.dpi(36),
+          paddings = 0,
+          bg_normal = theme.bg_normal,
+          bg_hover = theme.bg_primary,
+          callback = function()
+            widget:change_month(1)
+          end,
           {
-            widget = wbutton,
-            paddings = 0,
-            bg_normal = theme.bg_normal,
-            bg_hover = theme.bg_primary,
-            callback = function()
-              widget:change_month(1)
-            end,
-            {
-              widget = wtext,
-              font_size = config.dpi(10),
-              text = ">"
-            }
+            widget = wtext,
+            font_size = config.dpi(10),
+            text = ">"
           }
         }
       },
@@ -279,61 +267,52 @@ local function new()
       {
         layout = wibox.layout.align.horizontal,
         {
-          widget = wibox.container.constraint,
+          widget = wbutton,
           strategy = "exact",
           width = config.dpi(36),
+          paddings = 0,
+          bg_normal = theme.bg_normal,
+          bg_hover = theme.bg_primary,
+          callback = function()
+            widget:change_year(-1)
+          end,
           {
-            widget = wbutton,
-            paddings = 0,
-            bg_normal = theme.bg_normal,
-            bg_hover = theme.bg_primary,
-            callback = function()
-              widget:change_year(-1)
-            end,
-            {
-              widget = wtext,
-              font_size = config.dpi(10),
-              text = "&lt;"
-            }
+            widget = wtext,
+            font_size = config.dpi(10),
+            text = "&lt;"
           }
         },
         {
-          widget = wibox.container.constraint,
+          widget = wbutton,
           strategy = "exact",
           width = config.dpi(50),
+          paddings = 0,
+          bg_normal = theme.bg_normal,
+          bg_hover = theme.bg_primary,
+          id = "current_year_button",
+          callback = function()
+            widget:set_year_current()
+          end,
           {
-            widget = wbutton,
-            paddings = 0,
-            bg_normal = theme.bg_normal,
-            bg_hover = theme.bg_primary,
-            id = "current_year_button",
-            callback = function()
-              widget:set_year_current()
-            end,
-            {
-              widget = wtext,
-              font_size = config.dpi(10),
-              text = os.date("%Y")
-            }
+            widget = wtext,
+            font_size = config.dpi(10),
+            text = os.date("%Y")
           }
         },
         {
-          widget = wibox.container.constraint,
+          widget = wbutton,
           strategy = "exact",
           width = config.dpi(36),
+          paddings = 0,
+          bg_normal = theme.bg_normal,
+          bg_hover = theme.bg_primary,
+          callback = function()
+            widget:change_year(1)
+          end,
           {
-            widget = wbutton,
-            paddings = 0,
-            bg_normal = theme.bg_normal,
-            bg_hover = theme.bg_primary,
-            callback = function()
-              widget:change_year(1)
-            end,
-            {
-              widget = wtext,
-              font_size = config.dpi(10),
-              text = ">"
-            }
+            widget = wtext,
+            font_size = config.dpi(10),
+            text = ">"
           }
         }
       }

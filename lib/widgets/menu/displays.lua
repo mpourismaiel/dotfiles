@@ -57,42 +57,39 @@ local function new(args)
 
   wp.toggle =
     wibox.widget {
-    widget = wibox.container.constraint,
+    widget = wbutton,
     strategy = "exact",
     width = config.dpi(60),
     height = config.dpi(60),
+    bg_normal = theme.bg_secondary,
+    rounded = theme.rounded_rect_large,
+    callback = function()
+      if not wp.callback then
+        return
+      end
+      local screen_height = wp.callback("Display Manager", wp.menu)
+      wp.menu.height = screen_height
+    end,
+    paddings = 0,
     {
-      widget = wbutton,
-      bg_normal = theme.bg_secondary,
-      rounded = theme.rounded_rect_large,
-      callback = function()
-        if not wp.callback then
-          return
-        end
-        local screen_height = wp.callback("Display Manager", wp.menu)
-        wp.menu.height = screen_height
-      end,
-      paddings = 0,
+      layout = wibox.layout.fixed.vertical,
+      spacing = config.dpi(8),
       {
-        layout = wibox.layout.fixed.vertical,
-        spacing = config.dpi(8),
+        widget = wibox.container.constraint,
+        strategy = "exact",
+        width = config.dpi(16),
+        height = config.dpi(16),
         {
-          widget = wibox.container.constraint,
-          strategy = "exact",
-          width = config.dpi(16),
-          height = config.dpi(16),
+          widget = wibox.container.place,
           {
-            widget = wibox.container.place,
-            {
-              widget = wibox.widget.imagebox,
-              image = theme.displays_icon
-            }
+            widget = wibox.widget.imagebox,
+            image = theme.displays_icon
           }
-        },
-        {
-          widget = wtext,
-          id = "default_display_title_role"
         }
+      },
+      {
+        widget = wtext,
+        id = "default_display_title_role"
       }
     }
   }

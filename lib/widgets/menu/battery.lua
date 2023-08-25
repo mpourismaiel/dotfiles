@@ -42,43 +42,40 @@ local function new()
 
   local widget =
     wibox.widget {
-    widget = wibox.container.constraint,
+    widget = wbutton,
     strategy = "exact",
     width = config.dpi(60),
     height = config.dpi(60),
+    bg_normal = theme.bg_secondary,
+    rounded = theme.rounded_rect_large,
+    paddings = 0,
     {
-      widget = wbutton,
-      bg_normal = theme.bg_secondary,
-      rounded = theme.rounded_rect_large,
-      paddings = 0,
+      layout = wibox.layout.fixed.vertical,
+      spacing = config.dpi(8),
       {
-        layout = wibox.layout.fixed.vertical,
-        spacing = config.dpi(8),
-        {
-          widget = wibox.container.constraint,
-          strategy = "exact",
-          width = config.dpi(16),
-          height = config.dpi(16),
-          {
-            widget = wibox.container.place,
-            {
-              layout = wibox.layout.stack,
-              id = "image_container",
-              {
-                widget = wibox.widget.imagebox,
-                image = theme.battery_50_icon,
-                id = "image_role"
-              }
-            }
-          }
-        },
+        widget = wibox.container.constraint,
+        strategy = "exact",
+        width = config.dpi(16),
+        height = config.dpi(16),
         {
           widget = wibox.container.place,
           {
-            widget = wtext,
-            text = "50%",
-            id = "text_role"
+            layout = wibox.layout.stack,
+            id = "image_container",
+            {
+              widget = wibox.widget.imagebox,
+              image = theme.battery_50_icon,
+              id = "image_role"
+            }
           }
+        }
+      },
+      {
+        widget = wibox.container.place,
+        {
+          widget = wtext,
+          text = "50%",
+          id = "text_role"
         }
       }
     }

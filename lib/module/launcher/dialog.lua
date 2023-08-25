@@ -83,52 +83,49 @@ function dialog:create_cache()
   for i, v in ipairs(apps) do
     local w =
       wibox.widget {
-      widget = wibox.container.constraint,
+      widget = wbutton,
       strategy = "exact",
       width = wp.icon_size + config.dpi(80),
       height = wp.icon_size + config.dpi(36),
-      {
-        widget = wbutton,
-        margin = 0,
-        paddings = config.dpi(5),
-        id = "button",
-        bg_normal = color.helpers.change_opacity(theme.bg_hover, 0.4),
-        disable_hover = true,
-        middle_click_callback = function()
-          wp.favorites:add(
-            v.name .. v.executable,
-            function(val)
-              if val then
-                return nil
-              end
-
-              return true
+      margin = 0,
+      paddings = config.dpi(5),
+      id = "button",
+      bg_normal = color.helpers.change_opacity(theme.bg_hover, 0.4),
+      disable_hover = true,
+      middle_click_callback = function()
+        wp.favorites:add(
+          v.name .. v.executable,
+          function(val)
+            if val then
+              return nil
             end
-          )
-        end,
+
+            return true
+          end
+        )
+      end,
+      {
+        layout = wibox.layout.fixed.vertical,
+        spacing = config.dpi(5),
         {
-          layout = wibox.layout.fixed.vertical,
-          spacing = config.dpi(5),
+          widget = wibox.container.place,
+          halign = "center",
           {
-            widget = wibox.container.place,
-            halign = "center",
+            widget = wibox.container.constraint,
+            strategy = "exact",
+            width = wp.icon_size,
+            height = wp.icon_size,
             {
-              widget = wibox.container.constraint,
-              strategy = "exact",
-              width = wp.icon_size,
-              height = wp.icon_size,
-              {
-                widget = wibox.widget.imagebox,
-                image = v.icon
-              }
+              widget = wibox.widget.imagebox,
+              image = v.icon
             }
-          },
-          {
-            widget = wtext,
-            text = v.name,
-            halign = "center",
-            ellipsize = true
           }
+        },
+        {
+          widget = wtext,
+          text = v.name,
+          halign = "center",
+          ellipsize = true
         }
       }
     }
