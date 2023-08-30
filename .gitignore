@@ -1,6 +1,7 @@
 // generated files
 module/launcher/list.json
 extra/zsh/extra_config.zsh
+extra/bin/notes-debug
 
 # config directory at the root of the project, if it's nested then it should not be ignored
 config/

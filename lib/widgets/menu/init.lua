@@ -504,7 +504,9 @@ local function new(screen)
     width = wp.drawer_box,
     height = theme.menu_height,
     bg = theme.bg_normal,
-    shape = gears.shape.rounded_rect,
+    shape = function(cr, width, height)
+      return gears.shape.rounded_rect(cr, width, height, theme.rounded_rect_large)
+    end,
     widget = {
       layout = wibox.layout.manual,
       id = "menu_display",

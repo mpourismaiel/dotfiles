@@ -426,6 +426,7 @@ local function new()
                       {
                         layout = woverflow.vertical,
                         spacing = wp.row_spacing,
+                        step = 200,
                         id = "grid"
                       }
                     }

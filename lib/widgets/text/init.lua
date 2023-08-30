@@ -61,6 +61,7 @@ end
 function text:set_ellipsize(ellipsize)
   local wp = self._private
   wp.ellipsize = ellipsize
+  wp.textbox_widget.ellipsize = ellipsize
 end
 
 function text:get_markup()

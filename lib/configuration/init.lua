@@ -29,6 +29,7 @@ local config = {
   terminal = "xfce4-terminal",
   taskManager = "system-monitoring-center",
   modkey = "Mod4",
+  altkey = "Mod1",
   dpi = xresources.apply_dpi,
   wallpaper = os.getenv("HOME") .. "/Pictures/wallpaper.jpg",
   profile_image = nil,
