@@ -80,7 +80,7 @@ local notifications =
     spacing = config.dpi(10),
     scrollbar_widget = wscrollbar,
     scrollbar_width = config.dpi(10),
-    step = 50
+    step = 200
   },
   source = function()
     return global_state.cache.get("notifications")
@@ -158,7 +158,7 @@ local notifications =
             spacing = config.dpi(10),
             scrollbar_widget = wscrollbar,
             scrollbar_width = config.dpi(10),
-            step = 50,
+            step = 200,
             {
               widget = wibox.container.margin,
               margins = config.dpi(10),

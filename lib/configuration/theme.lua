@@ -53,6 +53,13 @@ theme.bar_clock_minute_bold = false
 
 theme.launcher_star_icon = config_dir .. "images/x.svg"
 
+theme.switcher_position = "max_left"
+theme.switcher_width = config.dpi(300)
+theme.switcher_margin_left = config.dpi(16)
+theme.switcher_margin_right = config.dpi(16)
+theme.switcher_margin_top = config.dpi(16)
+theme.switcher_margin_bottom = config.dpi(16)
+
 theme.menu_position = "bottom_left"
 theme.menu_vertical_spacing = config.dpi(12)
 theme.menu_horizontal_spacing = config.dpi(12)

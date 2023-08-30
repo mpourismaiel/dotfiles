@@ -194,7 +194,7 @@ local function sinks(args)
     spacing = config.dpi(12),
     scrollbar_widget = wscrollbar,
     scrollbar_width = config.dpi(10),
-    step = 50
+    step = 200
   }
   local wp = attach_radio_group(group)
 
@@ -252,7 +252,7 @@ local function sources(args)
     spacing = config.dpi(12),
     scrollbar_widget = wscrollbar,
     scrollbar_width = config.dpi(10),
-    step = 50
+    step = 200
   }
   local wp = attach_radio_group(group)
 

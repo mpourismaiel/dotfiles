@@ -261,6 +261,7 @@ local debug_screen =
     margins = config.dpi(10),
     {
       layout = woverflow.vertical,
+      step = 200,
       spacing = config.dpi(20),
       {
         widget = wibox.container.margin,
