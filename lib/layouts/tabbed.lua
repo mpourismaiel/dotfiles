@@ -92,6 +92,7 @@ local function create_tabbar(s, tag, section, clients, area)
         width = config.dpi(250),
         height = config.dpi(36),
         margin_top = config.dpi(4),
+        halign = "left",
         shape = "tab",
         callback = function()
           c:raise()
