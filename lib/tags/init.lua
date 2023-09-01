@@ -12,6 +12,10 @@ screen.connect_signal(
   "request::desktop_decoration",
   function(s)
     for i, tag in pairs(config.tags) do
+      if tag.layout == "local-layout-tabbed" then
+        tag.layout = require("lib.layouts.tabbed")
+      end
+
       awful.tag.add(
         i,
         {

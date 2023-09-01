@@ -132,6 +132,8 @@ local function handle_nested_config_values(k, v)
               configured_tag[tag_key] = bling.layout[tag_name]
             elseif tag_name == "machi" then
               configured_tag[tag_key] = machi.default_layout
+            elseif tag_name == "tabbed" then
+              configured_tag[tag_key] = "local-layout-tabbed"
             else
               configured_tag[tag_key] = awful.layout.suit[tag_name]
             end

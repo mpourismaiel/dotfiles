@@ -80,7 +80,7 @@ local notifications =
     spacing = config.dpi(10),
     scrollbar_widget = wscrollbar,
     scrollbar_width = config.dpi(10),
-    step = 200
+    step = 100
   },
   source = function()
     return global_state.cache.get("notifications")

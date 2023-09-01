@@ -141,6 +141,8 @@ theme.titlebar_icon_maximize = config_dir .. "images/maximize.svg"
 theme.titlebar_icon_minimize = config_dir .. "images/minimize.svg"
 theme.titlebar_icon_x = config_dir .. "images/x.svg"
 
+theme.titlebar_bg = theme.bg_normal
+
 theme.wallpaper = config.wallpaper
 
 theme.layout_floating = themes_path .. "default/layouts/floatingw.png"
