@@ -1,10 +1,22 @@
+local gears = require("gears")
 local awful = require("awful")
 local config = require("lib.configuration")
+
+local tabbed = require("lib.layouts.tabbed")
 
 tag.connect_signal(
   "request::default_layouts",
   function()
-    awful.layout.append_default_layouts(config.available_layouts)
+    local available_layouts = {}
+    for _, layout in pairs(config.available_layouts) do
+      if layout == "local-layout-tabbed" then
+        table.insert(available_layouts, tabbed)
+      else
+        gears.debug.dump(layout)
+        table.insert(available_layouts, layout)
+      end
+    end
+    awful.layout.append_default_layouts(available_layouts)
   end
 )
 
