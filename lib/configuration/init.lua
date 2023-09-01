@@ -56,7 +56,7 @@ local config = {
     area_screenshot = "flameshot gui",
     bluetooth = "blueman-manager"
   },
-  available_layouts = {"max", "tile", "floating"},
+  available_layouts = {"max", "tile", "tabbed", "floating"},
   tags = {
     {
       name = "1",
