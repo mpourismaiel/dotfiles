@@ -167,6 +167,8 @@ local function load_layout_functions()
       table.insert(available_layouts, bling.layout[layout])
     elseif layout == "machi" then
       table.insert(available_layouts, machi.default_layout)
+    elseif layout == "tabbed" then
+      table.insert(available_layouts, "local-layout-tabbed")
     else
       table.insert(available_layouts, awful.layout.suit[layout])
     end
