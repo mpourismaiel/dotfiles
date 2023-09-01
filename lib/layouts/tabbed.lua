@@ -272,6 +272,9 @@ function mylayout.arrange(p)
   local nslaves = #p.clients - nmaster
 
   local master_area_width = area.width * mwfact
+  if nslaves <= 0 then
+    master_area_width = area.width
+  end
   local slave_area_width = area.width - master_area_width
 
   local master_clients = {}

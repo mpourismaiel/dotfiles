@@ -47,6 +47,7 @@ local function client_title_widget(c)
     ret:set_markup("<span font='" .. font .. "' color='" .. color .. "'>" .. label .. "</span>")
   end
   ret.update = update
+  ret.ellipsize = "end"
   update_on_signal(c, "property::name", ret)
   update_on_signal(c, "property::active", ret)
   update()
