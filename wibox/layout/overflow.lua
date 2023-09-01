@@ -173,6 +173,8 @@ function overflow:layout(context, orig_width, orig_height)
       result,
       base.place_widget_at(scrollbar_widget, math.floor(bar_x), math.floor(bar_y), math.floor(bar_w), math.floor(bar_h))
     )
+  else
+    self:set_scroll_factor(0)
   end
 
   local pos, spacing = 0, self._private.spacing

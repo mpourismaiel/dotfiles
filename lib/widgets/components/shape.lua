@@ -8,17 +8,30 @@ function shape.build_properties(widget)
 
   function tb:set_shape(shape, radius)
     if type(shape) == "string" then
-      if shape == "rounded" then
+      if shape == "tab" then
+        shape = function(cr, width, height)
+          return gears.shape.partially_rounded_rect(
+            cr,
+            width,
+            height,
+            true,
+            true,
+            false,
+            false,
+            theme.rounded_rect_normal
+          )
+        end
+      elseif shape == "rounded" then
         shape = function(cr, width, height)
           gears.shape.rounded_rect(cr, width, height, radius or theme.rounded_rect_normal)
         end
       elseif shape == "circle" then
         shape = function(cr, width, height)
-          gears.shape.circle(cr, width, height)
+          return gears.shape.circle(cr, width, height)
         end
       elseif shape == "rectangle" then
         shape = function(cr, width, height)
-          gears.shape.rectangle(cr, width, height)
+          return gears.shape.rectangle(cr, width, height)
         end
       end
     end

@@ -5,11 +5,9 @@ local animation = require("lib.helpers.animation")
 local colors = require("lib.helpers.color")
 local config = require("lib.configuration")
 local theme = require("lib.configuration.theme")
-local console = require("lib.helpers.console")
 local margin = require("lib.widgets.components.margin")
 local place = require("lib.widgets.components.place")
 local shape = require("lib.widgets.components.shape")
-local constraint = require("lib.widgets.components.constraint")
 
 local button = {mt = {}}
 

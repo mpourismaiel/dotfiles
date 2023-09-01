@@ -14,7 +14,14 @@ awful.keyboard.append_global_keybindings(
       {config.modkey},
       ".",
       function()
-        machi.default_editor.start_interactive()
+        local layout = awful.layout.get(awful.screen.focused())
+        if layout.name == "machi" then
+          machi.default_editor.start_interactive()
+        else
+          if layout.start_interactive then
+            layout.start_interactive()
+          end
+        end
       end,
       {description = "edit the current layout if it is a machi layout", group = "layout"}
     ),

@@ -49,6 +49,14 @@ local layouts = {
       line(width / 3 * 1 - 1, 3)
     }
   end,
+  tabbed = function(width)
+    return wibox.widget {
+      layout = wibox.layout.fixed.horizontal,
+      spacing = config.dpi(3),
+      line(width / 2 * 1 - 1, 2),
+      line(width / 2 * 1 - 1, 2)
+    }
+  end,
   machi = function(width)
     return wibox.widget {
       layout = wibox.layout.fixed.horizontal,
