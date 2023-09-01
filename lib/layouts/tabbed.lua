@@ -14,6 +14,7 @@ local wtext = require("lib.widgets.text")
 local woverflow = require("wibox.layout.overflow")
 local animation_new = require("lib.helpers.animation-new")
 local colors = require("lib.helpers.color")
+local console = require("lib.helpers.console")
 
 local mylayout = {}
 mylayout.name = "tabbed"
@@ -61,8 +62,17 @@ local function create_tabbar(s, tag, section, clients, area)
     }
 
     local function adjust_visibility()
-      local name = awful.layout.getname(awful.layout.get(s))
-      tag.tabbar[section].visible = (name == mylayout.name)
+      for screen in capi.screen do
+        for _, t in ipairs(screen.tags) do
+          if t == tag then
+            if t.selected and t.layout.name == mylayout.name then
+              tag.tabbar[section].visible = true
+            else
+              tag.tabbar[section].visible = false
+            end
+          end
+        end
+      end
     end
 
     capi.tag.connect_signal("property::selected", adjust_visibility)
@@ -329,6 +339,24 @@ function mylayout.arrange(p)
     slave_tabbar_area.height = slave_tabbar_size
 
     p.geometries[c] = g
+  end
+
+  for idx = 1, nmaster do
+    local c = p.clients[idx]
+    if idx == t.master_top_idx then
+      c.opacity = 1
+    else
+      c.opacity = 0
+    end
+  end
+
+  for idx = 1, nslaves do
+    local c = p.clients[idx + nmaster]
+    if idx == t.slave_top_idx then
+      c.opacity = 1
+    else
+      c.opacity = 0
+    end
   end
 
   if nmaster >= 2 then
