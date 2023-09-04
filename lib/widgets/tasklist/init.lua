@@ -6,10 +6,11 @@ local beautiful = require("beautiful")
 local config = require("lib.configuration")
 local lgi = require("lgi")
 local GLib = lgi.GLib
-local icon_theme = require("lib.helpers.icon_theme")()
 local theme = require("lib.configuration.theme")
 local wbutton = require("lib.widgets.button")
+local icon_theme = require("external.bling.helpers.icon_theme")
 
+local icon_theme_provider = icon_theme(theme.icon_theme or "Papirus", theme.tasklist_icon_size or config.dpi(64))
 local tasklist = {mt = {}}
 
 local function get_current_focused_client(cache)
@@ -183,7 +184,10 @@ local function render(w, buttons, label, widgets_cache, objects, args)
 
       cache._buttons = buttons
 
-      local icon = icon_theme:get_client_icon_path(first_client)
+      local icon = icon_theme_provider:get_client_icon_path(first_client)
+      if icon == nil or icon == "" then
+        icon = icon_theme_provider:choose_icon({"application-all", "application", "application-default-icon", "app"})
+      end
       if icon == nil or icon == "" then
         icon = first_client.icon
       end

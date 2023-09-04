@@ -8,3 +8,6 @@ config/
 
 # log files
 logs/log-*
+
+# vim created this, someone explain it please
+.luarc.json

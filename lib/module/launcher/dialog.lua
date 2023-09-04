@@ -456,7 +456,13 @@ local function new()
   wp.backdrop = backdrop
   wp.widget = widget
   wp.grid = widget:get_children_by_id("grid")[1]
-  wp.launcher = launcher()
+  wp.launcher =
+    launcher(
+    {
+      icon_theme = theme.icon_theme or "Papirus",
+      icon_size = theme.launcher_icon_size
+    }
+  )
   wp.launcher.callback = function()
     ret:create_cache()
     ret:render_apps()

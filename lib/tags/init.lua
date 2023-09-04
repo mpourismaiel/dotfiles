@@ -12,7 +12,6 @@ tag.connect_signal(
       if layout == "local-layout-tabbed" then
         table.insert(available_layouts, tabbed)
       else
-        gears.debug.dump(layout)
         table.insert(available_layouts, layout)
       end
     end

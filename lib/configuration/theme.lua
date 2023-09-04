@@ -51,7 +51,10 @@ theme.bar_clock_hour_bold = true
 theme.bar_clock_minute_font_size = config.dpi(13)
 theme.bar_clock_minute_bold = false
 
+theme.tasklist_icon_size = config.dpi(64)
+
 theme.launcher_star_icon = config_dir .. "images/x.svg"
+theme.launcher_icon_size = config.dpi(64)
 
 theme.switcher_position = "max_left"
 theme.switcher_width = config.dpi(300)

@@ -84,6 +84,8 @@ local function new(args)
   args = args or {}
   local ret = gobject({})
 
+  ret.icon_theme = args.icon_theme
+  ret.icon_size = args.icon_size
   ret.all_entries = {}
   ret.favorites = {}
   ret._private = {
