@@ -85,6 +85,9 @@ local function create_tabbar(s, tag, section, clients, area)
 		capi.tag.connect_signal("untagged", adjust_visibility)
 		capi.tag.connect_signal("property::master_count", adjust_visibility)
 		capi.client.connect_signal("property::minimized", adjust_visibility)
+		capi.client.connect_signal("property::fullscreen", adjust_visibility)
+		capi.client.connect_signal("focus", adjust_visibility)
+		capi.client.connect_signal("unfocus", adjust_visibility)
 	end
 
 	local tabbar = tag.tabbar[section]

@@ -55,7 +55,7 @@ local function client_title_widget(c)
   return ret
 end
 
-client.connect_signal(
+capi.client.connect_signal(
   "manage",
   function(c)
     if c.floating and not c.maximized and not c.fullscreen then
@@ -66,7 +66,7 @@ client.connect_signal(
   end
 )
 
-client.connect_signal(
+capi.client.connect_signal(
   "property::maximized",
   function(c)
     local wp = c._private
@@ -78,7 +78,7 @@ client.connect_signal(
   end
 )
 
-client.connect_signal(
+capi.client.connect_signal(
   "property::active",
   function(c, is_active)
     local wp = c._private
@@ -92,7 +92,20 @@ client.connect_signal(
   end
 )
 
-client.connect_signal(
+capi.client.connect_signal(
+  "property::fullscreen",
+  function(c)
+    if c.fullscreen then
+      awful.titlebar.hide(c, "top")
+      c.titlebar_enabled = false
+    else
+      awful.titlebar.show(c, "top")
+      c.titlebar_enabled = true
+    end
+  end
+)
+
+capi.client.connect_signal(
   "request::titlebars",
   function(c)
     c.menu = client_menu()
@@ -183,7 +196,7 @@ client.connect_signal(
             3,
             function()
               c.menu:toggle {
-                coords = mouse.coords(),
+                coords = capi.mouse.coords(),
                 client = c
               }
             end
