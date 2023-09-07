@@ -61,13 +61,9 @@ local function get_placement()
 end
 
 local function get_switcher_items(screen)
-  local ret = {}
-  for k, v in ipairs(screen.tags) do
-    for i, c in ipairs(v:clients()) do
-      table.insert(ret, c)
-    end
-  end
-
+  local focus_history = awful.client.focus.history.list
+  local ret = gears.table.clone(focus_history)
+  ret[1], ret[2] = ret[2], ret[1]
   return ret
 end
 
@@ -252,23 +248,35 @@ local function new(...)
     type = "dialog",
     width = theme.switcher_width,
     height = config.dpi(800),
-    bg = theme.bg_normal,
+    bg = theme.enable_blur and color.helpers.change_opacity(theme.bg_normal, 0.25) or
+      color.helpers.lighten(theme.bg_normal, 0.05),
     shape = function(cr, width, height)
-      return gears.shape.rounded_rect(cr, width, height, theme.rounded_rect_normal)
+      return gears.shape.rounded_rect(cr, width, height, theme.rounded_rect_large)
     end,
     widget = {
       widget = wibox.container.margin,
-      left = config.dpi(20),
-      right = config.dpi(10),
-      top = config.dpi(24),
-      bottom = config.dpi(24),
+      margins = config.dpi(10),
       {
-        layout = woverflow.vertical,
-        id = "clients_list",
-        spacing = config.dpi(12),
-        scrollbar_widget = wscrollbar,
-        scrollbar_width = config.dpi(10),
-        step = 200
+        widget = wibox.container.background,
+        bg = theme.bg_normal,
+        shape = function(cr, width, height)
+          return gears.shape.rounded_rect(cr, width, height, theme.rounded_rect_large)
+        end,
+        {
+          widget = wibox.container.margin,
+          left = config.dpi(20),
+          right = config.dpi(10),
+          top = config.dpi(24),
+          bottom = config.dpi(24),
+          {
+            layout = woverflow.vertical,
+            id = "clients_list",
+            spacing = config.dpi(12),
+            scrollbar_widget = wscrollbar,
+            scrollbar_width = config.dpi(10),
+            step = 200
+          }
+        }
       }
     }
   }
