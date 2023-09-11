@@ -41,7 +41,7 @@ local function client_title_widget(c)
   local ret = wibox.widget.textbox()
 
   local function update()
-    local font = theme.font_name .. " 9pt"
+    local font = theme.font_name .. " 9"
     local color = c.active and theme.titlebar_fg_focus or theme.titlebar_fg_normal
     local label = gears.string.xml_escape(c.name or "unknown")
     ret:set_markup("<span font='" .. font .. "' color='" .. color .. "'>" .. label .. "</span>")

@@ -229,7 +229,7 @@ function menu:show_menu(title, menu, widget, new_size)
                 widget = wtext,
                 bold = true,
                 text = title,
-                font_size = config.dpi(12)
+                font_size = 12
               }
             }
           },
@@ -348,7 +348,7 @@ local function new(screen)
       margin = theme.bar_padding,
       strategy = "exact",
       height = config.dpi(48),
-      paddings = 12,
+      paddings = config.dpi(12),
       bg_normal = theme.bg_normal,
       bg_hover = theme.bg_primary,
       callback = function()
@@ -362,7 +362,7 @@ local function new(screen)
       widget = wibox.container.place,
       valign = "bottom",
       {
-        widget = layoutbox(screen, config.dpi(48))
+        widget = layoutbox(screen, 48)
       }
     }
   }

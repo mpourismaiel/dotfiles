@@ -28,7 +28,7 @@ local function day_name_widget(name)
       halign = "center",
       {
         widget = wtext,
-        font_size = config.dpi(10),
+        font_size = 10,
         bold = true,
         color = theme.fg_normal,
         text = name
@@ -41,7 +41,7 @@ local function date_widget(self, index)
   local text =
     wibox.widget {
     widget = wtext,
-    font_size = config.dpi(10)
+    font_size = 10
   }
 
   local widget =
@@ -225,7 +225,7 @@ local function new()
           end,
           {
             widget = wtext,
-            font_size = config.dpi(10),
+            font_size = 10,
             text = "&lt;"
           }
         },
@@ -242,7 +242,7 @@ local function new()
           end,
           {
             widget = wtext,
-            font_size = config.dpi(10),
+            font_size = 10,
             text = os.date("%B")
           }
         },
@@ -258,7 +258,7 @@ local function new()
           end,
           {
             widget = wtext,
-            font_size = config.dpi(10),
+            font_size = 10,
             text = ">"
           }
         }
@@ -278,7 +278,7 @@ local function new()
           end,
           {
             widget = wtext,
-            font_size = config.dpi(10),
+            font_size = 10,
             text = "&lt;"
           }
         },
@@ -295,7 +295,7 @@ local function new()
           end,
           {
             widget = wtext,
-            font_size = config.dpi(10),
+            font_size = 10,
             text = os.date("%Y")
           }
         },
@@ -311,7 +311,7 @@ local function new()
           end,
           {
             widget = wtext,
-            font_size = config.dpi(10),
+            font_size = 10,
             text = ">"
           }
         }

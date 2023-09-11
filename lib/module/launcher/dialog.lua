@@ -6,6 +6,7 @@ local awful = require("awful")
 local gears = require("gears")
 local config = require("lib.configuration")
 local theme = require("lib.configuration.theme")
+local wcontainer = require("lib.widgets.container")
 local wbutton = require("lib.widgets.button")
 local wtext = require("lib.widgets.text")
 local wtext_input = require("lib.widgets.text_input")
@@ -361,79 +362,60 @@ local function new()
       gears.shape.rounded_rect(cr, w, h, theme.rounded_rect_large)
     end,
     widget = {
-      widget = wibox.container.place,
+      widget = wcontainer,
       halign = "center",
       valign = "center",
+      paddings_all = config.dpi(10),
+      strategy = "exact",
+      width = config.dpi(600),
       {
-        widget = wibox.container.margin,
-        margins = config.dpi(10),
+        layout = wibox.layout.fixed.vertical,
+        spacing = config.dpi(10),
         {
-          widget = wibox.container.constraint,
-          strategy = "exact",
-          width = config.dpi(600),
-          {
-            layout = wibox.layout.fixed.vertical,
-            spacing = config.dpi(10),
+          widget = wtext_input,
+          unfocus_on_client_clicked = true,
+          initial = "",
+          id = "search",
+          widget_template = wibox.widget {
+            widget = wibox.container.background,
+            shape = function(cr, w, h)
+              gears.shape.rounded_rect(cr, w, h, theme.rounded_rect_large)
+            end,
+            bg = color.helpers.change_opacity(theme.bg_normal, 0.6),
             {
-              widget = wtext_input,
-              unfocus_on_client_clicked = true,
-              initial = "",
-              id = "search",
-              widget_template = wibox.widget {
-                widget = wibox.container.background,
-                shape = function(cr, w, h)
-                  gears.shape.rounded_rect(cr, w, h, theme.rounded_rect_large)
-                end,
-                bg = color.helpers.change_opacity(theme.bg_normal, 0.6),
-                {
-                  widget = wibox.container.margin,
-                  margins = config.dpi(15),
-                  {
-                    layout = wibox.layout.stack,
-                    {
-                      widget = wibox.widget.textbox,
-                      id = "placeholder_role",
-                      text = "Search..."
-                    },
-                    {
-                      widget = wibox.widget.textbox,
-                      id = "text_role"
-                    }
-                  }
-                }
-              }
-            },
-            {
-              widget = wibox.container.constraint,
-              strategy = "exact",
-              height = config.dpi(400),
+              widget = wibox.container.margin,
+              margins = config.dpi(15),
               {
-                widget = wibox.container.place,
-                valign = "top",
+                layout = wibox.layout.stack,
                 {
-                  widget = wibox.container.constraint,
-                  strategy = "exact",
-                  width = config.dpi(600),
-                  {
-                    widget = wibox.container.background,
-                    shape = function(cr, width, height)
-                      gears.shape.rounded_rect(cr, width, height, theme.rounded_rect_large)
-                    end,
-                    bg = color.helpers.change_opacity(theme.bg_normal, 0.6),
-                    {
-                      widget = wibox.container.margin,
-                      margins = config.dpi(10),
-                      {
-                        layout = woverflow.vertical,
-                        spacing = wp.row_spacing,
-                        step = 200,
-                        id = "grid"
-                      }
-                    }
-                  }
+                  widget = wibox.widget.textbox,
+                  id = "placeholder_role",
+                  text = "Search..."
+                },
+                {
+                  widget = wibox.widget.textbox,
+                  id = "text_role"
                 }
               }
             }
+          }
+        },
+        {
+          widget = wcontainer,
+          strategy = "exact",
+          height = config.dpi(400),
+          width = config.dpi(600),
+          paddings_all = config.dpi(10),
+          valign = "top",
+          bg = color.helpers.change_opacity(theme.bg_normal, 0.6),
+          shape = function(cr, width, height)
+            gears.shape.rounded_rect(cr, width, height, theme.rounded_rect_large)
+          end,
+          {
+            layout = woverflow.vertical,
+            spacing = wp.row_spacing,
+            step = 200,
+            id = "grid"
           }
         }
       }

@@ -38,7 +38,7 @@ local function new()
           widget = wtext,
           text = username,
           font_weight = "bold",
-          font_size = config.dpi(12)
+          font_size = 12
         }
       }
     }

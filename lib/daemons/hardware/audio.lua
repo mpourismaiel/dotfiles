@@ -145,15 +145,17 @@ local function on_default_device_changed(self)
         local default_device_name = line:match(": (.*)")
         local type = line:match("Default Sink") and "sinks" or "sources"
         for _, device in pairs(self._private[type]) do
-          if device.name == default_device_name then
-            if device.default == false then
-              device.default = true
-              self:emit_signal(type .. "::default", device)
+          if device ~= nil then
+            if device.name == default_device_name then
+              if device.default == false then
+                device.default = true
+                self:emit_signal(type .. "::default", device)
+              end
+            else
+              device.default = false
             end
-          else
-            device.default = false
+            device:emit_signal("updated")
           end
-          device:emit_signal("updated")
         end
       end
     end
