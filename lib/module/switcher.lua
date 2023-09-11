@@ -123,7 +123,7 @@ local function client_widget(client)
         widget = wtext,
         text = client.name or client.class,
         font = theme.font,
-        font_size = config.dpi(10),
+        font_size = 10,
         font_color = theme.fg_normal,
         single_line = true,
         halign = "center",

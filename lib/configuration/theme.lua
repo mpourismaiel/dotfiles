@@ -8,7 +8,7 @@ local config_dir = gfs.get_configuration_dir()
 local theme = {}
 
 theme.font_name = "Inter"
-theme.font_size = config.dpi(10)
+theme.font_size = 10
 theme.font_size_large = config.dpi(12)
 theme.font = theme.font_name .. " Regular " .. theme.font_size
 
@@ -46,9 +46,9 @@ theme.button_check_icon = config_dir .. "images/check.svg"
 
 theme.bar_padding = config.dpi(3)
 theme.bar_width = config.dpi(48)
-theme.bar_clock_hour_font_size = config.dpi(12)
+theme.bar_clock_hour_font_size = 12
 theme.bar_clock_hour_bold = true
-theme.bar_clock_minute_font_size = config.dpi(13)
+theme.bar_clock_minute_font_size = 13
 theme.bar_clock_minute_bold = false
 
 theme.tasklist_icon_size = config.dpi(64)

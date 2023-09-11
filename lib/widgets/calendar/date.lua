@@ -35,7 +35,7 @@ local function new()
       {
         widget = wclock,
         format = "%a %d %B %Y",
-        font_size = config.dpi(12),
+        font_size = 12,
         halign = "left",
         bold = false,
         foreground = theme.fg_primary
@@ -46,7 +46,7 @@ local function new()
         {
           widget = wclock,
           format = "%H:%M",
-          font_size = config.dpi(16),
+          font_size = 16,
           halign = "left",
           bold = true,
           foreground = theme.fg_normal

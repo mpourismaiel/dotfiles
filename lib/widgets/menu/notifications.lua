@@ -264,7 +264,7 @@ local notifications_widget =
         widget = wtext,
         text = "Notifications",
         bold = true,
-        font_size = config.dpi(14),
+        font_size = 14,
         foreground = theme.fg_primary
       }
     },

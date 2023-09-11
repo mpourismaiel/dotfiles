@@ -89,7 +89,7 @@ local function device_widget(device, args)
         {
           widget = wtext,
           halign = "left",
-          font_size = config.dpi(10),
+          font_size = 10,
           text = device.description
         }
       },
@@ -197,6 +197,7 @@ local function sinks(args)
     step = 200
   }
   local wp = attach_radio_group(group)
+  local index = {}
 
   audio_daemon:connect_signal(
     "sinks::added",
@@ -211,6 +212,7 @@ local function sinks(args)
         end
       )
 
+      index[sink.id] = w
       group:add(w)
     end
   )
@@ -233,12 +235,11 @@ local function sinks(args)
   audio_daemon:connect_signal(
     "sinks::removed",
     function(self, sink)
-      for _, w in ipairs(group:get_children()) do
-        if w.id == sink.id then
-          group:remove(w)
-          return
-        end
+      local w = index[sink.id]
+      if not w then
+        return
       end
+      group:remove_widgets(w)
     end
   )
 
@@ -255,6 +256,7 @@ local function sources(args)
     step = 200
   }
   local wp = attach_radio_group(group)
+  local index = {}
 
   audio_daemon:connect_signal(
     "sources::added",
@@ -269,6 +271,7 @@ local function sources(args)
         end
       )
 
+      index[source.id] = w
       group:add(w)
     end
   )
@@ -291,12 +294,11 @@ local function sources(args)
   audio_daemon:connect_signal(
     "sources::removed",
     function(self, source)
-      for _, w in ipairs(group:get_children()) do
-        if w.id == source.id then
-          group:remove(w)
-          return
-        end
+      local w = index[source.id]
+      if not w then
+        return
       end
+      group:remove_widgets(w)
     end
   )
 
