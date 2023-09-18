@@ -113,6 +113,7 @@ local notifications =
               margins = config.dpi(10),
               {
                 layout = wibox.layout.fixed.horizontal,
+                id = "title_container",
                 fill_space = true,
                 {
                   widget = wibox.container.margin,
@@ -120,7 +121,7 @@ local notifications =
                   id = "image_container",
                   {
                     widget = wibox.container.place,
-                    valign = "top",
+                    valign = "center",
                     {
                       widget = wibox.widget.imagebox,
                       forced_height = config.dpi(32),
@@ -130,8 +131,22 @@ local notifications =
                   }
                 },
                 {
-                  widget = wtext,
-                  id = "title"
+                  layout = wibox.layout.fixed.vertical,
+                  spacing = config.dpi(10),
+                  {
+                    widget = wtext,
+                    id = "title",
+                    foreground = theme.fg_primary,
+                    font_weight = "bold",
+                    font_size = 10
+                  },
+                  {
+                    widget = wtext,
+                    id = "subtitle",
+                    foreground = theme.fg_primary,
+                    font_weight = "regular",
+                    font_size = 9
+                  }
                 },
                 {
                   widget = wibox.container.place,
@@ -175,17 +190,24 @@ local notifications =
 
     return {
       title = l:get_children_by_id("title")[1],
+      subtitle = l:get_children_by_id("subtitle")[1],
       text = l:get_children_by_id("text")[1],
       image = l:get_children_by_id("image")[1],
       image_container = l:get_children_by_id("image_container")[1],
       close = l:get_children_by_id("close")[1],
       container = l:get_children_by_id("container")[1],
+      title_container = l:get_children_by_id("title_container")[1],
       primary = l
     }
   end,
   render_template = function(cached, data)
     cached.title:set_text(data.title)
+    cached.subtitle:set_text(data.subtitle)
     cached.text:set_text(data.message)
+
+    if not data.subtitle then
+      cached.title_container:remove_widgets(cached.subtitle)
+    end
 
     if data.icon then
       local icon = gears.surface.load_silently(data.icon)

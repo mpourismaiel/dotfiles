@@ -8,6 +8,7 @@ local theme = require("lib.configuration.theme")
 local color = require("lib.helpers.color")
 local wbutton = require("lib.widgets.button")
 local wtext = require("lib.widgets.text")
+local wcontainer = require("lib.widgets.container")
 local global_state = require("lib.configuration.global_state")
 local store = require("lib.module.store")
 
@@ -59,6 +60,27 @@ local function escape_markup_string(s)
   return s:gsub("&", "&amp;"):gsub("<", "&lt;"):gsub(">", "&gt;")
 end
 
+local function optimize_notification(n)
+  n._private.title = n.title == "" and nil or n.title
+  n._private.subtitle = n.subtitle == "" and nil or n.subtitle
+
+  n.get_subtitle = function()
+    return n._private.subtitle
+  end
+
+  n.set_subtitle = function(_, subtitle)
+    n._private.subtitle = subtitle
+  end
+
+  local message = n.message
+  local title = message:match("^<b>(.*)</b>\n")
+  if title then
+    n.message = message:gsub("^<b>.*</b>\n", "")
+    n.subtitle = n.title
+    n.title = title
+  end
+end
+
 naughty.connect_signal(
   "request::display",
   function(n)
@@ -67,6 +89,7 @@ naughty.connect_signal(
       screen.notifications = {}
     end
 
+    optimize_notification(n)
     c.add("notifications", n)
 
     -- check if any application in current tag is fullscreen
@@ -108,42 +131,53 @@ naughty.connect_signal(
         gears.shape.rounded_rect(cr, width, height, theme.rounded_rect_large)
       end,
       widget = {
-        widget = wibox.container.constraint,
-        width = theme.notification_width,
+        widget = wcontainer,
         strategy = "exact",
+        width = theme.notification_width,
         {
           layout = wibox.layout.fixed.vertical,
-          (n.title ~= "" or n.icon ~= nil) and
+          (n.title or n.subtitle or n.icon) and
             {
-              widget = wibox.container.background,
+              widget = wcontainer,
+              strategy = "exact",
+              width = theme.notification_width,
+              halign = "left",
               bg = color.helpers.change_opacity(theme.bg_secondary, 0.6),
+              paddings_all = config.dpi(10),
               {
-                widget = wibox.container.margin,
-                margins = config.dpi(10),
-                {
-                  layout = wibox.layout.fixed.horizontal,
-                  n.icon and
+                layout = wibox.layout.fixed.horizontal,
+                n.icon and
+                  {
+                    widget = wcontainer,
+                    margin_right = config.dpi(10),
+                    width = theme.notification_icon_size,
+                    height = theme.notification_icon_size,
+                    strategy = "exact",
                     {
-                      widget = wibox.container.margin,
-                      right = config.dpi(10),
-                      {
-                        widget = wibox.container.constraint,
-                        width = theme.notification_icon_size,
-                        height = theme.notification_icon_size,
-                        strategy = "exact",
-                        {
-                          widget = wibox.widget.imagebox,
-                          image = n.icon or n.app_icon
-                        }
-                      }
-                    } or
-                    nil,
+                      widget = wibox.widget.imagebox,
+                      image = n.icon or n.app_icon
+                    }
+                  } or
+                  nil,
+                {
+                  layout = wibox.layout.fixed.vertical,
+                  spacing = config.dpi(10),
                   n.title and
                     {
                       widget = wtext,
                       foreground = theme.fg_primary,
-                      font_weight = "Bold",
+                      font_weight = "bold",
+                      font_size = 10,
                       text = escape_markup_string(n.title)
+                    } or
+                    nil,
+                  n.subtitle and
+                    {
+                      widget = wtext,
+                      foreground = theme.fg_primary,
+                      font_weight = "regular",
+                      font_size = 9,
+                      text = escape_markup_string(n.subtitle)
                     } or
                     nil
                 }
@@ -153,8 +187,11 @@ naughty.connect_signal(
           {
             layout = wibox.layout.fixed.vertical,
             {
-              widget = wibox.container.margin,
-              margins = config.dpi(10),
+              widget = wcontainer,
+              strategy = "exact",
+              width = theme.notification_width,
+              halign = "left",
+              margins_all = config.dpi(10),
               {
                 widget = wtext,
                 foreground = theme.fg_normal,
