@@ -195,6 +195,21 @@ notifications:add(
     end
   }
 )
+notifications:add(
+  wibox.widget {
+    widget = wbutton,
+    label = "Notification with subtitle",
+    margin = theme.bar_padding,
+    callback = function()
+      naughty.notify {
+        title = "Subtitle",
+        text = "<b>Title</b>\nOriginal title was 'Subtitle' and was changed to subtitle.",
+        preset = naughty.config.presets.normal,
+        timeout = 1
+      }
+    end
+  }
+)
 
 local tabs = wibox.widget {layout = wibox.layout.fixed.vertical, spacing = config.dpi(5)}
 tabs:add(

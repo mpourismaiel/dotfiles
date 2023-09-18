@@ -107,8 +107,8 @@ function dropdown:set_options(options)
     local w =
       wibox.widget {
       widget = wibox.container.constraint,
-      width = config.dpi(12),
-      height = config.dpi(12),
+      width = 12,
+      height = 12,
       strategy = "exact",
       {
         widget = wibox.container.background,
