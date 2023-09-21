@@ -22,3 +22,6 @@
 [submodule "external/async-git"]
 	path = external/async-git
 	url = https://github.com/Kasper24/async.lua
+[submodule "external/lua-color"]
+	path = external/lua-color
+	url = https://github.com/Kasper24/lua-color.git
