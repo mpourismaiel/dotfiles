@@ -7,9 +7,6 @@
 [submodule "hudkit"]
 	path = external/hudkit
 	url = https://github.com/anko/hudkit.git
-[submodule "lua-color"]
-	path = external/lua-color
-	url = git@github.com:Kasper24/lua-color.git
 [submodule "external/filesystem"]
 	path = external/filesystem
 	url = https://github.com/Kasper24/lgi-async-extra
