@@ -89,6 +89,7 @@ Some functionalities to note:
 - Grouped tasklist, nice task switcher with `Alt+Tab`
 - Animations in a lot of places
 - Multiple monitor support
+- Mouse AND keyboard supported for almost every action, no need to remember a useless keybinding for something you rarely use
 
 ## Screenshots
 
