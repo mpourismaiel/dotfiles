@@ -11,7 +11,7 @@ function store:load()
   local wp = self._private
   local file = io.open(wp.name, "r")
   if not file then
-    return
+    return false
   end
 
   local data = file:read("*a")
@@ -22,6 +22,18 @@ end
 function store:save()
   local wp = self._private
   wp.save()
+end
+
+function store:_save()
+  local wp = self._private
+
+  local file = io.open(wp.name, "w+")
+  if not file then
+    return
+  end
+  local data = json.encode(wp.value)
+  file:write(data)
+  file:close()
 end
 
 function store:add(key, update_callback)
@@ -73,24 +85,20 @@ local function new(name, initial_value)
   gears.table.crush(ret, store)
 
   local wp = ret._private
-  wp.name = config.dir .. "/store-" .. name .. ".json"
+  wp.name = config.data_dir .. "/store-" .. name .. ".json"
   wp.value = initial_value or {}
 
   wp.save =
     debounce(
     function()
-      local file = io.open(wp.name, "w+")
-      if not file then
-        return
-      end
-      local data = json.encode(wp.value)
-      file:write(data)
-      file:close()
+      ret:_save()
     end,
     0.5
   )
 
-  ret:load()
+  if ret:load() == false then
+    ret:_save()
+  end
 
   cache[name] = ret
   return ret
