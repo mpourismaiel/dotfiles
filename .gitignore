@@ -6,6 +6,9 @@ extra/bin/notes-debug
 # config directory at the root of the project, if it's nested then it should not be ignored
 config/
 
+# generated data
+data/
+
 # log files
 logs/log-*
 

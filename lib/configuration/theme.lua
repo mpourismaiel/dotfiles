@@ -12,6 +12,7 @@ theme.font_size = 10
 theme.font_size_large = config.dpi(12)
 theme.font = theme.font_name .. " Regular " .. theme.font_size
 
+theme.enable_blur = true
 theme.transparency = 0.6
 
 theme.bg_normal = "#111111"

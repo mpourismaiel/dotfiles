@@ -26,6 +26,7 @@ local bling_layouts = {
 
 local config = {
   dir = config_dir .. "config",
+  data_dir = config_dir .. "data",
   terminal = "xfce4-terminal",
   taskManager = "system-monitoring-center",
   modkey = "Mod4",

@@ -8,6 +8,7 @@ local keyboard_layout_daemon = require("lib.daemons.hardware.keyboard_layout")
 local battery = require("lib.widgets.menu.battery")
 local wbutton = require("lib.widgets.button")
 local wtext = require("lib.widgets.text")
+local wcontainer = require("lib.widgets.container")
 local console = require("lib.helpers.console")
 
 local instance = nil
@@ -27,20 +28,19 @@ local function device_widget(image, default_value)
       layout = wibox.layout.fixed.vertical,
       spacing = config.dpi(8),
       {
-        widget = wibox.container.constraint,
+        widget = wcontainer,
         strategy = "exact",
         width = config.dpi(16),
         height = config.dpi(16),
+        halign = "center",
         {
-          widget = wibox.container.place,
-          {
-            widget = wibox.widget.imagebox,
-            image = image
-          }
+          widget = wibox.widget.imagebox,
+          image = image
         }
       },
       {
-        widget = wibox.container.place,
+        widget = wcontainer,
+        halign = "center",
         {
           widget = wtext,
           text = default_value,
@@ -82,12 +82,12 @@ local function ram_widget()
 end
 
 local function keyboard_layout_widget()
-  local w = device_widget(theme.keyboard_icon, "en")
+  local w = device_widget(theme.keyboard_icon, "US")
 
   keyboard_layout_daemon:connect_signal(
     "update",
     function(self, layout)
-      w._private.update_value(layout)
+      w._private.update_value(layout:upper())
     end
   )
 

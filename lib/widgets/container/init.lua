@@ -55,6 +55,9 @@ local function new()
   gears.table.crush(ret, shape.build_properties(wp.background_role))
   gears.table.crush(ret, background.build_properties(wp.background_role))
 
+  ret:set_valign("top")
+  ret:set_halign("left")
+
   return ret
 end
 

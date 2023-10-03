@@ -48,6 +48,12 @@ require("lib.module.switcher")
 
 require("lib.daemons.system.picom")
 
+local store = require("lib.module.store")
+local preferences = store("preferences")
+if preferences:get("enable_xkb") == true then
+  require("lib.daemons.hardware.keyboard_layout"):load_settings()
+end
+
 require("lib.widgets.desktop")
 require("lib.widgets.bar")
 
