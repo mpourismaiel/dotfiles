@@ -162,7 +162,7 @@ keyboard_layout.xkeyboard_country_code = {
 }
 
 -- Callback for updating current layout.
-local function update_status(self)
+function keyboard_layout:update_status()
     self._current = capi.awesome.xkb_get_layout_group()
     local text = ""
     if #self._layout > 0 then
@@ -285,7 +285,7 @@ function keyboard_layout.get_groups_from_group_names(group_names)
 end
 
 -- Callback for updating list of layouts
-local function update_layout(self)
+function keyboard_layout:update_layout()
     self._layout = {}
     local layouts = keyboard_layout.get_groups_from_group_names(capi.awesome.xkb_get_group_names())
     if layouts == nil or layouts[1] == nil then
@@ -297,7 +297,7 @@ local function update_layout(self)
     for _, v in ipairs(layouts) do
         self._layout[v.group_idx] = self.layout_name(v)
     end
-    update_status(self)
+    self:update_status()
 end
 
 function keyboard_layout:update_settings(layouts, variants, options, model)
@@ -375,6 +375,7 @@ function keyboard_layout:update_settings(layouts, variants, options, model)
         command = command .. " -variant " .. variants_arg
     end
 
+    gears.debug.dump("running settings command: " .. command)
     awful.spawn(command)
 end
 
@@ -428,7 +429,7 @@ local function new()
         capi.awesome.xkb_set_layout_group(group_number)
     end
 
-    update_layout(ret)
+    ret:update_layout()
 
     capi.awesome.connect_signal(
         "awesome::settings::language",
@@ -447,21 +448,21 @@ local function new()
     capi.awesome.connect_signal(
         "xkb::map_changed",
         function()
-            update_layout(ret)
+            ret:update_layout()
         end
     )
 
     capi.awesome.connect_signal(
         "xkb::group_changed",
         function()
-            update_status(ret)
+            ret:update_status()
         end
     )
 
     return ret
 end
 
-if not instance then
+if instance == nil then
     instance = new()
 end
 

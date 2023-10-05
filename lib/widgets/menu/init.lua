@@ -10,6 +10,7 @@ local config = require("lib.configuration")
 local theme = require("lib.configuration.theme")
 local animation = require("lib.helpers.animation")
 local animation_new = require("lib.helpers.animation-new")
+local keyboard_layout_daemon = require("lib.daemons.hardware.keyboard_layout")
 local console = require("lib.helpers.console")
 
 local wcontainer = require("lib.widgets.menu.container")
@@ -340,6 +341,85 @@ local function new(screen)
   local wp = ret._private
   wp.primary_screen = capi.screen.primary
 
+  local keyboard_layout =
+    wibox.widget {
+    widget = wtext,
+    font_size = 8,
+    font_weight = "bold",
+    halign = "center"
+  }
+
+  local indicator =
+    wibox.widget {
+    layout = wibox.layout.manual,
+    {
+      widget = wibox.widget.imagebox(menu_icon),
+      point = {x = 0, y = 0},
+      id = "icon_role"
+    },
+    {
+      widget = wibox.container.constraint,
+      strategy = "exact",
+      width = config.dpi(48),
+      point = {x = -60, y = 0},
+      id = "keyboard_role",
+      {
+        widget = keyboard_layout
+      }
+    }
+  }
+
+  indicator.icon_role = indicator:get_children_by_id("icon_role")[1]
+  indicator.keyboard_role = indicator:get_children_by_id("keyboard_role")[1]
+  indicator.showing_info_widget = nil
+  indicator.animation =
+    animation_new(
+    {
+      subject = {icon_role_x = 0, info_x = -60},
+      duration = 0.2
+    }
+  ):add(
+    "show_info",
+    {
+      target = {icon_role_x = 60, info_x = 0}
+    }
+  ):add(
+    "hide_info",
+    {
+      target = {icon_role_x = 0, info_x = -60}
+    }
+  ):onUpdate(
+    function(_, subject)
+      indicator:move_widget(indicator.icon_role, {x = subject.icon_role_x, y = 0})
+      indicator:move_widget(indicator.showing_info_widget, {x = subject.info_x, y = 0})
+    end
+  ):startAnimation("hide_info")
+
+  indicator.show_timer = nil
+
+  keyboard_layout_daemon:connect_signal(
+    "update",
+    function(self, layout)
+      keyboard_layout:set_text(layout:upper())
+      if indicator.show_timer == nil then
+        indicator.showing_info_widget = indicator.keyboard_role
+        indicator.animation:startAnimation("show_info")
+        indicator.show_timer =
+          gears.timer {
+          timeout = 2,
+          autostart = true,
+          single_shot = true,
+          callback = function()
+            indicator.animation:startAnimation("hide_info")
+            indicator.show_timer = nil
+          end
+        }
+      else
+        indicator.show_timer:again()
+      end
+    end
+  )
+
   local toggle =
     wibox.widget {
     layout = wibox.layout.stack,
@@ -347,6 +427,7 @@ local function new(screen)
       widget = wbutton,
       margin = theme.bar_padding,
       strategy = "exact",
+      width = config.dpi(48),
       height = config.dpi(48),
       paddings = config.dpi(12),
       bg_normal = theme.bg_normal,
@@ -354,9 +435,7 @@ local function new(screen)
       callback = function()
         capi.awesome.emit_signal("widget::drawer:toggle")
       end,
-      {
-        widget = wibox.widget.imagebox(menu_icon)
-      }
+      indicator
     },
     {
       widget = wibox.container.place,

@@ -68,6 +68,7 @@ function osd.new(w)
     duration = 0.25,
     signals = {
       ["anim::animation_started"] = function(s)
+        ret.w.screen = awful.screen.focused()
         ret.w.visible = true
       end,
       ["anim::animation_updated"] = function(s, delta)
