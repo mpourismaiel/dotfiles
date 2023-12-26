@@ -2,6 +2,7 @@ local wibox = require("wibox")
 local gears = require("gears")
 local config = require("lib.configuration")
 local theme = require("lib.configuration.theme")
+local update_checker = require("lib.widgets.menu.update_checker")
 local wcontainer = require("lib.widgets.menu.container")
 local wtext = require("lib.widgets.text")
 
@@ -35,10 +36,15 @@ local function new()
         widget = wibox.container.place,
         valign = "center",
         {
-          widget = wtext,
-          text = username,
-          font_weight = "bold",
-          font_size = 12
+          layout = wibox.layout.fixed.vertical,
+          spacing = config.dpi(2),
+          {
+            widget = wtext,
+            text = username,
+            font_weight = "bold",
+            font_size = 12
+          },
+          update_checker
         }
       }
     }

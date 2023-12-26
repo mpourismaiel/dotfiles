@@ -15,6 +15,8 @@ theme.font = theme.font_name .. " Regular " .. theme.font_size
 theme.enable_blur = true
 theme.transparency = 0.6
 
+theme.notification_color = "#2D87E2"
+
 theme.bg_normal = "#111111"
 theme.bg_primary = "#222222"
 theme.bg_secondary = "#181818"
@@ -116,6 +118,7 @@ theme.volume_mute_icon = config_dir .. "images/volume-x.svg"
 
 theme.displays_icon = config_dir .. "images/monitor.svg"
 theme.compositor_icon = config_dir .. "images/compositor.svg"
+theme.download_icon = config_dir .. "images/download.svg"
 theme.cpu_icon = config_dir .. "images/cpu.svg"
 theme.ram_icon = config_dir .. "images/ram.svg"
 theme.keyboard_icon = config_dir .. "images/keyboard.svg"

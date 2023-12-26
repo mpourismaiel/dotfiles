@@ -60,6 +60,11 @@ function store:set(key, value)
   self:save()
 end
 
+function store:get_all()
+  local wp = self._private
+  return wp.value
+end
+
 function store:toggle(key)
   local wp = self._private
   local value = wp.value[key]

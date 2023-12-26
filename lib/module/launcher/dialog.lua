@@ -166,10 +166,16 @@ function dialog:render_apps()
 
   local results = {}
   for _, app in pairs(apps) do
+    local include_app = true
+    if wp.category == "favorites" and wp.favorites:get(app.name .. app.executable) == nil then
+      include_app = false
+    end
+
     if
-      wp.query == "" or
-        (string.find(app.name:lower(), wp.query:lower(), 1, true) ~= nil or
-          string.find(app.commandline, wp.query:lower(), 1, true) ~= nil)
+      (wp.query == "" and include_app) or
+        (wp.query ~= "" and
+          (string.find(app.name:lower(), wp.query:lower(), 1, true) ~= nil or
+            string.find(app.commandline, wp.query:lower(), 1, true) ~= nil))
      then
       table.insert(results, app)
     end
@@ -178,6 +184,23 @@ function dialog:render_apps()
   wp.grid:reset()
   wp.grid.buttons = {}
   wp.grid.apps = {}
+
+  if wp.category == "favorites" and #results == 0 then
+    wp.grid:add(
+      wibox.widget {
+        widget = wibox.container.margin,
+        margins = config.dpi(10),
+        {
+          widget = wtext,
+          text = "Press 'mouse middle button' to favorite an application",
+          foreground = theme.fg_normal,
+          align = "center",
+          valign = "center"
+        }
+      }
+    )
+    return -- Exit early as we've handled the special case
+  end
 
   local row = nil
   for i, app in ipairs(results) do
@@ -202,6 +225,8 @@ function dialog:render_apps()
       table.insert(wp.grid.buttons, w.button)
       table.insert(wp.grid.apps, app)
       w.button:unhover()
+
+      ---@diagnostic disable-next-line: undefined-field, need-check-nil
       row:add(w)
     end
   end
@@ -336,6 +361,7 @@ local function new()
     query = "",
     history = store("launcher-history", {}),
     favorites = store("launcher-favorites", {}),
+    category = "favorites",
     cache = {}
   }
   gears.table.crush(ret, dialog)
@@ -357,7 +383,7 @@ local function new()
     type = "dialog",
     visible = false,
     width = config.dpi(600),
-    height = config.dpi(400),
+    height = config.dpi(700),
     shape = function(cr, w, h)
       gears.shape.rounded_rect(cr, w, h, theme.rounded_rect_large)
     end,
@@ -403,7 +429,7 @@ local function new()
         {
           widget = wcontainer,
           strategy = "exact",
-          height = config.dpi(400),
+          height = config.dpi(700),
           width = config.dpi(600),
           paddings_all = config.dpi(10),
           valign = "top",
@@ -412,10 +438,40 @@ local function new()
             gears.shape.rounded_rect(cr, width, height, theme.rounded_rect_large)
           end,
           {
-            layout = woverflow.vertical,
-            spacing = wp.row_spacing,
-            step = 200,
-            id = "grid"
+            layout = wibox.layout.fixed.vertical,
+            spacing = config.dpi(10),
+            {
+              layout = wibox.layout.fixed.horizontal,
+              spacing = config.dpi(10),
+              wibox.widget {
+                widget = wbutton,
+                shape = function(cr, w, h)
+                  gears.shape.rounded_rect(cr, w, h, theme.rounded_rect_normal)
+                end,
+                callback = function()
+                  wp.category = "all"
+                  ret:render_apps()
+                end,
+                label = "All Applications"
+              },
+              wibox.widget {
+                widget = wbutton,
+                shape = function(cr, w, h)
+                  gears.shape.rounded_rect(cr, w, h, theme.rounded_rect_normal)
+                end,
+                callback = function()
+                  wp.category = "favorites"
+                  ret:render_apps()
+                end,
+                label = "Favorites"
+              }
+            },
+            {
+              layout = woverflow.vertical,
+              spacing = wp.row_spacing,
+              step = 200,
+              id = "grid"
+            }
           }
         }
       }
@@ -496,6 +552,7 @@ local function new()
       wp.search:unfocus()
       wp.search:set_text("")
       wp.query = ""
+      wp.category = "favorites"
       wp.backdrop.visible = false
       wp.widget.visible = false
       ret:render_apps()

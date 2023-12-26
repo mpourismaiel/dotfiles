@@ -81,10 +81,63 @@ local function optimize_notification(n)
   end
 end
 
+local notification_flash =
+  wibox {
+  ontop = true,
+  screen = awful.screen.focused(),
+  visible = false,
+  type = "dialog",
+  width = config.dpi(4),
+  height = config.dpi(4),
+  bg = theme.notification_color,
+  shape = gears.shape.circle,
+  widget = wibox.widget {
+    widget = wtext,
+    text = ""
+  }
+}
+
+local flash = function()
+  local geo =
+    awful.placement.center_horizontal(
+    notification_flash,
+    {
+      parent = awful.screen.focused(),
+      pretend = true
+    }
+  )
+
+  notification_flash.x = geo.x
+  notification_flash.y = awful.screen.focused().geometry.y + config.dpi(16)
+  notification_flash.screen = awful.screen.focused()
+  notification_flash.visible = true
+
+  local t = {
+    flash_count = 0
+  }
+  t.flasher =
+    gears.timer {
+    autostart = true,
+    single_shot = false,
+    timeout = 1.5,
+    callback = function()
+      notification_flash.visible = not notification_flash.visible
+      t.flash_count = t.flash_count + 1
+      if t.flash_count >= 10 then
+        notification_flash.visible = false
+        t.flasher:stop()
+        return
+      end
+    end
+  }
+end
+
 naughty.connect_signal(
   "request::display",
   function(n)
     local screen = awful.screen.focused()
+    flash()
+
     if not screen.notifications then
       screen.notifications = {}
     end
@@ -230,7 +283,7 @@ naughty.connect_signal(
         ["anim::animation_finished"] = function(s)
           if s.subject.y <= 0 then
             n.widget.visible = false
-            n:destroy()
+            n:destroy(naughty.notification_closed_reason.expired)
             n:emit_signal("notification_destroyed")
           end
         end
