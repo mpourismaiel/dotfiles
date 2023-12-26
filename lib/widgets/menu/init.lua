@@ -495,7 +495,7 @@ local function new(screen)
     }
   }
 
-  wp.drawer_width = config.dpi(380)
+  wp.drawer_width = config.dpi(350)
   wp.drawer_box = wp.drawer_width + theme.menu_horizontal_spacing * 2
 
   local main =
@@ -521,7 +521,7 @@ local function new(screen)
             {
               widget = wibox.container.constraint,
               strategy = "exact",
-              width = config.dpi(308),
+              width = config.dpi(278),
               height = config.dpi(48),
               profile
             },

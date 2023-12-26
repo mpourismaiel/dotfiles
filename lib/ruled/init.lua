@@ -115,8 +115,11 @@ ruled.client.connect_signal(
     }
 
     ruled.client.append_rule {
-      rule_any = {class = {"Firefox", "Google-chrome", "Chromium"}},
-      properties = {tag = "1"}
+      rule_any = {class = {"Firefox", "firefox", "Google-chrome", "Chromium"}},
+      properties = {
+        tag = "1",
+        switch_to_tags = true
+      }
     }
 
     ruled.client.append_rule {
