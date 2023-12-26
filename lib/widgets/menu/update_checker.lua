@@ -1,3 +1,4 @@
+local naughty = require("naughty")
 local wibox = require("wibox")
 local gears = require("gears")
 local gtimer = require("gears.timer")
@@ -89,6 +90,15 @@ function update_checker:new()
     if type(count) == "number" and count > 0 then
       widget.foreground = theme.fg_normal
       widget:set_text(tostring(count) .. " updates")
+
+      if count > 100 then
+        naughty.notify {
+          title = "Updates available",
+          text = "There are " .. count .. " updates available",
+          preset = naughty.config.presets.critical,
+          timeout = 10
+        }
+      end
     else
       widget.foreground = theme.fg_inactive
       widget:set_text(tostring(count))
