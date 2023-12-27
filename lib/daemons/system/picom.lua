@@ -1,6 +1,7 @@
 local capi = {
   awesome = awesome
 }
+local naughty = require("naughty")
 local awful = require("awful")
 local gears = require("gears")
 local gtimer = require("gears.timer")
@@ -10,12 +11,22 @@ local picom = {}
 local instance = nil
 
 function picom:turn_on()
-  local cmd = "picom --config " .. config_dir .. "/lib/picom.conf"
+  local wp = self._private
+  if wp.compositor == nil then
+    return
+  end
+
+  local cmd = wp.compositor .. " --config " .. config_dir .. "/lib/" .. wp.compositor .. ".conf"
   awful.spawn(cmd, false)
 end
 
 function picom:turn_off()
-  awful.spawn("pkill -f picom", false)
+  local wp = self._private
+  if wp.compositor == nil then
+    return
+  end
+
+  awful.spawn("pkill -f " .. wp.compositor, false)
 end
 
 function picom:toggle()
@@ -37,6 +48,40 @@ end
 local function new()
   local ret = gears.object {}
   gears.table.crush(ret, picom, true)
+  ret._private = {
+    compositor = "compfy"
+  }
+  local wp = ret._private
+
+  awful.spawn.easy_async_with_shell(
+    "command -v compfy",
+    function(stdout, stderr, reason, exit_code)
+      if exit_code == 0 then
+        wp.compositor = "compfy"
+      else
+        awful.spawn.easy_async_with_shell(
+          "command -v picom",
+          function(stdout, stderr, reason, exit_code)
+            if exit_code == 0 then
+              wp.compositor = "picom"
+              naughty.notification {
+                title = "Missing dependency!",
+                message = "Install compfy for a better compositor experience. Using picom.",
+                timeout = 5
+              }
+            else
+              wp.compositor = nil
+              naughty.notification {
+                title = "Missing dependency!",
+                message = "Install compfy for transparency, shadows and blurs to work.",
+                timeout = 5
+              }
+            end
+          end
+        )
+      end
+    end
+  )
 
   ret:turn_on()
 

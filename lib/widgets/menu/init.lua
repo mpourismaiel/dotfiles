@@ -463,7 +463,7 @@ local function new(screen)
     wibox {
     ontop = true,
     visible = false,
-    type = "utility",
+    type = "dialog",
     width = wp.systray_box,
     height = theme.menu_height,
     bg = theme.bg_normal,
