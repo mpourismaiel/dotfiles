@@ -185,7 +185,7 @@ function dialog:render_apps()
   wp.grid.buttons = {}
   wp.grid.apps = {}
 
-  if wp.category == "favorites" and #results == 0 then
+  if wp.category == "favorites" and #results == 0 and wp.query == "" then
     wp.grid:add(
       wibox.widget {
         widget = wibox.container.margin,
@@ -199,7 +199,7 @@ function dialog:render_apps()
         }
       }
     )
-    return -- Exit early as we've handled the special case
+    return
   end
 
   local row = nil
