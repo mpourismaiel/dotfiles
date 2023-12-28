@@ -202,9 +202,37 @@ function dialog:render_apps()
     return
   end
 
+  local i = 1
+  if wp.query and wp.is_url then
+    local button =
+      wibox.widget {
+      widget = wbutton,
+      callback = function()
+        if wp.selected == 1 then
+          self:run()
+        else
+          self:select(i)
+        end
+      end,
+      {
+        widget = wtext,
+        text = "Open in browser",
+        foreground = theme.fg_normal,
+        halign = "left",
+        valign = "center"
+      }
+    }
+    table.insert(wp.grid.buttons, button)
+    table.insert(wp.grid.apps, {executable = wp.query})
+    button:unhover()
+
+    wp.grid:add(button)
+    i = i + 1
+  end
+
   local row = nil
-  for i, app in ipairs(results) do
-    if i % wp.col_count == 1 then
+  for j, app in ipairs(results) do
+    if j % wp.col_count == 1 then
       row =
         wibox.widget {
         layout = wibox.layout.fixed.horizontal,
@@ -216,10 +244,10 @@ function dialog:render_apps()
     local w = wp.cache[self:get_cache_key(app)]
     if w then
       w.button.callback = function()
-        if wp.selected == i then
+        if wp.selected == j + i then
           self:run()
         else
-          self:select(i)
+          self:select(j + i)
         end
       end
       table.insert(wp.grid.buttons, w.button)
@@ -259,6 +287,7 @@ function dialog:render_apps()
   }
 
   for i = 1, wp.col_count - (#results % wp.col_count) do
+    ---@diagnostic disable-next-line: undefined-field, need-check-nil
     row:add(empty)
   end
 end
@@ -292,6 +321,13 @@ function dialog:run()
   if not entry then
     return
   end
+
+  if wp.is_url then
+    awful.spawn("xdg-open " .. entry.executable)
+    capi.awesome.emit_signal("module::launcher::hide")
+    return
+  end
+
   wp.history:add(
     entry.executable,
     function(val)
@@ -322,7 +358,15 @@ end
 
 function dialog:search(text)
   local wp = self._private
+  wp.is_url = false
   wp.query = text or ""
+
+  if wp.query:match("^%w+://[^.]+%..+") then
+    wp.is_url = true
+    self:render_apps()
+    return
+  end
+
   wp.query = wp.query:gsub("%W", "")
   self:select(1)
   self:render_apps()
@@ -362,6 +406,7 @@ local function new()
     history = store("launcher-history", {}),
     favorites = store("launcher-favorites", {}),
     category = "favorites",
+    is_url = false,
     cache = {}
   }
   gears.table.crush(ret, dialog)
@@ -552,6 +597,7 @@ local function new()
       wp.search:unfocus()
       wp.search:set_text("")
       wp.query = ""
+      wp.is_url = false
       wp.category = "favorites"
       wp.backdrop.visible = false
       wp.widget.visible = false
