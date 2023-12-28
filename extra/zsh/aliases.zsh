@@ -116,51 +116,46 @@ cdp() {
 
 # get and return npm scripts and make targets, along with "code" for opening vscode and "./__ignore__/commands.sh" for running custom commands if the file exists in a given directory
 _get_cdp_commands() {
-  # save current directory
   local current_dir=$(pwd)
-  cdp $2
+  cdp $1
 
-  local commands=("code" "repo")
+  local -a commands=("code" "repo")
   if [[ -f "./Makefile" ]]; then
-    commands+=($(
-      make -qp | awk -F':' '/^[a-zA-Z0-9][^$#\/\t=]*:([^=]|$)/ {split($1,A,/ /); print A[1]}' | sort -u
-    ))
+    commands+=($(make -qp | awk -F':' '/^[a-zA-Z0-9][^$#\/\t=]*:([^=]|$)/ {split($1,A,/ /); print A[1]}' | sort -u))
   fi
 
   if [[ -f "./package.json" ]]; then
-    commands+=($(
-      jq '.scripts | keys[]' package.json | sort -u | tr -d '"'
-    ))
+    commands+=($(jq -r '.scripts | keys[]' package.json))
   fi
 
-  if [[ -d "./__ignore__" ]]; then
-    if [[ -f "./__ignore__/commands.sh" ]]; then
-      commands+=("./__ignore__/commands.sh")
-    fi
+  if [[ -d "./__ignore__" && -f "./__ignore__/commands.sh" ]]; then
+    commands+=("__ignore__/commands.sh")
   fi
 
   cd $current_dir
-  printf '%s\n' "${commands[@]}"
+  echo "${commands[@]}"
 }
 
 # autocomplete for cdp command, first argument should be directories inside ~/Documents/projects, ~/Documents/projects/private, ~/Documents/projects/guts and second argument should be make targets, npm scripts and yarn scripts and "code" for opening vscode
 _cdp_autocomplete() {
-  local cur prev
-  COMPREPLY=()
-  cur="${COMP_WORDS[COMP_CWORD]}"
-  prev="${COMP_WORDS[COMP_CWORD - 1]}"
+  local -a commands
+  local index=$CURRENT
+  local cur_word="${words[index]}"
+  local prev_word="${words[index - 1]}"
 
-  if [[ $COMP_CWORD -eq 1 ]]; then
+  if [[ $index -eq 2 ]]; then
     local project_names=()
     for project_dir in "${project_dirs[@]}"; do
-      # List first-level directories in each project directory
-      project_names+=($(find "$project_dir" -mindepth 1 -maxdepth 1 -type d -not -path '*/\.*' -printf '%f\n' | sort -u))
+      # Suppress errors from find
+      project_names+=($(find "$project_dir" -mindepth 1 -maxdepth 1 -type d -not -path '*/\.*' -printf '%f\n' 2>/dev/null))
     done
-    project_names=($(printf "%s\n" "${project_names[@]}" | grep -v "$(echo "$exclude_project_dirs" | tr ' ' '\n')"))
-    COMPREPLY=($(compgen -W "$(printf '%s\n' "${project_names[@]}")" -- ${cur}))
-  elif [[ $COMP_CWORD -eq 2 ]]; then
-    COMPREPLY=($(compgen -W "$(_get_cdp_commands cdp $prev)" -- ${cur}))
+    project_names=(${project_names[@]//${exclude_project_dirs[@]}/})
+    commands=("${project_names[@]}")
+  elif [[ $index -eq 3 ]]; then
+    commands=($(_get_cdp_commands $prev_word))
   fi
+
+  _describe -t commands 'Possible commands:' commands && return
 }
 
 compdef _cdp_autocomplete cdp
