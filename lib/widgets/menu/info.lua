@@ -6,6 +6,7 @@ local cpu_daemon = require("lib.daemons.hardware.cpu")
 local ram_daemon = require("lib.daemons.hardware.ram")
 local keyboard_layout_daemon = require("lib.daemons.hardware.keyboard_layout")
 local battery = require("lib.widgets.menu.battery")
+local compositor = require("lib.widgets.menu.compositor")
 local wbutton = require("lib.widgets.button")
 local wtext = require("lib.widgets.text")
 local wcontainer = require("lib.widgets.container")
@@ -102,7 +103,8 @@ local function new()
     cpu_widget(),
     ram_widget(),
     battery().widget,
-    keyboard_layout_widget()
+    keyboard_layout_widget(),
+    compositor
   }
   gears.table.crush(ret, info, true)
 

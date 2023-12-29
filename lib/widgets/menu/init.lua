@@ -20,7 +20,7 @@ local power = require("lib.widgets.menu.power")
 local notifications = require("lib.widgets.menu.notifications")
 local info = require("lib.widgets.menu.info")
 local volume = require("lib.widgets.menu.volume")
-local compositor = require("lib.widgets.menu.compositor")
+local network = require("lib.widgets.menu.network")
 local wbutton = require("lib.widgets.button")
 local wtext = require("lib.widgets.text")
 
@@ -223,15 +223,17 @@ function menu:show_menu(title, menu, widget, new_size)
           {
             widget = wibox.container.constraint,
             strategy = "exact",
-            width = config.dpi(380 - 12 - 48),
+            width = config.dpi(290),
             {
               widget = wcontainer,
-              {
-                widget = wtext,
-                bold = true,
-                text = title,
-                font_size = 12
-              }
+              type(title) == "string" and
+                {
+                  widget = wtext,
+                  bold = true,
+                  text = title,
+                  font_size = 12
+                } or
+                title
             }
           },
           {
@@ -332,6 +334,9 @@ function menu:hide_menu()
       end
     }
   )
+  if wp.menu.hide_callback then
+    wp.menu.hide_callback()
+  end
   wp.menu = nil
 end
 
@@ -555,7 +560,15 @@ local function new(screen)
           {
             layout = wibox.layout.fixed.horizontal,
             spacing = theme.menu_vertical_spacing,
-            compositor
+            network(
+              {
+                width = wp.drawer_box / 2 - theme.menu_horizontal_spacing,
+                height = theme.menu_height - theme.menu_vertical_spacing * 2 - config.dpi(48),
+                callback = function(title, menu, widget)
+                  ret:show_menu(title, menu, widget)
+                end
+              }
+            ).toggle
           },
           volume(
             {

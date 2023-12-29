@@ -244,10 +244,10 @@ function dialog:render_apps()
     local w = wp.cache[self:get_cache_key(app)]
     if w then
       w.button.callback = function()
-        if wp.selected == j + i then
+        if wp.selected == j then
           self:run()
         else
-          self:select(j + i)
+          self:select(j)
         end
       end
       table.insert(wp.grid.buttons, w.button)

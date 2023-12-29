@@ -116,6 +116,13 @@ theme.volume_high_icon = config_dir .. "images/volume-2.svg"
 theme.volume_icon = config_dir .. "images/volume-2.svg"
 theme.volume_mute_icon = config_dir .. "images/volume-x.svg"
 
+theme.wifi_icon = config_dir .. "images/wifi.svg"
+theme.wifi_100_icon = config_dir .. "images/wifi.svg"
+theme.wifi_75_icon = config_dir .. "images/wifi-75.svg"
+theme.wifi_50_icon = config_dir .. "images/wifi-50.svg"
+theme.wifi_25_icon = config_dir .. "images/wifi-25.svg"
+theme.wifi_0_icon = config_dir .. "images/wifi-0.svg"
+
 theme.displays_icon = config_dir .. "images/monitor.svg"
 theme.compositor_icon = config_dir .. "images/compositor.svg"
 theme.download_icon = config_dir .. "images/download.svg"
