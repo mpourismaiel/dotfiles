@@ -10,6 +10,7 @@ local network_daemon = require("lib.daemons.hardware.network")
 local animation_new = require("lib.helpers.animation-new")
 local colors = require("lib.helpers.color")
 local wbutton = require("lib.widgets.button")
+local wbutton_state = require("lib.widgets.button.state")
 local wtext = require("lib.widgets.text")
 local wtext_input = require("lib.widgets.text_input")
 local wscrollbar = require("lib.widgets.scrollbar")
@@ -33,12 +34,13 @@ local strength_icon = function(strength)
   end
 end
 
-local function create_animation(background, name)
+local function create_animation(widget, background, name, closed_height, open_height)
   return animation_new(
     {
       subject = {
         bg = colors.hex2rgba(theme.bg_secondary),
-        fg = colors.hex2rgba(theme.fg_normal)
+        fg = colors.hex2rgba(theme.fg_normal),
+        height = closed_height
       },
       duration = 0.2
     }
@@ -58,10 +60,25 @@ local function create_animation(background, name)
         fg = colors.hex2rgba(theme.fg_primary)
       }
     }
+  ):add(
+    "closed",
+    {
+      target = {
+        height = closed_height
+      }
+    }
+  ):add(
+    "opened",
+    {
+      target = {
+        height = open_height
+      }
+    }
   ):onUpdate(
     function(_, subject)
       background.bg = colors.rgba2hex(subject.bg)
       name.foreground = colors.rgba2hex(subject.fg)
+      widget.height = subject.height
     end
   ):startAnimation("normal")
 end
@@ -77,6 +94,45 @@ local function access_point_widget(layout, access_point)
     text = access_point.ssid,
     foreground = theme.fg_normal,
     bold = true
+  }
+
+  local wifi_strength_icon =
+    wibox.widget {
+    widget = wibox.container.place,
+    {
+      widget = wibox.container.constraint,
+      strategy = "exact",
+      width = config.dpi(16),
+      height = config.dpi(16),
+      {
+        widget = wibox.widget.imagebox,
+        image = strength_icon(access_point.strength)
+      }
+    }
+  }
+
+  local connected_icon =
+    wibox.widget {
+    widget = wibox.container.place,
+    halign = "right",
+    valign = "bottom",
+    {
+      widget = wibox.container.constraint,
+      strategy = "exact",
+      width = config.dpi(10),
+      height = config.dpi(10),
+      {
+        widget = wibox.widget.imagebox,
+        image = theme.wifi_connected_icon
+      }
+    }
+  }
+
+  local wifi_icon =
+    wibox.widget {
+    layout = wibox.layout.stack,
+    wifi_strength_icon,
+    access_point:is_active() and connected_icon or nil
   }
 
   local password_input =
@@ -114,6 +170,73 @@ local function access_point_widget(layout, access_point)
     }
   }
 
+  local password_input_obscurity =
+    wibox.widget {
+    widget = wbutton_state,
+    paddings = config.dpi(4),
+    callback = function()
+      wp.toggle_password_obscurity()
+    end,
+    widget_on = wibox.widget {
+      widget = wibox.container.constraint,
+      strategy = "exact",
+      width = config.dpi(12),
+      height = config.dpi(12),
+      {
+        widget = wibox.widget.imagebox,
+        image = theme.volume_mute_icon
+      }
+    },
+    widget_off = wibox.widget {
+      widget = wibox.container.constraint,
+      strategy = "exact",
+      width = config.dpi(12),
+      height = config.dpi(12),
+      {
+        widget = wibox.widget.imagebox,
+        image = theme.volume_icon
+      }
+    }
+  }
+
+  local auto_connect =
+    wibox.widget {
+    layout = wibox.layout.fixed.horizontal,
+    spacing = config.dpi(10),
+    {
+      widget = wbutton_state,
+      id = "checkbox",
+      paddings = 0,
+      callback = function()
+        wp.toggle_auto_connect()
+      end,
+      widget_on = wibox.widget {
+        widget = wibox.container.constraint,
+        strategy = "exact",
+        width = config.dpi(24),
+        height = config.dpi(24),
+        {
+          widget = wibox.widget.imagebox,
+          image = theme.checkbox_true_icon
+        }
+      },
+      widget_off = wibox.widget {
+        widget = wibox.container.constraint,
+        strategy = "exact",
+        width = config.dpi(24),
+        height = config.dpi(24),
+        {
+          widget = wibox.widget.imagebox,
+          image = theme.checkbox_false_icon
+        }
+      }
+    },
+    {
+      widget = wtext,
+      text = "Auto connect"
+    }
+  }
+
   local connect_or_disconnect_label =
     wibox.widget {
     widget = wtext,
@@ -124,10 +247,7 @@ local function access_point_widget(layout, access_point)
     wibox.widget {
     widget = wbutton,
     callback = function()
-      access_point:toggle(password_input:get_text(), true) -- auto_connect_checkbox:get_state()
-      wp.is_open = false
-      widget.height = closed_height
-      widget.contents_role:reset()
+      access_point:toggle(password_input:get_text(), wp.auto_connect)
     end,
     padding_left = config.dpi(16),
     padding_right = config.dpi(16),
@@ -136,12 +256,29 @@ local function access_point_widget(layout, access_point)
     connect_or_disconnect_label
   }
 
+  local cancel =
+    wibox.widget {
+    widget = wbutton,
+    callback = function()
+      wp.animation:stopAnimation("opened"):startAnimation("closed")
+    end,
+    padding_left = config.dpi(16),
+    padding_right = config.dpi(16),
+    padding_top = config.dpi(8),
+    padding_bottom = config.dpi(8),
+    {
+      widget = wtext,
+      text = "Cancel"
+    }
+  }
+
   network_daemon:dynamic_connect_signal(
     access_point.hw_address .. "::state",
     function(self, new_state, old_state)
-      connect_or_disconnect_label:set_text("Connect")
+      wifi_icon:remove_widgets(connected_icon)
+      local new_opened_height = opened_height
       if new_state ~= network_daemon.DeviceState.ACTIVATED then
-        connect_or_disconnect_label:set_text("Disconnect")
+        connect_or_disconnect_label:set_text("Connect")
       end
 
       if new_state == network_daemon.DeviceState.PREPARE then
@@ -149,7 +286,14 @@ local function access_point_widget(layout, access_point)
       elseif new_state == network_daemon.DeviceState.ACTIVATED then
         layout:remove_widgets(widget)
         layout:insert(1, widget)
+        wifi_icon:add_widgets(connected_icon)
         connect_or_disconnect_label:set_text("Disconnect")
+        wp.animation:stopAnimation("opened"):startAnimation("closed")
+        new_opened_height = opened_height - config.dpi(100)
+      end
+
+      if new_opened_height ~= wp.opened_height then
+        wp.animation:change("opened", {target = {height = new_opened_height}})
       end
     end
   )
@@ -181,19 +325,7 @@ local function access_point_widget(layout, access_point)
           {
             layout = wibox.layout.fixed.horizontal,
             spacing = config.dpi(16),
-            {
-              widget = wibox.container.constraint,
-              strategy = "exact",
-              width = config.dpi(16),
-              height = config.dpi(16),
-              {
-                widget = wibox.container.place,
-                {
-                  widget = wibox.widget.imagebox,
-                  image = strength_icon(access_point.strength)
-                }
-              }
-            },
+            wifi_icon,
             name
           },
           {
@@ -209,8 +341,77 @@ local function access_point_widget(layout, access_point)
   wp = widget._private
   widget.background_role = widget:get_children_by_id("background")[1]
   widget.contents_role = widget:get_children_by_id("contents")[1]
+  wp.auto_connect = true
   wp.is_open = false
-  wp.animation = create_animation(widget.background_role, name)
+  wp.closed_height = closed_height
+  wp.opened_height = access_point:is_active() and opened_height - config.dpi(100) or opened_height
+  wp.animation =
+    create_animation(widget, widget.background_role, name, closed_height, opened_height):onFinish(
+    function(name)
+      if name == "closed" then
+        wp.is_open = false
+        widget.height = wp.closed_height
+        widget.contents_role:reset()
+      elseif name == "opened" then
+        widget.height = wp.opened_height
+        widget.contents_role:reset()
+
+        if not access_point:is_active() then
+          widget.contents_role:add(
+            wibox.widget {
+              layout = wibox.layout.stack,
+              password_input
+              -- {
+              --   widget = wibox.container.place,
+              --   halign = "right",
+              --   {
+              --     widget = wibox.container.margin,
+              --     right = config.dpi(4),
+              --     password_input_obscurity
+              --   }
+              -- }
+              -- TODO: for some reason password_input:set_obscure(not password_input.obscure) doesn't work
+            }
+          )
+          widget.contents_role:add(auto_connect)
+        end
+
+        widget.contents_role:add(
+          wibox.widget {
+            widget = wibox.container.place,
+            halign = "right",
+            {
+              layout = wibox.layout.fixed.horizontal,
+              spacing = config.dpi(10),
+              cancel,
+              connect_or_disconnect
+            }
+          }
+        )
+
+        auto_connect:get_children_by_id("checkbox")[1]:turn_on()
+        password_input_obscurity:turn_on()
+      end
+    end
+  )
+
+  function wp.toggle_auto_connect()
+    wp.auto_connect = not wp.auto_connect
+    if wp.auto_connect then
+      auto_connect:get_children_by_id("checkbox")[1]:turn_on()
+    else
+      auto_connect:get_children_by_id("checkbox")[1]:turn_off()
+    end
+  end
+
+  function wp.toggle_password_obscurity()
+    password_input:set_obscure(not password_input.obscure)
+    if password_input.obscure then
+      password_input_obscurity:turn_on()
+    else
+      password_input_obscurity:turn_off()
+    end
+  end
 
   widget:connect_signal(
     "mouse::enter",
@@ -240,11 +441,7 @@ local function access_point_widget(layout, access_point)
       if button == 1 and not wp.is_open then
         wp.is_open = true
 
-        wp.animation:stopAnimation("hover"):startAnimation("normal")
-        widget.height = opened_height
-        widget.contents_role:reset()
-        widget.contents_role:add(password_input)
-        widget.contents_role:add(connect_or_disconnect)
+        wp.animation:stopAnimation("hover"):stopAnimation("closed"):startAnimation("normal"):startAnimation("opened")
       end
     end
   )
@@ -276,6 +473,7 @@ local function new(args)
     halign = "left",
     bg_normal = theme.bg_secondary,
     rounded = theme.rounded_rect_normal,
+    paddings = config.dpi(4),
     callback = function()
       network_daemon:scan_access_points()
     end,
@@ -298,8 +496,6 @@ local function new(args)
     if not wp.callback then
       return
     end
-
-    network_daemon:scan_access_points()
 
     wp.callback(
       wibox.widget {
@@ -444,6 +640,7 @@ local function new(args)
 
   ret.toggle = toggle
   ret.hide_callback = function()
+    network_daemon:scan_access_points()
     for _, w in pairs(wp.wifi_list.children) do
       w.password_input:unfocus()
     end

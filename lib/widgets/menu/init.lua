@@ -657,6 +657,7 @@ local function new(screen)
       wp.animation.open:stopAnimation()
       wp.animation.close:startAnimation()
       ret:hide_dropdown()
+      ret:hide_menu()
       wp.backdrop.visible = false
       wp.drawer.visible = false
       if wp.systray then
