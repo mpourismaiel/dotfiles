@@ -102,6 +102,9 @@ theme.notification_icon_size = config.dpi(24)
 theme.notification_action_halign = "right"
 theme.notification_close_icon = config_dir .. "images/x.svg"
 
+theme.checkbox_false_icon = config_dir .. "images/checkbox-false.svg"
+theme.checkbox_true_icon = config_dir .. "images/checkbox-true.svg"
+
 theme.battery_icon = config_dir .. "images/battery.svg"
 theme.battery_10_icon = config_dir .. "images/battery-10.svg"
 theme.battery_25_icon = config_dir .. "images/battery-25.svg"
@@ -117,6 +120,7 @@ theme.volume_icon = config_dir .. "images/volume-2.svg"
 theme.volume_mute_icon = config_dir .. "images/volume-x.svg"
 
 theme.wifi_icon = config_dir .. "images/wifi.svg"
+theme.wifi_connected_icon = config_dir .. "images/connected.svg"
 theme.wifi_100_icon = config_dir .. "images/wifi.svg"
 theme.wifi_75_icon = config_dir .. "images/wifi-75.svg"
 theme.wifi_50_icon = config_dir .. "images/wifi-50.svg"
