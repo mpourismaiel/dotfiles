@@ -1,0 +1,116 @@
+* Release v0.10.3
+
+Stefano Mazzucco (26):
+      Update travis-ci configuration
+      Factor out DBUS_NAME_FLAG_REPLACE_EXISTING in tests
+      Ensure we're asserting that a value changes in async tests
+      Test DBus's message bus properties rather than UPower's
+      Update travis-ci badge in README.md
+      Use Ununtu 18.04 (bionic) rather than 16.04 (xenial) in CI
+      Add an underscore to a property if it has the same name as a method
+      Don't skip a test if DBUS_ADDRESS env var is not found
+      Add flake.nix
+      Invert logic for defaultPackage in flake.nix
+      Use packageOverrides in overlay to add package to luaPackages
+      Modify flake checks to use overlay rather than package
+      Don't use lastModified date in flake version
+      Move comments to external notes
+      Add "default" lua override, use it as defaultPackage
+      Refactor flake overlays so they are composable
+      Add Makefile and other release goodies
+      Add make target to build the test driver
+      Update flake.lock
+      Fix printed output of 'make test-driver'
+      Add make target to run integration tests
+      Print integration test output
+      Remove 'result' with Make clean
+      Update flake.lock
+      Build nix-flake branch in travis-ci
+      Fix luacheck warning about using "unused" variable
+
+* Release v0.10.2
+
+Stefano Mazzucco (2):
+      Update and regenerate documentation
+      Add rockspec for version 0.10.2
+
+Guilherme Felipe da Silva (1):
+      Add async method support
+
+* Release v0.10.1
+
+Stefano Mazzucco (1):
+      Add rockspec for version 10.0.1
+
+Unai Fernández (1):
+      Make "unpack" compatible with LuaJIT
+
+* Release v0.10.0
+
+Stefano Mazzucco (5):
+      Update copyright header
+      Improve documentation and generate html docs
+      Add info about installing with NixOS to README
+      Update generated documentation
+      Add rockspec for version 0.10.0
+
+Björn Kalkbrenner (1):
+      Add error-handling for call_sync
+
+James Reed (1):
+      Add callback parameter to monitored proxy
+
+* Release v0.9.0
+
+Stefano Mazzucco (6):
+      Move rockspec files to rockspec dir
+      Fix callback function signature in connect_signal (BREAKING CHANGE)
+      Fix .travis.yml broken by ecad080
+      Use "busted" as a global namespace in the tests
+      Reformat tests
+      Add rockspec for version 0.9.0
+
+* Release v0.8.5
+
+Stefano Mazzucco (11):
+      Add continuous integration configuration
+      Fix typo in docs
+      Install dbus-x11 in Travis CI
+      Move proxy object code to its own file
+      Minor formatting fix
+      Fix docs for Proxy object
+      Add monitored proxy objecs
+      Add rockspec for version 0.8.5
+      Fix luacheck warning about unused loop variable in tests
+      Fix bus name leak in tests
+      Acquire and release name explicitly in test for disconnected monitor
+
+* Release v0.8.1
+
+Stefano Mazzucco (3):
+      Refactor variant.strip
+      Use GLib-specific code to strip variants
+      Add rockspec for version 0.8.1
+
+* Release v0.8.0
+
+Stefano Mazzucco (6):
+      Update documentation
+      Improve error message when introspection fails when proxy is created
+      Access g-* properties using g_ instead of ["g_"]
+      Don't override methods with same name and different interface
+      Fix property setter
+      Add rockspec for version 0.8.0
+
+* Release v0.7.1
+
+Stefano Mazzucco (2):
+      Expose almost all g-* properties
+      Release version 0.7.1: expose almost all g-* properties
+
+* Release v0.7.0
+
+Stefano Mazzucco (2):
+      First public commit
+      Release to luarocks v0.7.0
+

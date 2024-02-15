@@ -1,0 +1,103 @@
+<html>
+<head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self' 'unsafe-inline'">
+    <style>
+        h1, p, li { color : white; }
+        span { background : rgba(0,0,0,0.8); }
+        span.ifnot { background : rgba(100,0,0,0.8); }
+        div#explanation {
+            position: absolute;
+            padding: 2em;
+            width: 30em;
+        }
+        .monitor-frame {
+            background: radial-gradient(#0000ff22, #0000ff99);
+            position: absolute;
+            border: 10px solid red;
+            box-sizing: border-box;
+            display: flex;
+            align-items: center;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="monitor-frame-container"></div>
+    <div id="explanation">
+    <h1><span>Welcome to the future!</span></h1>
+    <p><span>You should be able to—
+        <ul>
+            <li><span><strong>see your desktop</strong> through
+                    <strong>translucent blue</strong>,</span></li>
+            <li><span><strong>click on stuff normally</strong> (through this
+                    overlay), and</span></li>
+            <li><span>see each monitor <strong>correctly outlined</strong> and
+                    labelled with its device name.</span></li>
+        </ul>
+    <p><span class='ifnot'><strong>If not</strong>, create an issue at
+        <em>https://github.com/anko/hudkit/issues</em>.</span></p>
+    <p><span><strong>Otherwise</strong>, enjoy!</span></p>
+    </div>
+    <script>
+
+        // Async wrapper necessary so we can use `await`
+        ;(async () => {
+            // Make the overlay window clickable in a 100-pixel-wide strip at
+            // the left of your leftmost monitor.
+            await Hudkit.setClickableAreas([
+                { x: 0, y: 0, width: 100, height: 1200 }
+            ])
+
+            async function showMonitorFrames() {
+                // At the location of each monitor, show obvious blue frames
+                // with red borders, and the monitor's name.
+
+                let container = document.getElementById('monitor-frame-container')
+                // Clear container
+                for (let i = container.children.length; i > 0; --i) {
+                    container.removeChild(container.children[0])
+                }
+
+                const monitors = await Hudkit.getMonitorLayout()
+
+                console.log(JSON.stringify(monitors, null, 2))
+
+                monitors.forEach((monitor, monitorIndex) => {
+
+                    let monitorFrame = document.createElement('div')
+                    monitorFrame.setAttribute('class', 'monitor-frame')
+                    monitorFrame.style.left = monitor.x
+                    monitorFrame.style.top = monitor.y
+                    monitorFrame.style.width = monitor.width
+                    monitorFrame.style.height = monitor.height
+                    container.appendChild(monitorFrame)
+
+                    let labelDiv = document.createElement('div')
+                    labelDiv.style.margin = '0 auto'
+                    labelDiv.style.width = '50%'
+                    let label = document.createElement('h1')
+                    label.appendChild(document.createTextNode(monitor.name))
+                    label.style['font-size'] = '100pt'
+                    label.style.color = 'red'
+                    label.style['text-align'] = 'center'
+                    labelDiv.appendChild(label)
+                    monitorFrame.appendChild(labelDiv)
+                })
+            }
+
+            // Show initially
+            await showMonitorFrames()
+            // Update the display whenever the monitor layout changes
+            Hudkit.on('monitors-changed', showMonitorFrames)
+            Hudkit.on('composited-changed', haveTransparency => {
+                if (!haveTransparency) {
+                    console.log("Lost transparency support!  Closing.")
+                    window.close()
+                }
+            })
+        })()
+    </script>
+</body>
+</html>

@@ -1,0 +1,43 @@
+= Changelog
+:toc:
+:toclevels: 1
+:idprefix:
+:idseparator: -
+
+== [Unreleased]
+
+== [v0.3.0] - 2022-04-13
+
+=== Added
+
+* `file.copy`: Copy files and directories
+
+=== Fixed
+
+* `file.move`: Fixed exception due to introspection issues
+
+== [v0.2.0] - 2022-03-16
+
+=== Added
+
+* `file.is_instance`: Static function to check if a value is a file handle.
+* `file.create`: Create an empty file.
+* `file.read_string`: Read the entire contents of a file into memory. Replaces `file.read_all`.
+* `file.read_bytes`: Read the specified number of bytes from the file.
+* `file.get_path`: Get the path the file handle points to.
+* New module `filesystem`: Utilities for handling directories and other file system properties.
+* `filesystem.make_directory`: Create a directory at a given path.
+* `filesystem.iterate_contents`: Run a function against the entries of a directory, recursively.
+* `filesystem.list_contents`: List the contents of a directory.
+* `filesystem.remove_directory`: Remove a directory.
+
+=== Changed
+
+* `file.move`: Now also allows file handlers and instances of `Gio.File` as destination parameter.
+* `file.iterate_lines`: Renamed from `file.read_lines`.
+
+== [v0.1.0] - 2022-03-06
+
+=== Added
+
+* initial release
