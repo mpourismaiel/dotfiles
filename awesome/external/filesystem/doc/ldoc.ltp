@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>$(ldoc.title)</title>
+    <link rel="stylesheet" href="$(ldoc.css)" type="text/css" />
+</head>
+<body>
+
+# local function M(txt, item) return ldoc.markup(txt, item, ldoc.plain) end
+# -- LDoc doesn't expose this, even though it does expose `pairs`. *insert confused face*
+# local function next(tbl)
+#   local n, t = ldoc.pairs(tbl)
+#   return n(t)
+# end
+
+<aside id="sidebar" class="has-background-white-ter">
+    <h1 class="title"><a href="https://github.com/sclu1034/lgi-async-extra">$(ldoc.project)</a></h1>
+    <nav class="menu">
+# if not ldoc.single then
+        <ul class="menu-list">
+            <li><a class="$(not module and 'is-active')" href="$(module and '../' or '')$(ldoc.output).html">Index</a></li>
+        </ul>
+# end
+# local this_mod = module and module.name
+# for kind, mods, type in ldoc.kinds() do
+#   if ldoc.allowed_in_contents(type, module) then
+        <p class="menu-label">$(kind)</p>
+        <ul class="menu-list">
+#     for mod in mods() do
+#       local name = ldoc.display_name(mod)
+#       if mod.name == this_mod then
+            <li>
+                <a class="is-active">$(name)</a>
+                <ul>
+#         if kind == "Modules" then
+                    <li><a href="#toc">Table of contents</a></li>
+#         end
+#         for mod_kind, mod_items in mod.kinds() do
+                    <li><a href="#$(ldoc.no_spaces(mod_kind))">$(mod_kind)</a></li>
+#         end
+                </ul>
+            </li>
+#       else
+            <li><a href="$(ldoc.ref_to_module(mod))">$(name)</a></li>
+#       end
+#     end
+        </ul>
+#   end
+# end
+    </nav>
+</aside>
+<div id="content" class="content__wrapper">
+# if ldoc.body then -- verbatim HTML as contents; 'non-code' entries
+    <section class="section section__raw-content">
+        <div class="container content">$(ldoc.body)</div>
+    </section>
+# elseif module then
+    <section class="section section__module-description">
+        <div class="container">
+            <h1 class="title is-1">$(ldoc.module_typename(module)) <em>$(module.name)</em></h1>
+            <h3 class="subtitle is-3">$(M(module.summary, module))</h3>
+            <div class="content">
+                <p>$(M(module.description, module))</p>
+            </div>
+#   if module.info or next(module.tags) then
+            <div class="field is-grouped is-grouped-multiline">
+#     for tag, value in module.info:iter() do
+                <div class="control">
+                    <div class="tags are-medium has-addons">
+                        <span class="is-dark tag">$(tag)</span>
+                        <span class="tag">$(M(value, module))</span>
+                    </div>
+                </div>
+#     end
+            </div>
+#   end
+        </div>
+    </section>
+#   if not ldoc.no_summary then
+    <section class="section section__module-summary">
+        <div class="container">
+            <h2 id="toc" class="title is-3">Table of contents</h2>
+#     for kind, items in module.kinds() do
+            <h3 class="title is-4"><a href="#$(ldoc.no_spaces(kind))">$(kind)</a></h3>
+            <table class="table is-fullwidth is-striped">
+                <tbody>
+#       for item in items() do
+                    <tr>
+                        <td class="name"><a href="#$(item.name)">$(ldoc.display_name(item))</a></td>
+                        <td class="summary">$(M(item.summary, item))</td>
+                    </tr>
+#       end
+                </tbody>
+            </table>
+#     end
+        </div>
+    </section>
+#   end
+
+#   for kind, items in module.kinds() do
+#     local kitem = module.kinds:get_item(kind)
+#     local has_description = kitem and ldoc.descript(kitem) ~= ""
+    <section class="section section--$(kind)">
+        <div class="container">
+            <h2 class="title is-2" id="$(ldoc.no_spaces(kind))"><a href="#$(ldoc.no_spaces(kind))">$(kind)</a></h2>
+#     local section_description = module.kinds:get_section_description(kind)
+#     if section_description then
+            <div class="content">$(M(section_description, nil))</div>
+#     end
+#     if has_description then
+            <div class="content section__description">
+                $(M(ldoc.descript(kitem), kitem))
+            </div>
+#     end
+            <div class="section__content">
+#     for item in items() do
+#       local has_tags = next(item.tags) ~= nil
+                <div id="$(item.name)" class="box section__item $(has_tags and 'section__item--has-tags')">
+                    <div class="block section__item__title">
+                        <strong>$(ldoc.display_name(item))</strong>
+#       if ldoc.prettify_files and ldoc.is_file_prettified[item.module.file.filename] then
+                        <a class="source-ref" href="$(ldoc.source_ref(item))">[src]</a>
+#       end
+                    </div>
+
+#       if has_tags then
+                    <div class="field is-grouped is-grouped-multiline section__item__tags">
+#         if item.tags["async"] then
+                        <div class="control">
+                            <span class="tag" data-tooltip="This function returns before the operation has finished. The callback function is called with the return values.">async</span>
+                        </div>
+#         end
+                        <div class="control">
+#         if item.tags["since"] then
+#           local version = item.tags["since"][1]
+#           if version == "git" then
+                            <div class="tags has-addons" data-tooltip="This item has not been released yet.">
+                                <span class="tag is-dark">since</span>
+                                <span class="tag"><a href="https://github.com/sclu1034/lgi-async-extra">git</a></span>
+                            </div>
+#           else
+                            <div class="tags has-addons" data-tooltip="This item has been added as part of release version v$(version).">
+                                <span class="tag is-dark">since</span>
+                                <span class="tag"><a href="https://github.com/sclu1034/lgi-async-extra/releases/tag/v$(version)">v$(version)</a></span>
+                            </div>
+#           end
+#         end
+                        </div>
+                    </div>
+#       end
+
+                    <div class="block content section__item__description">$(M(ldoc.descript(item), item))</div>
+
+#       if not ldoc.no_return_or_params then
+#         if item.params and #item.params > 0 then
+                    <div class="block content section__item__params">
+#           local subnames = module.kinds:type_of(item).subnames
+#           if subnames then
+                        <h4 class="title is-6">$(subnames):</h4>
+#           end
+                        <ul>
+#           for parm in ldoc.modules.iter(item.params) do
+#             local param, sublist = item:subparam(parm)
+#             if sublist then
+                            <li class="parameter">
+                                <div>
+                                    <span class="parameter__name"><em>$(sublist)</em></span>
+#               local description = item.params.map[sublist]
+#               if description and description ~= "" then
+                                    <span class="parameter__description">:&nbsp;$(M(description, item))</span>
+#               end
+                                </div>
+                                <div class="control">
+                                    <div class="tags has-addons">
+                                        <span class="tag is-dark">type</span>
+                                        <span class="tag parameter__type"><span>$(ldoc.typename('table'))</span></span>
+                                    </div>
+                                </div>
+                            <ul>
+#             end
+#             for p in ldoc.modules.iter(param) do
+#               local name = item:display_name_of(p)
+#               local type_name = ldoc.typename(item:type_of_param(p))
+#               local default = item:default_of_param(p)
+                            <li class="parameter">
+                                <div>
+                                    <span class="parameter__name"><em>$(name)</em></span>
+#               local description = item.params.map[p]
+#               if description and description ~= "" then
+                                    <span class="parameter__description">:&nbsp;$(M(description, item))</span>
+#               end
+                                </div>
+                                <div class="field is-grouped is-grouped-multiline parameter__tags">
+#               if type_name ~= '' then
+                                    <div class="control">
+                                        <div class="tags has-addons">
+                                            <span class="tag is-dark">type</span>
+                                            <span class="tag parameter__type"><span>$(type_name)</span></span>
+                                        </div>
+                                    </div>
+#               end
+#               if default == true then
+                                    <div class="control">
+                                        <div class="tags">
+                                            <span class="tag parameter__optional">optional</span>
+                                        </div>
+                                    </div>
+#               elseif default then
+                                    <div class="control">
+                                        <div class="tags has-addons">
+                                            <span class="tag is-dark">default</span>
+                                            <span class="tag parameter__default"><code>$(default)</code></span>
+                                        </div>
+                                    </div>
+#               end
+#               if item:readonly(p) then
+                                    <div class="control">
+                                        <div class="tags">
+                                            <span class="tag parameter__readonly">readonly</span>
+                                        </div>
+                                    </div>
+#               end
+                                </div>
+                            </li>
+#             end
+#             if sublist then
+                            </ul>
+#             end
+#           end
+
+                        </ul>
+                    </div>
+#         end
+#         if item.retgroups then
+#           -- I only need a single return group for now
+#           local group = item.retgroups[1]
+                    <div class="block content section__item__returns">
+#           if item.tags["async"] then
+                        <h4 class="title is-6">Callback parameters:</h4>
+#           else
+                        <h4 class="title is-6">Returns:</h4>
+#           end
+                        <ul>
+#           for r in group:iter() do
+                            <li class="return-value">
+#             local description = r.text
+#             if description and description ~= "" then
+                                <div class="return-value__description">
+                                    <span>$(M(description, item))</span>
+                                </div>
+#             end
+#             local t, ctypes = item:return_type(r)
+#             local rt = ldoc.typename(t)
+#             local optional = false
+#             if rt:match("optional ") then
+#               optional = true
+#               rt = rt:match("optional (.*)")
+#             end
+                                <div class="field is-grouped is-grouped-multiline">
+                                    <div class="control">
+                                        <div class="tags has-addons">
+                                            <span class="tag is-dark">type</span>
+                                            <span class="tag return-value__type"><span>$(rt)</span></span>
+                                        </div>
+                                    </div>
+#             if optional then
+                                    <div class="control">
+                                        <div class="tags">
+                                            <span class="tag return-value__optional">optional</span>
+                                        </div>
+                                    </div>
+#             end
+                                </div>
+                            </li>
+#           end
+                        </ul>
+                    </div>
+#         end
+#       end
+#       if item.usage then
+                    <div class="block content section__item__usage">
+                        <h4 class="title is-6">Usage:</h4>
+#         for usage in ldoc.modules.iter(item.usage) do
+                            <pre class="code-block code-block--lua">$(ldoc.prettify(usage))</pre>
+#         end
+                    </div>
+#       end
+                </div>
+#     end
+            </div>
+        </div>
+    </section>
+#   end
+# else -- elseif module -> project-level content
+    <section class="section section__project-description">
+        <div class="container">
+            <h1 class="title is-1">$(ldoc.project)</h1>
+#   if ldoc.description then
+            <h2 class="subtitle is-3">$(M(ldoc.description, nil))</h2>
+#   end
+#   if ldoc.full_description then
+            <div class="content">
+                <p>$(M(ldoc.full_description,nil))</p>
+            </div>
+#   end
+        </div>
+    </section>
+
+    <section class="section section__project-summary">
+        <div class="container">
+#   for kind, mods in ldoc.kinds() do
+#     kind = kind:lower()
+            <h2 class="title is-4">$(kind)</h2>
+            <table class="table is-fullwidth is-striped">
+                <tbody>
+#     for m in mods() do
+                    <tr>
+                        <td class="name"><a href="$(ldoc.no_spaces(kind))/$(m.name).html">$(m.name)</a></td>
+                        <td class="summary">$(M(ldoc.strip_header(m.summary), m))</td>
+                    </tr>
+#     end
+                </tbody>
+            </table>
+#   end
+        </div>
+    </section>
+# end
+
+    <footer class="footer">
+        <div class="content has-text-centered">
+            Generated by <a href="https://github/com/stevendonovan/LDoc">LDoc $(ldoc.version)</a>, designed with <a href="https://github.com/jgthms/bulma">Bulma</a>. Last updated at $(ldoc.updatetime).
+        </div>
+    </footer>
+</div>
+
+</body>
+</html>

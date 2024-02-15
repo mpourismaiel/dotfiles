@@ -1,0 +1,64 @@
+@import 'scss/bulma/sass/base/all';
+@import 'scss/bulma/sass/helpers/all';
+@import 'scss/bulma/sass/utilities/all';
+
+@import 'scss/bulma/sass/components/menu';
+
+// Required for single-line tags
+@import 'scss/bulma/sass/form/shared';
+@import 'scss/bulma/sass/form/tools';
+
+@import 'scss/bulma/sass/elements/box';
+@import 'scss/bulma/sass/elements/container';
+@import 'scss/bulma/sass/elements/content';
+@import 'scss/bulma/sass/elements/table';
+@import 'scss/bulma/sass/elements/tag';
+@import 'scss/bulma/sass/elements/title';
+
+@import 'scss/bulma/sass/layout/footer';
+@import 'scss/bulma/sass/layout/section';
+
+@import 'scss/syntax';
+
+:root {
+    --sidebar-width: 15rem;
+}
+
+.block {
+    @extend %block;
+}
+
+#sidebar {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    width: var(--sidebar-width);
+
+    padding: .5em;
+
+    box-shadow: 1px 0 2px hsl(0, 0%, 48%);
+}
+
+#content {
+    margin-left: var(--sidebar-width);
+}
+
+.source-ref {
+    float: right;
+}
+
+.section__item > div:not(:first-child) {
+    margin-left: 1em;
+}
+
+.section__item__title > .tag {
+    vertical-align: bottom;
+}
+
+.parameter .parameter__tags {
+    margin-top: .25em;
+}
+
+.menu-list a:not(.is-active):hover {
+    background-color: var(--lt-color-white);
+}

@@ -1,0 +1,12 @@
+status = [
+    "check",
+    "test (5.1)",
+    "test (5.2)",
+    "test (5.3)",
+    "test (5.4)",
+    "test (luajit)",
+    "rock (5.1)",
+    "rock (5.2)",
+    "rock (5.3)",
+    "rock (5.4)",
+]

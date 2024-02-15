@@ -1,0 +1,51 @@
+version: ~> 1.0
+
+language: python
+
+os: linux
+dist: bionic
+
+env:
+  global:
+    - DISPLAY=fake
+  jobs:
+    - LUA="luajit latest"
+    - LUA="lua 5.2"
+    - LUA="lua 5.3"
+
+branches:
+  only:
+    - nix-flake
+    - travis-ci
+    - master
+
+before_install:
+  - sudo apt-get -qq update
+  - sudo apt-get install -y libglib2.0-dev libgirepository1.0-dev libffi-dev dbus dbus-x11
+  - pip install hererocks
+  - hererocks ~/hererocks -r^ --$LUA
+  - export PATH=$PATH:~/hererocks/bin
+  - eval `luarocks path --bin`
+  - lua -v
+  - luarocks install luacheck
+  - luarocks install luacov
+  - luarocks install busted
+
+install:
+  - luarocks install --only-deps rockspec/dbus_proxy-devel-1.rockspec
+
+before_script:
+  - export $(dbus-launch)
+  - dbus-send --print-reply --session --dest=org.freedesktop.DBus /org/freedesktop/DBus org.freedesktop.DBus.ListNames
+
+script:
+  - luacheck .
+  - busted --exclude-tags=skipci .
+  - busted --exclude-tags=skipci --coverage .
+
+after_success:
+  - bash <(curl -s https://codecov.io/bash)
+
+cache:
+  directories:
+    - $HOME/.cache/hererocks

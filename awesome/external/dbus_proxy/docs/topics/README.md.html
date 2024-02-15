@@ -1,0 +1,275 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+   "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+<head>
+    <title>Lua DBus Proxy Documentation</title>
+    <link rel="stylesheet" href="../ldoc.css" type="text/css" />
+</head>
+<body>
+
+<div id="container">
+
+<div id="product">
+	<div id="product_logo"></div>
+	<div id="product_name"><big><b></b></big></div>
+	<div id="product_description"></div>
+</div> <!-- id="product" -->
+
+
+<div id="main">
+
+
+<!-- Menu -->
+
+<div id="navigation">
+<br/>
+<h1>dbus_proxy</h1>
+
+
+<h2>Contents</h2>
+<ul>
+<li><a href="#Luarocks">Luarocks </a></li>
+<li><a href="#NixOS">NixOS </a></li>
+</ul>
+
+
+<h2>Topics</h2>
+<ul class="">
+  <li><strong>README</strong></li>
+</ul>
+<h2>Modules</h2>
+<ul class="nowrap">
+  <li><a href="../index.html">dbus_proxy</a></li>
+</ul>
+
+</div>
+
+<div id="content">
+
+
+<p><a href="https://travis-ci.com/stefano-m/lua-dbus_proxy"><img src="https://travis-ci.com/stefano-m/lua-dbus_proxy.svg?branch=master" alt="Build
+Status"/></a>
+<a href="https://codecov.io/gh/stefano-m/lua-dbus_proxy"><img src="https://codecov.io/gh/stefano-m/lua-dbus_proxy/branch/master/graph/badge.svg" alt="codecov"/></a></p>
+
+<h2>DBus Proxy Objects for Lua - v0.10.3</h2>
+
+<p><a href="../index.html#">dbus_proxy</a> is a Lua module built on top
+of <a href="https://github.com/pavouk/lgi">lgi</a> to offer a simple API to GLib's
+GIO
+<a href="https://developer.gnome.org/gio/stable/GDBusProxy.html#GDBusProxy.description">GDBusProxy</a>
+objects. This should make it easier to interact
+with <a href="https://dbus.freedesktop.org/doc/dbus-tutorial.html">DBus</a> interfaces.</p>
+
+<p>Creating a proxy object is as easy as doing</p>
+
+
+<pre>
+p = <span class="global">require</span>(<span class="string">"dbus_proxy"</span>)
+proxy = p.Proxy:new(
+  {
+    bus = p.Bus.SYSTEM, <span class="comment">-- or p.Bus.SESSION
+</span>    name = <span class="string">"com.example.BusName"</span>,
+    interface = <span class="string">"com.example.InterfaceName"</span>,
+    path = <span class="string">"/com/example/objectPath"</span>
+  }
+)
+</pre>
+
+
+<p>At this point, all the properties, methods and signals of the object are
+available in the <code>proxy</code> table.  Be aware that properties, methods and signals
+will likely be written in <code>CamelCase</code> since this it the convention in DBus
+(e.g. <code>proxy.SomeProperty</code> or <code>proxy:SomeMethod()</code>). Please refer to the
+documentation of the object you are proxying for more information.</p>
+
+<hr/>
+
+<p><strong>NOTE</strong></p>
+
+<p><em>If</em> a property has the same name as a <em>method</em>, as e.g. it happens with
+<code>org.freedesktop.systemd1.Unit</code> in the case of <code>Restart</code>, an <em>underscore</em> will
+be added to it.</p>
+
+<p>For example:</p>
+
+
+<pre>
+<span class="keyword">local</span> p = <span class="global">require</span>(<span class="string">"dbus_proxy"</span>)
+
+<span class="keyword">local</span> proxy = p.Proxy:new(
+  {
+    bus = p.Bus.SESSION,
+    name = <span class="string">"org.freedesktop.systemd1"</span>,
+    interface = <span class="string">"org.freedesktop.systemd1.Unit"</span>,
+    path = <span class="string">"/org/freedesktop/systemd1/unit/redshift_2eservice"</span>
+  }
+)
+
+<span class="comment">-- https://github.com/systemd/systemd/blob/v246/src/core/job.c#L1623
+</span><span class="keyword">local</span> job_mode = <span class="string">"replace"</span>
+ok, err = proxy:Restart(_job_mode)
+<span class="global">assert</span>(ok, <span class="global">tostring</span>(err))
+<span class="global">print</span>(ok) <span class="comment">-- e.g. "/org/freedesktop/systemd1/job/123"
+</span>
+restart_property = proxy._Restart
+<span class="comment">-- same as: proxy.accessors._Restart.getter(proxy)</span>
+</pre>
+
+
+<hr/>
+
+<p>The code is released under the Apache License Version 2.0, see the LICENSE file
+for full information.</p>
+
+<p>For more detailed information, see the documentation in the <code>docs</code> folder.</p>
+
+
+<h1>Motivation</h1>
+
+<p>I have written a few widgets for the Awesome Window Manager that use DBus. The
+widgets depend on <a href="https://github.com/stefano-m/lua-ldbus_api"><code>ldbus_api</code></a> -
+also written by me - which is a high level API written on top
+of <a href="https://github.com/daurnimator/ldbus/"><code>ldbus</code></a>.  <code>ldbus</code> has
+an <a href="https://github.com/daurnimator/ldbus/issues/6">outstanding bug</a> that may
+cause of random crashes.  I have been looking into a more actively developed
+library to replace <code>ldbus_api</code> and <code>ldbus</code> and found <code>lgi</code>, which offers a much
+better way of interacting with DBus using GIO's Proxy objects.</p>
+
+<h1>Documentation</h1>
+
+<p>The documentation is built using <a href="stevedonovan.github.io/ldoc/"><code>ldoc</code></a>. For
+convenience, a copy of the generated documentation is available in the <code>docs</code>
+folder.</p>
+
+<p>To generate the documentation from source, run</p>
+
+
+<pre>
+ldoc .
+</pre>
+
+
+<p>from the root of the repository.</p>
+
+<h1>Installation</h1>
+
+<p><a name="Luarocks"></a></p>
+<h2>Luarocks</h2>
+
+<p>You can install <a href="../index.html#">dbus_proxy</a> with <code>luarocks</code> by running:</p>
+
+
+<pre>
+luarocks install dbus_proxy
+</pre>
+
+
+<p>You may need to use the <code>--local</code> option if you can't or don't want to install
+the module at the system level.</p>
+
+<p><a name="NixOS"></a></p>
+<h2>NixOS</h2>
+
+<p>If you are on NixOS, you can install this package from
+<a href="https://github.com/stefano-m/nix-stefano-m-nix-overlays">nix-stefano-m-overlays</a>.</p>
+
+<h1>Testing</h1>
+
+<p>To test the code, you need to install
+the <a href="http://olivinelabs.com/busted/">busted</a> framework.  Then run</p>
+
+
+<pre>
+busted .
+</pre>
+
+
+<p>(node the dot!) from the root of the repository to run the tests.</p>
+
+<p>The tests depend on a number of DBus interfaces being available on the
+system.  It would be nice to not depend on this, but I don't have time to come
+up with a complete DBus mock (contributions are welcome!).</p>
+
+
+<h1>Contributing</h1>
+
+<p>This project is developed in my own spare time, progress will likely be slow as
+soon as I reach a decent level of satisfaction with it.  That said, for
+feedback, suggestions, bug reports and improvements, please create an issue in
+GitHub and I'll do my best to respond.</p>
+
+
+<h1>Synchronizing Proxy Objects</h1>
+
+<p>As already explained, the Proxy objects expose methods, properties and signals
+of the corresponding remote DBus objects.  When a property in a DBus object
+changes, the same change is reflected in the proxy.  Similarly, when a signal
+is emitted, the proxy object is notified accordingly.</p>
+
+<p>For all this to work though, the code must run
+inside
+<a href="https://developer.gnome.org/glib/stable/glib-The-Main-Event-Loop.html#glib-The-Main-Event-Loop.description">GLib's main event loop</a>. This
+can be achieved in two ways:</p>
+
+<ul>
+    <li>Create
+    a
+    <a href="https://developer.gnome.org/glib/stable/glib-The-Main-Event-Loop.html#GMainLoop">main loop</a> and
+    run it when the application starts:</li>
+</ul>
+
+
+<pre>
+   GLib = <span class="global">require</span>(<span class="string">"lgi"</span>).GLib
+   <span class="comment">-- Set up the application, then do:
+</span>   main_loop = GLib.MainLoop()
+   main_loop:run()
+   <span class="comment">-- use main_loop:quit() to stop the main loop.</span>
+</pre>
+
+
+<ul>
+    <li>Use more fine-grained control by running an iteration at a time from
+    the
+    <a href="https://developer.gnome.org/glib/stable/glib-The-Main-Event-Loop.html#GMainContext">main context</a>;
+    this is particularly useful when you want to integrate your code with an
+    <strong>external main loop</strong>:</li>
+</ul>
+
+
+<pre>
+   GLib = <span class="global">require</span>(<span class="string">"lgi"</span>).GLib
+   <span class="comment">-- Set up the code, then do
+</span>   ctx = GLib.MainLoop():get_context()
+   <span class="comment">-- Run a single blocking iteration
+</span>   <span class="keyword">if</span> ctx:iteration(<span class="keyword">true</span>) == <span class="keyword">true</span> <span class="keyword">then</span>
+     <span class="global">print</span>(<span class="string">"something changed!"</span>)
+   <span class="keyword">end</span>
+   <span class="comment">-- Run a single non-blocking iteration
+</span>   <span class="keyword">if</span> ctx:iteration() == <span class="keyword">true</span> <span class="keyword">then</span>
+     <span class="global">print</span>(<span class="string">"something changed here too!"</span>)
+   <span class="keyword">end</span>
+</pre>
+
+
+
+<hr/>
+
+<p>  <strong>NOTE</strong></p>
+
+<p>  If you use the <a href="https://awesomewm.org/">Awesome Window Manager</a>, the code
+  will be already running inside a main loop.</p>
+
+<hr/>
+
+
+</div> <!-- id="content" -->
+</div> <!-- id="main" -->
+<div id="about">
+<i>generated by <a href="http://github.com/stevedonovan/LDoc">LDoc 1.4.6</a></i>
+<i style="float:right;">Last updated 1980-01-01 00:00:00 </i>
+</div> <!-- id="about" -->
+</div> <!-- id="container" -->
+</body>
+</html>

@@ -1,0 +1,44 @@
+name: Deploy docs
+
+on:
+  push:
+    branches: ['master']
+
+env:
+  DEBIAN: noninteractive
+
+jobs:
+  deploy-docs:
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v2.4.0
+      - uses: leafo/gh-actions-lua@v8.0.0
+      - uses: leafo/gh-actions-luarocks@v4.0.0
+      - uses: actions/setup-node@v2
+        with:
+          node-version: 'lts/*'
+
+      - name: Install dependencies
+        run: |
+          luarocks install ldoc
+          luarocks install lua-discount
+          npm install -g sass
+
+      - name: Install task runner
+        run: |
+          mkdir ~/just && cd ~/just
+          wget https://github.com/casey/just/releases/download/1.0.1/just-1.0.1-x86_64-unknown-linux-musl.tar.gz
+          tar -xvf just-1.0.1-x86_64-unknown-linux-musl.tar.gz
+          sudo install ./just /usr/local/bin/just
+
+      - name: Generate documentation
+        run: |
+          just doc
+          # Tell GitHub that we don't use Jekyll
+          touch out/doc/.nojekyll
+
+      - name: Deploy to gh-pages
+        uses: JamesIves/github-pages-deploy-action@v4.2.5
+        with:
+          branch: gh-pages
+          folder: out/doc

@@ -1,0 +1,16 @@
+local assert = require("luassert")
+local spy = require("luassert.spy")
+
+local async = require("async")
+
+describe('async.once', function()
+    it('can only be called once', function()
+        local s = spy(function() end)
+        local once = async.once(s)
+        assert.spy(s).was_not_called()
+        once()
+        assert.spy(s).was_called(1)
+        once()
+        assert.spy(s).was_called(1)
+    end)
+end)
