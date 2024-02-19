@@ -1,0 +1,14 @@
+.clock {
+  padding-top: $bar_date_vertical_padding;
+  padding-bottom: $bar_date_vertical_padding;
+  font-family: $font_family;
+
+  &-hour {
+    font-weight: bold;
+    font-size: $bar_date_hour_font_size;
+  }
+
+  &-minute {
+    font-size: $bar_date_minute_font_size;
+  }
+}

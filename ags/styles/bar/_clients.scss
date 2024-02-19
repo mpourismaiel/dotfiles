@@ -1,0 +1,40 @@
+.clients {
+  .client-container {
+    padding: 4px;
+
+    .client {
+      padding: 0;
+      min-width: 36px;
+      min-height: 36px;
+      background-color: $theme_bg_color;
+
+      .client-indicator {
+        background-color: $theme_unselected_fg_color;
+        min-width: 4px;
+        min-height: 4px;
+        border-radius: 100px;
+        margin-top: 20px;
+        margin-left: 4px;
+        transition:
+          margin 0.3s ease,
+          min-height 0.3s ease,
+          background-color 0.3s ease-out;
+      }
+
+      .client-icon {
+        margin: 10px;
+        margin-left: 6px;
+      }
+
+      &.focused {
+        background-color: $theme_selected_bg_color;
+
+        .client-indicator {
+          margin-top: 16px;
+          min-height: 12px;
+          background-color: $theme_selected_fg_color;
+        }
+      }
+    }
+  }
+}

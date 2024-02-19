@@ -1,0 +1,16 @@
+{
+  "name": "ags",
+  "version": "1.0.0",
+  "description": "",
+  "main": "config.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mpourismaiel/dotfiles.git"
+  },
+  "author": "Mahdi Pourismaiel",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/mpourismaiel/dotfiles/issues"
+  },
+  "homepage": "https://github.com/mpourismaiel/dotfiles#readme"
+}

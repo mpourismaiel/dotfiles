@@ -1,0 +1,25 @@
+(defwindow example
+  :monitor 0
+  :geometry (geometry :x "0%"
+    :width "64px"
+    :height "100%"
+  :anchor "top left")
+  :stacking "fg"
+  :reserve (struts :distance "64px" :side "left")
+  :windowtype "dock"
+  :wm-ignore false
+  (two-boxes
+    (label :text "first")
+    (label :text "second")))
+
+(defwidget greeter [?text name]
+  (box :orientation "vertical"
+    :halign "center"
+    text
+    (button :onclick "notify-send 'Hello' 'Hello, ${name}'"
+    "t")))
+
+(defwidget two-boxes []
+  (box :orientation "vertical"
+    (box :class "first" (children :nth 0))
+    (box :class "second" (children :nth 1))))

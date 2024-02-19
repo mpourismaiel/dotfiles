@@ -14,3 +14,7 @@ logs/log-*
 
 # vim created this, someone explain it please
 .luarc.json
+
+node_modules
+*.log
+*.css.map

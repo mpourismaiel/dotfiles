@@ -1,0 +1,243 @@
+.panel-button-container {
+  background: none;
+  padding-left: 0;
+  padding-right: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  border-radius: 0;
+}
+.panel-button-container .panel-button {
+  margin-left: 4px;
+  margin-right: 4px;
+  margin-top: 4px;
+  margin-bottom: 4px;
+  padding-top: 5px;
+  padding-bottom: 5px;
+  background-color: #1e1e1e;
+  border-radius: 30px;
+  transition: background-color 0.3s ease-out;
+}
+.panel-button-container:hover {
+  box-shadow: inherit;
+  text-shadow: inherit;
+  background: none;
+}
+.panel-button-container:hover .panel-button {
+  background-color: #353535;
+}
+
+window.bar {
+  min-width: 48px;
+  background-color: #111111;
+  color: #cccccc;
+  font-family: "Inter";
+  font-size: 16px;
+}
+window.bar .workspaces .workspace {
+  min-width: 10px;
+  min-height: 10px;
+  border-radius: 100px;
+  margin: 5px 0;
+  transition: min-height 0.3s ease, background-color 0.3s ease-out;
+  background-color: #909090;
+}
+window.bar .workspaces .workspace.focused {
+  min-height: 24px;
+  background-color: #fff;
+}
+window.bar .clients .client-container {
+  padding: 4px;
+}
+window.bar .clients .client-container .client {
+  padding: 0;
+  min-width: 36px;
+  min-height: 36px;
+  background-color: #111111;
+}
+window.bar .clients .client-container .client .client-indicator {
+  background-color: #909090;
+  min-width: 4px;
+  min-height: 4px;
+  border-radius: 100px;
+  margin-top: 20px;
+  margin-left: 4px;
+  transition: margin 0.3s ease, min-height 0.3s ease, background-color 0.3s ease-out;
+}
+window.bar .clients .client-container .client .client-icon {
+  margin: 10px;
+  margin-left: 6px;
+}
+window.bar .clients .client-container .client.focused {
+  background-color: #353535;
+}
+window.bar .clients .client-container .client.focused .client-indicator {
+  margin-top: 16px;
+  min-height: 12px;
+  background-color: #fff;
+}
+window.bar .clock {
+  padding-top: 8px;
+  padding-bottom: 8px;
+  font-family: "Inter";
+}
+window.bar .clock-hour {
+  font-weight: bold;
+  font-size: 18px;
+}
+window.bar .clock-minute {
+  font-size: 19px;
+}
+window.bar .menu-toggle-button {
+  padding: 0;
+  min-width: 48px;
+  min-height: 36px;
+}
+window.bar .menu-toggle-button .menu-toggle-button-icon {
+  margin: 0 15px;
+  border: 2px solid #909090;
+  min-width: 14px;
+  min-height: 14px;
+  border-radius: 100px;
+}
+
+.profile .username {
+  font-weight: bold;
+}
+
+.bar-bluetooth {
+  min-width: 185px;
+}
+.bar-bluetooth .title {
+  font-size: 14px;
+}
+
+.bar-network {
+  min-width: 185px;
+}
+.bar-network .title {
+  font-size: 14px;
+}
+
+.bar-volume-indicator {
+  border-radius: 100px;
+  min-width: 36px;
+  min-height: 36px;
+  padding: 8px;
+}
+
+.bar-volume-slider trough {
+  transition: background-color 0.3s ease-in-out, color 0.3s ease-in-out;
+  border-radius: 100px;
+  background-color: #432d36;
+  min-height: 48px;
+}
+.bar-volume-slider trough highlight,
+.bar-volume-slider trough progress {
+  border-radius: 100px;
+  background-color: #9a0045;
+  border-radius: 100px;
+  transition: background-color 0.3s ease-in-out, color 0.3s ease-in-out;
+}
+.bar-volume-slider trough slider {
+  border-radius: 100px;
+  min-height: 42px;
+  min-width: 42px;
+  background: none;
+  transition: background-color 0.3s ease-in-out, color 0.3s ease-in-out;
+}
+
+.control-center {
+  background-color: transparent;
+}
+
+.menu .card {
+  background-color: #1e1e1e;
+  border-radius: 8px;
+  padding: 10px;
+  min-width: 400px;
+}
+.menu .card .panel-button {
+  padding: 16px;
+}
+.menu .menu-bar {
+  background-color: #111111;
+  min-height: 300px;
+  padding-left: 10px;
+  padding-top: 10px;
+  padding-right: 10px;
+  padding-bottom: 10px;
+  border-radius: 8px;
+}
+
+.info-panel-window .info-panel-container {
+  min-width: 500px;
+  min-height: 500px;
+  background-color: #111111;
+  padding: 10px;
+  border-radius: 8px;
+}
+
+window#notifications {
+  all: unset;
+}
+window#notifications box.notifications {
+  padding: 0.5em;
+}
+window#notifications .icon {
+  min-width: 68px;
+  min-height: 68px;
+  margin-right: 1em;
+}
+window#notifications .icon image {
+  font-size: 58px;
+  /* to center the icon */
+  margin: 5px;
+  color: #cccccc;
+}
+window#notifications .icon box {
+  min-width: 68px;
+  min-height: 68px;
+  border-radius: 7px;
+}
+window#notifications .notification {
+  min-width: 350px;
+  border-radius: 11px;
+  padding: 1em;
+  margin: 0.5em;
+  border: 1px solid #181818;
+  background-color: #111111;
+}
+window#notifications .notification.critical {
+  border: 1px solid lightcoral;
+}
+window#notifications .title {
+  color: #cccccc;
+  font-family: "Inter";
+  font-size: 1.4em;
+}
+window#notifications .body {
+  color: #888888;
+  font-family: "Inter";
+}
+window#notifications .actions .action-button {
+  margin: 0 0.4em;
+  margin-top: 0.8em;
+}
+window#notifications .actions .action-button:first-child {
+  margin-left: 0;
+}
+window#notifications .actions .action-button:last-child {
+  margin-right: 0;
+}
+
+* {
+  font-family: "Inter";
+  font-size: 16px;
+}
+
+.applauncher .popup-window-center {
+  min-width: 500px;
+  min-height: 500px;
+}
+
+/*# sourceMappingURL=style.css.map */

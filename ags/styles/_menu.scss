@@ -1,0 +1,31 @@
+@import './menu/profile';
+@import './menu/bluetooth';
+@import './menu/network';
+@import './menu/volume';
+
+.control-center {
+  background-color: transparent;
+}
+
+.menu {
+  .card {
+    background-color: $theme_card_bg_color;
+    border-radius: $theme_border_radius;
+    padding: 10px;
+    min-width: 400px;
+
+    .panel-button {
+      padding: 16px;
+    }
+  }
+
+  .menu-bar {
+    background-color: $theme_bg_color;
+    min-height: 300px;
+    padding-left: 10px;
+    padding-top: 10px;
+    padding-right: 10px;
+    padding-bottom: 10px;
+    border-radius: $theme_border_radius;
+  }
+}
