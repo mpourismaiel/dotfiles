@@ -16,7 +16,7 @@ function picom:turn_on()
     return
   end
 
-  local cmd = wp.compositor .. " --config " .. config_dir .. "/lib/" .. wp.compositor .. ".conf"
+  local cmd = wp.compositor .. " --config " .. config_dir .. "lib/" .. wp.compositor .. ".conf"
   awful.spawn(cmd, false)
 end
 

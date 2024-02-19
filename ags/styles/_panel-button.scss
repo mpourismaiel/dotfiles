@@ -1,0 +1,30 @@
+.panel-button-container {
+  background: none;
+  padding-left: 0;
+  padding-right: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  border-radius: 0;
+
+  .panel-button {
+    margin-left: $bar_padding;
+    margin-right: $bar_padding;
+    margin-top: $bar_padding;
+    margin-bottom: $bar_padding;
+    padding-top: 5px;
+    padding-bottom: 5px;
+    background-color: $theme_panel_bg_color;
+    border-radius: $theme_border_radius_lg;
+    transition: background-color 0.3s ease-out;
+  }
+
+  &:hover {
+    box-shadow: inherit;
+    text-shadow: inherit;
+    background: none;
+
+    .panel-button {
+      background-color: $theme_selected_bg_color;
+    }
+  }
+}

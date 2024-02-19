@@ -1,0 +1,25 @@
+window.bar {
+  min-width: 48px;
+  background-color: $theme_bg_color;
+  color: $theme_fg_color;
+  font-family: $font_family;
+  font-size: $font_size;
+
+  @import './bar/workspaces';
+  @import './bar/clients';
+  @import './bar/clock';
+
+  .menu-toggle-button {
+    padding: 0;
+    min-width: 48px;
+    min-height: 36px;
+
+    .menu-toggle-button-icon {
+      margin: 0 15px;
+      border: 2px solid $theme_unselected_fg_color;
+      min-width: 14px;
+      min-height: 14px;
+      border-radius: 100px;
+    }
+  }
+}

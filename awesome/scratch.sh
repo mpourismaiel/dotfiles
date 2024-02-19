@@ -12,9 +12,8 @@ yay -S zsh bat neovim fzf rbenv ruby-build telegram-desktop windscribe-bin visua
 
 # create projects directory and clone dotfiles
 mkdir ~/Documents/projects
-mkdir ~/Documents/projects/dotfiles
-cd ~/Documents/projects/dotfiles
-git clone --recurse-submodules https://github.com/mpourismaiel/dotfiles.git awesome
+cd ~/Documents/projects
+git clone --recurse-submodules https://github.com/mpourismaiel/dotfiles.git
 
 # prepare docker
 sudo groupadd docker

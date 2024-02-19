@@ -29,7 +29,7 @@ ruled.client.connect_signal(
       id = "dialog",
       rule_any = {
         type = {"dialog"},
-        class = {"Wicd-client.py", "calendar.google.com", "xdman-Main"}
+        class = {"Wicd-client.py", "calendar.google.com", "xdman-Main", "Eww"}
       },
       except_any = windows_apps,
       properties = {

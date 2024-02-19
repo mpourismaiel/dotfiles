@@ -1,0 +1,18 @@
+@import './variables';
+@import './panel-button';
+@import './bar';
+@import './menu';
+@import './info-panel';
+@import './notification';
+
+* {
+  font-family: $font_family;
+  font-size: $font_size;
+}
+
+.applauncher {
+  .popup-window-center {
+    min-width: 500px;
+    min-height: 500px;
+  }
+}

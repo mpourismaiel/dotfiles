@@ -1,0 +1,17 @@
+.workspaces {
+  .workspace {
+    min-width: 10px;
+    min-height: 10px;
+    border-radius: 100px;
+    margin: 5px 0;
+    transition:
+      min-height 0.3s ease,
+      background-color 0.3s ease-out;
+    background-color: $theme_unselected_fg_color;
+
+    &.focused {
+      min-height: 24px;
+      background-color: $theme_selected_fg_color;
+    }
+  }
+}
