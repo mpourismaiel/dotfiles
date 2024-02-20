@@ -88,7 +88,7 @@ const AppList = (
     ],
     setup: (self) =>
       self.hook(App, (_, windowName, visible) => {
-        if (windowName !== windowName) return;
+        if (windowName !== WINDOW_NAME) return;
 
         // when the applauncher shows up
         if (visible) {

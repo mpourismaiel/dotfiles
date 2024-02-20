@@ -1,4 +1,17 @@
 .info-panel-window {
+  .popup-background {
+    background-color: transparent;
+  }
+
+  .popup-window {
+    margin-left: 70px;
+    margin-bottom: 16px;
+  }
+
+  .popup-content {
+    padding:0;
+  }
+
   .info-panel-container {
     min-width: 500px;
     min-height: 500px;

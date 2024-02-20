@@ -7,6 +7,8 @@ import BluetoothButton from "./bluetooth.js";
 import Volume from "./volume.js";
 import SysTray from "./systray.js";
 
+const Gtk = imports.gi.Gtk;
+
 export const WINDOW_NAME = "ControlCenter";
 
 const MenuToggleButton = () =>
@@ -25,10 +27,9 @@ const MenuToggleButton = () =>
 export const Menu = () =>
   PopupWindow({
     name: WINDOW_NAME,
-    anchor: ["bottom", "left"],
-    layout: "bottom left",
-    margins: [0, 0, 16, 16],
-    animation: "slide_left",
+    valign: Gtk.Align.END,
+    halign: Gtk.Align.START,
+    animation: "slide_up",
     className: "control-center",
     content: Widget.Box({
       className: "menu",
@@ -48,7 +49,14 @@ export const Menu = () =>
               children: [
                 Row({
                   spacing: 10,
-                  children: [NetworkButton(), BluetoothButton()],
+                  children: [
+                    NetworkButton({
+                      onClose: () => App.closeWindow(WINDOW_NAME),
+                    }),
+                    BluetoothButton({
+                      onClose: () => App.closeWindow(WINDOW_NAME),
+                    }),
+                  ],
                 }),
                 Row({
                   child: Volume({ type: "speaker" }),

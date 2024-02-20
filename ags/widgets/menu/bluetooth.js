@@ -1,6 +1,6 @@
-const Bluetooth = await Service.import("bluetooth");
+import ArrowButton from "../misc/button/arrow.js";
 
-const Container = ({ children }) => Widget.Box({ spacing: 16, children });
+const Bluetooth = await Service.import("bluetooth");
 
 const BluetoothButton = () => {
   const BluetoothButton = () =>
@@ -15,7 +15,7 @@ const BluetoothButton = () => {
     });
 
   const BluetoothIndicator = () =>
-    Container({
+    ArrowButton({
       children: [
         BluetoothButton(),
         Widget.Label({

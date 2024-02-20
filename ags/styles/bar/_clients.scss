@@ -13,12 +13,15 @@
         min-width: 4px;
         min-height: 4px;
         border-radius: 100px;
-        margin-top: 20px;
-        margin-left: 4px;
+        margin: 2px -4px 2px 4px;
         transition:
-          margin 0.3s ease,
           min-height 0.3s ease,
           background-color 0.3s ease-out;
+
+        &.focused {
+          min-height: 12px;
+          background-color: $theme_selected_fg_color;
+        }
       }
 
       .client-icon {
@@ -28,12 +31,6 @@
 
       &.focused {
         background-color: $theme_selected_bg_color;
-
-        .client-indicator {
-          margin-top: 16px;
-          min-height: 12px;
-          background-color: $theme_selected_fg_color;
-        }
       }
     }
   }

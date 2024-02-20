@@ -31,8 +31,10 @@ const SysTray = (props = {}) => {
         onAdded: (box, id) => {
           const item = SystemTray.getItem(id);
           if (!item) return;
+
           item.menu.className = "menu";
           if (box.attribute.items.has(id) || !item) return;
+
           const widget = SysTrayItem(item);
           box.attribute.items.set(id, widget);
           box.add(widget);
