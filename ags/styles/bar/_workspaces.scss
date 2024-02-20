@@ -9,6 +9,10 @@
       background-color 0.3s ease-out;
     background-color: $theme_unselected_fg_color;
 
+    &.occupied {
+      background-color: $theme_selected_fg_color;
+    }
+
     &.focused {
       min-height: 24px;
       background-color: $theme_selected_fg_color;

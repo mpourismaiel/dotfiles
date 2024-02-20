@@ -41,6 +41,9 @@ window.bar .workspaces .workspace {
   transition: min-height 0.3s ease, background-color 0.3s ease-out;
   background-color: #909090;
 }
+window.bar .workspaces .workspace.occupied {
+  background-color: #fff;
+}
 window.bar .workspaces .workspace.focused {
   min-height: 24px;
   background-color: #fff;
@@ -59,9 +62,12 @@ window.bar .clients .client-container .client .client-indicator {
   min-width: 4px;
   min-height: 4px;
   border-radius: 100px;
-  margin-top: 20px;
-  margin-left: 4px;
-  transition: margin 0.3s ease, min-height 0.3s ease, background-color 0.3s ease-out;
+  margin: 2px -4px 2px 4px;
+  transition: min-height 0.3s ease, background-color 0.3s ease-out;
+}
+window.bar .clients .client-container .client .client-indicator.focused {
+  min-height: 12px;
+  background-color: #fff;
 }
 window.bar .clients .client-container .client .client-icon {
   margin: 10px;
@@ -69,11 +75,6 @@ window.bar .clients .client-container .client .client-icon {
 }
 window.bar .clients .client-container .client.focused {
   background-color: #353535;
-}
-window.bar .clients .client-container .client.focused .client-indicator {
-  margin-top: 16px;
-  min-height: 12px;
-  background-color: #fff;
 }
 window.bar .clock {
   padding-top: 8px;
@@ -128,13 +129,13 @@ window.bar .menu-toggle-button .menu-toggle-button-icon {
 .bar-volume-slider trough {
   transition: background-color 0.3s ease-in-out, color 0.3s ease-in-out;
   border-radius: 100px;
-  background-color: #432d36;
+  background-color: #353535;
   min-height: 48px;
 }
 .bar-volume-slider trough highlight,
 .bar-volume-slider trough progress {
-  border-radius: 100px;
-  background-color: #9a0045;
+  background-image: none;
+  background-color: #fff;
   border-radius: 100px;
   transition: background-color 0.3s ease-in-out, color 0.3s ease-in-out;
 }
@@ -148,6 +149,16 @@ window.bar .menu-toggle-button .menu-toggle-button-icon {
 
 .control-center {
   background-color: transparent;
+}
+.control-center .popup-background {
+  background-color: transparent;
+}
+.control-center .popup-window {
+  margin-left: 70px;
+  margin-bottom: 16px;
+}
+.control-center .popup-content {
+  padding: 0;
 }
 
 .menu .card {
@@ -169,6 +180,16 @@ window.bar .menu-toggle-button .menu-toggle-button-icon {
   border-radius: 8px;
 }
 
+.info-panel-window .popup-background {
+  background-color: transparent;
+}
+.info-panel-window .popup-window {
+  margin-left: 70px;
+  margin-bottom: 16px;
+}
+.info-panel-window .popup-content {
+  padding: 0;
+}
 .info-panel-window .info-panel-container {
   min-width: 500px;
   min-height: 500px;
@@ -181,53 +202,65 @@ window#notifications {
   all: unset;
 }
 window#notifications box.notifications {
-  padding: 0.5em;
+  padding: 10px;
 }
-window#notifications .icon {
-  min-width: 68px;
-  min-height: 68px;
+window#notifications .notification {
+  min-width: 350px;
+  border-radius: 8px;
+  margin: 8px;
+  background-color: #111111;
+}
+window#notifications .notification-header {
+  padding: 5px 10px;
+  background-color: #1e1e1e;
+}
+window#notifications .notification-icon {
+  min-width: 36px;
+  min-height: 36px;
   margin-right: 1em;
 }
-window#notifications .icon image {
+window#notifications .notification-icon image {
   font-size: 58px;
   /* to center the icon */
   margin: 5px;
   color: #cccccc;
 }
-window#notifications .icon box {
-  min-width: 68px;
-  min-height: 68px;
+window#notifications .notification-icon box {
+  min-width: 36px;
+  min-height: 36px;
   border-radius: 7px;
 }
-window#notifications .notification {
-  min-width: 350px;
-  border-radius: 11px;
-  padding: 1em;
-  margin: 0.5em;
-  border: 1px solid #181818;
-  background-color: #111111;
-}
-window#notifications .notification.critical {
-  border: 1px solid lightcoral;
-}
-window#notifications .title {
+window#notifications .notification-title {
   color: #cccccc;
   font-family: "Inter";
-  font-size: 1.4em;
+  font-size: 1.1em;
+  font-weight: bold;
 }
-window#notifications .body {
+window#notifications .notification-body {
+  padding: 20px 10px 20px;
   color: #888888;
   font-family: "Inter";
 }
-window#notifications .actions .action-button {
+window#notifications .notification-actions {
+  padding: 0 10px 10px;
+}
+window#notifications .notification-actions .action-button {
   margin: 0 0.4em;
   margin-top: 0.8em;
 }
-window#notifications .actions .action-button:first-child {
+window#notifications .notification-actions .action-button:first-child {
   margin-left: 0;
 }
-window#notifications .actions .action-button:last-child {
+window#notifications .notification-actions .action-button:last-child {
   margin-right: 0;
+}
+window#notifications .header {
+  border-top-left-radius: 8px;
+  border-top-right-radius: 8px;
+}
+window#notifications .footer {
+  border-bottom-left-radius: 8px;
+  border-bottom-right-radius: 8px;
 }
 
 * {
@@ -238,6 +271,35 @@ window#notifications .actions .action-button:last-child {
 .applauncher .popup-window-center {
   min-width: 500px;
   min-height: 500px;
+}
+
+.arrow-button {
+  padding: 0;
+}
+
+.popup {
+  background: none;
+}
+.popup-background {
+  background-color: rgba(0, 0, 0, 0.2);
+}
+.popup-window {
+  border-radius: 8px;
+}
+.popup-title {
+  background-color: #181818;
+  padding: 10px 0;
+  font-weight: bold;
+  border-radius: 8px 8px 0 0;
+  min-width: 400px;
+}
+.popup-content {
+  padding: 20px;
+  background-color: #111111;
+  border-radius: 0 0 8px 8px;
+}
+.popup-window.without-title .popup-content {
+  border-radius: 8px;
 }
 
 /*# sourceMappingURL=style.css.map */

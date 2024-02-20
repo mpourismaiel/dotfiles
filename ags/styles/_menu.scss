@@ -5,6 +5,19 @@
 
 .control-center {
   background-color: transparent;
+
+  .popup-background {
+    background-color: transparent;
+  }
+
+  .popup-window {
+    margin-left: 70px;
+    margin-bottom: 16px;
+  }
+
+  .popup-content {
+    padding:0;
+  }
 }
 
 .menu {

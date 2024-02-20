@@ -2,12 +2,24 @@ window#notifications {
   all: unset;
 
   box.notifications {
-    padding: .5em;
+    padding: 10px;
   }
 
-  .icon {
-    min-width: 68px;
-    min-height: 68px;
+  .notification {
+    min-width: 350px;
+    border-radius: $theme_border_radius;
+    margin: 8px;
+    background-color: $theme_bg_color;
+  }
+
+  .notification-header {
+    padding: 5px 10px;
+    background-color: $theme_card_bg_color;
+  }
+
+  .notification-icon {
+    min-width: 36px;
+    min-height: 36px;
     margin-right: 1em;
 
     image {
@@ -18,37 +30,28 @@ window#notifications {
     }
 
     box {
-      min-width: 68px;
-      min-height: 68px;
+      min-width: 36px;
+      min-height: 36px;
       border-radius: 7px;
     }
   }
 
-  .notification {
-    min-width: 350px;
-    border-radius: 11px;
-    padding: 1em;
-    margin: .5em;
-    border: 1px solid $wm_borders_edge;
-    background-color: $theme_bg_color;
-
-    &.critical {
-      border: 1px solid lightcoral;
-    }
-  }
-
-  .title {
+  .notification-title {
     color: $theme_fg_color;
     font-family: $font_family;
-    font-size: 1.4em;
+    font-size: 1.1em;
+    font-weight: bold;
   }
 
-  .body {
+  .notification-body {
+    padding: 20px 10px 20px;
     color: $theme_unfocused_fg_color;
     font-family: $font_family;
   }
 
-  .actions {
+  .notification-actions {
+    padding: 0 10px 10px;
+
     .action-button {
       margin: 0 .4em;
       margin-top: .8em;
@@ -61,5 +64,15 @@ window#notifications {
     .action-button:last-child {
       margin-right: 0;
     }
+  }
+
+  .header {
+    border-top-left-radius: $theme_border_radius;
+    border-top-right-radius: $theme_border_radius;
+  }
+
+  .footer {
+    border-bottom-left-radius: $theme_border_radius;
+    border-bottom-right-radius: $theme_border_radius;
   }
 }

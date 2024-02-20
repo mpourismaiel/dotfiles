@@ -11,11 +11,17 @@ const ProfilePicture = () => {
   if (file.query_exists(null)) {
     return Widget.Icon({
       className: "profile-picture",
-      icon: file.get_uri(),
-      size: 48,
+      css: `
+        min-width: 36px;
+        min-height: 36px;
+        background-image: url("${file.get_uri()}");
+        background-size: contain;
+        background-repeat: no-repeat;
+        background-position: center;
+      `,
     });
   }
-  return Widget.Icon({
+  return Widget.Box({
     className: "profile-picture",
     icon: "face-smile",
     size: 48,

@@ -1,13 +1,14 @@
 import PopupWindow from "../misc/popup-window.js";
 
+const Gtk = imports.gi.Gtk;
+
 export const WINDOW_NAME = "InfoPanel";
 
 export const InfoPanel = () =>
   PopupWindow({
     name: WINDOW_NAME,
-    anchor: ["bottom", "left"],
-    layout: "bottom left",
-    margins: [0, 0, 16, 16],
+    valign: Gtk.Align.END,
+    halign: Gtk.Align.START,
     animation: "slide_left",
     className: "info-panel-window",
     content: Widget.Box({

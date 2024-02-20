@@ -23,6 +23,8 @@ export function substitudeClientClass(clientClass) {
 const ClientClassSubstitudes = {
   "code-insiders-url-handler": "code",
   "xfce4-terminal": "terminal",
+  Slack: "slack",
+  "Google-chrome": "google-chrome",
 };
 
 const ClientPossibleIcons = [
