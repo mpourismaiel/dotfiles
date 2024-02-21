@@ -31,9 +31,9 @@ const Bar = (monitor = 0) =>
     exclusivity: "exclusive",
     child: Widget.CenterBox({
       vertical: true,
-      start_widget: Top(),
-      center_widget: Center(monitor),
-      end_widget: Bottom(monitor),
+      startWidget: Top(),
+      centerWidget: Center(monitor),
+      endWidget: Bottom(monitor),
     }),
   });
 

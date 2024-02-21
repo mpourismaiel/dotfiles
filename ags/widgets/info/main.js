@@ -1,4 +1,5 @@
 import PopupWindow from "../misc/popup-window.js";
+import NotificationCenter from "./notification-center.js";
 
 const Gtk = imports.gi.Gtk;
 
@@ -18,12 +19,7 @@ export const InfoPanel = () =>
         Widget.Box({
           className: "info-notifications",
           vertical: true,
-          child: Widget.Label({ label: "Hello World!" }),
-        }),
-        Widget.Box({
-          className: "info-calendar",
-          vertical: true,
-          child: Widget.Label({ label: "Hello World!" }),
+          child: NotificationCenter,
         }),
       ],
     }),

@@ -1,0 +1,29 @@
+.notification-center {
+  background-color: $theme_panel_bg_color;
+  padding: 10px;
+  border-radius: $theme_border_radius;
+
+  .notifications-header {
+    padding: 10px 0;
+
+    .notifications-label {
+      font-size: 1.2rem;
+      font-weight: bold;
+    }
+
+    .clear-all-icon-button {
+      padding: 0;
+      border-radius: 100px;
+
+      .clear-all-icon {
+
+      }
+    }
+  }
+
+  .notifications-scroll {
+    min-width: 400px;
+    min-height: 500px;
+    padding: 10px;
+  }
+}
