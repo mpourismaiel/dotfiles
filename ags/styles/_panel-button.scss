@@ -13,7 +13,7 @@
     margin-bottom: $bar_padding;
     padding-top: 5px;
     padding-bottom: 5px;
-    background-color: $theme_panel_bg_color;
+    background-color: $surface_container_high;
     border-radius: $theme_border_radius_lg;
     transition: background-color 0.3s ease-out;
   }
@@ -24,7 +24,7 @@
     background: none;
 
     .panel-button {
-      background-color: $theme_selected_bg_color;
+      background-color: $surface_container_highest;
     }
   }
 }

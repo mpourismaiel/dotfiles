@@ -84,7 +84,7 @@ const Notification = (n) => {
   return Widget.Revealer({
     transition: "slide_left",
     setup: (self) => {
-      Utils.timeout(10, () => (self.reveal_child = true));
+      Utils.timeout(10, () => (self ? (self.reveal_child = true) : null));
     },
     child: Widget.EventBox({
       on_primary_click: () => n.dismiss(),

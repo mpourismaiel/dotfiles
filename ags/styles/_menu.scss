@@ -22,7 +22,7 @@
 
 .menu {
   .card {
-    background-color: $theme_card_bg_color;
+    background-color: $surface_container_high;
     border-radius: $theme_border_radius;
     padding: 10px;
     min-width: 400px;
@@ -33,7 +33,7 @@
   }
 
   .menu-bar {
-    background-color: $theme_bg_color;
+    background-color: $surface_container;
     min-height: 300px;
     padding-left: 10px;
     padding-top: 10px;

@@ -13,8 +13,8 @@
   margin-bottom: 4px;
   padding-top: 5px;
   padding-bottom: 5px;
-  background-color: rgba(26, 26, 26, 0.8);
-  border-radius: 30px;
+  background-color: #2d282e;
+  border-radius: 12px;
   transition: background-color 0.3s ease-out;
 }
 .panel-button-container:hover {
@@ -23,30 +23,36 @@
   background: none;
 }
 .panel-button-container:hover .panel-button {
-  background-color: rgba(53, 53, 53, 0.8);
+  background-color: #383339;
 }
 
 window.bar {
   min-width: 48px;
-  background-color: #0f0f0f;
-  color: #cccccc;
+  background-color: #221e24;
+  color: #e9e0e8;
   font-family: "Inter";
   font-size: 16px;
 }
-window.bar .workspaces .workspace {
+window.bar .workspaces-container .panel-button-container .panel-button {
+  background-color: #2d282e;
+}
+window.bar .workspaces-container .panel-button-container:hover .panel-button {
+  background-color: #383339;
+}
+window.bar .workspaces-container .workspaces .workspace {
   min-width: 10px;
   min-height: 10px;
   border-radius: 100px;
   margin: 5px 0;
   transition: min-height 0.3s ease, background-color 0.3s ease-out;
-  background-color: #909090;
+  background-color: #332f35;
 }
-window.bar .workspaces .workspace.occupied {
-  background-color: #fff;
+window.bar .workspaces-container .workspaces .workspace.occupied {
+  background-color: #cdc3ce;
 }
-window.bar .workspaces .workspace.focused {
+window.bar .workspaces-container .workspaces .workspace.focused {
   min-height: 24px;
-  background-color: #fff;
+  background-color: #e9e0e8;
 }
 window.bar .clients .client-container {
   padding: 4px;
@@ -55,10 +61,10 @@ window.bar .clients .client-container .client {
   padding: 0;
   min-width: 36px;
   min-height: 36px;
-  background-color: #0f0f0f;
+  background-color: #2d282e;
 }
 window.bar .clients .client-container .client .client-indicator {
-  background-color: #909090;
+  background-color: #e9e0e8;
   min-width: 4px;
   min-height: 4px;
   border-radius: 100px;
@@ -67,14 +73,17 @@ window.bar .clients .client-container .client .client-indicator {
 }
 window.bar .clients .client-container .client .client-indicator.focused {
   min-height: 12px;
-  background-color: #fff;
+  background-color: #4c2527;
 }
 window.bar .clients .client-container .client .client-icon {
   margin: 10px;
   margin-left: 6px;
 }
 window.bar .clients .client-container .client.focused {
-  background-color: rgba(53, 53, 53, 0.8);
+  background-color: #e0b8f6;
+}
+window.bar .clients .client-container .client.focused .client-indicator {
+  background-color: #412356;
 }
 window.bar .clock {
   padding-top: 8px;
@@ -95,7 +104,7 @@ window.bar .menu-toggle-button {
 }
 window.bar .menu-toggle-button .menu-toggle-button-icon {
   margin: 0 15px;
-  border: 2px solid #909090;
+  border: 2px solid #e9e0e8;
   min-width: 14px;
   min-height: 14px;
   border-radius: 100px;
@@ -129,13 +138,13 @@ window.bar .menu-toggle-button .menu-toggle-button-icon {
 .bar-volume-slider trough {
   transition: background-color 0.3s ease-in-out, color 0.3s ease-in-out;
   border-radius: 100px;
-  background-color: #353535;
+  background-color: #383339;
   min-height: 48px;
 }
 .bar-volume-slider trough highlight,
 .bar-volume-slider trough progress {
   background-image: none;
-  background-color: #fff;
+  background-color: #e0b8f6;
   border-radius: 100px;
   transition: background-color 0.3s ease-in-out, color 0.3s ease-in-out;
 }
@@ -162,7 +171,7 @@ window.bar .menu-toggle-button .menu-toggle-button-icon {
 }
 
 .menu .card {
-  background-color: rgba(19, 19, 19, 0.8);
+  background-color: #2d282e;
   border-radius: 8px;
   padding: 10px;
   min-width: 400px;
@@ -171,7 +180,7 @@ window.bar .menu-toggle-button .menu-toggle-button-icon {
   padding: 16px;
 }
 .menu .menu-bar {
-  background-color: #0f0f0f;
+  background-color: #221e24;
   min-height: 300px;
   padding-left: 10px;
   padding-top: 10px;
@@ -191,12 +200,12 @@ window.bar .menu-toggle-button .menu-toggle-button-icon {
   padding: 0;
 }
 .info-panel-window .info-panel-container {
-  background-color: #0f0f0f;
+  background-color: #221e24;
   padding: 10px;
   border-radius: 8px;
 }
 .info-panel-window .info-panel-container .notification-center {
-  background-color: rgba(26, 26, 26, 0.8);
+  background-color: #2d282e;
   padding: 10px;
   border-radius: 8px;
 }
@@ -215,6 +224,35 @@ window.bar .menu-toggle-button .menu-toggle-button-icon {
   min-width: 400px;
   min-height: 500px;
   padding: 10px;
+}
+
+.launcher-window {
+  background-color: transparent;
+}
+.launcher-window .popup-background {
+  background-color: transparent;
+}
+.launcher-window .popup-window {
+  margin-left: 70px;
+  margin-top: 16px;
+}
+
+.launcher .launcher-search {
+  background-color: #2d282e;
+  padding: 10px 16px;
+  color: #e9e0e8;
+}
+.launcher .launcher-results {
+  background-color: #2d282e;
+  padding: 10px;
+  border-radius: 8px;
+}
+.launcher .launcher-calculation {
+  padding: 10px 0;
+}
+.launcher .launcher-list {
+  min-width: 400px;
+  min-height: 400px;
 }
 
 window#notifications {
@@ -248,7 +286,7 @@ window#notifications box.notifications {
   border-radius: 8px;
 }
 .popup-title {
-  background-color: #181818;
+  background-color: #2d282e;
   padding: 10px 0;
   font-weight: bold;
   border-radius: 8px 8px 0 0;
@@ -256,7 +294,7 @@ window#notifications box.notifications {
 }
 .popup-content {
   padding: 20px;
-  background-color: #0f0f0f;
+  background-color: #221e24;
   border-radius: 0 0 8px 8px;
 }
 .popup-window.without-title .popup-content {
@@ -267,11 +305,11 @@ window#notifications box.notifications {
   min-width: 350px;
   border-radius: 8px;
   margin: 8px;
-  background-color: #0f0f0f;
+  background-color: #221e24;
 }
 .notification .notification-header {
   padding: 5px 10px;
-  background-color: rgba(19, 19, 19, 0.8);
+  background-color: #383339;
 }
 .notification .notification-icon {
   min-width: 36px;
@@ -282,7 +320,7 @@ window#notifications box.notifications {
   font-size: 58px;
   /* to center the icon */
   margin: 5px;
-  color: #cccccc;
+  color: #e9e0e8;
 }
 .notification .notification-icon box {
   min-width: 36px;
@@ -290,14 +328,14 @@ window#notifications box.notifications {
   border-radius: 7px;
 }
 .notification .notification-title {
-  color: #cccccc;
+  color: #e9e0e8;
   font-family: "Inter";
   font-size: 1em;
   font-weight: bold;
 }
 .notification .notification-body {
   padding: 20px 10px 20px;
-  color: #888888;
+  color: #e9e0e8;
   font-family: "Inter";
   font-size: 0.9rem;
 }

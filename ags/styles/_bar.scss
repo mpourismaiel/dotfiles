@@ -1,7 +1,7 @@
 window.bar {
   min-width: 48px;
-  background-color: $theme_bg_color;
-  color: $theme_fg_color;
+  background-color: $surface_container;
+  color: $on_surface;
   font-family: $font_family;
   font-size: $font_size;
 
@@ -16,7 +16,7 @@ window.bar {
 
     .menu-toggle-button-icon {
       margin: 0 15px;
-      border: 2px solid $theme_unselected_fg_color;
+      border: 2px solid $on_surface;
       min-width: 14px;
       min-height: 14px;
       border-radius: 100px;
