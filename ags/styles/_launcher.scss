@@ -1,0 +1,35 @@
+.launcher-window {
+  background-color: transparent;
+
+  .popup-background {
+    background-color: transparent;
+  }
+
+  .popup-window {
+    margin-left: 70px;
+    margin-top: 16px;
+  }
+}
+
+.launcher {
+  .launcher-search {
+    background-color: $surface_container_high;
+    padding: 10px 16px;
+    color: $on_surface;
+  }
+
+  .launcher-results {
+    background-color: $surface_container_high;
+    padding: 10px;
+    border-radius: $theme_border_radius;
+  }
+
+  .launcher-calculation {
+    padding: 10px 0;
+  }
+
+  .launcher-list {
+    min-width: 400px;
+    min-height: 400px;
+  }
+}

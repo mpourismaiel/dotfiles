@@ -6,10 +6,10 @@
       padding: 0;
       min-width: 36px;
       min-height: 36px;
-      background-color: $theme_bg_color;
+      background-color: $surface_container_high;
 
       .client-indicator {
-        background-color: $theme_unselected_fg_color;
+        background-color: $on_surface;
         min-width: 4px;
         min-height: 4px;
         border-radius: 100px;
@@ -20,7 +20,7 @@
 
         &.focused {
           min-height: 12px;
-          background-color: $theme_selected_fg_color;
+          background-color: $on_tertiary;
         }
       }
 
@@ -30,7 +30,11 @@
       }
 
       &.focused {
-        background-color: $theme_selected_bg_color;
+        background-color: $primary;
+
+        .client-indicator {
+          background-color: $on_primary;
+        }
       }
     }
   }

@@ -50,8 +50,10 @@ const PopupWindow = ({
     layer: "overlay",
     keymode: "exclusive",
     exclusivity: "ignore",
-    popup: true,
     visible: false,
+    setup: (self) => {
+      self.keybind("Escape", () => App.closeWindow(name));
+    },
     ...windowProps,
     child: Backdrop({
       name,

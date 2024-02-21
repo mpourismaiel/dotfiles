@@ -1,18 +1,28 @@
 import PopupWindow from "../misc/popup-window.js";
 
 const { query } = await Service.import("applications");
-export const WINDOW_NAME = "applauncher";
+const Gtk = imports.gi.Gtk;
+
+export const WINDOW_NAME = "AppLauncher";
 
 const AppItem = (app) =>
   Widget.Button({
+    className: "launcher-app-item-container",
+    hexpand: true,
     on_clicked: () => {
       App.closeWindow(WINDOW_NAME);
       app.launch();
     },
+    setup: (self) => {
+      self.keybind("Enter", () => {
+        App.closeWindow(WINDOW_NAME);
+        app.launch();
+      });
+    },
     attribute: { app },
     child: Widget.Box({
-      hpack: "center",
-      vertical: true,
+      hpack: "start",
+      className: "launcher-app-item",
       spacing: 8,
       children: [
         Widget.Icon({
@@ -20,42 +30,41 @@ const AppItem = (app) =>
           size: 42,
         }),
         Widget.Label({
-          class_name: "title",
+          className: "title",
           label: app.name,
           xalign: 0,
-          vpack: "center",
+          justification: "left",
+          hexpand: true,
+          maxWidthChars: 32,
+          ellipsize: 3,
+          wrap: true,
           truncate: "end",
         }),
       ],
     }),
   });
 
-const AppList = (
-  windowName,
-  { width = 500, height = 500, spacing = 12 } = {}
-) => {
-  // list of application buttons
+const List = (windowName) => {
   let applications = query("").map(AppItem);
 
-  // container holding the buttons
-  const list = Widget.Box({
+  const AppList = Widget.Box({
     vertical: true,
-    children: applications,
-    spacing,
+    className: "launcher-list",
+    spacing: 16,
   });
 
-  // repopulate the box, so the most frequent apps are on top of the list
   function repopulate() {
     applications = query("").map(AppItem);
-    list.children = applications;
+    AppList.children = applications;
   }
 
-  // search entry
+  repopulate();
+
   const entry = Widget.Entry({
     hexpand: true,
-    css: `margin-bottom: ${spacing}px;`,
+    className: "launcher-search",
+    placeholder_text: "Search...",
 
-    // to launch the first item on Enter
     on_accept: () => {
       if (applications[0]) {
         App.toggleWindow(windowName);
@@ -63,27 +72,30 @@ const AppList = (
       }
     },
 
-    // filter out the list
-    on_change: ({ text }) =>
+    on_change: ({ text }) => {
       applications.forEach((item) => {
         item.visible = item.attribute.app.match(text ?? "");
-      }),
+      });
+    },
+  });
+
+  const Results = Widget.Box({
+    vertical: true,
+    className: "launcher-results",
+    spacing: 16,
+    children: [AppList],
   });
 
   return Widget.Box({
     vertical: true,
-    css: `margin: ${spacing * 2}px;`,
+    spacing: 16,
+    className: "launcher",
     children: [
       entry,
-
-      // wrap the list in a scrollable
       Widget.Scrollable({
+        className: "launcher-list",
         hscroll: "never",
-        css: `
-                    min-width: ${width}px;
-                    min-height: ${height}px;
-                `,
-        child: list,
+        child: Results,
       }),
     ],
     setup: (self) =>
@@ -100,10 +112,11 @@ const AppList = (
   });
 };
 
-export default (monitor) =>
+export default () =>
   PopupWindow({
     name: WINDOW_NAME,
-    layout: "center",
-    // expand: true,
-    content: AppList(WINDOW_NAME),
+    className: "launcher-window",
+    halign: Gtk.Align.START,
+    valign: Gtk.Align.START,
+    content: List(WINDOW_NAME),
   });

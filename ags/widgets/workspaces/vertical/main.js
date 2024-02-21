@@ -43,6 +43,7 @@ const Workspaces = () =>
     onScrollDown: () => dispatch("workspace +1"),
     child: Widget.Box({
       vertical: true,
+      className: "workspaces-container",
       children: [
         PanelButton({
           vpack: "start",

@@ -3,6 +3,7 @@
 @import './bar';
 @import './menu';
 @import './info';
+@import './launcher';
 @import './notification';
 
 * {
@@ -33,7 +34,7 @@
   }
 
   &-title {
-    background-color: #181818;
+    background-color: $surface_container_high;
     padding: 10px 0;
     font-weight: bold;
     border-radius: $theme_border_radius $theme_border_radius 0 0;
@@ -42,7 +43,7 @@
 
   &-content {
     padding: 20px;
-    background-color: $theme_bg_color;
+    background-color: $surface_container;
     border-radius: 0 0 $theme_border_radius $theme_border_radius;
   }
 
@@ -55,11 +56,11 @@
   min-width: 350px;
   border-radius: $theme_border_radius;
   margin: 8px;
-  background-color: $theme_bg_color;
+  background-color: $surface_container;
 
   .notification-header {
     padding: 5px 10px;
-    background-color: $theme_card_bg_color;
+    background-color: $surface_container_highest;
   }
 
   .notification-icon {
@@ -71,7 +72,7 @@
       font-size: 58px;
       /* to center the icon */
       margin: 5px;
-      color: $theme_fg_color;
+      color: $on_surface;
     }
 
     box {
@@ -82,7 +83,7 @@
   }
 
   .notification-title {
-    color: $theme_fg_color;
+    color: $on_surface;
     font-family: $font_family;
     font-size: 1em;
     font-weight: bold;
@@ -90,7 +91,7 @@
 
   .notification-body {
     padding: 20px 10px 20px;
-    color: $theme_unfocused_fg_color;
+    color: $on_surface;
     font-family: $font_family;
     font-size: 0.9rem;
   }

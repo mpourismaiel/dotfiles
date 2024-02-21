@@ -1,21 +1,35 @@
-.workspaces {
-  .workspace {
-    min-width: 10px;
-    min-height: 10px;
-    border-radius: 100px;
-    margin: 5px 0;
-    transition:
-      min-height 0.3s ease,
-      background-color 0.3s ease-out;
-    background-color: $theme_unselected_fg_color;
-
-    &.occupied {
-      background-color: $theme_selected_fg_color;
+.workspaces-container {
+  .panel-button-container {
+    .panel-button {
+      background-color: $surface_container_high;
     }
 
-    &.focused {
-      min-height: 24px;
-      background-color: $theme_selected_fg_color;
+    &:hover {
+      .panel-button {
+        background-color: $surface_container_highest;
+      }
+    }
+  }
+
+  .workspaces {
+    .workspace {
+      min-width: 10px;
+      min-height: 10px;
+      border-radius: 100px;
+      margin: 5px 0;
+      transition:
+        min-height 0.3s ease,
+        background-color 0.3s ease-out;
+      background-color: $inverse_on_surface;
+
+      &.occupied {
+        background-color: $on_surface_variant;
+      }
+
+      &.focused {
+        min-height: 24px;
+        background-color: $on_surface;
+      }
     }
   }
 }
