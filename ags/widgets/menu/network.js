@@ -6,7 +6,7 @@ const Network = await Service.import("network");
 export const WINDOW_NAME = "NetworkSettings";
 
 const connectWifiCommand = (bssid, password) =>
-  `nmcli device wifi connect ${bssid} ${
+  `nmcli device wifi connect "${bssid}" ${
     password ? `password "${password}"` : ""
   }`;
 
@@ -75,11 +75,11 @@ const renderAccessPoints = (self) => {
           });
       },
       child: Widget.CenterBox({
-        start_widget: Widget.Box({
+        startWidget: Widget.Box({
           spacing: 16,
           children: [Widget.Icon(ap.iconName), Widget.Label(ap.ssid || "")],
         }),
-        end_widget: ap.active
+        endWidget: ap.active
           ? Widget.Icon({
               icon: "network",
               hexpand: true,

@@ -13,10 +13,10 @@
   }
 
   .info-panel-container {
-    min-width: 500px;
-    min-height: 500px;
     background-color: $theme_bg_color;
     padding: 10px;
     border-radius: $theme_border_radius;
+
+    @import './info/notification-center';
   }
 }

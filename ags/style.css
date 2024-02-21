@@ -13,7 +13,7 @@
   margin-bottom: 4px;
   padding-top: 5px;
   padding-bottom: 5px;
-  background-color: #1e1e1e;
+  background-color: rgba(26, 26, 26, 0.8);
   border-radius: 30px;
   transition: background-color 0.3s ease-out;
 }
@@ -23,12 +23,12 @@
   background: none;
 }
 .panel-button-container:hover .panel-button {
-  background-color: #353535;
+  background-color: rgba(53, 53, 53, 0.8);
 }
 
 window.bar {
   min-width: 48px;
-  background-color: #111111;
+  background-color: #0f0f0f;
   color: #cccccc;
   font-family: "Inter";
   font-size: 16px;
@@ -55,7 +55,7 @@ window.bar .clients .client-container .client {
   padding: 0;
   min-width: 36px;
   min-height: 36px;
-  background-color: #111111;
+  background-color: #0f0f0f;
 }
 window.bar .clients .client-container .client .client-indicator {
   background-color: #909090;
@@ -74,7 +74,7 @@ window.bar .clients .client-container .client .client-icon {
   margin-left: 6px;
 }
 window.bar .clients .client-container .client.focused {
-  background-color: #353535;
+  background-color: rgba(53, 53, 53, 0.8);
 }
 window.bar .clock {
   padding-top: 8px;
@@ -162,7 +162,7 @@ window.bar .menu-toggle-button .menu-toggle-button-icon {
 }
 
 .menu .card {
-  background-color: #1e1e1e;
+  background-color: rgba(19, 19, 19, 0.8);
   border-radius: 8px;
   padding: 10px;
   min-width: 400px;
@@ -171,7 +171,7 @@ window.bar .menu-toggle-button .menu-toggle-button-icon {
   padding: 16px;
 }
 .menu .menu-bar {
-  background-color: #111111;
+  background-color: #0f0f0f;
   min-height: 300px;
   padding-left: 10px;
   padding-top: 10px;
@@ -191,11 +191,30 @@ window.bar .menu-toggle-button .menu-toggle-button-icon {
   padding: 0;
 }
 .info-panel-window .info-panel-container {
-  min-width: 500px;
-  min-height: 500px;
-  background-color: #111111;
+  background-color: #0f0f0f;
   padding: 10px;
   border-radius: 8px;
+}
+.info-panel-window .info-panel-container .notification-center {
+  background-color: rgba(26, 26, 26, 0.8);
+  padding: 10px;
+  border-radius: 8px;
+}
+.info-panel-window .info-panel-container .notification-center .notifications-header {
+  padding: 10px 0;
+}
+.info-panel-window .info-panel-container .notification-center .notifications-header .notifications-label {
+  font-size: 1.2rem;
+  font-weight: bold;
+}
+.info-panel-window .info-panel-container .notification-center .notifications-header .clear-all-icon-button {
+  padding: 0;
+  border-radius: 100px;
+}
+.info-panel-window .info-panel-container .notification-center .notifications-scroll {
+  min-width: 400px;
+  min-height: 500px;
+  padding: 10px;
 }
 
 window#notifications {
@@ -203,64 +222,6 @@ window#notifications {
 }
 window#notifications box.notifications {
   padding: 10px;
-}
-window#notifications .notification {
-  min-width: 350px;
-  border-radius: 8px;
-  margin: 8px;
-  background-color: #111111;
-}
-window#notifications .notification-header {
-  padding: 5px 10px;
-  background-color: #1e1e1e;
-}
-window#notifications .notification-icon {
-  min-width: 36px;
-  min-height: 36px;
-  margin-right: 1em;
-}
-window#notifications .notification-icon image {
-  font-size: 58px;
-  /* to center the icon */
-  margin: 5px;
-  color: #cccccc;
-}
-window#notifications .notification-icon box {
-  min-width: 36px;
-  min-height: 36px;
-  border-radius: 7px;
-}
-window#notifications .notification-title {
-  color: #cccccc;
-  font-family: "Inter";
-  font-size: 1.1em;
-  font-weight: bold;
-}
-window#notifications .notification-body {
-  padding: 20px 10px 20px;
-  color: #888888;
-  font-family: "Inter";
-}
-window#notifications .notification-actions {
-  padding: 0 10px 10px;
-}
-window#notifications .notification-actions .action-button {
-  margin: 0 0.4em;
-  margin-top: 0.8em;
-}
-window#notifications .notification-actions .action-button:first-child {
-  margin-left: 0;
-}
-window#notifications .notification-actions .action-button:last-child {
-  margin-right: 0;
-}
-window#notifications .header {
-  border-top-left-radius: 8px;
-  border-top-right-radius: 8px;
-}
-window#notifications .footer {
-  border-bottom-left-radius: 8px;
-  border-bottom-right-radius: 8px;
 }
 
 * {
@@ -295,11 +256,71 @@ window#notifications .footer {
 }
 .popup-content {
   padding: 20px;
-  background-color: #111111;
+  background-color: #0f0f0f;
   border-radius: 0 0 8px 8px;
 }
 .popup-window.without-title .popup-content {
   border-radius: 8px;
+}
+
+.notification {
+  min-width: 350px;
+  border-radius: 8px;
+  margin: 8px;
+  background-color: #0f0f0f;
+}
+.notification .notification-header {
+  padding: 5px 10px;
+  background-color: rgba(19, 19, 19, 0.8);
+}
+.notification .notification-icon {
+  min-width: 36px;
+  min-height: 36px;
+  margin-right: 1em;
+}
+.notification .notification-icon image {
+  font-size: 58px;
+  /* to center the icon */
+  margin: 5px;
+  color: #cccccc;
+}
+.notification .notification-icon box {
+  min-width: 36px;
+  min-height: 36px;
+  border-radius: 7px;
+}
+.notification .notification-title {
+  color: #cccccc;
+  font-family: "Inter";
+  font-size: 1em;
+  font-weight: bold;
+}
+.notification .notification-body {
+  padding: 20px 10px 20px;
+  color: #888888;
+  font-family: "Inter";
+  font-size: 0.9rem;
+}
+.notification .notification-actions {
+  padding: 0 10px 10px;
+}
+.notification .notification-actions .action-button {
+  margin: 0 0.4em;
+  margin-top: 0.8em;
+}
+.notification .notification-actions .action-button:first-child {
+  margin-left: 0;
+}
+.notification .notification-actions .action-button:last-child {
+  margin-right: 0;
+}
+.notification .header {
+  border-top-left-radius: 8px;
+  border-top-right-radius: 8px;
+}
+.notification .footer {
+  border-bottom-left-radius: 8px;
+  border-bottom-right-radius: 8px;
 }
 
 /*# sourceMappingURL=style.css.map */
