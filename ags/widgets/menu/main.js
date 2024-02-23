@@ -1,11 +1,13 @@
 import PanelButton from "../bar/panel-button.js";
-import PopupWindow from "../misc/popup-window.js";
+import PopupWindow from "../_components/popup-window.js";
 import Profile from "./profile.js";
 import NetworkButton from "./network.js";
-import { Row } from "../misc/layout.js";
+import { Row } from "../_components/layout.js";
 import BluetoothButton from "./bluetooth.js";
 import Volume from "./volume.js";
 import SysTray from "./systray.js";
+import BatteryButton from "./battery.js";
+import ThemeToggleButton from "./theme-toggle.js";
 
 const Gtk = imports.gi.Gtk;
 
@@ -56,6 +58,15 @@ export const Menu = () =>
                     BluetoothButton({
                       onClose: () => App.closeWindow(WINDOW_NAME),
                     }),
+                  ],
+                }),
+                Row({
+                  spacing: 10,
+                  children: [
+                    BatteryButton({
+                      onClose: () => App.closeWindow(WINDOW_NAME),
+                    }),
+                    ThemeToggleButton(),
                   ],
                 }),
                 Row({

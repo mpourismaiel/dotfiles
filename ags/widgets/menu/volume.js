@@ -1,5 +1,5 @@
-import { getAudioTypeIcon } from "../_utils/icons.js";
-import { Row } from "../misc/layout.js";
+import { getAudioTypeIcon } from "../../utils/icons.js";
+import { Row } from "../_components/layout.js";
 
 const Audio = await Service.import("audio");
 

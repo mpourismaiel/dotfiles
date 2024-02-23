@@ -1,0 +1,29 @@
+.popup {
+  background: none;
+
+  &-background {
+    background-color: rgba(0, 0, 0, 0.2);
+  }
+
+  &-window {
+    border-radius: $theme_border_radius;
+  }
+
+  &-title {
+    background-color: $surface_container_high;
+    padding: 10px 0;
+    font-weight: bold;
+    border-radius: $theme_border_radius $theme_border_radius 0 0;
+    min-width: 400px;
+  }
+
+  &-content {
+    padding: 20px;
+    background-color: $surface;
+    border-radius: 0 0 $theme_border_radius $theme_border_radius;
+  }
+
+  &-window.without-title &-content {
+    border-radius: $theme_border_radius;
+  }
+}

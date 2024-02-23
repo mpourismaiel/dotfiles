@@ -1,5 +1,5 @@
-import { dispatch } from "../../_utils/hyprland.js";
-import { lookupIcon, substitudeClientClass } from "../../_utils/icons.js";
+import { dispatch } from "../../../utils/hyprland.js";
+import { lookupIcon, substitudeClientClass } from "../../../utils/icons.js";
 
 const Gtk = imports.gi.Gtk;
 
@@ -35,7 +35,7 @@ const ClientButton = (clients) => {
             ),
           }),
           Widget.Icon({
-            size: 24,
+            size: 28,
             className: "client-icon",
             icon: lookupIcon(substitudeClientClass(client.class)),
             setup: (self) => {

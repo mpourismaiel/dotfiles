@@ -2,8 +2,8 @@ const Hyprland = await Service.import("hyprland");
 
 import PanelButton from "../../bar/panel-button.js";
 import { WINDOW_NAME as LauncherWindowName } from "../../launcher/main.js";
-import { range } from "../../_utils/array.js";
-import { dispatch } from "../../_utils/hyprland.js";
+import { range } from "../../../utils/array.js";
+import { dispatch } from "../../../utils/hyprland.js";
 
 const WorkspaceButton = ({ id }) =>
   Widget.Box({

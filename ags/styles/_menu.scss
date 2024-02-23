@@ -1,7 +1,9 @@
 @import './menu/profile';
 @import './menu/bluetooth';
+@import './menu/battery';
 @import './menu/network';
 @import './menu/volume';
+@import './menu/theme-toggle';
 
 .control-center {
   background-color: transparent;
@@ -33,7 +35,7 @@
   }
 
   .menu-bar {
-    background-color: $surface_container;
+    background-color: $surface;
     min-height: 300px;
     padding-left: 10px;
     padding-top: 10px;

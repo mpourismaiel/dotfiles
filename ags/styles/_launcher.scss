@@ -31,5 +31,12 @@
   .launcher-list {
     min-width: 400px;
     min-height: 400px;
+    color: $on_surface;
+  }
+
+  .launcher-app-item {
+    .title {
+      color: $on_surface;
+    }
   }
 }

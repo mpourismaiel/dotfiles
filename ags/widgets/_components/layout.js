@@ -1,4 +1,4 @@
-import { cn } from "../_utils/string.js";
+import { cn } from "../../utils/string.js";
 
 export const Row = ({ className, ...rest }) =>
   Widget.Box({

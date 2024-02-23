@@ -1,0 +1,70 @@
+.notification {
+  min-width: 450px;
+  border-radius: $theme_border_radius;
+  margin: 8px;
+  background-color: $surface;
+
+  .notification-header {
+    padding: 5px 10px;
+    background-color: $surface_container_highest;
+  }
+
+  .notification-icon {
+    min-width: 36px;
+    min-height: 36px;
+    margin-right: 1em;
+
+    image {
+      font-size: 58px;
+      /* to center the icon */
+      margin: 5px;
+      color: $on_surface;
+    }
+
+    box {
+      min-width: 36px;
+      min-height: 36px;
+      border-radius: 7px;
+    }
+  }
+
+  .notification-title {
+    color: $on_surface;
+    font-family: $font_family;
+    font-weight: bold;
+  }
+
+  .notification-body {
+    padding: 20px 10px 20px;
+    color: $on_surface;
+    font-family: $font_family;
+    font-size: 0.9rem;
+  }
+
+  .notification-actions {
+    padding: 0 10px 10px;
+
+    .action-button {
+      margin: 0 .4em;
+      margin-top: .8em;
+    }
+
+    .action-button:first-child {
+      margin-left: 0;
+    }
+
+    .action-button:last-child {
+      margin-right: 0;
+    }
+  }
+
+  .header {
+    border-top-left-radius: $theme_border_radius;
+    border-top-right-radius: $theme_border_radius;
+  }
+
+  .footer {
+    border-bottom-left-radius: $theme_border_radius;
+    border-bottom-right-radius: $theme_border_radius;
+  }
+}

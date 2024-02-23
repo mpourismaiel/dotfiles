@@ -20,7 +20,7 @@
       transition:
         min-height 0.3s ease,
         background-color 0.3s ease-out;
-      background-color: $inverse_on_surface;
+      background-color: $surface_bright;
 
       &.occupied {
         background-color: $on_surface_variant;

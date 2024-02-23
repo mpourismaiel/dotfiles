@@ -1,4 +1,4 @@
-import PopupWindow from "../misc/popup-window.js";
+import PopupWindow from "../_components/popup-window.js";
 import NotificationCenter from "./notification-center.js";
 
 const Gtk = imports.gi.Gtk;

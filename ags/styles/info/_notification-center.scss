@@ -4,16 +4,17 @@
   border-radius: $theme_border_radius;
 
   .notifications-header {
-    padding: 10px 0;
+    padding: 0 0 10px;
 
     .notifications-label {
+      color: $on_surface;
       font-size: 1.2rem;
       font-weight: bold;
     }
 
     .clear-all-icon-button {
-      padding: 0;
-      border-radius: 100px;
+      padding: 4px;
+      border-radius: $theme_border_radius;
 
       .clear-all-icon {
 

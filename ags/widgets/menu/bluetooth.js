@@ -1,4 +1,4 @@
-import ArrowButton from "../misc/button/arrow.js";
+import ArrowButton from "../_components/button/arrow.js";
 
 const Bluetooth = await Service.import("bluetooth");
 
