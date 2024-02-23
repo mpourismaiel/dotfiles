@@ -395,11 +395,135 @@ window#notifications box.notifications {
   padding: 10px;
 }
 
-.network-settings-window {
+.settings-window {
   background-color: #161217;
 }
-.network-settings-window .content {
+.settings-window .sections {
+  padding: 10px;
+  min-width: 200px;
+  background-color: #221e24;
+}
+.settings-window .sections .section {
+  padding: 10px 16px;
+}
+.settings-window .sections .category {
+  font-size: 1.1rem;
+  font-weight: bold;
+  color: #e9e0e8;
+  padding: 10px;
+}
+.settings-window .active-page {
+  min-width: 400px;
+  min-height: 400px;
+}
+.settings-window .active-page .settings-page-header {
+  background-color: #221e24;
+  font-weight: bold;
+  min-height: 36px;
+  padding: 10px 16px;
+}
+.settings-window .active-page .content {
   padding: 0 10px;
+}
+.settings-window .active-page .full-page-scroll {
+  min-height: 520px;
+  padding-bottom: 10px;
+}
+.settings-window .network-scan-button {
+  padding: 0;
+  min-width: 36px;
+  min-height: 36px;
+}
+.settings-window .network-settings .wifi-item {
+  padding: 10px;
+}
+.settings-window .network-settings .wifi-item .icon {
+  margin-right: 10px;
+}
+.settings-window .network-settings .wifi-item .label {
+  font-weight: bold;
+  color: #e9e0e8;
+  margin-right: 10px;
+}
+.settings-window .network-settings .connect-button {
+  font-size: 0.9rem;
+  padding: 5px 10px;
+}
+.settings-window .network-settings .connect-button label {
+  color: #e9e0e8;
+}
+.settings-window .network-settings .connected {
+  font-size: 0.9rem;
+  padding: 0 10px;
+  color: #cdc3ce;
+}
+.settings-window .bluetooth-toggle-button {
+  padding: 0;
+  min-width: 36px;
+  min-height: 36px;
+}
+.settings-window .bluetooth-settings .device-item {
+  padding: 10px;
+}
+.settings-window .bluetooth-settings .device-item .icon {
+  margin-right: 10px;
+}
+.settings-window .bluetooth-settings .device-item .label {
+  font-weight: bold;
+  color: #e9e0e8;
+  margin-right: 10px;
+}
+.settings-window .bluetooth-settings .device-item .percentage {
+  color: #cdc3ce;
+}
+.settings-window .audio-settings .speaker {
+  padding: 10px 20px 10px 10px;
+}
+.settings-window .audio-settings .icon {
+  min-width: 24px;
+  min-height: 24px;
+}
+.settings-window .audio-settings .details .title {
+  font-weight: bold;
+  color: #e9e0e8;
+}
+.settings-window .audio-settings .details .descriptor {
+  font-size: 0.9rem;
+  color: #cdc3ce;
+}
+.settings-window .audio-settings .default-button {
+  padding: 0;
+  min-width: 32px;
+  min-height: 32px;
+}
+.settings-window .audio-settings .default-button label {
+  font-size: 0.9rem;
+}
+.settings-window .audio-settings scale {
+  all: unset;
+}
+.settings-window .audio-settings scale * {
+  all: unset;
+}
+.settings-window .audio-settings scale trough {
+  transition: background-color 0.3s ease-in-out, color 0.3s ease-in-out;
+  border-radius: 100px;
+  background-color: #383339;
+  min-height: 16px;
+}
+.settings-window .audio-settings scale trough highlight,
+.settings-window .audio-settings scale trough progress {
+  background-image: none;
+  background-color: #e0b8f6;
+  border-radius: 100px;
+  transition: background-color 0.3s ease-in-out, color 0.3s ease-in-out;
+}
+.settings-window .audio-settings scale trough slider {
+  border-radius: 100px;
+  min-height: 16px;
+  min-width: 16px;
+  background: none;
+  transition: background-color 0.3s ease-in-out, color 0.3s ease-in-out;
 }
 
 * {

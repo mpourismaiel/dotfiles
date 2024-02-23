@@ -1,1 +1,45 @@
-@import './network';
+.settings-window {
+  background-color: $surface;
+
+  .sections {
+    padding: 10px;
+    min-width: 200px;
+    background-color: $surface_container;
+
+    .section {
+      padding: 10px 16px;
+    }
+
+    .category {
+      font-size: 1.1rem;
+      font-weight: bold;
+      color: $on_surface;
+      padding: 10px;
+    }
+  }
+
+  .active-page {
+    min-width: 400px;
+    min-height: 400px;
+
+    .settings-page-header {
+      background-color: $surface_container;
+      font-weight: bold;
+      min-height: 36px;
+      padding: 10px 16px;
+    }
+
+    .content {
+      padding: 0 10px;
+    }
+
+    .full-page-scroll {
+      min-height: 520px;
+      padding-bottom: 10px;
+    }
+  }
+
+  @import "./network";
+  @import "./bluetooth";
+  @import "./audio";
+}

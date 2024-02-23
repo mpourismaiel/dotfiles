@@ -2,6 +2,9 @@ import { cn } from "../../../utils/string.js";
 
 const ToggleButton = ({
   state = Variable(false),
+  service,
+  hook,
+  signal,
   className,
   setup,
   ...rest
@@ -9,9 +12,13 @@ const ToggleButton = ({
   return Widget.Button({
     className: cn("toggle-button", className),
     setup: (self) => {
-      self.hook(state, (self) => {
-        self.toggleClassName("active", state.value === "light");
-      });
+      if (service) {
+        self.hook(service, hook, signal);
+      } else {
+        self.hook(state, (self) => {
+          self.toggleClassName("active", state.value === "light");
+        });
+      }
       if (setup) setup(self);
     },
     ...rest,
