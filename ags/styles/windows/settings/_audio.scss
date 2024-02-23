@@ -1,0 +1,38 @@
+@import "../../mixins/slider.scss";
+
+.audio-settings {
+  .speaker {
+    padding: 10px 20px 10px 10px;
+  }
+
+  .icon {
+    min-width: 24px;
+    min-height: 24px;
+  }
+
+  .details {
+    .title {
+      font-weight: bold;
+      color: $on_surface;
+    }
+
+    .descriptor {
+      font-size: 0.9rem;
+      color: $on_surface_variant;
+    }
+  }
+
+  .default-button {
+    padding: 0;
+    min-width: 32px;
+    min-height: 32px;
+
+    label {
+      font-size: 0.9rem;
+    }
+  }
+
+  scale {
+    @include slider;
+  }
+}

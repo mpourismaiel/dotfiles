@@ -1,0 +1,25 @@
+.bluetooth-toggle-button {
+  padding: 0;
+  min-width: 36px;
+  min-height: 36px;
+}
+
+.bluetooth-settings {
+  .device-item {
+    padding: 10px;
+
+    .icon {
+      margin-right: 10px;
+    }
+
+    .label {
+      font-weight: bold;
+      color: $on_surface;
+      margin-right: 10px;
+    }
+
+    .percentage {
+      color: $on_surface_variant;
+    }
+  }
+}

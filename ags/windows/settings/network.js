@@ -1,48 +1,6 @@
-import RegularWindow from "../../widgets/_components/regular-window.js";
+import { dependencies } from "../../utils/dots.js";
 
 const Network = await Service.import("network");
-
-export const WINDOW_NAME = "NetworkSettings";
-
-const connectWifiCommand = (bssid, password) =>
-  `nmcli device wifi connect "${bssid}" ${
-    password ? `password "${password}"` : ""
-  }`;
-
-const renderAccessPoints = (self) => {
-  self.children = Network.wifi?.access_points
-    .sort(({ active: aActive }, { active: bActive }) => {
-      if (aActive === bActive) return 0;
-      if (aActive) return -1;
-      return 1;
-    })
-    .map((ap) =>
-      Widget.Button({
-        onPrimaryClick: () => {
-          // check for errors, if there are any ask for password
-          Utils.execAsync(connectWifiCommand(ap.bssid))
-            .then((out) => print(out))
-            .catch((err) => {
-              print(`Error: ${err}`);
-              NetworkDetails.setValue({ wifi: ap, enterPassword: true });
-            });
-        },
-        child: Widget.CenterBox({
-          startWidget: Widget.Box({
-            spacing: 16,
-            children: [Widget.Icon(ap.iconName), Widget.Label(ap.ssid || "")],
-          }),
-          endWidget: ap.active
-            ? Widget.Icon({
-                icon: "network",
-                hexpand: true,
-                hpack: "end",
-              })
-            : null,
-        }),
-      })
-    );
-};
 
 const NetworkDetails = Variable({
   wifi: null,
@@ -50,25 +8,82 @@ const NetworkDetails = Variable({
   password: "",
 });
 
+const connectWifiCommand = (bssid, password) =>
+  `nmcli device wifi connect "${bssid}" ${
+    password ? `password "${password}"` : ""
+  }`;
+
+const WifiItem = (wifi) =>
+  Widget.Box({
+    className: "wifi-item",
+    children: [
+      Widget.Icon({ size: 16, className: "icon", icon: wifi.iconName }),
+      Widget.Label({ className: "label", label: wifi.ssid || "" }),
+      Widget.Box({ hexpand: true }),
+      Widget.Stack({
+        hpack: "end",
+        children: {
+          connect: Widget.Button({
+            className: "connect-button",
+            onPrimaryClick: () => {
+              if (!dependencies("nmcli")) return;
+
+              Utils.execAsync(connectWifiCommand(wifi.bssid)).catch((err) => {
+                print(`Error: ${err}`);
+                NetworkDetails.setValue({ wifi: wifi, enterPassword: true });
+              });
+            },
+            child: Widget.Label({
+              label: "Connect",
+              hexpand: true,
+              hpack: "end",
+            }),
+          }),
+          connected: Widget.Label({
+            className: "connected",
+            label: "Connected",
+            hexpand: true,
+            hpack: "end",
+          }),
+        },
+        shown: Network.wifi
+          .bind("ssid")
+          .as((ssid) => ((ssid || "") === wifi.ssid ? "connected" : "connect")),
+      }),
+    ],
+  });
+
 const NetworkWifiSelector = () => {
   return Widget.Stack({
     className: "content",
     children: {
-      list: Widget.Box({
-        vertical: true,
-        spacing: 16,
-        setup: (self) => {
-          self.hook(
-            App,
-            (_, windowName, visible) => {
-              if (windowName !== WINDOW_NAME) return;
-              Network.wifi?.scan();
-            },
-            "window_toggled"
-          );
+      list: Widget.Scrollable({
+        hscroll: "never",
+        className: "full-page-scroll",
+        child: Widget.Box({
+          vertical: true,
+          setup: (self) => {
+            self.hook(Network, (self) => {
+              self.children = Network.wifi?.access_points
+                .sort(({ active: aActive }, { active: bActive }) => {
+                  if (aActive === bActive) return 0;
+                  if (aActive) return -1;
+                  return 1;
+                })
+                .map((device, i, arr) => {
+                  const items = [];
+                  items.push(WifiItem(device));
 
-          self.hook(Network, renderAccessPoints);
-        },
+                  if (i < arr.length - 1) {
+                    items.push(Widget.Separator());
+                  }
+
+                  return items;
+                })
+                .flat();
+            });
+          },
+        }),
       }),
       password: Widget.Box({
         vertical: true,
@@ -98,53 +113,43 @@ const NetworkWifiSelector = () => {
         ],
       }),
     },
-    shown: NetworkDetails.bind().as((v) =>
-      v.enterPassword ? "password" : "list"
-    ),
-    setup: (self) => {
-      self.hook(App, (_, windowName, visible) => {
-        if (windowName !== WINDOW_NAME || !visible) return;
-        NetworkDetails.setValue({
-          wifi: null,
-          enterPassword: false,
-          password: "",
-        });
-      });
-    },
+    setup: (self) =>
+      self.hook(
+        NetworkDetails,
+        (v) => (self.shown = v.enterPassword ? "password" : "list")
+      ),
   });
 };
 
 const RescanWifiButton = () =>
   Widget.Box({
+    hpack: "end",
     child: Widget.Button({
+      className: "network-scan-button",
       onPrimaryClick: () => Network.wifi?.scan(),
       child: Widget.Icon({ size: 16, icon: "view-refresh-symbolic" }),
     }),
   });
 
-export const NetworkWindow = () =>
-  RegularWindow({
-    name: WINDOW_NAME,
-    title: "Network Settings",
-    className: "network-settings-window",
-    setup(win) {
-      win.on("delete-event", () => {
-        win.hide();
-        return true;
-      });
-      win.set_default_size(500, 600);
-    },
-    child: Widget.Box({
-      vertical: true,
-      spacing: 16,
-      children: [
-        Widget.CenterBox({
-          className: "popup-title",
-          css: "padding-left:10px;padding-right:10px",
-          startWidget: RescanWifiButton(),
-          centerWidget: Widget.Label({ label: "Network" }),
-        }),
-        NetworkWifiSelector(),
-      ],
-    }),
+export const NetworkPageHeader = () => ({
+  centerWidget: Widget.Label({ label: "Network" }),
+  endWidget: RescanWifiButton(),
+});
+
+const NetworkPage = () => {
+  Network.wifi?.scan();
+  NetworkDetails.setValue({
+    wifi: null,
+    enterPassword: false,
+    password: "",
   });
+
+  return Widget.Box({
+    vertical: true,
+    spacing: 16,
+    className: "network-settings",
+    children: [NetworkWifiSelector()],
+  });
+};
+
+export default NetworkPage;

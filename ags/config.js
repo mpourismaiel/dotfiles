@@ -9,7 +9,7 @@ import { NotificationPopup } from "./widgets/notification/main.js";
 import { range } from "./utils/array.js";
 import InfoPanel from "./widgets/info/main.js";
 import InitializeStyles from "./lib/styles.js";
-import { NetworkWindow } from "./windows/settings/network.js";
+import SettingsWindow from "./windows/settings/main.js";
 
 function forMonitors(widget) {
   const n = Gdk.Display.get_default()?.get_n_monitors() || 1;
@@ -23,5 +23,5 @@ forMonitors(Bar);
 forMonitors(NotificationPopup);
 
 export default {
-  windows: [Menu(), AppLauncherMenu(), InfoPanel(), NetworkWindow()],
+  windows: [Menu(), AppLauncherMenu(), InfoPanel(), SettingsWindow()],
 };

@@ -23,40 +23,39 @@ const SysTray = (props = {}) => {
   return Widget.Box({
     className: "card",
     child: Widget.Box({
-      vertical: false,
       className: "systray",
       spacing: 4,
       attribute: {
         items: new Map(),
-        onAdded: (box, id) => {
+        onAdded: (self, id) => {
           const item = SystemTray.getItem(id);
           if (!item) return;
 
           item.menu.className = "menu";
-          if (box.attribute.items.has(id) || !item) return;
+          if (self.attribute.items.has(id) || !item) return;
 
           const widget = SysTrayItem(item);
-          box.attribute.items.set(id, widget);
-          box.add(widget);
-          box.show_all();
+          self.attribute.items.set(id, widget);
+          self.add(widget);
+          self.show_all();
         },
-        onRemoved: (box, id) => {
-          if (!box.attribute.items.has(id)) return;
+        onRemoved: (self, id) => {
+          if (!self.attribute.items.has(id)) return;
 
-          box.attribute.items.get(id).destroy();
-          box.attribute.items.delete(id);
+          self.attribute.items.get(id).destroy();
+          self.attribute.items.delete(id);
         },
       },
       setup: (self) =>
         self
           .hook(
             SystemTray,
-            (box, id) => box.attribute.onAdded(box, id),
+            (self, id) => self.attribute.onAdded(self, id),
             "added"
           )
           .hook(
             SystemTray,
-            (box, id) => box.attribute.onRemoved(box, id),
+            (self, id) => self.attribute.onRemoved(self, id),
             "removed"
           ),
     }),

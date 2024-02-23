@@ -1,8 +1,9 @@
 import ArrowButton from "../_components/button/arrow.js";
+import { WINDOW_NAME, openSettingsPage } from "../../windows/settings/main.js";
 
 const Bluetooth = await Service.import("bluetooth");
 
-const BluetoothButton = () => {
+const BluetoothButton = ({ onClose }) => {
   const BluetoothButton = () =>
     Widget.Icon({
       size: 24,
@@ -28,6 +29,11 @@ const BluetoothButton = () => {
 
   return Widget.Button({
     className: "bar-bluetooth panel-button",
+    onPrimaryClick: () => {
+      onClose();
+      App.toggleWindow(WINDOW_NAME);
+      openSettingsPage("bluetooth");
+    },
     child: BluetoothIndicator(),
   });
 };

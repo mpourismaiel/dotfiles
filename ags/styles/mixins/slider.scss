@@ -1,0 +1,29 @@
+@import "./unset";
+
+@mixin slider() {
+  @include unset($rec: true);
+
+  trough {
+    transition: background-color 0.3s ease-in-out, color 0.3s ease-in-out;
+    border-radius: 100px;
+    background-color: $surface_container_highest;
+    min-height: 16px;
+
+    highlight,
+    progress {
+      background-image: none;
+      background-color: $primary;
+      border-radius: 100px;
+      transition: background-color 0.3s ease-in-out, color 0.3s ease-in-out;
+    }
+
+    slider {
+      border-radius: 100px;
+      min-height: 16px;
+      min-width: 16px;
+      background: none;
+
+      transition: background-color 0.3s ease-in-out, color 0.3s ease-in-out;
+    }
+  }
+}

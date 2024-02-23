@@ -1,5 +1,5 @@
 import ArrowButton from "../_components/button/arrow.js";
-import { WINDOW_NAME } from "../../windows/settings/network.js";
+import { WINDOW_NAME, openSettingsPage } from "../../windows/settings/main.js";
 
 const Network = await Service.import("network");
 
@@ -46,6 +46,7 @@ const NetworkButton = ({ onClose }) => {
     onPrimaryClick: () => {
       onClose();
       App.toggleWindow(WINDOW_NAME);
+      openSettingsPage("network");
     },
     child: NetworkIndicator(),
   });
