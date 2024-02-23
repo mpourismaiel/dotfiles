@@ -1,3 +1,111 @@
+.arrow-button {
+  padding: 0;
+}
+
+.toggle-button {
+  padding-left: 14px;
+  padding-right: 14px;
+  padding-top: 9px;
+  padding-bottom: 9px;
+  background-color: #2d282e;
+  border-radius: 12px;
+  transition: background-color 0.3s ease-out;
+}
+.toggle-button.active {
+  background-color: #f4daff;
+  color: #412356;
+}
+.toggle-button:hover {
+  background-color: #383339;
+}
+.toggle-button:hover.active {
+  background-color: #e0b8f6;
+}
+
+.popup {
+  background: none;
+}
+.popup-background {
+  background-color: rgba(0, 0, 0, 0.2);
+}
+.popup-window {
+  border-radius: 8px;
+}
+.popup-title {
+  background-color: #2d282e;
+  padding: 10px 0;
+  font-weight: bold;
+  border-radius: 8px 8px 0 0;
+  min-width: 400px;
+}
+.popup-content {
+  padding: 20px;
+  background-color: #161217;
+  border-radius: 0 0 8px 8px;
+}
+.popup-window.without-title .popup-content {
+  border-radius: 8px;
+}
+
+.notification {
+  min-width: 450px;
+  border-radius: 8px;
+  margin: 8px;
+  background-color: #161217;
+}
+.notification .notification-header {
+  padding: 5px 10px;
+  background-color: #383339;
+}
+.notification .notification-icon {
+  min-width: 36px;
+  min-height: 36px;
+  margin-right: 1em;
+}
+.notification .notification-icon image {
+  font-size: 58px;
+  /* to center the icon */
+  margin: 5px;
+  color: #e9e0e8;
+}
+.notification .notification-icon box {
+  min-width: 36px;
+  min-height: 36px;
+  border-radius: 7px;
+}
+.notification .notification-title {
+  color: #e9e0e8;
+  font-family: "Inter";
+  font-weight: bold;
+}
+.notification .notification-body {
+  padding: 20px 10px 20px;
+  color: #e9e0e8;
+  font-family: "Inter";
+  font-size: 0.9rem;
+}
+.notification .notification-actions {
+  padding: 0 10px 10px;
+}
+.notification .notification-actions .action-button {
+  margin: 0 0.4em;
+  margin-top: 0.8em;
+}
+.notification .notification-actions .action-button:first-child {
+  margin-left: 0;
+}
+.notification .notification-actions .action-button:last-child {
+  margin-right: 0;
+}
+.notification .header {
+  border-top-left-radius: 8px;
+  border-top-right-radius: 8px;
+}
+.notification .footer {
+  border-bottom-left-radius: 8px;
+  border-bottom-right-radius: 8px;
+}
+
 .panel-button-container {
   background: none;
   padding-left: 0;
@@ -28,7 +136,7 @@
 
 window.bar {
   min-width: 48px;
-  background-color: #221e24;
+  background-color: #161217;
   color: #e9e0e8;
   font-family: "Inter";
   font-size: 16px;
@@ -45,7 +153,7 @@ window.bar .workspaces-container .workspaces .workspace {
   border-radius: 100px;
   margin: 5px 0;
   transition: min-height 0.3s ease, background-color 0.3s ease-out;
-  background-color: #332f35;
+  background-color: #3c383e;
 }
 window.bar .workspaces-container .workspaces .workspace.occupied {
   background-color: #cdc3ce;
@@ -89,6 +197,7 @@ window.bar .clock {
   padding-top: 8px;
   padding-bottom: 8px;
   font-family: "Inter";
+  color: #e9e0e8;
 }
 window.bar .clock-hour {
   font-weight: bold;
@@ -112,6 +221,7 @@ window.bar .menu-toggle-button .menu-toggle-button-icon {
 
 .profile .username {
   font-weight: bold;
+  color: #e9e0e8;
 }
 
 .bar-bluetooth {
@@ -119,6 +229,15 @@ window.bar .menu-toggle-button .menu-toggle-button-icon {
 }
 .bar-bluetooth .title {
   font-size: 14px;
+  color: #e9e0e8;
+}
+
+.bar-battery {
+  min-width: 185px;
+}
+.bar-battery .title {
+  font-size: 14px;
+  color: #e9e0e8;
 }
 
 .bar-network {
@@ -126,6 +245,7 @@ window.bar .menu-toggle-button .menu-toggle-button-icon {
 }
 .bar-network .title {
   font-size: 14px;
+  color: #e9e0e8;
 }
 
 .bar-volume-indicator {
@@ -156,6 +276,14 @@ window.bar .menu-toggle-button .menu-toggle-button-icon {
   transition: background-color 0.3s ease-in-out, color 0.3s ease-in-out;
 }
 
+.theme-mode-toggle {
+  min-width: 185px;
+}
+.theme-mode-toggle .title {
+  font-size: 14px;
+  color: #e9e0e8;
+}
+
 .control-center {
   background-color: transparent;
 }
@@ -180,7 +308,7 @@ window.bar .menu-toggle-button .menu-toggle-button-icon {
   padding: 16px;
 }
 .menu .menu-bar {
-  background-color: #221e24;
+  background-color: #161217;
   min-height: 300px;
   padding-left: 10px;
   padding-top: 10px;
@@ -200,7 +328,7 @@ window.bar .menu-toggle-button .menu-toggle-button-icon {
   padding: 0;
 }
 .info-panel-window .info-panel-container {
-  background-color: #221e24;
+  background-color: #161217;
   padding: 10px;
   border-radius: 8px;
 }
@@ -210,15 +338,16 @@ window.bar .menu-toggle-button .menu-toggle-button-icon {
   border-radius: 8px;
 }
 .info-panel-window .info-panel-container .notification-center .notifications-header {
-  padding: 10px 0;
+  padding: 0 0 10px;
 }
 .info-panel-window .info-panel-container .notification-center .notifications-header .notifications-label {
+  color: #e9e0e8;
   font-size: 1.2rem;
   font-weight: bold;
 }
 .info-panel-window .info-panel-container .notification-center .notifications-header .clear-all-icon-button {
-  padding: 0;
-  border-radius: 100px;
+  padding: 4px;
+  border-radius: 8px;
 }
 .info-panel-window .info-panel-container .notification-center .notifications-scroll {
   min-width: 400px;
@@ -253,6 +382,10 @@ window.bar .menu-toggle-button .menu-toggle-button-icon {
 .launcher .launcher-list {
   min-width: 400px;
   min-height: 400px;
+  color: #e9e0e8;
+}
+.launcher .launcher-app-item .title {
+  color: #e9e0e8;
 }
 
 window#notifications {
@@ -260,6 +393,13 @@ window#notifications {
 }
 window#notifications box.notifications {
   padding: 10px;
+}
+
+.network-settings-window {
+  background-color: #161217;
+}
+.network-settings-window .content {
+  padding: 0 10px;
 }
 
 * {
@@ -270,95 +410,6 @@ window#notifications box.notifications {
 .applauncher .popup-window-center {
   min-width: 500px;
   min-height: 500px;
-}
-
-.arrow-button {
-  padding: 0;
-}
-
-.popup {
-  background: none;
-}
-.popup-background {
-  background-color: rgba(0, 0, 0, 0.2);
-}
-.popup-window {
-  border-radius: 8px;
-}
-.popup-title {
-  background-color: #2d282e;
-  padding: 10px 0;
-  font-weight: bold;
-  border-radius: 8px 8px 0 0;
-  min-width: 400px;
-}
-.popup-content {
-  padding: 20px;
-  background-color: #221e24;
-  border-radius: 0 0 8px 8px;
-}
-.popup-window.without-title .popup-content {
-  border-radius: 8px;
-}
-
-.notification {
-  min-width: 350px;
-  border-radius: 8px;
-  margin: 8px;
-  background-color: #221e24;
-}
-.notification .notification-header {
-  padding: 5px 10px;
-  background-color: #383339;
-}
-.notification .notification-icon {
-  min-width: 36px;
-  min-height: 36px;
-  margin-right: 1em;
-}
-.notification .notification-icon image {
-  font-size: 58px;
-  /* to center the icon */
-  margin: 5px;
-  color: #e9e0e8;
-}
-.notification .notification-icon box {
-  min-width: 36px;
-  min-height: 36px;
-  border-radius: 7px;
-}
-.notification .notification-title {
-  color: #e9e0e8;
-  font-family: "Inter";
-  font-size: 1em;
-  font-weight: bold;
-}
-.notification .notification-body {
-  padding: 20px 10px 20px;
-  color: #e9e0e8;
-  font-family: "Inter";
-  font-size: 0.9rem;
-}
-.notification .notification-actions {
-  padding: 0 10px 10px;
-}
-.notification .notification-actions .action-button {
-  margin: 0 0.4em;
-  margin-top: 0.8em;
-}
-.notification .notification-actions .action-button:first-child {
-  margin-left: 0;
-}
-.notification .notification-actions .action-button:last-child {
-  margin-right: 0;
-}
-.notification .header {
-  border-top-left-radius: 8px;
-  border-top-right-radius: 8px;
-}
-.notification .footer {
-  border-bottom-left-radius: 8px;
-  border-bottom-right-radius: 8px;
 }
 
 /*# sourceMappingURL=style.css.map */

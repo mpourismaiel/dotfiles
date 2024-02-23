@@ -1,4 +1,4 @@
-import PopupWindow from "../misc/popup-window.js";
+import PopupWindow from "../_components/popup-window.js";
 
 const { query } = await Service.import("applications");
 const Gtk = imports.gi.Gtk;
@@ -9,9 +9,8 @@ const AppItem = (app) =>
   Widget.Button({
     className: "launcher-app-item-container",
     hexpand: true,
-    on_clicked: () => {
-      App.closeWindow(WINDOW_NAME);
-      app.launch();
+    on_clicked: (self) => {
+      self.attribute.run();
     },
     setup: (self) => {
       self.keybind("Enter", () => {
@@ -19,7 +18,13 @@ const AppItem = (app) =>
         app.launch();
       });
     },
-    attribute: { app },
+    attribute: {
+      app,
+      run: () => {
+        App.closeWindow(WINDOW_NAME);
+        app.launch();
+      },
+    },
     child: Widget.Box({
       hpack: "start",
       className: "launcher-app-item",
@@ -44,7 +49,7 @@ const AppItem = (app) =>
     }),
   });
 
-const List = (windowName) => {
+const List = () => {
   let applications = query("").map(AppItem);
 
   const AppList = Widget.Box({
@@ -53,12 +58,18 @@ const List = (windowName) => {
     spacing: 16,
   });
 
+  const results = Variable();
+  repopulate();
+
+  function updateResults() {
+    results.setValue(applications.filter((item) => item.visible));
+  }
+
   function repopulate() {
     applications = query("").map(AppItem);
     AppList.children = applications;
+    updateResults();
   }
-
-  repopulate();
 
   const entry = Widget.Entry({
     hexpand: true,
@@ -66,9 +77,9 @@ const List = (windowName) => {
     placeholder_text: "Search...",
 
     on_accept: () => {
-      if (applications[0]) {
-        App.toggleWindow(windowName);
-        applications[0].attribute.app.launch();
+      if (results.value[0]) {
+        results.value[0].attribute.run();
+        App.closeWindow(WINDOW_NAME);
       }
     },
 
@@ -76,6 +87,7 @@ const List = (windowName) => {
       applications.forEach((item) => {
         item.visible = item.attribute.app.match(text ?? "");
       });
+      updateResults();
     },
   });
 
@@ -118,5 +130,5 @@ export default () =>
     className: "launcher-window",
     halign: Gtk.Align.START,
     valign: Gtk.Align.START,
-    content: List(WINDOW_NAME),
+    content: List(),
   });

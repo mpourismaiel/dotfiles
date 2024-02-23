@@ -1,0 +1,26 @@
+.arrow-button {
+  padding: 0;
+}
+
+.toggle-button {
+  padding-left: $bar_padding+10px;
+  padding-right: $bar_padding+10px;
+  padding-top: $bar_padding+5px;
+  padding-bottom: $bar_padding+5px;
+  background-color: $surface_container_high;
+  border-radius: $theme_border_radius_lg;
+  transition: background-color 0.3s ease-out;
+
+  &.active {
+    background-color: $primary_fixed;
+    color: $on_primary;
+  }
+
+  &:hover {
+    background-color: $surface_container_highest;
+
+    &.active {
+      background-color: $primary_fixed_dim;
+    }
+  }
+}

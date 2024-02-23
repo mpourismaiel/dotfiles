@@ -1,4 +1,4 @@
-import Notification from "../misc/notification.js";
+import Notification from "../_components/notification.js";
 
 const Notifications = await Service.import("notifications");
 

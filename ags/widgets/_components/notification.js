@@ -1,4 +1,4 @@
-import { cn } from "../_utils/string.js";
+import { cn } from "../../utils/string.js";
 
 const NotificationIcon = ({ app_entry, app_icon, image }) => {
   if (image) {
@@ -39,7 +39,7 @@ const Notification = (n) => {
     wrap: true,
     truncate: "end",
     label: n.summary,
-    useMarkup: n.summary.startsWith("<"),
+    useMarkup: (n.summary || "").startsWith("<"),
   });
 
   const body = Widget.Label({
@@ -56,7 +56,7 @@ const Notification = (n) => {
     wrap: true,
     truncate: "end",
     label: n.body,
-    useMarkup: n.body.startsWith("<"),
+    useMarkup: (n.body || "").startsWith("<"),
   });
 
   const actions = Widget.Box({

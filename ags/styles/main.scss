@@ -1,10 +1,14 @@
 @import './variables';
+@import './_components/button';
+@import './_components/popup';
+@import './_components/notification';
 @import './panel-button';
 @import './bar';
 @import './menu';
 @import './info';
 @import './launcher';
 @import './notification';
+@import './windows/settings/all';
 
 * {
   font-family: $font_family;
@@ -15,111 +19,5 @@
   .popup-window-center {
     min-width: 500px;
     min-height: 500px;
-  }
-}
-
-.arrow-button {
-  padding: 0;
-}
-
-.popup {
-  background: none;
-
-  &-background {
-    background-color: rgba(0, 0, 0, 0.2);
-  }
-
-  &-window {
-    border-radius: $theme_border_radius;
-  }
-
-  &-title {
-    background-color: $surface_container_high;
-    padding: 10px 0;
-    font-weight: bold;
-    border-radius: $theme_border_radius $theme_border_radius 0 0;
-    min-width: 400px;
-  }
-
-  &-content {
-    padding: 20px;
-    background-color: $surface_container;
-    border-radius: 0 0 $theme_border_radius $theme_border_radius;
-  }
-
-  &-window.without-title &-content {
-    border-radius: $theme_border_radius;
-  }
-}
-
-.notification {
-  min-width: 350px;
-  border-radius: $theme_border_radius;
-  margin: 8px;
-  background-color: $surface_container;
-
-  .notification-header {
-    padding: 5px 10px;
-    background-color: $surface_container_highest;
-  }
-
-  .notification-icon {
-    min-width: 36px;
-    min-height: 36px;
-    margin-right: 1em;
-
-    image {
-      font-size: 58px;
-      /* to center the icon */
-      margin: 5px;
-      color: $on_surface;
-    }
-
-    box {
-      min-width: 36px;
-      min-height: 36px;
-      border-radius: 7px;
-    }
-  }
-
-  .notification-title {
-    color: $on_surface;
-    font-family: $font_family;
-    font-size: 1em;
-    font-weight: bold;
-  }
-
-  .notification-body {
-    padding: 20px 10px 20px;
-    color: $on_surface;
-    font-family: $font_family;
-    font-size: 0.9rem;
-  }
-
-  .notification-actions {
-    padding: 0 10px 10px;
-
-    .action-button {
-      margin: 0 .4em;
-      margin-top: .8em;
-    }
-
-    .action-button:first-child {
-      margin-left: 0;
-    }
-
-    .action-button:last-child {
-      margin-right: 0;
-    }
-  }
-
-  .header {
-    border-top-left-radius: $theme_border_radius;
-    border-top-right-radius: $theme_border_radius;
-  }
-
-  .footer {
-    border-bottom-left-radius: $theme_border_radius;
-    border-bottom-right-radius: $theme_border_radius;
   }
 }

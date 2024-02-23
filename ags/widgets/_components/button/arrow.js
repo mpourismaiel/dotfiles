@@ -1,4 +1,4 @@
-import { cn } from "../../_utils/string.js";
+import { cn } from "../../../utils/string.js";
 
 const ArrowButton = ({ className, children, ...rest }) =>
   Widget.CenterBox({

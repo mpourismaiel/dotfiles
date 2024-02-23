@@ -1,4 +1,4 @@
-import { cn } from "../_utils/string.js";
+import { cn } from "../../utils/string.js";
 
 const Gtk = imports.gi.Gtk;
 
@@ -68,10 +68,12 @@ const PopupWindow = ({
             vertical: true,
             children: [
               title
-                ? Widget.Label({
-                    className: "popup-title",
-                    label: title,
-                  })
+                ? typeof title === "string"
+                  ? Widget.Label({
+                      className: "popup-title",
+                      label: title,
+                    })
+                  : title
                 : null,
               Widget.Box({
                 className: "popup-content",
