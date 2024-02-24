@@ -1,3 +1,4 @@
+import { IconMap } from "../../utils/icons.js";
 import Notification from "../_components/notification.js";
 
 const Notifications = await Service.import("notifications");
@@ -11,17 +12,40 @@ const EmptyMessage = () =>
     }),
   });
 
+const Placeholder = () =>
+  Widget.Box({
+    className: "placeholder",
+    vertical: true,
+    vpack: "center",
+    hpack: "center",
+    vexpand: true,
+    hexpand: true,
+    visible: Notifications.bind("notifications").as((n) => n.length === 0),
+    spacing: 10,
+    children: [
+      Widget.Icon({ size: 32, icon: IconMap.notifications.silent }),
+      Widget.Label("Your inbox is empty"),
+    ],
+  });
+
 const NotificationScroll = () =>
   Widget.Scrollable({
     className: "notifications-scroll",
     hscroll: "never",
     child: Widget.Box({
       vertical: true,
-      children: Notifications.bind("notifications").as((notifications) =>
-        notifications.length === 0
-          ? EmptyMessage()
-          : notifications.reverse().map(Notification)
-      ),
+      children: [
+        Widget.Box({
+          vertical: true,
+          visible: Notifications.bind("notifications").as((n) => n.length > 0),
+          children: Notifications.bind("notifications").as((notifications) =>
+            notifications.length === 0
+              ? EmptyMessage()
+              : notifications.reverse().map(Notification)
+          ),
+        }),
+        Placeholder(),
+      ],
     }),
   });
 

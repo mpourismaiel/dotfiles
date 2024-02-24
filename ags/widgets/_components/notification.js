@@ -1,111 +1,144 @@
-import { cn } from "../../utils/string.js";
+import { IconMap } from "../../utils/icons.js";
+
+import GLib from "gi://GLib";
+
+const time = (time, format = "%H:%M") =>
+  GLib.DateTime.new_from_unix_local(time).format(format);
 
 const NotificationIcon = ({ app_entry, app_icon, image }) => {
   if (image) {
     return Widget.Box({
+      vpack: "start",
+      hexpand: false,
+      className: "icon img",
       css: `
-        min-width: 36px;
-        min-height: 36px;
         background-image: url("${image}");
-        background-size: contain;
+        background-size: cover;
         background-repeat: no-repeat;
         background-position: center;
+        min-width: 32px;
+        min-height: 32px;
       `,
     });
   }
 
-  let icon = "dialog-information-symbolic";
+  let icon = IconMap.fallback.notification;
   if (Utils.lookUpIcon(app_icon)) icon = app_icon;
 
-  if (app_entry && Utils.lookUpIcon(app_entry)) icon = app_entry;
+  if (Utils.lookUpIcon(app_entry || "")) icon = app_entry || "";
 
-  return Widget.Icon({ icon, size: 36 });
-};
-
-const Notification = (n) => {
-  const icon = Widget.Box({
+  return Widget.Box({
     vpack: "start",
-    className: "notification-icon",
-    child: NotificationIcon(n),
-  });
-
-  const title = Widget.Label({
-    className: "notification-title",
-    xalign: 0,
-    justification: "left",
-    hexpand: true,
-    maxWidthChars: 24,
-    ellipsize: 3,
-    wrap: true,
-    truncate: "end",
-    label: n.summary,
-    useMarkup:
-      (n.summary || "").includes("</") && (n.summary || "").includes(">"),
-  });
-
-  const body = Widget.Label({
-    className: cn(
-      "notification-body",
-      n.summary ? "" : "header",
-      n.actions.length ? "" : "footer"
-    ),
-    xalign: 0,
-    justification: "left",
-    hexpand: true,
-    maxWidthChars: 32,
-    ellipsize: 3,
-    wrap: true,
-    truncate: "end",
-    label: n.body,
-    useMarkup: (n.body || "").includes("</") && (n.body || "").includes(">"),
-  });
-
-  const actions = Widget.Box({
-    className: "notification-actions",
-    children: n.actions.map(({ id, label }) =>
-      Widget.Button({
-        className: "action-button",
-        onPrimaryClick: () => n.invoke(id),
-        hexpand: true,
-        child: Widget.Label(label),
-      })
-    ),
-  });
-
-  const image = Widget.Box({
-    className: "notification-image",
+    hexpand: false,
+    className: "icon",
     css: `
-      background-image: url("${n.image}");
-      background-size: contain;
-      background-repeat: no-repeat;
-      background-position: center;
+      min-width: 32px;
+      min-height: 32px;
     `,
-  });
-
-  return Widget.Revealer({
-    transition: "slide_left",
-    setup: (self) => {
-      Utils.timeout(10, () => (self ? (self.reveal_child = true) : null));
-    },
-    child: Widget.EventBox({
-      on_primary_click: () => n.dismiss(),
-      child: Widget.Box({
-        class_name: `notification ${n.urgency}`,
-        vertical: true,
-        children: [
-          n.summary
-            ? Widget.Box({
-                className: "notification-header header",
-                children: [icon, title],
-              })
-            : null,
-          n.image ? image : null,
-          body,
-          n.actions.length ? actions : null,
-        ],
-      }),
+    child: Widget.Icon({
+      icon,
+      size: 32,
+      hpack: "center",
+      hexpand: true,
+      vpack: "center",
+      vexpand: true,
     }),
   });
 };
 
-export default Notification;
+export default (notification) => {
+  const Content = Widget.Box({
+    className: "content",
+    children: [
+      NotificationIcon(notification),
+      Widget.Box({
+        hexpand: true,
+        vertical: true,
+        spacing: 10,
+        children: [
+          Widget.Box({
+            children: [
+              Widget.Label({
+                className: "title",
+                xalign: 0,
+                justification: "left",
+                hexpand: true,
+                max_width_chars: 24,
+                truncate: "end",
+                wrap: true,
+                label: notification.summary.trim(),
+                use_markup: true,
+              }),
+              Widget.Label({
+                className: "time",
+                vpack: "center",
+                label: time(notification.time),
+              }),
+              Widget.Box({ hexpand: true }),
+              Widget.Button({
+                className: "close-button",
+                vpack: "start",
+                child: Widget.Icon("window-close-symbolic"),
+                onPrimaryClick: notification.close,
+              }),
+            ],
+          }),
+          Widget.Label({
+            className: "description",
+            hexpand: true,
+            use_markup: true,
+            xalign: 0,
+            justification: "left",
+            label: notification.body.trim(),
+            max_width_chars: 24,
+            wrap: true,
+          }),
+        ],
+      }),
+    ],
+  });
+
+  const ActionsBox =
+    notification.actions.length > 0
+      ? Widget.Revealer({
+          transition: "slide_down",
+          child: Widget.EventBox({
+            child: Widget.Box({
+              className: "actions horizontal",
+              spacing: 10,
+              children: notification.actions.map((action) =>
+                Widget.Button({
+                  className: "action-button",
+                  onPrimaryClick: () => notification.invoke(action.id),
+                  hexpand: true,
+                  child: Widget.Label(action.label),
+                })
+              ),
+            }),
+          }),
+        })
+      : null;
+
+  const eventbox = Widget.EventBox({
+    vexpand: false,
+    on_primary_click: notification.dismiss,
+    on_hover() {
+      if (ActionsBox) ActionsBox.reveal_child = true;
+    },
+    on_hover_lost() {
+      if (ActionsBox) ActionsBox.reveal_child = true;
+
+      notification.dismiss();
+    },
+    child: Widget.Box({
+      vertical: true,
+      spacing: 20,
+      children: ActionsBox ? [Content, ActionsBox] : [Content],
+    }),
+  });
+
+  return Widget.Box({
+    className: `notification ${notification.urgency}`,
+    child: eventbox,
+  });
+};
