@@ -39,7 +39,8 @@ const Notification = (n) => {
     wrap: true,
     truncate: "end",
     label: n.summary,
-    useMarkup: (n.summary || "").startsWith("<"),
+    useMarkup:
+      (n.summary || "").includes("</") && (n.summary || "").includes(">"),
   });
 
   const body = Widget.Label({
@@ -56,7 +57,7 @@ const Notification = (n) => {
     wrap: true,
     truncate: "end",
     label: n.body,
-    useMarkup: (n.body || "").startsWith("<"),
+    useMarkup: (n.body || "").includes("</") && (n.body || "").includes(">"),
   });
 
   const actions = Widget.Box({

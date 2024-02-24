@@ -42,7 +42,9 @@ export const Menu = () =>
           vertical: true,
           spacing: 16,
           children: [
-            Profile(),
+            Profile({
+              onClose: () => App.closeWindow(WINDOW_NAME),
+            }),
             Widget.Box({
               className: "card",
               vpack: "start",

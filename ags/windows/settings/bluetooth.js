@@ -8,21 +8,49 @@ const DeviceItem = (device) =>
     children: [
       Widget.Icon({
         className: "icon",
+        vpack: "start",
         size: 16,
         icon: device.icon_name + "-symbolic",
       }),
-      Widget.Label({ className: "label", label: device.name }),
-      Widget.Label({
-        className: "percentage",
-        label: `${device.battery_percentage}%`,
-        visible: device.bind("battery_percentage").as((p) => p > 0),
+      Widget.Box({
+        vertical: true,
+        children: [
+          Widget.Label({ className: "label", label: device.name }),
+          Widget.Box({
+            spacing: 16,
+            vpack: "start",
+            children: [
+              Widget.Label({
+                className: "paired",
+                label: device
+                  .bind("paired")
+                  .as((v) => `${v ? "Paired" : "Not Paired"}`),
+                visible: device.bind("paired").as((p) => p),
+              }),
+              Widget.Label({
+                className: "trusted",
+                label: device
+                  .bind("trusted")
+                  .as((v) => `${v ? "Trusted" : "Not Trusted"}`),
+                visible: device.bind("trusted").as((p) => p),
+              }),
+              Widget.Label({
+                className: "percentage",
+                label: `${device.battery_percentage}%`,
+                visible: device.bind("battery_percentage").as((p) => p > 0),
+              }),
+            ],
+          }),
+        ],
       }),
       Widget.Box({ hexpand: true }),
       Widget.Spinner({
+        vpack: "start",
         active: device.bind("connecting"),
         visible: device.bind("connecting"),
       }),
       Widget.Switch({
+        vpack: "start",
         active: device.bind("connected"),
         visible: device.bind("connecting").as((p) => !p),
         setup: (self) =>

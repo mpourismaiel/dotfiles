@@ -227,6 +227,11 @@ window.bar .menu-toggle-button .menu-toggle-button-icon {
   font-weight: bold;
   color: #e9e0e8;
 }
+.profile .settings-button {
+  padding: 0;
+  min-width: 36px;
+  min-height: 36px;
+}
 
 .bar-bluetooth {
   min-width: 185px;
@@ -408,6 +413,11 @@ window#notifications box.notifications {
 .settings-window {
   background-color: #161217;
 }
+.settings-window .titlebar {
+  background-color: #221e24;
+  outline: none;
+  padding: 5px 10px;
+}
 .settings-window .sections {
   padding: 10px;
   min-width: 200px;
@@ -477,13 +487,18 @@ window#notifications box.notifications {
 }
 .settings-window .bluetooth-settings .device-item .icon {
   margin-right: 10px;
+  padding: 4px 0;
 }
 .settings-window .bluetooth-settings .device-item .label {
   font-weight: bold;
   color: #e9e0e8;
   margin-right: 10px;
 }
+.settings-window .bluetooth-settings .device-item .paired,
+.settings-window .bluetooth-settings .device-item .trusted,
 .settings-window .bluetooth-settings .device-item .percentage {
+  margin-top: 4px;
+  font-size: 0.9rem;
   color: #cdc3ce;
 }
 .settings-window .audio-settings .speaker {
