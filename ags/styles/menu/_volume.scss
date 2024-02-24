@@ -1,38 +1,40 @@
 .bar-volume-indicator {
-	border-radius: 100px;
-	min-width: 36px;
-	min-height: 36px;
-	padding: 8px;
+  border-radius: 100px;
+  min-width: 36px;
+  min-height: 36px;
+  padding: 8px;
 }
 
 .bar-volume-slider {
-	trough {
-		transition:
-			background-color 0.3s ease-in-out,
-			color 0.3s ease-in-out;
-		border-radius: 100px;
-		background-color: $surface_container_highest;
-		min-height: 48px;
+  trough {
+    transition: background-color 0.3s ease-in-out, color 0.3s ease-in-out;
+    border-radius: 100px;
+    background-color: $surface_container_highest;
+    min-height: 48px;
 
-		highlight,
-		progress {
-			background-image: none;
-			background-color: $primary;
-			border-radius: 100px;
-			transition:
-				background-color 0.3s ease-in-out,
-				color 0.3s ease-in-out;
-		}
+    highlight,
+    progress {
+      background-image: none;
+      background-color: $primary;
+      border-radius: 100px;
+      transition: background-color 0.3s ease-in-out, color 0.3s ease-in-out;
+    }
 
-		slider {
-			border-radius: 100px;
-			min-height: 42px;
-			min-width: 42px;
-			background: none;
+    slider {
+      border-radius: 100px;
+      min-height: 42px;
+      min-width: 42px;
+      background: none;
 
-			transition:
-				background-color 0.3s ease-in-out,
-				color 0.3s ease-in-out;
-		}
-	}
+      transition: background-color 0.3s ease-in-out, color 0.3s ease-in-out;
+    }
+  }
+}
+
+.bar-volume-settings {
+  .volume-settings {
+    padding: 8px;
+    min-width: 36px;
+    min-height: 36px;
+  }
 }

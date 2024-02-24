@@ -2,6 +2,10 @@
   padding: 0;
 }
 
+.rounded-button {
+  border-radius: 1000px;
+}
+
 .toggle-button {
   padding-left: 14px;
   padding-right: 14px;
@@ -274,6 +278,12 @@ window.bar .menu-toggle-button .menu-toggle-button-icon {
   min-width: 42px;
   background: none;
   transition: background-color 0.3s ease-in-out, color 0.3s ease-in-out;
+}
+
+.bar-volume-settings .volume-settings {
+  padding: 8px;
+  min-width: 36px;
+  min-height: 36px;
 }
 
 .theme-mode-toggle {
