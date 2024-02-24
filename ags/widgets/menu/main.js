@@ -70,10 +70,16 @@ export const Menu = () =>
                   ],
                 }),
                 Row({
-                  child: Volume({ type: "speaker" }),
+                  child: Volume({
+                    type: "speaker",
+                    onClose: () => App.closeWindow(WINDOW_NAME),
+                  }),
                 }),
                 Row({
-                  child: Volume({ type: "microphone" }),
+                  child: Volume({
+                    type: "microphone",
+                    onClose: () => App.closeWindow(WINDOW_NAME),
+                  }),
                 }),
               ],
             }),

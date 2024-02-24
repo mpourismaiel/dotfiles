@@ -1,5 +1,5 @@
 import { getAudioTypeIcon } from "../../utils/icons.js";
-import { Row } from "../_components/layout.js";
+import { WINDOW_NAME, openSettingsPage } from "../../windows/settings/main.js";
 
 const Audio = await Service.import("audio");
 
@@ -47,10 +47,30 @@ const VolumeSlider = ({ type }) =>
     },
   });
 
-const Volume = ({ type }) =>
+const VolumeSettings = ({ type, onClose }) =>
+  Widget.Button({
+    className: "rounded-button volume-settings",
+    onPrimaryClick: () => {
+      onClose();
+      App.toggleWindow(WINDOW_NAME);
+      openSettingsPage("audio", type);
+    },
+    child: Widget.Icon({
+      size: 16,
+      className: "arrow",
+      icon: "arrow-right",
+    }),
+  });
+
+const Volume = ({ type, onClose }) =>
   Widget.Box({
     spacing: 10,
-    children: [VolumeMuteButton({ type }), VolumeSlider({ type })],
+    className: "bar-volume-settings",
+    children: [
+      VolumeMuteButton({ type }),
+      VolumeSlider({ type }),
+      VolumeSettings({ type, onClose }),
+    ],
   });
 
 export default Volume;

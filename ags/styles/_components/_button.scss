@@ -2,11 +2,15 @@
   padding: 0;
 }
 
+.rounded-button {
+  border-radius: 1000px;
+}
+
 .toggle-button {
-  padding-left: $bar_padding+10px;
-  padding-right: $bar_padding+10px;
-  padding-top: $bar_padding+5px;
-  padding-bottom: $bar_padding+5px;
+  padding-left: $bar_padding + 10px;
+  padding-right: $bar_padding + 10px;
+  padding-top: $bar_padding + 5px;
+  padding-bottom: $bar_padding + 5px;
   background-color: $surface_container_high;
   border-radius: $theme_border_radius_lg;
   transition: background-color 0.3s ease-out;

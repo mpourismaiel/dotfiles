@@ -5,9 +5,13 @@ const ArrowButton = ({ className, children, ...rest }) =>
     className: cn("arrow-button", className),
     spacing: 16,
     startWidget: Widget.Box({ spacing: 16, children }),
-    endWidget: Widget.Icon({
-      className: "arrow",
-      icon: "arrow-down",
+    endWidget: Widget.Box({
+      hpack: "end",
+      child: Widget.Icon({
+        size: 16,
+        className: "arrow",
+        icon: "arrow-right",
+      }),
     }),
     ...rest,
   });
