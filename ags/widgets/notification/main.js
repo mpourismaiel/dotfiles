@@ -1,40 +1,109 @@
+import options from "../../lib/options.js";
 import Notification from "../_components/notification.js";
 
 const Notifications = await Service.import("notifications");
 
-export const NotificationPopup = () => {
-  const map = new Map();
+function Animated(id) {
+  const n = Notifications.getNotification(id);
+  if (!n) return;
 
-  const onNotified = (self, id) => {
-    if (!id || Notifications.dnd) return;
-    map.delete(id);
-    map.set(id, true);
+  const transition = options.getOption("transition");
+  const widget = Notification(n);
 
-    map.set(id, Notification(Notifications.getNotification(id)));
-    self.children = Array.from(map.values()).reverse();
-  };
+  const inner = Widget.Revealer({
+    transition: "slide_down",
+    transition_duration: transition,
+    child: widget,
+  });
 
-  const onDismissed = (force) => (self, id) => {
-    if (!id || !map.has(id)) return;
+  const outer = Widget.Revealer({
+    transition: "slide_down",
+    transition_duration: transition,
+    child: inner,
+  });
 
-    map.get(id).reveal_child = false;
-    Utils.timeout(250, () => {
-      map.get(id)?.destroy();
-      map.delete(id);
+  const box = Widget.Box({
+    hpack: "end",
+    child: outer,
+  });
+
+  Utils.idle(() => {
+    outer.reveal_child = true;
+    Utils.timeout(transition, () => {
+      inner.reveal_child = true;
     });
-  };
+  });
+
+  return Object.assign(box, {
+    dismiss() {
+      inner.reveal_child = false;
+      print("gone with the wind");
+      Utils.timeout(transition, () => {
+        outer.reveal_child = false;
+        print("gone a bit later");
+        Utils.timeout(transition, () => {
+          box.destroy();
+        });
+      });
+    },
+  });
+}
+
+function PopupList() {
+  const map = new Map();
+  const box = Widget.Box({
+    hpack: "end",
+    vertical: true,
+    css: `min-width: ${options.getOption("notifications_width")}px`,
+  });
+
+  function remove(_, id) {
+    map.get(id)?.dismiss();
+    map.delete(id);
+  }
+
+  return box
+    .hook(
+      Notifications,
+      (_, id) => {
+        if (id !== undefined) {
+          if (map.has(id)) remove(null, id);
+
+          if (Notifications.dnd) return;
+
+          const w = Animated(id);
+          map.set(id, w);
+          box.children = [w, ...box.children];
+        }
+      },
+      "notified"
+    )
+    .hook(Notifications, remove, "dismissed")
+    .hook(Notifications, remove, "closed");
+}
+
+export default (monitor) => {
+  options.registerKey(
+    "notifications_width",
+    450,
+    (value) => typeof value === "number" && value > 0
+  );
+  options.registerKey(
+    "notifications_position",
+    ["bottom", "right"],
+    (value) =>
+      value.length <= 2 &&
+      value.every((v) => ["top", "bottom", "left", "right"].includes(v))
+  );
 
   return Widget.Window({
-    name: "notifications",
-    anchor: ["bottom", "right"],
+    monitor,
+    name: `notifications${monitor}`,
+    anchor: options.getOptionVariable("notifications_position").bind(),
+    class_name: "notifications",
     child: Widget.Box({
-      class_name: "notifications",
-      vertical: true,
-      setup: (self) => {
-        self.hook(Notifications, onNotified, "notified");
-        self.hook(Notifications, onDismissed(), "dismissed");
-        self.hook(Notifications, onDismissed(true), "closed");
-      },
+      css: "padding: 2px;",
+      child: PopupList(),
     }),
   });
 };

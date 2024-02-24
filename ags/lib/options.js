@@ -100,4 +100,9 @@ class Options {
 }
 
 const options = new Options();
+
+export const InitializeGlobalDefaults = () => {
+  options.registerKey("transition", 200, (value) => typeof value === "number");
+};
+
 export default options;

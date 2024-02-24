@@ -15,10 +15,12 @@
     .clear-all-icon-button {
       padding: 4px;
       border-radius: $theme_border_radius;
+    }
+  }
 
-      .clear-all-icon {
-
-      }
+  .placeholder {
+    label {
+      color: $on_surface_variant;
     }
   }
 

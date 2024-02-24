@@ -52,62 +52,37 @@
 }
 
 .notification {
-  min-width: 450px;
-  border-radius: 8px;
-  margin: 8px;
   background-color: #161217;
+  border-radius: 8px;
+  padding: 10px;
+  margin: 5px 10px 10px;
 }
-.notification .notification-header {
-  padding: 5px 10px;
-  background-color: #383339;
+.notification .content .icon {
+  border-radius: 10px;
+  padding: 10px;
 }
-.notification .notification-icon {
-  min-width: 36px;
-  min-height: 36px;
-  margin-right: 1em;
+.notification .content .icon.img {
+  border: 1px solid #eeeeee;
 }
-.notification .notification-icon image {
-  font-size: 58px;
-  /* to center the icon */
-  margin: 5px;
+.notification .content .title {
+  margin-right: 10px;
   color: #e9e0e8;
-}
-.notification .notification-icon box {
-  min-width: 36px;
-  min-height: 36px;
-  border-radius: 7px;
-}
-.notification .notification-title {
-  color: #e9e0e8;
-  font-family: "Inter";
+  font-size: 1.1rem;
   font-weight: bold;
 }
-.notification .notification-body {
-  padding: 20px 10px 20px;
-  color: #e9e0e8;
-  font-family: "Inter";
+.notification .content .time {
+  color: #cdc3ce;
   font-size: 0.9rem;
+  margin-right: 10px;
 }
-.notification .notification-actions {
-  padding: 0 10px 10px;
+.notification .content .description {
+  font-size: 0.95rem;
+  color: #e9e0e8;
 }
-.notification .notification-actions .action-button {
-  margin: 0 0.4em;
-  margin-top: 0.8em;
-}
-.notification .notification-actions .action-button:first-child {
-  margin-left: 0;
-}
-.notification .notification-actions .action-button:last-child {
-  margin-right: 0;
-}
-.notification .header {
-  border-top-left-radius: 8px;
-  border-top-right-radius: 8px;
-}
-.notification .footer {
-  border-bottom-left-radius: 8px;
-  border-bottom-right-radius: 8px;
+.notification .close-button {
+  padding: 0;
+  min-width: 32px;
+  min-height: 32px;
 }
 
 .panel-button-container {
@@ -293,6 +268,7 @@ window.bar .menu-toggle-button .menu-toggle-button-icon {
 
 .theme-mode-toggle {
   min-width: 185px;
+  background-color: #2d282e;
 }
 .theme-mode-toggle .title {
   font-size: 14px;
@@ -363,6 +339,9 @@ window.bar .menu-toggle-button .menu-toggle-button-icon {
 .info-panel-window .info-panel-container .notification-center .notifications-header .clear-all-icon-button {
   padding: 4px;
   border-radius: 8px;
+}
+.info-panel-window .info-panel-container .notification-center .placeholder label {
+  color: #cdc3ce;
 }
 .info-panel-window .info-panel-container .notification-center .notifications-scroll {
   min-width: 400px;
