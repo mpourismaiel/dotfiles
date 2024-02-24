@@ -1,3 +1,4 @@
+import { IconMap } from "../../utils/icons.js";
 import RegularWindow from "../../widgets/_components/regular-window.js";
 import AudioPage, { AudioPageHeader } from "./audio.js";
 import BluetoothPage, { BluetoothPageHeader } from "./bluetooth.js";
@@ -116,6 +117,14 @@ const ActivePage = () => {
         if (header) {
           activeHeaderInstance = Widget.CenterBox({
             className: "settings-page-header",
+            startWidget: Widget.Box({
+              hpack: "start",
+              child: Widget.Button({
+                className: "back-button",
+                onPrimaryClick: () => activePage.setValue(null),
+                child: Widget.Icon({ icon: IconMap.ui.arrow.left }),
+              }),
+            }),
             ...header(),
           });
           self.add(activeHeaderInstance);
@@ -135,6 +144,31 @@ const ActivePage = () => {
   });
 };
 
+const TitleBar = () => {
+  return Widget.Box({
+    className: "titlebar",
+    hexpand: true,
+    children: [
+      Widget.Icon({ icon: IconMap.ui.settings, size: 16 }),
+      Widget.Label({
+        label: "Settings",
+        className: "title",
+      }),
+      Widget.Box({ hexpand: true }),
+      Widget.Box({
+        hpack: "end",
+        children: [
+          Widget.Button({
+            className: "close-button",
+            onPrimaryClick: () => App.closeWindow(WINDOW_NAME),
+            child: Widget.Icon({ icon: IconMap.ui.close }),
+          }),
+        ],
+      }),
+    ],
+  });
+};
+
 const SettingsWindow = () => {
   return RegularWindow({
     name: WINDOW_NAME,
@@ -148,7 +182,15 @@ const SettingsWindow = () => {
       win.set_default_size(800, 600);
     },
     child: Widget.Box({
-      children: [Sections(), Widget.Separator(), ActivePage()],
+      vertical: true,
+      children: [
+        TitleBar(),
+        Widget.Box({
+          vexpand: true,
+          hexpand: true,
+          children: [Sections(), Widget.Separator(), ActivePage()],
+        }),
+      ],
     }),
   });
 };

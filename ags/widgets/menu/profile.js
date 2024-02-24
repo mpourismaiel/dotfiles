@@ -1,3 +1,6 @@
+import { IconMap } from "../../utils/icons.js";
+import { WINDOW_NAME } from "../../windows/settings/main.js";
+
 const GLib = imports.gi.GLib;
 const Gio = imports.gi.Gio;
 
@@ -28,7 +31,7 @@ const ProfilePicture = () => {
   });
 };
 
-const Profile = () =>
+const Profile = ({ onClose }) =>
   Widget.Box({
     className: "card profile",
     spacing: 16,
@@ -40,6 +43,18 @@ const Profile = () =>
           Widget.Label({ className: "username", label: getUserName() }),
           Widget.Box(),
         ],
+      }),
+      Widget.Box({
+        hexpand: true,
+      }),
+      Widget.Button({
+        className: "settings-button",
+        onPrimaryClick: () => {
+          onClose();
+          App.closeWindow(WINDOW_NAME);
+          App.openWindow(WINDOW_NAME);
+        },
+        child: Widget.Icon({ size: 16, icon: IconMap.ui.settings }),
       }),
     ],
   });

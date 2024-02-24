@@ -1,6 +1,12 @@
 .settings-window {
   background-color: $surface;
 
+  .titlebar {
+    background-color: $surface_container;
+    outline: none;
+    padding: 5px 10px;
+  }
+
   .sections {
     padding: 10px;
     min-width: 200px;
