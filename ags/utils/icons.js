@@ -79,6 +79,7 @@ export const IconMap = {
     toolbars: "toolbars-symbolic",
     warning: "dialog-warning-symbolic",
     avatar: "avatar-default-symbolic",
+    keyboardLayout: "keyboard-layout-filled-symbolic",
     arrow: {
       right: "pan-end-symbolic",
       left: "pan-start-symbolic",
