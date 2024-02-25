@@ -11,6 +11,7 @@ import InfoPanel from "./widgets/info/main.js";
 import InitializeStyles from "./lib/styles.js";
 import SettingsWindow from "./windows/settings/main.js";
 import { InitializeGlobalDefaults } from "./lib/options.js";
+import { PowerMenu, Verification } from "./windows/powermenu.js";
 
 function forMonitors(widget) {
   const n = Gdk.Display.get_default()?.get_n_monitors() || 1;
@@ -25,5 +26,12 @@ forMonitors(Bar);
 forMonitors(NotificationPopup);
 
 export default {
-  windows: [Menu(), AppLauncherMenu(), InfoPanel(), SettingsWindow()],
+  windows: [
+    Menu(),
+    AppLauncherMenu(),
+    InfoPanel(),
+    SettingsWindow(),
+    PowerMenu(),
+    Verification(),
+  ],
 };

@@ -1,12 +1,12 @@
 .workspaces-container {
   .panel-button-container {
     .panel-button {
-      background-color: $surface_container_high;
+      background-color: $surface_container;
     }
 
     &:hover {
       .panel-button {
-        background-color: $surface_container_highest;
+        background-color: $surface_container_high;
       }
     }
   }
@@ -17,9 +17,7 @@
       min-height: 10px;
       border-radius: 100px;
       margin: 5px 0;
-      transition:
-        min-height 0.3s ease,
-        background-color 0.3s ease-out;
+      transition: min-height 0.3s ease, background-color 0.3s ease-out;
       background-color: $surface_bright;
 
       &.occupied {

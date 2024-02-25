@@ -103,6 +103,26 @@ const options = new Options();
 
 export const InitializeGlobalDefaults = () => {
   options.registerKey("transition", 200, (value) => typeof value === "number");
+  options.registerKey(
+    "sleep",
+    "systemctl suspend",
+    (value) => typeof value === "string"
+  );
+  options.registerKey(
+    "reboot",
+    "systemctl reboot",
+    (value) => typeof value === "string"
+  );
+  options.registerKey(
+    "logout",
+    "pkill Hyprland",
+    (value) => typeof value === "string"
+  );
+  options.registerKey(
+    "shutdown",
+    "shutdown now",
+    (value) => typeof value === "string"
+  );
 };
 
 export default options;
