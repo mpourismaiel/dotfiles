@@ -1,14 +1,15 @@
-@import './variables';
-@import './_components/button';
-@import './_components/popup';
-@import './_components/notification';
-@import './panel-button';
-@import './bar';
-@import './menu';
-@import './info';
-@import './launcher';
-@import './notification';
-@import './windows/settings/all';
+@import "./variables";
+@import "./_components/button";
+@import "./_components/popup";
+@import "./_components/notification";
+@import "./panel-button";
+@import "./bar";
+@import "./menu";
+@import "./info";
+@import "./launcher";
+@import "./notification";
+@import "./windows/powermenu/all";
+@import "./windows/settings/all";
 
 * {
   font-family: $font_family;

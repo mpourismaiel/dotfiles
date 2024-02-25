@@ -56,6 +56,14 @@ const Profile = ({ onClose }) =>
         },
         child: Widget.Icon({ size: 16, icon: IconMap.ui.settings }),
       }),
+      Widget.Button({
+        className: "power-button",
+        onPrimaryClick: () => {
+          onClose();
+          App.openWindow("powermenu");
+        },
+        child: Widget.Icon({ size: 16, icon: IconMap.powermenu.shutdown }),
+      }),
     ],
   });
 

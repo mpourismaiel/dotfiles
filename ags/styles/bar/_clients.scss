@@ -6,7 +6,7 @@
       padding: 0;
       min-width: 36px;
       min-height: 36px;
-      background-color: $surface_container_high;
+      background-color: $surface_container;
 
       .client-indicator {
         background-color: $on_surface;
@@ -14,9 +14,7 @@
         min-height: 4px;
         border-radius: 100px;
         margin: 2px -4px 2px 4px;
-        transition:
-          min-height 0.3s ease,
-          background-color 0.3s ease-out;
+        transition: min-height 0.3s ease, background-color 0.3s ease-out;
 
         &.focused {
           min-height: 12px;

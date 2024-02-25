@@ -10,15 +10,16 @@ const NotificationIcon = ({ app_entry, app_icon, image }) => {
     return Widget.Box({
       vpack: "start",
       hexpand: false,
-      className: "icon img",
-      css: `
+      className: "icon",
+      child: Widget.Box({
+        className: "img",
+        css: `
         background-image: url("${image}");
         background-size: cover;
         background-repeat: no-repeat;
         background-position: center;
-        min-width: 32px;
-        min-height: 32px;
       `,
+      }),
     });
   }
 
@@ -31,10 +32,6 @@ const NotificationIcon = ({ app_entry, app_icon, image }) => {
     vpack: "start",
     hexpand: false,
     className: "icon",
-    css: `
-      min-width: 32px;
-      min-height: 32px;
-    `,
     child: Widget.Icon({
       icon,
       size: 32,
@@ -69,14 +66,16 @@ export default (notification) => {
                 label: notification.summary.trim(),
                 use_markup: true,
               }),
+              Widget.Box({ hexpand: true }),
               Widget.Label({
                 className: "time",
+                hpack: "end",
                 vpack: "center",
                 label: time(notification.time),
               }),
-              Widget.Box({ hexpand: true }),
               Widget.Button({
                 className: "close-button",
+                hpack: "end",
                 vpack: "start",
                 child: Widget.Icon("window-close-symbolic"),
                 onPrimaryClick: notification.close,

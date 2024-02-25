@@ -1,9 +1,9 @@
-@import './menu/profile';
-@import './menu/bluetooth';
-@import './menu/battery';
-@import './menu/network';
-@import './menu/volume';
-@import './menu/theme-toggle';
+@import "./menu/profile";
+@import "./menu/bluetooth";
+@import "./menu/battery";
+@import "./menu/network";
+@import "./menu/volume";
+@import "./menu/theme-toggle";
 
 .control-center {
   background-color: transparent;
@@ -18,13 +18,13 @@
   }
 
   .popup-content {
-    padding:0;
+    padding: 0;
   }
 }
 
 .menu {
   .card {
-    background-color: $surface_container_high;
+    background-color: $surface_container;
     border-radius: $theme_border_radius;
     padding: 10px;
     min-width: 400px;

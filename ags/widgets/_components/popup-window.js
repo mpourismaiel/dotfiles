@@ -1,21 +1,18 @@
 import { cn } from "../../utils/string.js";
+import options from "../../lib/options.js";
 
 const Gtk = imports.gi.Gtk;
 
 const Revealer = ({ child, transition, name }) =>
   Widget.Revealer({
     transition,
+    transition_duration: options.getOptionVariable("transition").bind(),
     child,
     setup: (self) => {
-      self.hook(
-        App,
-        (_, windowName, visible) => {
-          if (windowName !== name) return;
-
-          self.reveal_child = visible;
-        },
-        "window_toggled"
-      );
+      self.hook(App, (_, windowName, visible) => {
+        if (windowName !== name) return;
+        self.reveal_child = visible;
+      });
     },
   });
 
@@ -59,7 +56,7 @@ const PopupWindow = ({
       name,
       child: Revealer({
         name,
-        transition: animation,
+        transition: "slide_up",
         child: Widget.Box({
           className: cn("popup-window", title ? "with-title" : "without-title"),
           valign: valign ? valign : Gtk.Align.CENTER,

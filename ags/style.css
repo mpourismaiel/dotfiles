@@ -20,7 +20,7 @@
   color: #412356;
 }
 .toggle-button:hover {
-  background-color: #383339;
+  background-color: #2d282e;
 }
 .toggle-button:hover.active {
   background-color: #e0b8f6;
@@ -59,10 +59,13 @@
 }
 .notification .content .icon {
   border-radius: 10px;
-  padding: 10px;
+  padding: 10px 10px 10px 0;
+  min-width: 32px;
+  min-height: 32px;
 }
-.notification .content .icon.img {
-  border: 1px solid #eeeeee;
+.notification .content .icon .img {
+  min-width: 32px;
+  min-height: 32px;
 }
 .notification .content .title {
   margin-right: 10px;
@@ -100,7 +103,7 @@
   margin-bottom: 4px;
   padding-top: 5px;
   padding-bottom: 5px;
-  background-color: #2d282e;
+  background-color: #221e24;
   border-radius: 12px;
   transition: background-color 0.3s ease-out;
 }
@@ -110,7 +113,7 @@
   background: none;
 }
 .panel-button-container:hover .panel-button {
-  background-color: #383339;
+  background-color: #2d282e;
 }
 
 window.bar {
@@ -121,10 +124,10 @@ window.bar {
   font-size: 16px;
 }
 window.bar .workspaces-container .panel-button-container .panel-button {
-  background-color: #2d282e;
+  background-color: #221e24;
 }
 window.bar .workspaces-container .panel-button-container:hover .panel-button {
-  background-color: #383339;
+  background-color: #2d282e;
 }
 window.bar .workspaces-container .workspaces .workspace {
   min-width: 10px;
@@ -148,7 +151,7 @@ window.bar .clients .client-container .client {
   padding: 0;
   min-width: 36px;
   min-height: 36px;
-  background-color: #2d282e;
+  background-color: #221e24;
 }
 window.bar .clients .client-container .client .client-indicator {
   background-color: #e9e0e8;
@@ -290,7 +293,7 @@ window.bar .menu-toggle-button .menu-toggle-button-icon {
 }
 
 .menu .card {
-  background-color: #2d282e;
+  background-color: #221e24;
   border-radius: 8px;
   padding: 10px;
   min-width: 400px;
@@ -361,12 +364,12 @@ window.bar .menu-toggle-button .menu-toggle-button-icon {
 }
 
 .launcher .launcher-search {
-  background-color: #2d282e;
+  background-color: #221e24;
   padding: 10px 16px;
   color: #e9e0e8;
 }
 .launcher .launcher-results {
-  background-color: #2d282e;
+  background-color: #221e24;
   padding: 10px;
   border-radius: 8px;
 }
@@ -386,6 +389,10 @@ window#notifications {
   all: unset;
 }
 window#notifications box.notifications {
+  padding: 10px;
+}
+
+.power-menu .system-button {
   padding: 10px;
 }
 
