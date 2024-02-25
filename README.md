@@ -52,9 +52,6 @@ ln -s path-to-mpourismaiel-dotfiles/hyprland ~/.config/hypr
 - scroll to switch same clients in case of multiple of same class in focus
 - info panel
   - calendar
-- osd
-  - volume change
-  - keyboard layout change
 - control center
   - audio
     - mic selector
@@ -73,3 +70,4 @@ ln -s path-to-mpourismaiel-dotfiles/hyprland ~/.config/hypr
 - wifi menu password input doesn't open, improve the whole flow
 - bluetooth menu is added but not working well, doesn't look for new devices, styling isn't good, pinning devices should be added, removing/unpairing/distrusting should be added
 - application menu doesn't have a pinned section, would be good to have categories?
+- more osd stuff?
