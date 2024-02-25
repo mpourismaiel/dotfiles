@@ -89,7 +89,7 @@ const OSD = (monitor) => {
       Hyprland,
       (_, keyboardName, language) => {
         if (!keyboardName && !language) return;
-        show(IconMap.brightness.keyboard, "text", language);
+        show(IconMap.ui.keyboardLayout, "text", language);
       },
       "keyboard-layout"
     );
