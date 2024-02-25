@@ -1,6 +1,7 @@
 @import "./variables";
 @import "./_components/button";
 @import "./_components/popup";
+@import "./_components/progress";
 @import "./_components/notification";
 @import "./panel-button";
 @import "./bar";
@@ -9,6 +10,7 @@
 @import "./launcher";
 @import "./notification";
 @import "./windows/powermenu/all";
+@import "./windows/osd/all";
 @import "./windows/settings/all";
 
 * {

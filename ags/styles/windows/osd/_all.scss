@@ -1,0 +1,17 @@
+.osd {
+  .osd-box {
+    margin-bottom: 16px;
+  }
+
+  .content {
+    background-color: transparentize($surface, 0.2);
+    padding: 20px;
+    border-radius: $theme_border_radius;
+    min-width: 150px;
+    min-height: 70px;
+
+    .value-string {
+      font-weight: bold;
+    }
+  }
+}
