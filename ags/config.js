@@ -12,6 +12,10 @@ import InitializeStyles from "./lib/styles.js";
 import SettingsWindow from "./windows/settings/main.js";
 import { InitializeGlobalDefaults } from "./lib/options.js";
 import { PowerMenu, Verification } from "./windows/powermenu.js";
+import OSD from "./windows/osd.js";
+
+const Notifications = await Service.import("notifications");
+Notifications.popupTimeout = 5000;
 
 function forMonitors(widget) {
   const n = Gdk.Display.get_default()?.get_n_monitors() || 1;
@@ -22,9 +26,6 @@ InitializeGlobalDefaults();
 InitializeWallpaper();
 InitializeStyles();
 
-forMonitors(Bar);
-forMonitors(NotificationPopup);
-
 export default {
   windows: [
     Menu(),
@@ -33,5 +34,8 @@ export default {
     SettingsWindow(),
     PowerMenu(),
     Verification(),
+    ...forMonitors(Bar),
+    ...forMonitors(NotificationPopup),
+    ...forMonitors(OSD),
   ],
 };

@@ -1,0 +1,9 @@
+.progress.trail {
+  background-color: $surface_container_highest;
+  border-radius: 100px;
+
+  .value {
+    background-color: $primary;
+    border-radius: 100px;
+  }
+}

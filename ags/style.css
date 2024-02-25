@@ -51,6 +51,15 @@
   border-radius: 8px;
 }
 
+.progress.trail {
+  background-color: #383339;
+  border-radius: 100px;
+}
+.progress.trail .value {
+  background-color: #e0b8f6;
+  border-radius: 100px;
+}
+
 .notification {
   background-color: #161217;
   border-radius: 8px;
@@ -394,6 +403,20 @@ window#notifications box.notifications {
 
 .power-menu .system-button {
   padding: 10px;
+}
+
+.osd .osd-box {
+  margin-bottom: 16px;
+}
+.osd .content {
+  background-color: rgba(22, 18, 23, 0.8);
+  padding: 20px;
+  border-radius: 8px;
+  min-width: 150px;
+  min-height: 70px;
+}
+.osd .content .value-string {
+  font-weight: bold;
 }
 
 .settings-window {
