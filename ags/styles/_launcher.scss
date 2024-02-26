@@ -28,15 +28,30 @@
     padding: 10px 0;
   }
 
-  .launcher-list {
-    min-width: 400px;
+  .pinned-apps {
+    min-width: 665px;
     min-height: 400px;
+    color: $on_surface;
+  }
+
+  .launcher-list {
+    min-width: 680px;
+    min-height: 600px;
     color: $on_surface;
   }
 
   .launcher-app-item {
     .title {
       color: $on_surface;
+    }
+  }
+
+  .launcher-pinned-app-item-container {
+    min-width: 100px;
+    min-height: 60px;
+    padding: 10px;
+    .title {
+      font-size: 0.8rem;
     }
   }
 }

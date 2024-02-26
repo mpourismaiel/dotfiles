@@ -4,6 +4,7 @@ import PopupWindow from "../widgets/_components/popup-window.js";
 import Progress from "../widgets/_components/progress.js";
 
 import GLib from "gi://GLib";
+const Notifications = await Service.import("notifications");
 const Audio = await Service.import("audio");
 const Hyprland = await Service.import("hyprland");
 
