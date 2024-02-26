@@ -37,10 +37,8 @@ function Animated(id) {
   return Object.assign(box, {
     dismiss() {
       inner.reveal_child = false;
-      print("gone with the wind");
       Utils.timeout(transition, () => {
         outer.reveal_child = false;
-        print("gone a bit later");
         Utils.timeout(transition, () => {
           box.destroy();
         });

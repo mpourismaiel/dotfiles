@@ -385,13 +385,26 @@ window.bar .menu-toggle-button .menu-toggle-button-icon {
 .launcher .launcher-calculation {
   padding: 10px 0;
 }
-.launcher .launcher-list {
-  min-width: 400px;
+.launcher .pinned-apps {
+  min-width: 665px;
   min-height: 400px;
+  color: #e9e0e8;
+}
+.launcher .launcher-list {
+  min-width: 680px;
+  min-height: 600px;
   color: #e9e0e8;
 }
 .launcher .launcher-app-item .title {
   color: #e9e0e8;
+}
+.launcher .launcher-pinned-app-item-container {
+  min-width: 100px;
+  min-height: 60px;
+  padding: 10px;
+}
+.launcher .launcher-pinned-app-item-container .title {
+  font-size: 0.8rem;
 }
 
 window#notifications {
