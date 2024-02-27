@@ -4,7 +4,7 @@ import { IconMap } from "../utils/icons.js";
 
 const SysButton = (action, label) =>
   Widget.Button({
-    onPrimaryClick: () => powermenu.action(action),
+    on_clicked: () => powermenu.action(action),
     child: Widget.Box({
       vertical: true,
       class_name: "system-button",

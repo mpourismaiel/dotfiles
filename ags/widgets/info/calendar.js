@@ -1,5 +1,7 @@
 import { range } from "../../utils/array.js";
 
+import GLib from "gi://GLib?version=2.0";
+
 const Day = (n) =>
   Widget.Button({
     className: "day",

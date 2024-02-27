@@ -13,7 +13,7 @@ const ClientButton = (clients) => {
     className: "client-container",
     child: Widget.Button({
       className: "client",
-      onPrimaryClick: () => dispatch(`focuswindow address:${client.address}`),
+      on_clicked: () => dispatch(`focuswindow address:${client.address}`),
       child: Widget.Box({
         children: [
           Widget.Box({

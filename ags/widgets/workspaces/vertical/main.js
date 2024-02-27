@@ -47,7 +47,7 @@ const Workspaces = () =>
       children: [
         PanelButton({
           vpack: "start",
-          onPrimaryClick: () => App.toggleWindow(LauncherWindowName),
+          on_clicked: () => App.toggleWindow(LauncherWindowName),
           child: Container(),
         }),
         Widget.Box({

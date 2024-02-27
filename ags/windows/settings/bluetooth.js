@@ -95,7 +95,7 @@ export const BluetoothPageHeader = () => ({
     hpack: "end",
     child: Widget.Button({
       className: "toggle-button bluetooth-toggle-button",
-      onPrimaryClick: () => (Bluetooth.enabled = !Bluetooth.enabled),
+      on_clicked: () => (Bluetooth.enabled = !Bluetooth.enabled),
       child: Widget.Icon({
         size: 16,
         icon: Bluetooth.bind("enabled").as(

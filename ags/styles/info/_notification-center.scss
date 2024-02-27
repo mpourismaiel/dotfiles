@@ -12,7 +12,10 @@
       font-weight: bold;
     }
 
-    .clear-all-icon-button {
+    .clear-all-icon-button,
+    .notifications-dnd-button {
+      min-width: 32px;
+      min-height: 32px;
       padding: 4px;
       border-radius: $theme_border_radius;
     }

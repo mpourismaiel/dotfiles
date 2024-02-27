@@ -6,7 +6,7 @@ const Audio = await Service.import("audio");
 const VolumeMuteButton = ({ type }) =>
   Widget.Button({
     className: "bar-volume-indicator",
-    onPrimaryClick: () => (Audio[type].is_muted = !Audio[type].is_muted),
+    on_clicked: () => (Audio[type].is_muted = !Audio[type].is_muted),
     child: Widget.Icon({
       size: 24,
       setup: (self) => {
@@ -50,7 +50,7 @@ const VolumeSlider = ({ type }) =>
 const VolumeSettings = ({ type, onClose }) =>
   Widget.Button({
     className: "rounded-button volume-settings",
-    onPrimaryClick: () => {
+    on_clicked: () => {
       onClose();
       App.toggleWindow(WINDOW_NAME);
       openSettingsPage("audio", type);

@@ -43,7 +43,7 @@ export const openSettingsPage = (sectionKey) => {
 const Section = (section) => {
   if (section.type === "page") {
     return Widget.Button({
-      onPrimaryClick: () => activePage.setValue(section.key),
+      on_clicked: () => activePage.setValue(section.key),
       className: "toggle-button section",
       setup: (self) => {
         self.hook(activePage, () => {
@@ -121,11 +121,11 @@ const ActivePage = () => {
               hpack: "start",
               child: Widget.Button({
                 className: "back-button",
-                onPrimaryClick: () => activePage.setValue(null),
+                on_clicked: () => activePage.setValue(null),
                 child: Widget.Icon({ icon: IconMap.ui.arrow.left }),
               }),
             }),
-            ...header(),
+            ...header({ windowName: WINDOW_NAME }),
           });
           self.add(activeHeaderInstance);
         }
@@ -160,7 +160,7 @@ const TitleBar = () => {
         children: [
           Widget.Button({
             className: "close-button",
-            onPrimaryClick: () => App.closeWindow(WINDOW_NAME),
+            on_clicked: () => App.closeWindow(WINDOW_NAME),
             child: Widget.Icon({ icon: IconMap.ui.close }),
           }),
         ],

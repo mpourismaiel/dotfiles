@@ -3,7 +3,7 @@ import { WINDOW_NAME as InfoWindowName } from "../info/main.js";
 
 const Clock = () =>
   PanelButton({
-    onPrimaryClick: () => App.toggleWindow(InfoWindowName),
+    on_clicked: () => App.toggleWindow(InfoWindowName),
     child: Widget.Box({
       hexpand: true,
       class_name: "clock",

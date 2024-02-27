@@ -43,7 +43,7 @@ const NetworkButton = ({ onClose }) => {
 
   return Widget.Button({
     className: "bar-network panel-button",
-    onPrimaryClick: () => {
+    on_clicked: () => {
       onClose();
       App.toggleWindow(WINDOW_NAME);
       openSettingsPage("network");

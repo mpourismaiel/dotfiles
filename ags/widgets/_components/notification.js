@@ -44,10 +44,10 @@ const NotificationIcon = ({ app_entry, app_icon, image }) => {
   });
 };
 
-export default (notification) => {
+export default ({ notification, notificationsWidth }) => {
   const Content = Widget.Box({
     className: "content",
-    css: `min-width: ${options.getOption("notifications_width")}px`,
+    css: `min-width: ${notificationsWidth}px; max-width: ${notificationsWidth}px;`,
     children: [
       NotificationIcon(notification),
       Widget.Box({
@@ -80,7 +80,7 @@ export default (notification) => {
                 hpack: "end",
                 vpack: "start",
                 child: Widget.Icon("window-close-symbolic"),
-                onPrimaryClick: notification.close,
+                on_clicked: notification.close,
               }),
             ],
           }),
@@ -91,7 +91,7 @@ export default (notification) => {
             xalign: 0,
             justification: "left",
             label: notification.body.trim(),
-            max_width_chars: 24,
+            max_width_chars: 40,
             wrap: true,
           }),
         ],
@@ -110,7 +110,7 @@ export default (notification) => {
               children: notification.actions.map((action) =>
                 Widget.Button({
                   className: "action-button",
-                  onPrimaryClick: () => notification.invoke(action.id),
+                  on_clicked: () => notification.invoke(action.id),
                   hexpand: true,
                   child: Widget.Label(action.label),
                 })

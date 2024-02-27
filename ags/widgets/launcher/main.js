@@ -217,7 +217,6 @@ const List = () => {
   function repopulate() {
     applications = Applications.query("").map(AppItem);
 
-    console.log(Applications.list);
     AppList.children = applications;
     updateResults();
   }
@@ -266,7 +265,7 @@ const List = () => {
 export default () => {
   options.registerKey(
     "launcher_pinned_apps",
-    ["org.gnome.font-viewer.desktop", "org.kde.drkonqi.coredump.gui.desktop"],
+    [],
     (value) => Array.isArray(value) && value.every((v) => typeof v === "string")
   );
 

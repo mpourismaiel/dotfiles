@@ -29,7 +29,7 @@ const BluetoothButton = ({ onClose }) => {
 
   return Widget.Button({
     className: "bar-bluetooth panel-button",
-    onPrimaryClick: () => {
+    on_clicked: () => {
       onClose();
       App.toggleWindow(WINDOW_NAME);
       openSettingsPage("bluetooth");

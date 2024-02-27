@@ -123,6 +123,12 @@ export const InitializeGlobalDefaults = () => {
     "shutdown now",
     (value) => typeof value === "string"
   );
+
+  options.registerKey(
+    "autostart",
+    [],
+    (value) => Array.isArray(value) && value.every((v) => typeof v === "string")
+  );
 };
 
 export default options;
