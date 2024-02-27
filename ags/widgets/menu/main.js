@@ -16,7 +16,7 @@ export const WINDOW_NAME = "ControlCenter";
 const MenuToggleButton = () =>
   PanelButton({
     className: "menu-toggle-button",
-    onPrimaryClick: () => App.toggleWindow(WINDOW_NAME),
+    on_clicked: () => App.toggleWindow(WINDOW_NAME),
     vpack: "center",
     hpack: "center",
     child: Widget.Box({

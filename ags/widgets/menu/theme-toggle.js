@@ -5,7 +5,7 @@ const ThemeToggleButton = () => {
   return ToggleButton({
     state: options.getOptionVariable("theme-mode"),
     className: "theme-mode-toggle",
-    onPrimaryClick: () => {
+    on_clicked: () => {
       options.updateOption(
         "theme-mode",
         options.getOption("theme-mode") === "dark" ? "light" : "dark"

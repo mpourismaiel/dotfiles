@@ -49,7 +49,7 @@ const Profile = ({ onClose }) =>
       }),
       Widget.Button({
         className: "settings-button",
-        onPrimaryClick: () => {
+        on_clicked: () => {
           onClose();
           App.closeWindow(WINDOW_NAME);
           App.openWindow(WINDOW_NAME);
@@ -58,7 +58,7 @@ const Profile = ({ onClose }) =>
       }),
       Widget.Button({
         className: "power-button",
-        onPrimaryClick: () => {
+        on_clicked: () => {
           onClose();
           App.openWindow("powermenu");
         },

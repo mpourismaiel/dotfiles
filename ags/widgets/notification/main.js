@@ -8,7 +8,10 @@ function Animated(id) {
   if (!n) return;
 
   const transition = options.getOption("transition");
-  const widget = Notification(n);
+  const widget = Notification({
+    notification: n,
+    notificationsWidth: options.getOption("notifications_width"),
+  });
 
   const inner = Widget.Revealer({
     transition: "slide_down",
@@ -99,6 +102,7 @@ export default (monitor) => {
     name: `notifications${monitor}`,
     anchor: options.getOptionVariable("notifications_position").bind(),
     class_name: "notifications",
+    layer: "overlay",
     child: Widget.Box({
       css: "padding: 2px;",
       child: PopupList(),

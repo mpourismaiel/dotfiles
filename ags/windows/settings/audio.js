@@ -70,7 +70,7 @@ const SinkDevice = (speaker) => {
                         s === speaker.stream ? "active" : ""
                       }`
                   ),
-                onPrimaryClick: () => {
+                on_clicked: () => {
                   Audio.speaker = speaker;
                 },
                 child: Widget.Icon({

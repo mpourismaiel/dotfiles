@@ -1,4 +1,5 @@
 import { dependencies } from "../../utils/dots.js";
+import { IconMap } from "../../utils/icons.js";
 
 const Network = await Service.import("network");
 
@@ -25,7 +26,7 @@ const WifiItem = (wifi) =>
         children: {
           connect: Widget.Button({
             className: "connect-button",
-            onPrimaryClick: () => {
+            on_clicked: () => {
               if (!dependencies("nmcli")) return;
 
               Utils.execAsync(connectWifiCommand(wifi.bssid)).catch((err) => {
@@ -123,17 +124,34 @@ const NetworkWifiSelector = () => {
 
 const RescanWifiButton = () =>
   Widget.Box({
-    hpack: "end",
     child: Widget.Button({
       className: "network-scan-button",
-      onPrimaryClick: () => Network.wifi?.scan(),
+      on_clicked: () => Network.wifi?.scan(),
       child: Widget.Icon({ size: 16, icon: "view-refresh-symbolic" }),
     }),
   });
 
-export const NetworkPageHeader = () => ({
+const ConnectionEditorButton = ({ windowName }) =>
+  Widget.Box({
+    child: Widget.Button({
+      className: "network-scan-button",
+      on_clicked: () => {
+        if (!dependencies("nm-connection-editor")) return;
+
+        Utils.execAsync("nm-connection-editor");
+        App.closeWindow(windowName);
+      },
+      child: Widget.Icon({ size: 16, icon: IconMap.ui.settings }),
+    }),
+  });
+
+export const NetworkPageHeader = ({ windowName }) => ({
   centerWidget: Widget.Label({ label: "Network" }),
-  endWidget: RescanWifiButton(),
+  endWidget: Widget.Box({
+    spacing: 8,
+    hpack: "end",
+    children: [ConnectionEditorButton({ windowName }), RescanWifiButton()],
+  }),
 });
 
 const NetworkPage = () => {

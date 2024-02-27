@@ -41,7 +41,11 @@ const NotificationScroll = () =>
           children: Notifications.bind("notifications").as((notifications) =>
             notifications.length === 0
               ? EmptyMessage()
-              : notifications.reverse().map(Notification)
+              : notifications
+                  .reverse()
+                  .map((n) =>
+                    Notification({ notification: n, notificationsWidth: 360 })
+                  )
           ),
         }),
         Placeholder(),
@@ -62,15 +66,29 @@ const NotificationCenter = () =>
         }),
         endWidget: Widget.Box({
           hpack: "end",
-          child: Widget.Button({
-            className: "clear-all-icon-button",
-            onPrimaryClick: () => Notifications.clear(),
-            child: Widget.Icon({
-              className: "clear-all-icon",
-              size: 24,
-              icon: "edit-clear-all",
+          spacing: 8,
+          children: [
+            Widget.Button({
+              className: "notifications-dnd-button",
+              on_clicked: () => (Notifications.dnd = !Notifications.dnd),
+              child: Widget.Icon({
+                className: "notifications-dnd-icon",
+                size: 24,
+                icon: Notifications.bind("dnd").as((v) =>
+                  v ? IconMap.notifications.silent : IconMap.notifications.noisy
+                ),
+              }),
             }),
-          }),
+            Widget.Button({
+              className: "clear-all-icon-button",
+              on_clicked: () => Notifications.clear(),
+              child: Widget.Icon({
+                className: "clear-all-icon",
+                size: 24,
+                icon: IconMap.ui.close,
+              }),
+            }),
+          ],
         }),
       }),
       NotificationScroll(),

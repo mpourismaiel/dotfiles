@@ -348,7 +348,10 @@ window.bar .menu-toggle-button .menu-toggle-button-icon {
   font-size: 1.2rem;
   font-weight: bold;
 }
-.info-panel-window .info-panel-container .notification-center .notifications-header .clear-all-icon-button {
+.info-panel-window .info-panel-container .notification-center .notifications-header .clear-all-icon-button,
+.info-panel-window .info-panel-container .notification-center .notifications-header .notifications-dnd-button {
+  min-width: 32px;
+  min-height: 32px;
   padding: 4px;
   border-radius: 8px;
 }
