@@ -1,4 +1,3 @@
-import options from "../../lib/options.js";
 import { IconMap } from "../../utils/icons.js";
 
 import GLib from "gi://GLib";
@@ -47,7 +46,7 @@ const NotificationIcon = ({ app_entry, app_icon, image }) => {
 export default ({ notification, notificationsWidth }) => {
   const Content = Widget.Box({
     className: "content",
-    css: `min-width: ${notificationsWidth}px; max-width: ${notificationsWidth}px;`,
+    css: `min-width: ${notificationsWidth}px;`,
     children: [
       NotificationIcon(notification),
       Widget.Box({

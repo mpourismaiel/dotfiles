@@ -32,3 +32,7 @@ jq -r '.autostart[]?' "$CONFIG_FILE" 2>>"$LOG_FILE" | while read -r item; do
     echo "Command or file does not exist: $item" >>"$LOG_FILE"
   fi
 done
+
+if [ ! -s "$LOG_FILE" ]; then
+  rm "$LOG_FILE"
+fi

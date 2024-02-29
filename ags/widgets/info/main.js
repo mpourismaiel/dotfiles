@@ -16,16 +16,7 @@ export const InfoPanel = () =>
     content: Widget.Box({
       className: "info-panel-container",
       spacing: 16,
-      children: [
-        Widget.Box({
-          className: "info-notifications",
-          vertical: true,
-          child: NotificationCenter,
-        }),
-        Widget.Box({
-          child: Calendar(),
-        }),
-      ],
+      children: [NotificationCenter(), Calendar()],
     }),
   });
 

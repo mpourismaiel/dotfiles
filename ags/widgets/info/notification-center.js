@@ -60,7 +60,8 @@ const NotificationCenter = () =>
     children: [
       Widget.CenterBox({
         className: "notifications-header",
-        centerWidget: Widget.Label({
+        startWidget: Widget.Label({
+          hpack: "start",
           className: "notifications-label",
           label: "Notifications",
         }),
@@ -95,4 +96,4 @@ const NotificationCenter = () =>
     ],
   });
 
-export default NotificationCenter();
+export default NotificationCenter;

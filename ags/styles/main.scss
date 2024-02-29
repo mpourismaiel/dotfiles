@@ -12,6 +12,7 @@
 @import "./windows/powermenu/all";
 @import "./windows/osd/all";
 @import "./windows/settings/all";
+@import "./windows/shortcut-helper/all";
 
 * {
   font-family: $font_family;
@@ -22,5 +23,25 @@
   .popup-window-center {
     min-width: 500px;
     min-height: 500px;
+  }
+}
+
+.tabs {
+  padding-bottom: 16px;
+  padding-left: 8px;
+
+  .tab {
+    padding: 8px 12px;
+
+    label {
+      font-size: 0.9rem;
+      color: $on_surface;
+    }
+
+    &.active {
+      label {
+        color: $on_primary;
+      }
+    }
   }
 }

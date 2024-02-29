@@ -13,6 +13,7 @@ import SettingsWindow from "./windows/settings/main.js";
 import { InitializeGlobalDefaults } from "./lib/options.js";
 import { PowerMenu, Verification } from "./windows/powermenu.js";
 import OSD from "./windows/osd.js";
+import ShortcutHelper from "./windows/shortcut-helper.js";
 
 const Notifications = await Service.import("notifications");
 Notifications.popupTimeout = 5000;
@@ -33,6 +34,7 @@ export default {
     InfoPanel(),
     SettingsWindow(),
     PowerMenu(),
+    ShortcutHelper(),
     Verification(),
     ...forMonitors(Bar),
     ...forMonitors(NotificationPopup),

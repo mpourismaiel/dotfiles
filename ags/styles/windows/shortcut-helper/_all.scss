@@ -1,0 +1,62 @@
+.shortcut-helper-window {
+  .shortcut-helper-container {
+    margin-bottom: 10px;
+    padding: 0 20px;
+    background-color: transparentize($surface, 0.3);
+    border-radius: $theme_border_radius;
+
+    &:hover {
+      background-color: #f00;
+    }
+
+    .header {
+      font-size: 1.2rem;
+      font-weight: bold;
+      margin: 16px 0;
+      color: $on_surface;
+    }
+
+    .footer {
+      margin: 16px 0 8px;
+
+      .footer-text {
+        font-size: 0.9rem;
+        color: $on_surface_variant;
+      }
+    }
+    .key {
+      min-height: 24px;
+      min-width: 24px;
+      padding: 8px;
+      border-radius: 4px;
+      background-color: $surface_container_high;
+
+      label {
+        color: $on_surface;
+      }
+
+      &.sm {
+        min-width: 16px;
+        min-height: 16px;
+        padding: 4px;
+
+        label {
+          font-size: 0.9rem;
+        }
+      }
+    }
+
+    .plus {
+      margin: 0 4px;
+    }
+
+    .shortcuts {
+    }
+
+    .shortcut {
+      .combo-key {
+        margin-bottom: 16px;
+      }
+    }
+  }
+}

@@ -43,6 +43,7 @@ function Animated(id) {
       Utils.timeout(transition, () => {
         outer.reveal_child = false;
         Utils.timeout(transition, () => {
+          if (!box) return;
           box.destroy();
         });
       });

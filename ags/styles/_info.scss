@@ -9,7 +9,7 @@
   }
 
   .popup-content {
-    padding:0;
+    padding: 0;
   }
 
   .info-panel-container {
@@ -17,6 +17,7 @@
     padding: 10px;
     border-radius: $theme_border_radius;
 
-    @import './info/notification-center';
+    @import "./info/notification-center";
+    @import "./info/calendar";
   }
 }
