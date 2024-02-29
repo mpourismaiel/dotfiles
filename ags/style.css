@@ -336,17 +336,17 @@ window.bar .menu-toggle-button .menu-toggle-button-icon {
   border-radius: 8px;
 }
 .info-panel-window .info-panel-container .notification-center {
-  background-color: #2d282e;
+  background-color: #221e24;
   padding: 10px;
   border-radius: 8px;
 }
 .info-panel-window .info-panel-container .notification-center .notifications-header {
-  padding: 0 0 10px;
+  padding: 0 10px 10px;
 }
 .info-panel-window .info-panel-container .notification-center .notifications-header .notifications-label {
-  color: #e9e0e8;
-  font-size: 1.2rem;
+  font-size: 1.1rem;
   font-weight: bold;
+  color: #e0b8f6;
 }
 .info-panel-window .info-panel-container .notification-center .notifications-header .clear-all-icon-button,
 .info-panel-window .info-panel-container .notification-center .notifications-header .notifications-dnd-button {
@@ -361,7 +361,67 @@ window.bar .menu-toggle-button .menu-toggle-button-icon {
 .info-panel-window .info-panel-container .notification-center .notifications-scroll {
   min-width: 400px;
   min-height: 500px;
+  padding: 10px 0;
+}
+.info-panel-window .info-panel-container .calendar {
+  background-color: #221e24;
   padding: 10px;
+  border-radius: 8px;
+}
+.info-panel-window .info-panel-container .calendar .calendar-header {
+  padding: 0 10px;
+}
+.info-panel-window .info-panel-container .calendar .calendar-header .month-title {
+  background-color: #221e24;
+}
+.info-panel-window .info-panel-container .calendar .calendar-header .month-title label {
+  font-size: 1.1rem;
+  font-weight: bold;
+  color: #e0b8f6;
+}
+.info-panel-window .info-panel-container .calendar .calendar-header .switch-month {
+  background-color: #2d282e;
+}
+.info-panel-window .info-panel-container .calendar .month {
+  padding: 0 10px;
+}
+.info-panel-window .info-panel-container .calendar .month .week .day {
+  min-width: 36px;
+  min-height: 36px;
+  padding: 0;
+  background-color: #221e24;
+  border-radius: 100px;
+}
+.info-panel-window .info-panel-container .calendar .month .week .day .label {
+  color: #e9e0e8;
+}
+.info-panel-window .info-panel-container .calendar .month .week .day.selected {
+  background-color: #e0b8f6;
+}
+.info-panel-window .info-panel-container .calendar .month .week .day.selected .label {
+  color: #412356;
+}
+.info-panel-window .info-panel-container .calendar .month .week .day.empty .label {
+  color: rgba(233, 224, 232, 0.3);
+}
+.info-panel-window .info-panel-container .calendar .month .week .day.empty.selected {
+  background-color: rgba(224, 184, 246, 0.7);
+}
+.info-panel-window .info-panel-container .calendar .month .week .day.empty.selected .label {
+  color: rgba(65, 35, 86, 0.7);
+}
+.info-panel-window .info-panel-container .calendar .todolist .title {
+  padding-left: 20px;
+  font-size: 1.1rem;
+  font-weight: bold;
+  color: #e0b8f6;
+}
+.info-panel-window .info-panel-container .calendar .todolist .todolist-items-container .todo {
+  padding: 5px 20px;
+}
+.info-panel-window .info-panel-container .calendar .todolist .todolist-items-container .todo label {
+  font-size: 0.9em;
+  color: #e9e0e8;
 }
 
 .launcher-window {
@@ -526,6 +586,11 @@ window#notifications box.notifications {
   font-size: 0.9rem;
   color: #cdc3ce;
 }
+.settings-window .audio-external-settings-button {
+  padding: 0;
+  min-width: 36px;
+  min-height: 36px;
+}
 .settings-window .audio-settings .speaker {
   padding: 10px 20px 10px 10px;
 }
@@ -576,6 +641,53 @@ window#notifications box.notifications {
   transition: background-color 0.3s ease-in-out, color 0.3s ease-in-out;
 }
 
+.shortcut-helper-window .shortcut-helper-container {
+  margin-bottom: 10px;
+  padding: 0 20px;
+  background-color: rgba(22, 18, 23, 0.7);
+  border-radius: 8px;
+}
+.shortcut-helper-window .shortcut-helper-container:hover {
+  background-color: #f00;
+}
+.shortcut-helper-window .shortcut-helper-container .header {
+  font-size: 1.2rem;
+  font-weight: bold;
+  margin: 16px 0;
+  color: #e9e0e8;
+}
+.shortcut-helper-window .shortcut-helper-container .footer {
+  margin: 16px 0 8px;
+}
+.shortcut-helper-window .shortcut-helper-container .footer .footer-text {
+  font-size: 0.9rem;
+  color: #cdc3ce;
+}
+.shortcut-helper-window .shortcut-helper-container .key {
+  min-height: 24px;
+  min-width: 24px;
+  padding: 8px;
+  border-radius: 4px;
+  background-color: #2d282e;
+}
+.shortcut-helper-window .shortcut-helper-container .key label {
+  color: #e9e0e8;
+}
+.shortcut-helper-window .shortcut-helper-container .key.sm {
+  min-width: 16px;
+  min-height: 16px;
+  padding: 4px;
+}
+.shortcut-helper-window .shortcut-helper-container .key.sm label {
+  font-size: 0.9rem;
+}
+.shortcut-helper-window .shortcut-helper-container .plus {
+  margin: 0 4px;
+}
+.shortcut-helper-window .shortcut-helper-container .shortcut .combo-key {
+  margin-bottom: 16px;
+}
+
 * {
   font-family: "Inter";
   font-size: 16px;
@@ -584,6 +696,21 @@ window#notifications box.notifications {
 .applauncher .popup-window-center {
   min-width: 500px;
   min-height: 500px;
+}
+
+.tabs {
+  padding-bottom: 16px;
+  padding-left: 8px;
+}
+.tabs .tab {
+  padding: 8px 12px;
+}
+.tabs .tab label {
+  font-size: 0.9rem;
+  color: #e9e0e8;
+}
+.tabs .tab.active label {
+  color: #412356;
 }
 
 /*# sourceMappingURL=style.css.map */

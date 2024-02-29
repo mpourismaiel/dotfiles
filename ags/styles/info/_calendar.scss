@@ -1,0 +1,83 @@
+.calendar {
+  background-color: $surface_container;
+  padding: 10px;
+  border-radius: $theme_border_radius;
+
+  .calendar-header {
+    padding: 0 10px;
+
+    .month-title {
+      background-color: $surface_container;
+
+      label {
+        font-size: 1.1rem;
+        font-weight: bold;
+        color: $primary;
+      }
+    }
+
+    .switch-month {
+      background-color: $surface_container_high;
+    }
+  }
+
+  .month {
+    padding: 0 10px;
+
+    .week {
+      .day {
+        min-width: 36px;
+        min-height: 36px;
+        padding: 0;
+        background-color: $surface_container;
+        border-radius: 100px;
+
+        .label {
+          color: $on_surface;
+        }
+
+        &.selected {
+          background-color: $primary;
+
+          .label {
+            color: $on_primary;
+          }
+        }
+
+        &.empty {
+          .label {
+            color: transparentize($on_surface, 0.7);
+          }
+
+          &.selected {
+            background-color: transparentize($primary, 0.3);
+
+            .label {
+              color: transparentize($on_primary, 0.3);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  .todolist {
+    .title {
+      padding-left: 20px;
+      font-size: 1.1rem;
+      font-weight: bold;
+      color: $primary;
+    }
+
+    .todolist-items-container {
+      .todo {
+        padding: 5px 20px;
+
+        label {
+          font-size: 0.9em;
+          color: $on_surface;
+        }
+      }
+    }
+  }
+}

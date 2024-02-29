@@ -1,4 +1,4 @@
-import { IconMap } from "../../utils/icons.js";
+import { IconMap, icon } from "../../utils/icons.js";
 import options from "../../lib/options.js";
 import { createRowsOfLength } from "../../utils/array.js";
 import PopupWindow from "../_components/popup-window.js";
@@ -77,7 +77,7 @@ const AppItem = (app) =>
       spacing: 8,
       children: [
         Widget.Icon({
-          icon: app.icon_name || "",
+          icon: icon(app.icon_name || "", IconMap.fallback.executable),
           size: 42,
         }),
         Widget.Label({
@@ -130,7 +130,7 @@ const PinnedAppItem = (app) =>
       children: [
         Widget.Icon({
           hpack: "center",
-          icon: app.icon_name || "",
+          icon: icon(app.icon_name || "", IconMap.fallback.executable),
           size: 42,
         }),
         Widget.Label({

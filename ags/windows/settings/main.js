@@ -35,8 +35,10 @@ const sections = [
 ];
 
 const activePage = Variable(null);
+const initialTab = Variable(null);
 
-export const openSettingsPage = (sectionKey) => {
+export const openSettingsPage = (sectionKey, tabKey) => {
+  initialTab.setValue(tabKey);
   activePage.setValue(sectionKey);
 };
 
@@ -131,7 +133,7 @@ const ActivePage = () => {
         }
 
         if (page) {
-          activePageInstance = page();
+          activePageInstance = page(initialTab.value);
         } else {
           activePageInstance = Widget.Label({
             label: "page",
