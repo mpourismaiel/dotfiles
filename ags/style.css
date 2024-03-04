@@ -470,11 +470,16 @@ window.bar .menu-toggle-button .menu-toggle-button-icon {
   font-size: 0.8rem;
 }
 
-window#notifications {
+.notifications {
   all: unset;
-}
-window#notifications box.notifications {
   padding: 10px;
+}
+.notifications .notification-popin .notification-popin-content {
+  transition: all 0.2s ease-out;
+  margin-left: 300px;
+}
+.notifications .notification-popin .notification-popin-content.visible {
+  margin-left: 0;
 }
 
 .power-menu .system-button {

@@ -8,3 +8,18 @@ export const createRowsOfLength = (arr, length = 1) => {
   }
   return rows;
 };
+
+export const arrAdd = (arr, value) => {
+  if (arr.includes(value)) return arr;
+
+  arr.push(value);
+  return arr;
+};
+
+export const arrRemove = (arr, value) => {
+  const index = arr.indexOf(value);
+  if (index > -1) {
+    arr.splice(index, 1);
+  }
+  return arr;
+};
