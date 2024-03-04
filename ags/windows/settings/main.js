@@ -2,6 +2,7 @@ import { IconMap } from "../../utils/icons.js";
 import RegularWindow from "../../widgets/_components/regular-window.js";
 import AudioPage, { AudioPageHeader } from "./audio.js";
 import BluetoothPage, { BluetoothPageHeader } from "./bluetooth.js";
+import DisplayPage, { DisplayPageHeader } from "./display.js";
 import NetworkPage, { NetworkPageHeader } from "./network.js";
 
 export const WINDOW_NAME = "NetworkSettings";
@@ -31,6 +32,15 @@ const sections = [
     icon: "audio-headphones-symbolic",
     header: AudioPageHeader,
     page: AudioPage,
+  },
+  { type: "category", title: "Graphics" },
+  {
+    type: "page",
+    key: "display",
+    title: "Display",
+    icon: IconMap.brightness.screen,
+    header: DisplayPageHeader,
+    page: DisplayPage,
   },
 ];
 
