@@ -15,8 +15,16 @@
   border-radius: 12px;
   transition: background-color 0.3s ease-out;
 }
+.toggle-button image,
+.toggle-button label {
+  color: #e9e0e8;
+}
 .toggle-button.active {
   background-color: #f4daff;
+  color: #412356;
+}
+.toggle-button.active image,
+.toggle-button.active label {
   color: #412356;
 }
 .toggle-button:hover {
@@ -287,6 +295,19 @@ window.bar .menu-toggle-button .menu-toggle-button-icon {
   color: #e9e0e8;
 }
 
+.quick-settings-revealer {
+  padding-top: 16px;
+}
+.quick-settings-revealer .content {
+  border-radius: 8px;
+  background-color: #2d282e;
+  padding: 16px;
+}
+.quick-settings-revealer .content .more-settings {
+  background-color: #2d282e;
+  padding: 8px 16px;
+}
+
 .control-center {
   background-color: transparent;
 }
@@ -470,16 +491,11 @@ window.bar .menu-toggle-button .menu-toggle-button-icon {
   font-size: 0.8rem;
 }
 
-.notifications {
+window#notifications {
   all: unset;
+}
+window#notifications box.notifications {
   padding: 10px;
-}
-.notifications .notification-popin .notification-popin-content {
-  transition: all 0.2s ease-out;
-  margin-left: 300px;
-}
-.notifications .notification-popin .notification-popin-content.visible {
-  margin-left: 0;
 }
 
 .power-menu .system-button {
@@ -532,17 +548,17 @@ window.bar .menu-toggle-button .menu-toggle-button-icon {
   min-height: 36px;
   padding: 10px 16px;
 }
+.settings-window .active-page .settings-page-header .header-button {
+  padding: 0;
+  min-width: 36px;
+  min-height: 36px;
+}
 .settings-window .active-page .content {
   padding: 0 10px;
 }
 .settings-window .active-page .full-page-scroll {
   min-height: 520px;
   padding-bottom: 10px;
-}
-.settings-window .network-scan-button {
-  padding: 0;
-  min-width: 36px;
-  min-height: 36px;
 }
 .settings-window .network-settings .wifi-item {
   padding: 10px;
@@ -567,11 +583,6 @@ window.bar .menu-toggle-button .menu-toggle-button-icon {
   padding: 0 10px;
   color: #cdc3ce;
 }
-.settings-window .bluetooth-toggle-button {
-  padding: 0;
-  min-width: 36px;
-  min-height: 36px;
-}
 .settings-window .bluetooth-settings .device-item {
   padding: 10px;
 }
@@ -590,11 +601,6 @@ window.bar .menu-toggle-button .menu-toggle-button-icon {
   margin-top: 4px;
   font-size: 0.9rem;
   color: #cdc3ce;
-}
-.settings-window .audio-external-settings-button {
-  padding: 0;
-  min-width: 36px;
-  min-height: 36px;
 }
 .settings-window .audio-settings .speaker {
   padding: 10px 20px 10px 10px;
@@ -644,6 +650,21 @@ window.bar .menu-toggle-button .menu-toggle-button-icon {
   min-width: 16px;
   background: none;
   transition: background-color 0.3s ease-in-out, color 0.3s ease-in-out;
+}
+.settings-window .display-settings .display {
+  padding: 10px;
+}
+.settings-window .display-settings .display .icon {
+  margin-right: 10px;
+  padding: 4px 0;
+}
+.settings-window .display-settings .display .title {
+  font-weight: bold;
+  color: #e9e0e8;
+  margin-right: 10px;
+}
+.settings-window .display-settings .display .more-actions {
+  margin-top: 16px;
 }
 
 .shortcut-helper-window .shortcut-helper-container {
@@ -696,6 +717,19 @@ window.bar .menu-toggle-button .menu-toggle-button-icon {
 * {
   font-family: "Inter";
   font-size: 16px;
+  color: #e9e0e8;
+}
+
+@keyframes spinner {
+  0% {
+    -gtk-icon-transform: rotate(0deg);
+  }
+  100% {
+    -gtk-icon-transform: rotate(1800deg);
+  }
+}
+.spinner {
+  animation: spinner 3s ease-out infinite;
 }
 
 .applauncher .popup-window-center {

@@ -35,7 +35,7 @@ const BatteryButton = () => {
         }),
     });
 
-  const BatteryIcon = () =>
+  const Icon = () =>
     Widget.Stack({
       class_name: "battery__indicator",
       children: {
@@ -52,20 +52,21 @@ const BatteryButton = () => {
         }),
     });
 
+  const Label = () =>
+    Widget.Label({
+      class_name: "title",
+      hpack: "start",
+      setup: (self) => {
+        self.hook(Battery, (self) => {
+          self.label = Battery.percent ? `${Battery.percent}%` : "Unknown";
+        });
+      },
+    });
+
   const BatteryIndicator = () =>
     ArrowButton({
-      children: [
-        BatteryIcon(),
-        Widget.Label({
-          class_name: "title",
-          hpack: "start",
-          setup: (self) => {
-            self.hook(Battery, (self) => {
-              self.label = Battery.percent ? `${Battery.percent}%` : "Unknown";
-            });
-          },
-        }),
-      ],
+      icon: Icon(),
+      label: Label(),
     });
 
   return Widget.Button({

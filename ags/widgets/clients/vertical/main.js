@@ -65,7 +65,7 @@ const Clients = () =>
         .sort(
           ({ workspace: { id: id1 } }, { workspace: { id: id2 } }) => id1 - id2
         )
-        .filter((client) => client.pid >= 0)
+        .filter((client) => client.pid >= 0 && client.class)
         .reduce((acc, client) => {
           const workspaceId = client.workspace.id;
           const cls = client.class;

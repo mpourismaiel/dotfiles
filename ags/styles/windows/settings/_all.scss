@@ -33,6 +33,12 @@
       font-weight: bold;
       min-height: 36px;
       padding: 10px 16px;
+
+      .header-button {
+        padding: 0;
+        min-width: 36px;
+        min-height: 36px;
+      }
     }
 
     .content {
@@ -48,4 +54,5 @@
   @import "./network";
   @import "./bluetooth";
   @import "./audio";
+  @import "./display";
 }

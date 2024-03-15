@@ -1,10 +1,28 @@
 import ArrowButton from "../_components/button/arrow.js";
 import { WINDOW_NAME, openSettingsPage } from "../../windows/settings/main.js";
+import QuickSettings from "./quick-settings.js";
 
 const Bluetooth = await Service.import("bluetooth");
 
-const BluetoothButton = ({ onClose }) => {
-  const BluetoothButton = () =>
+export const BluetoothQuickSettings = ({
+  activeQuickSettings,
+  key,
+  onClose,
+}) => {
+  return QuickSettings({
+    activeQuickSettings,
+    key,
+    onMoreSettingsClicked: () => {
+      onClose();
+      App.toggleWindow(WINDOW_NAME);
+      openSettingsPage("bluetooth");
+    },
+    children: [Widget.Label({ label: "Bluetooth" })],
+  });
+};
+
+const BluetoothButton = ({ onQuickSettings }) => {
+  const Icon = () =>
     Widget.Icon({
       size: 24,
       setup: (self) =>
@@ -17,22 +35,14 @@ const BluetoothButton = ({ onClose }) => {
 
   const BluetoothIndicator = () =>
     ArrowButton({
-      children: [
-        BluetoothButton(),
-        Widget.Label({
-          class_name: "title",
-          hpack: "start",
-          label: "Bluetooth",
-        }),
-      ],
+      icon: Icon(),
+      labelText: "Bluetooth",
     });
 
   return Widget.Button({
     className: "bar-bluetooth panel-button",
     on_clicked: () => {
-      onClose();
-      App.toggleWindow(WINDOW_NAME);
-      openSettingsPage("bluetooth");
+      onQuickSettings("bluetooth");
     },
     child: BluetoothIndicator(),
   });
