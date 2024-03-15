@@ -15,9 +15,19 @@
   border-radius: $theme_border_radius_lg;
   transition: background-color 0.3s ease-out;
 
+  image,
+  label {
+    color: $on_surface;
+  }
+
   &.active {
     background-color: $primary_fixed;
     color: $on_primary;
+
+    image,
+    label {
+      color: $on_primary;
+    }
   }
 
   &:hover {

@@ -1,0 +1,14 @@
+.quick-settings-revealer {
+  padding-top: 16px;
+
+  .content {
+    border-radius: $theme-border-radius;
+    background-color: $surface_container_high;
+    padding: 16px;
+
+    .more-settings {
+      background-color: $surface_container_high;
+      padding: 8px 16px;
+    }
+  }
+}

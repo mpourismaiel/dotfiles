@@ -38,6 +38,7 @@ const PopupWindow = ({
   valign,
   halign,
   windowProps = {},
+  additionalSetup = () => {},
   ...rest
 }) =>
   Widget.Window({
@@ -50,6 +51,7 @@ const PopupWindow = ({
     visible: false,
     setup: (self) => {
       self.keybind("Escape", () => App.closeWindow(name));
+      additionalSetup(self);
     },
     ...windowProps,
     child: Backdrop({

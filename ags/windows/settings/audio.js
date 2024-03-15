@@ -1,5 +1,6 @@
 import { dependencies } from "../../utils/dots.js";
 import { IconMap, icon } from "../../utils/icons.js";
+import SettingsHeaderButton from "../../widgets/_components/button/settings-header.js";
 import Tabs from "../../widgets/_components/tabs.js";
 
 const Audio = await Service.import("audio");
@@ -256,21 +257,18 @@ const AppMixer = () => {
 
 export const AudioPageHeader = ({ windowName }) => ({
   centerWidget: Widget.Label({ label: "Audio" }),
-  endWidget: Widget.Box({
-    hpack: "end",
-    children: [
-      Widget.Button({
-        className: "audio-external-settings-button",
-        on_clicked: () => {
-          if (!dependencies("pavucontrol-qt")) return;
+  endWidget: [
+    SettingsHeaderButton({
+      className: "audio-external-settings-button",
+      on_clicked: () => {
+        if (!dependencies("pavucontrol-qt")) return;
 
-          Utils.execAsync("pavucontrol-qt");
-          App.closeWindow(windowName);
-        },
-        child: Widget.Icon({ size: 16, icon: IconMap.ui.settings }),
-      }),
-    ],
-  }),
+        Utils.execAsync("pavucontrol-qt");
+        App.closeWindow(windowName);
+      },
+      icon: IconMap.ui.settings,
+    }),
+  ],
 });
 
 const AudioPage = (initialTab) => {

@@ -1,17 +1,19 @@
 import PanelButton from "../bar/panel-button.js";
 import PopupWindow from "../_components/popup-window.js";
 import Profile from "./profile.js";
-import NetworkButton from "./network.js";
+import NetworkButton, { NetworkQuickSettings } from "./network.js";
 import { Row } from "../_components/layout.js";
-import BluetoothButton from "./bluetooth.js";
+import BluetoothButton, { BluetoothQuickSettings } from "./bluetooth.js";
 import Volume from "./volume.js";
 import SysTray from "./systray.js";
 import BatteryButton from "./battery.js";
 import ThemeToggleButton from "./theme-toggle.js";
+import MenuRow from "./menu-row.js";
 
 const Gtk = imports.gi.Gtk;
 
 export const WINDOW_NAME = "ControlCenter";
+const activeQuickSettings = Variable(null);
 
 const MenuToggleButton = () =>
   PanelButton({
@@ -33,6 +35,12 @@ export const Menu = () =>
     halign: Gtk.Align.START,
     animation: "slide_up",
     className: "control-center",
+    additionalSetup: (self) => {
+      self.hook(App, (_, windowName, visible) => {
+        if (windowName !== WINDOW_NAME || !visible) return;
+        activeQuickSettings.setValue(null);
+      });
+    },
     content: Widget.Box({
       className: "menu",
       spacing: 16,
@@ -51,13 +59,32 @@ export const Menu = () =>
               vertical: true,
               spacing: 16,
               children: [
-                Row({
-                  spacing: 10,
+                MenuRow({
                   children: [
                     NetworkButton({
-                      onClose: () => App.closeWindow(WINDOW_NAME),
+                      onQuickSettings: (key) => {
+                        activeQuickSettings.setValue(
+                          activeQuickSettings.value === key ? null : key
+                        );
+                      },
                     }),
                     BluetoothButton({
+                      onQuickSettings: (key) => {
+                        activeQuickSettings.setValue(
+                          activeQuickSettings.value === key ? null : key
+                        );
+                      },
+                    }),
+                  ],
+                  settings: [
+                    BluetoothQuickSettings({
+                      activeQuickSettings,
+                      key: "bluetooth",
+                      onClose: () => App.closeWindow(WINDOW_NAME),
+                    }),
+                    NetworkQuickSettings({
+                      activeQuickSettings,
+                      key: "network",
                       onClose: () => App.closeWindow(WINDOW_NAME),
                     }),
                   ],

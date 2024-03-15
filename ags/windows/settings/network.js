@@ -1,5 +1,6 @@
 import { dependencies } from "../../utils/dots.js";
 import { IconMap } from "../../utils/icons.js";
+import SettingsHeaderButton from "../../widgets/_components/button/settings-header.js";
 
 const Network = await Service.import("network");
 
@@ -14,8 +15,24 @@ const connectWifiCommand = (bssid, password) =>
     password ? `password "${password}"` : ""
   }`;
 
-const WifiItem = (wifi) =>
-  Widget.Box({
+const WifiItem = (wifi) => {
+  const isConnecting = Variable(false);
+
+  const tryConnect = () => {
+    if (!dependencies("nmcli")) return;
+
+    isConnecting = true;
+    Utils.execAsync(connectWifiCommand(wifi.bssid))
+      .catch((err) => {
+        print(`Error: ${err}`);
+        NetworkDetails.setValue({ wifi: wifi, enterPassword: true });
+      })
+      .finally(() => {
+        isConnecting = false;
+      });
+  };
+
+  return Widget.Box({
     className: "wifi-item",
     children: [
       Widget.Icon({ size: 16, className: "icon", icon: wifi.iconName }),
@@ -26,16 +43,11 @@ const WifiItem = (wifi) =>
         children: {
           connect: Widget.Button({
             className: "connect-button",
-            on_clicked: () => {
-              if (!dependencies("nmcli")) return;
-
-              Utils.execAsync(connectWifiCommand(wifi.bssid)).catch((err) => {
-                print(`Error: ${err}`);
-                NetworkDetails.setValue({ wifi: wifi, enterPassword: true });
-              });
-            },
+            on_clicked: tryConnect,
             child: Widget.Label({
-              label: "Connect",
+              label: isConnecting
+                .bind()
+                .as((v) => (v ? "Connecting..." : "Connect")),
               hexpand: true,
               hpack: "end",
             }),
@@ -53,6 +65,7 @@ const WifiItem = (wifi) =>
       }),
     ],
   });
+};
 
 const NetworkWifiSelector = () => {
   return Widget.Stack({
@@ -123,35 +136,27 @@ const NetworkWifiSelector = () => {
 };
 
 const RescanWifiButton = () =>
-  Widget.Box({
-    child: Widget.Button({
-      className: "network-scan-button",
-      on_clicked: () => Network.wifi?.scan(),
-      child: Widget.Icon({ size: 16, icon: "view-refresh-symbolic" }),
-    }),
+  SettingsHeaderButton({
+    className: "network-scan-button",
+    on_clicked: () => Network.wifi?.scan(),
+    icon: "view-refresh-symbolic",
   });
 
 const ConnectionEditorButton = ({ windowName }) =>
-  Widget.Box({
-    child: Widget.Button({
-      className: "network-scan-button",
-      on_clicked: () => {
-        if (!dependencies("nm-connection-editor")) return;
+  SettingsHeaderButton({
+    className: "network-scan-button",
+    on_clicked: () => {
+      if (!dependencies("nm-connection-editor")) return;
 
-        Utils.execAsync("nm-connection-editor");
-        App.closeWindow(windowName);
-      },
-      child: Widget.Icon({ size: 16, icon: IconMap.ui.settings }),
-    }),
+      Utils.execAsync("nm-connection-editor");
+      App.closeWindow(windowName);
+    },
+    icon: IconMap.ui.settings,
   });
 
 export const NetworkPageHeader = ({ windowName }) => ({
   centerWidget: Widget.Label({ label: "Network" }),
-  endWidget: Widget.Box({
-    spacing: 8,
-    hpack: "end",
-    children: [ConnectionEditorButton({ windowName }), RescanWifiButton()],
-  }),
+  endWidget: [ConnectionEditorButton({ windowName }), RescanWifiButton()],
 });
 
 const NetworkPage = () => {

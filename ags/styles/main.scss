@@ -17,6 +17,21 @@
 * {
   font-family: $font_family;
   font-size: $font_size;
+  color: $on_surface;
+}
+
+@keyframes spinner {
+  0% {
+    -gtk-icon-transform: rotate(0deg);
+  }
+
+  100% {
+    -gtk-icon-transform: rotate(1800deg);
+  }
+}
+
+.spinner {
+  animation: spinner 3s ease-out infinite;
 }
 
 .applauncher {

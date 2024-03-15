@@ -1,9 +1,23 @@
 import { IconMap } from "../../utils/icons.js";
+import SettingsHeaderButton from "../../widgets/_components/button/settings-header.js";
 
 const Bluetooth = await Service.import("bluetooth");
 
-const DeviceItem = (device) =>
-  Widget.Box({
+const Gio = imports.gi.Gio;
+const GLib = imports.gi.GLib;
+
+// Replace "/org/bluez/hci0" with the correct path to your Bluetooth adapter
+const adapterPath = "/org/bluez/hci0";
+
+const proxy = new Gio.DBusProxy({
+  g_connection: Gio.bus_get_sync(Gio.BusType.SYSTEM, null),
+  g_interface_name: "org.bluez.Adapter1",
+  g_object_path: adapterPath,
+  g_name: "org.bluez",
+});
+
+const DeviceItem = (device) => {
+  return Widget.Box({
     className: "device-item",
     children: [
       Widget.Icon({
@@ -15,7 +29,11 @@ const DeviceItem = (device) =>
       Widget.Box({
         vertical: true,
         children: [
-          Widget.Label({ className: "label", label: device.name }),
+          Widget.Label({
+            hpack: "start",
+            className: "label",
+            label: device.name,
+          }),
           Widget.Box({
             spacing: 16,
             vpack: "start",
@@ -25,14 +43,12 @@ const DeviceItem = (device) =>
                 label: device
                   .bind("paired")
                   .as((v) => `${v ? "Paired" : "Not Paired"}`),
-                visible: device.bind("paired").as((p) => p),
               }),
               Widget.Label({
                 className: "trusted",
                 label: device
                   .bind("trusted")
                   .as((v) => `${v ? "Trusted" : "Not Trusted"}`),
-                visible: device.bind("trusted").as((p) => p),
               }),
               Widget.Label({
                 className: "percentage",
@@ -44,22 +60,47 @@ const DeviceItem = (device) =>
         ],
       }),
       Widget.Box({ hexpand: true }),
-      Widget.Spinner({
-        vpack: "start",
-        active: device.bind("connecting"),
-        visible: device.bind("connecting"),
-      }),
-      Widget.Switch({
-        vpack: "start",
-        active: device.bind("connected"),
-        visible: device.bind("connecting").as((p) => !p),
-        setup: (self) =>
-          self.on("notify::active", () => {
-            device.setConnection(self.active);
+      Widget.Box({
+        spacing: 8,
+        children: [
+          Widget.Button({
+            className: "toggle-button",
+            on_clicked: () => {
+              device.setConnection(!device.connected);
+            },
+            child: Widget.Stack({
+              children: {
+                connecting: Widget.Icon({
+                  className: "spinner",
+                  icon: IconMap.ui.refresh,
+                  size: 16,
+                }),
+                normal: Widget.Stack({
+                  children: {
+                    connected: Widget.Icon({
+                      icon: IconMap.bluetooth.enabled,
+                      size: 16,
+                    }),
+                    disconnected: Widget.Icon({
+                      icon: IconMap.bluetooth.disabled,
+                      size: 16,
+                    }),
+                  },
+                  shown: device
+                    .bind("connected")
+                    .as((v) => (v ? "connected" : "disconnected")),
+                }),
+              },
+              shown: device
+                .bind("connecting")
+                .as((v) => (v ? "connecting" : "normal")),
+            }),
           }),
+        ],
       }),
     ],
   });
+};
 
 const BluetoothDevices = () => {
   return Widget.Box({
@@ -89,26 +130,38 @@ const BluetoothDevices = () => {
   });
 };
 
-export const BluetoothPageHeader = () => ({
-  centerWidget: Widget.Label({ label: "Bluetooth" }),
-  endWidget: Widget.Box({
-    hpack: "end",
-    child: Widget.Button({
-      className: "toggle-button bluetooth-toggle-button",
-      on_clicked: () => (Bluetooth.enabled = !Bluetooth.enabled),
-      child: Widget.Icon({
-        size: 16,
+export const BluetoothPageHeader = () => {
+  const scanning = Variable(false);
+  return {
+    centerWidget: Widget.Label({ label: "Bluetooth" }),
+    endWidget: [
+      SettingsHeaderButton({
+        className: "bluetooth-rescan-button",
+        on_clicked: async () => {
+          if (scanning.value) {
+            return;
+          }
+          scanning.value = true;
+          await Utils.execAsync("bluetoothctl scan on");
+          scanning.value = false;
+        },
+        icon: IconMap.ui.refresh,
+        loading: scanning,
+      }),
+      SettingsHeaderButton({
+        className: "toggle-button bluetooth-toggle-button",
+        on_clicked: () => (Bluetooth.enabled = !Bluetooth.enabled),
         icon: Bluetooth.bind("enabled").as(
           (p) => IconMap.bluetooth[p ? "enabled" : "disabled"]
         ),
+        setup: (self) =>
+          self.hook(Bluetooth, () =>
+            self.toggleClassName("active", Bluetooth.enabled)
+          ),
       }),
-      setup: (self) =>
-        self.hook(Bluetooth, () =>
-          self.toggleClassName("active", Bluetooth.enabled)
-        ),
-    }),
-  }),
-});
+    ],
+  };
+};
 
 const BluetoothPage = () => {
   return Widget.Box({

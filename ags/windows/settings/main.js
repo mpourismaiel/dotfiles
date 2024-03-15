@@ -5,7 +5,7 @@ import BluetoothPage, { BluetoothPageHeader } from "./bluetooth.js";
 import DisplayPage, { DisplayPageHeader } from "./display.js";
 import NetworkPage, { NetworkPageHeader } from "./network.js";
 
-export const WINDOW_NAME = "NetworkSettings";
+export const WINDOW_NAME = "settings";
 
 const sections = [
   { type: "category", title: "General" },
@@ -127,6 +127,13 @@ const ActivePage = () => {
           sections.find((section) => section.key === activePage.value) || {};
 
         if (header) {
+          const transformedHeader = header({ windowName: WINDOW_NAME });
+          transformedHeader.endWidget = Widget.Box({
+            spacing: 8,
+            hpack: "end",
+            children: transformedHeader.endWidget,
+          });
+
           activeHeaderInstance = Widget.CenterBox({
             className: "settings-page-header",
             startWidget: Widget.Box({
@@ -137,7 +144,7 @@ const ActivePage = () => {
                 child: Widget.Icon({ icon: IconMap.ui.arrow.left }),
               }),
             }),
-            ...header({ windowName: WINDOW_NAME }),
+            ...transformedHeader,
           });
           self.add(activeHeaderInstance);
         }

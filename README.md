@@ -13,7 +13,7 @@ These notes are not to say you should not try Wayland, please do! More users mea
 Arch specific names are listed, might be different in your distro.
 
 ```
-yay -S hyprland aylur-gtk-shell gnome-bluetooth-3.0 satty grim slurp wlr-randr wf-recorder swww matugen
+yay -S hyprland-git aylur-gtk-shell gnome-bluetooth-3.0 satty grim slurp wlr-randr wf-recorder swww matugen cpio bluez-utils
 ```
 
 You might need to setup an action in your file manager to copy the image you want as wallpaper to `~/.config/background`. For `thunar` I'm using the following:

@@ -1,5 +1,5 @@
-.bluetooth-settings {
-  .device-item {
+.display-settings {
+  .display {
     padding: 10px;
 
     .icon {
@@ -7,18 +7,14 @@
       padding: 4px 0;
     }
 
-    .label {
+    .title {
       font-weight: bold;
       color: $on_surface;
       margin-right: 10px;
     }
 
-    .paired,
-    .trusted,
-    .percentage {
-      margin-top: 4px;
-      font-size: 0.9rem;
-      color: $on_surface_variant;
+    .more-actions {
+      margin-top: 16px;
     }
   }
 }
