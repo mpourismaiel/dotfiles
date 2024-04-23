@@ -5,6 +5,7 @@ import PopupWindow from "../_components/popup-window.js";
 
 const Applications = await Service.import("applications");
 const Gtk = imports.gi.Gtk;
+const Gio = imports.gi.Gio;
 
 export const WINDOW_NAME = "AppLauncher";
 
@@ -27,32 +28,56 @@ const toggleAppPin = (appMenuDetails) => {
   }
 };
 
-const AppMenu = Widget.Menu({
-  children: [
+const AppTogglePinMenuItem = () =>
+  Widget.MenuItem({
+    child: Widget.Label({
+      xalign: 0,
+      justification: "left",
+      label: appMenuDetails
+        .bind()
+        .as((v) => (v.isPinned ? "Remove from pinned" : "Add to pinned")),
+    }),
+    on_activate: () => {
+      toggleAppPin(appMenuDetails);
+      appMenuDetails.setValue(defaultAppMenuDetails);
+    },
+  });
+
+const generateAppActions = (self, app) =>
+  app.list_actions().map((action) =>
     Widget.MenuItem({
       child: Widget.Label({
-        label: appMenuDetails
-          .bind()
-          .as((v) => (v.isPinned ? "Remove from pinned" : "Add to pinned")),
+        xalign: 0,
+        justification: "left",
+        label: action,
       }),
       on_activate: () => {
-        toggleAppPin(appMenuDetails);
-        appMenuDetails.setValue(defaultAppMenuDetails);
+        self.attribute.app.app.launch_action(
+          action,
+          Gio.AppLaunchContext.new()
+        );
       },
-    }),
-  ],
+    })
+  );
+
+const AppMenu = Widget.Menu({
+  children: [AppTogglePinMenuItem()],
 });
 
 const AppItem = (app) =>
   Widget.Button({
     className: "launcher-app-item-container",
     hexpand: true,
-    on_secondary_click: (_, e) => {
+    on_secondary_click: (self, e) => {
       const details = { desktop: app.desktop };
       details.isPinned = options
         .getOption("launcher_pinned_apps")
         .includes(app.desktop);
       appMenuDetails.setValue(details);
+      AppMenu.children = [
+        ...generateAppActions(self, self.attribute.app.app),
+        AppTogglePinMenuItem(),
+      ];
       AppMenu.popup_at_pointer(e);
     },
     on_clicked: (self) => {
@@ -98,12 +123,16 @@ const AppItem = (app) =>
 const PinnedAppItem = (app) =>
   Widget.Button({
     className: "launcher-pinned-app-item-container",
-    on_secondary_click: (_, e) => {
+    on_secondary_click: (self, e) => {
       const details = { desktop: app.desktop };
       details.isPinned = options
         .getOption("launcher_pinned_apps")
         .includes(app.desktop);
       appMenuDetails.setValue(details);
+      AppMenu.children = [
+        ...generateAppActions(self, self.attribute.app.app),
+        AppTogglePinMenuItem(),
+      ];
       AppMenu.popup_at_pointer(e);
     },
     on_clicked: (self) => {

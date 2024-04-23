@@ -8,7 +8,7 @@ const Hyprland = await Service.import("hyprland");
 const ClientButton = (clients) => {
   const client = clients[0];
   const addresses = clients.map((client) => client.address);
-
+  console.log(client.class);
   return Widget.Box({
     className: "client-container",
     child: Widget.Button({
