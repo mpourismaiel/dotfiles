@@ -27,7 +27,8 @@ InitializeGlobalDefaults();
 InitializeWallpaper();
 InitializeStyles();
 
-export default {
+App.config({
+  style: "./style.css",
   windows: [
     Menu(),
     AppLauncherMenu(),
@@ -40,4 +41,5 @@ export default {
     ...forMonitors(NotificationPopup),
     ...forMonitors(OSD),
   ],
-};
+  gtkTheme: "Orchis-Pink-Dark",
+});

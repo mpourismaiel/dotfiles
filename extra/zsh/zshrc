@@ -21,3 +21,7 @@ if [[ -f ~/.zsh/extra_config.zsh ]]; then
 fi
 
 source $ZSH/oh-my-zsh.sh
+
+# bun completions
+[ -s "/home/mahdi/.bun/_bun" ] && source "/home/mahdi/.bun/_bun"
+. "/home/mahdi/.deno/env"
