@@ -159,3 +159,134 @@ _cdp_autocomplete() {
 }
 
 compdef _cdp_autocomplete cdp
+
+dcm() {
+  local COMPOSE_FILE="docker-compose.yml"
+
+  if [[ ! -f $COMPOSE_FILE ]]; then
+    echo "Error: $COMPOSE_FILE not found in the current directory."
+    return 1
+  fi
+
+  # Function to list services
+  list_services() {
+    docker-compose -f $COMPOSE_FILE config --services
+  }
+
+  # Function to start a service
+  start_service() {
+    service=$1
+    docker-compose -f $COMPOSE_FILE up -d $service
+  }
+
+  start_all_services() {
+    docker-compose -f $COMPOSE_FILE up
+  }
+
+  # Function to stop a service
+  stop_service() {
+    service=$1
+    docker-compose -f $COMPOSE_FILE stop $service
+  }
+
+  # Function to remove a service's container
+  remove_service() {
+    service=$1
+    docker-compose -f $COMPOSE_FILE rm -f $service
+  }
+
+  # Function to update (rebuild) a service
+  update_service() {
+    service=$1
+    docker-compose -f $COMPOSE_FILE up -d --no-deps --build $service
+  }
+
+  # Main menu
+  show_menu() {
+    echo "Usage: dcm {start|stop|rm|ls|update} [service_name]"
+    echo "Commands:"
+    echo "  ls                List all services"
+    echo "  start <service>   Start a specific service"
+    echo "  stop <service>    Stop a specific service"
+    echo "  rm <service>      Remove a specific service's container"
+    echo "  update <service>  Update (rebuild) a specific service"
+  }
+
+  if [ $# -lt 1 ]; then
+    show_menu
+    return 1
+  fi
+
+  case $1 in
+  ls)
+    list_services
+    ;;
+  start)
+    if [ -z "$2" ]; then
+      start_all_services
+      return 1
+    fi
+    start_service $2
+    ;;
+  stop)
+    if [ -z "$2" ]; then
+      echo "Please provide a service name."
+      return 1
+    fi
+    stop_service $2
+    ;;
+  rm)
+    if [ -z "$2" ]; then
+      echo "Please provide a service name."
+      return 1
+    fi
+    remove_service $2
+    ;;
+  update)
+    if [ -z "$2" ]; then
+      echo "Please provide a service name."
+      return 1
+    fi
+    update_service $2
+    ;;
+  *)
+    show_menu
+    ;;
+  esac
+}
+
+_dcm_completions() {
+  local state
+  local -a commands
+  local -a services
+
+  commands=(
+    'ls:List all services'
+    'start:Start a specific service'
+    'stop:Stop a specific service'
+    'rm:Remove a specific service container'
+    'update:Update a specific service'
+  )
+
+  if [[ ! -f docker-compose.yml ]]; then
+    return 1
+  fi
+
+  services=($(docker-compose -f docker-compose.yml config --services))
+
+  _arguments \
+    '1:command:->command' \
+    '2:service:->service' \
+    '*::arg:->args'
+
+  case $state in
+  command)
+    _describe 'command' commands
+    ;;
+  service)
+    _describe 'service' services
+    ;;
+  esac
+}
+
+compdef _dcm_completions dcm

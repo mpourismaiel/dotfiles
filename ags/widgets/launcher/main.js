@@ -56,6 +56,7 @@ const generateAppActions = (self, app) =>
           action,
           Gio.AppLaunchContext.new()
         );
+        App.closeWindow(WINDOW_NAME);
       },
     })
   );
