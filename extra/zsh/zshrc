@@ -5,7 +5,7 @@ export UPDATE_ZSH_DAYS=14
 HIST_STAMPS="yyyy-mm-dd"
 
 # Oh-my-zsh config (add more in ~/.zsh/extra_config.zsh to avoid cluttering git diff)
-plugins=(git fzf)
+plugins=(git fzf dnf foot gitfast)
 
 # Default editor in different environments (change in ~/.zsh/extra_config.zsh)
 export SUDO_EDITOR=vim
@@ -22,6 +22,31 @@ fi
 
 source $ZSH/oh-my-zsh.sh
 
-# bun completions
-[ -s "/home/mahdi/.bun/_bun" ] && source "/home/mahdi/.bun/_bun"
-. "/home/mahdi/.deno/env"
+# pnpm
+export PNPM_HOME="/home/mahdi/.local/share/pnpm"
+case ":$PATH:" in
+  *":$PNPM_HOME:"*) ;;
+  *) export PATH="$PNPM_HOME:$PATH" ;;
+esac
+# pnpm end
+
+# >>> conda initialize >>>
+# !! Contents within this block are managed by 'conda init' !!
+__conda_setup="$('/home/mahdi/miniconda3/bin/conda' 'shell.zsh' 'hook' 2> /dev/null)"
+if [ $? -eq 0 ]; then
+    eval "$__conda_setup"
+else
+    if [ -f "/home/mahdi/miniconda3/etc/profile.d/conda.sh" ]; then
+        . "/home/mahdi/miniconda3/etc/profile.d/conda.sh"
+    else
+        export PATH="/home/mahdi/miniconda3/bin:$PATH"
+    fi
+fi
+unset __conda_setup
+# <<< conda initialize <<<
+
+
+# Added by LM Studio CLI (lms)
+export PATH="$PATH:/home/mahdi/.lmstudio/bin"
+# End of LM Studio CLI section
+

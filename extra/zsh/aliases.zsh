@@ -1,7 +1,7 @@
 autoload -Uz compinit
 compinit
 
-alias cat="bat"
+#alias cat="bat"
 alias vim="nvim"
 alias dl="aria2c -x 16 -c"
 
@@ -53,11 +53,11 @@ _run_cdp_command() {
 
     if [[ "$1" = "code" ]]; then
       # if code-insiders exists, run than
-      if [[ -f "/usr/bin/code-insiders" ]]; then
-        code-insiders .
-      else
+      # if [[ -f "/usr/bin/code-insiders" ]]; then
+      #  code-insiders .
+      # else
         code .
-      fi
+      # fi
       ran_command=1
     fi
 
