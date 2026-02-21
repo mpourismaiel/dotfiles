@@ -46,13 +46,24 @@ style = "bg:#0e271d"
 format = '[ $symbol $branch ]($style)'
 
 [git_commit]
-style = "bg:#0e271d"
-format = '[󰕱 $hash$tag ]($style)'
+style = "bg:#091a13"
+format = '[ 󰕱 $hash$tag ]($style)'
 only_detached = false
 
 [git_status]
-style = "bg:#0e271d"
-format = '[$all_status$ahead_behind ]($style)'
+style = "bg:#123225"
+conflicted = '🏳 '
+ahead = '⇡${count}'
+diverged = '⇕⇡${ahead_count}⇣${behind_count}'
+behind = '⇣${count}'
+up_to_date = '✓ '
+untracked = ' '
+stashed = ' '
+modified = '${count} '
+staged = '[++\($count\)](green)'
+renamed = ' '
+deleted = '🗑 '
+format = '[ $conflicted$ahead$diverged$behind$up_to_date$untracked$stashed$modified$staged$renamed$deleted]($style)'
 
 [fill]
 symbol = ' '
@@ -66,19 +77,19 @@ format = "[◄ $duration ](italic white)"
 
 [deno]
 symbol = " "
-format = "[ ${symbol}deno ${version} ]($style)"
+format = "[ ${symbol}${version} ]($style)"
 version_format = "${raw}"
 style = "bold bg:#2ec4b6"
 
 [lua]
 symbol = " "
-format = "[ ${symbol}lua ${version} ]($style)"
+format = "[ ${symbol}${version} ]($style)"
 version_format = "${raw}"
 style = "bold bg:#2b8fb9"
 
 [nodejs]
 symbol = " "
-format = "[ ${symbol}node ${version} ]($style)"
+format = "[ ${symbol}${version} ]($style)"
 version_format = "${raw}"
 detect_files = ["package-lock.json", "yarn.lock"]
 detect_folders = ["node_modules"]
@@ -87,7 +98,7 @@ style = "bold bg:#3C873A"
 
 [python]
 symbol = " "
-format = "[ ${symbol}py ${version} ]($style)"
+format = "[ ${symbol}${version} ]($style)"
 version_format = "${raw}"
 style = "bold bg:#3776AB"
 
@@ -103,42 +114,42 @@ style = "bold bg:#384d54"
 
 [elixir]
 symbol = " "
-format = "[ ${symbol}ex ${version} OTP $otp_version ]($style)"
+format = "[ ${symbol}${version} OTP $otp_version ]($style)"
 style = "bold bg:#6e4a7e"
 
 [elm]
 symbol = " "
-format = "[ ${symbol}elm ${version} ]($style)"
+format = "[ ${symbol}${version} ]($style)"
 style = "bold bg:#60B5CC"
 
 [golang]
 symbol = " "
-format = "[ ${symbol}go ${version} ]($style)"
+format = "[ ${symbol}${version} ]($style)"
 style = "bold bg:#00ADD8"
 
 [java]
 symbol = " "
-format = "[ ${symbol}java ${version} ]($style)"
+format = "[ ${symbol}${version} ]($style)"
 style = "bold bg:#f89820"
 
 [kotlin]
 symbol = " "
-format = "[ ${symbol}kotlin ${version} ]($style)"
+format = "[ ${symbol}${version} ]($style)"
 style = "bold bg:#7f52ff"
 
 [gradle]
 symbol = " "
-format = "[ ${symbol}gradle ${version} ]($style)"
+format = "[ ${symbol}${version} ]($style)"
 style = "bold bg:#023e8a"
 
 [erlang]
 symbol = " "
-format = "[ ${symbol}erl ${version} ]($style)"
+format = "[ ${symbol}${version} ]($style)"
 style = "bold bg:#B83998"
 
 [php]
 symbol = " "
-format = "[ ${symbol}php ${version} ]($style)"
+format = "[ ${symbol}${version} ]($style)"
 style = "bold bg:#787CB5"
 
 [memory_usage]
