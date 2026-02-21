@@ -1,7 +1,6 @@
 format = """
 (bg:#DA627D fg:#9A348E)\
 ${custom.project_pwd}\
-$directory\
 $git_branch\
 $git_commit\
 $git_status\
@@ -30,7 +29,7 @@ add_newline = true
 [custom.project_pwd]
 when = "true"
 command = "project_pwd.zsh"
-format = "[  ](bg:#424868 fg:#7AA2F7)[$output ](italic bg:#424868 fg:#A8ABC0)"
+format = "[$output](italic bg:#424868 fg:#A8ABC0)"
 
 [directory]
 style = "bg:#313348 fg:#A8ABC0"
