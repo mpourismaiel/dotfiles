@@ -12,6 +12,8 @@ export SUDO_EDITOR=vim
 export EDITOR=vim
 export GUI_EDITOR=code
 
+source $ZSH/oh-my-zsh.sh
+
 # My custom aliases and functions
 source $HOME/.zsh/aliases.zsh
 
@@ -19,8 +21,6 @@ source $HOME/.zsh/aliases.zsh
 if [[ -f ~/.zsh/extra_config.zsh ]]; then
   source ~/.zsh/extra_config.zsh
 fi
-
-source $ZSH/oh-my-zsh.sh
 
 # pnpm
 export PNPM_HOME="/home/mahdi/.local/share/pnpm"
@@ -49,4 +49,3 @@ unset __conda_setup
 # Added by LM Studio CLI (lms)
 export PATH="$PATH:/home/mahdi/.lmstudio/bin"
 # End of LM Studio CLI section
-

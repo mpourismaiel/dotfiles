@@ -1,6 +1,3 @@
-autoload -Uz compinit
-compinit
-
 #alias cat="bat"
 alias vim="nvim"
 alias dl="aria2c -x 16 -c"
