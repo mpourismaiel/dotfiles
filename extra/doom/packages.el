@@ -53,6 +53,7 @@
 ;; ...Or *all* packages (NOT RECOMMENDED; will likely break things)
 ;; (unpin! t)
 (package! consult-dir)
+(package! eldoc-box)
 (package! pipenv :disable t)
 (package! shell-maker)
 (package! acp)

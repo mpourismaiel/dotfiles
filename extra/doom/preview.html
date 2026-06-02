@@ -1,0 +1,785 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mahdi's Doom Cheatsheet</title>
+  <style>
+    :root {
+      --bg: #101114;
+      --panel: #181a20;
+      --panel-2: #20232b;
+      --text: #e8eaf0;
+      --muted: #a7adbb;
+      --faint: #737987;
+      --border: #303440;
+      --accent: #9cdcfe;
+      --accent-2: #c3e88d;
+      --essential: #ffd866;
+      --shadow: rgba(0, 0, 0, 0.35);
+      --radius: 16px;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+      --sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      margin: 0;
+      background:
+        radial-gradient(circle at 20% 0%, rgba(156, 220, 254, 0.12), transparent 35%),
+        radial-gradient(circle at 100% 10%, rgba(195, 232, 141, 0.10), transparent 30%),
+        var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      line-height: 1.45;
+    }
+
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      backdrop-filter: blur(18px);
+      background: rgba(16, 17, 20, 0.84);
+      border-bottom: 1px solid var(--border);
+      box-shadow: 0 10px 24px var(--shadow);
+    }
+
+    .wrap {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 22px;
+    }
+
+    .hero {
+      display: grid;
+      gap: 12px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(1.7rem, 3vw, 2.4rem);
+      letter-spacing: -0.04em;
+    }
+
+    .subtitle {
+      color: var(--muted);
+      margin: 0;
+      max-width: 76ch;
+    }
+
+    .controls {
+      display: grid;
+      grid-template-columns: minmax(220px, 1fr) auto auto;
+      gap: 10px;
+      align-items: center;
+      margin-top: 14px;
+    }
+
+    input[type="search"] {
+      width: 100%;
+      border: 1px solid var(--border);
+      color: var(--text);
+      background: var(--panel);
+      padding: 14px 16px;
+      border-radius: 999px;
+      font: 500 15px var(--sans);
+      outline: none;
+    }
+
+    input[type="search"]:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(156, 220, 254, 0.15);
+    }
+
+    button {
+      border: 1px solid var(--border);
+      background: var(--panel);
+      color: var(--text);
+      padding: 12px 14px;
+      border-radius: 999px;
+      font: 700 13px var(--sans);
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    button.active {
+      border-color: var(--essential);
+      color: #171717;
+      background: var(--essential);
+    }
+
+    main.wrap {
+      padding-top: 26px;
+    }
+
+    .stats {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 18px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .pill {
+      border: 1px solid var(--border);
+      background: rgba(24, 26, 32, 0.75);
+      border-radius: 999px;
+      padding: 7px 10px;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 250px 1fr;
+      gap: 20px;
+      align-items: start;
+    }
+
+    aside {
+      position: sticky;
+      top: 146px;
+      border: 1px solid var(--border);
+      background: rgba(24, 26, 32, 0.72);
+      border-radius: var(--radius);
+      padding: 12px;
+      box-shadow: 0 10px 30px var(--shadow);
+    }
+
+    aside h2 {
+      font-size: 13px;
+      color: var(--muted);
+      margin: 4px 8px 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .cat-btn {
+      width: 100%;
+      text-align: left;
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      margin: 4px 0;
+      border-radius: 12px;
+      padding: 9px 10px;
+      font-weight: 650;
+      background: transparent;
+    }
+
+    .cat-btn:hover {
+      background: var(--panel-2);
+    }
+
+    .cat-btn.selected {
+      background: var(--panel-2);
+      border-color: var(--accent);
+    }
+
+    .count {
+      color: var(--faint);
+      font-weight: 700;
+      font-family: var(--mono);
+    }
+
+    section.category {
+      margin-bottom: 22px;
+    }
+
+    .category-title {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 14px;
+      margin: 0 0 10px;
+      padding: 0 4px;
+    }
+
+    .category-title h2 {
+      margin: 0;
+      font-size: 1.1rem;
+      letter-spacing: -0.02em;
+    }
+
+    .category-title span {
+      color: var(--faint);
+      font: 700 12px var(--mono);
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(285px, 1fr));
+      gap: 12px;
+    }
+
+    .card {
+      border: 1px solid var(--border);
+      background: linear-gradient(180deg, rgba(32, 35, 43, 0.92), rgba(24, 26, 32, 0.92));
+      border-radius: var(--radius);
+      padding: 14px;
+      box-shadow: 0 12px 26px var(--shadow);
+      min-height: 148px;
+    }
+
+    .card.essential {
+      border-color: rgba(255, 216, 102, 0.55);
+      box-shadow: 0 12px 28px rgba(0, 0, 0, 0.36), inset 0 0 0 1px rgba(255, 216, 102, 0.08);
+    }
+
+    .topline {
+      display: flex;
+      justify-content: space-between;
+      align-items: start;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    kbd {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-family: var(--mono);
+      font-weight: 800;
+      font-size: 14px;
+      color: #101114;
+      background: var(--accent);
+      border-radius: 9px;
+      padding: 7px 9px;
+      box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.25);
+      white-space: nowrap;
+    }
+
+    .star {
+      font-size: 20px;
+      color: var(--essential);
+      line-height: 1;
+    }
+
+    .card h3 {
+      margin: 0 0 6px;
+      font-size: 1rem;
+      letter-spacing: -0.01em;
+    }
+
+    .card p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .tags {
+      margin-top: 12px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .tag {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--faint);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 3px 7px;
+    }
+
+    .note {
+      border: 1px solid rgba(156, 220, 254, 0.25);
+      background: rgba(156, 220, 254, 0.08);
+      border-radius: var(--radius);
+      padding: 14px 16px;
+      color: var(--muted);
+      margin-bottom: 18px;
+    }
+
+    .note strong {
+      color: var(--text);
+    }
+
+    .empty {
+      display: none;
+      border: 1px dashed var(--border);
+      border-radius: var(--radius);
+      padding: 28px;
+      color: var(--muted);
+      text-align: center;
+      background: rgba(24, 26, 32, 0.5);
+    }
+
+    mark {
+      background: rgba(255, 216, 102, 0.28);
+      color: inherit;
+      border-radius: 4px;
+      padding: 0 2px;
+    }
+
+    footer {
+      color: var(--faint);
+      border-top: 1px solid var(--border);
+      margin-top: 32px;
+      padding: 24px 0 40px;
+      font-size: 13px;
+    }
+
+    code {
+      font-family: var(--mono);
+      color: var(--accent);
+    }
+
+    @media (max-width: 820px) {
+      .controls {
+        grid-template-columns: 1fr;
+      }
+
+      .layout {
+        grid-template-columns: 1fr;
+      }
+
+      aside {
+        position: static;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="wrap hero">
+      <div>
+        <h1>Mahdi's Doom Cheatsheet</h1>
+        <p class="subtitle">A conservative, searchable set of shortcuts. It keeps your custom bindings and only includes core Doom/Evil keys that are worth repeated review while learning.</p>
+      </div>
+      <div class="controls">
+        <input id="search" type="search" placeholder="Search by key, action, category, or tag" autocomplete="off">
+        <button id="essentialToggle" type="button" title="Show only essential items">★ Essentials</button>
+        <button id="clearBtn" type="button">Clear</button>
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <div class="note">
+      <strong>How to grow this page:</strong> if a binding becomes part of your real workflow, keep it. If you never use it, remove it. When in doubt, check <code>SPC h k</code>.
+    </div>
+
+    <div class="stats">
+      <span class="pill"><strong id="visibleCount">0</strong> shown</span>
+      <span class="pill"><strong id="totalCount">0</strong> total</span>
+      <span class="pill">★ = important enough to memorize</span>
+    </div>
+
+    <div class="layout">
+      <aside>
+        <h2>Categories</h2>
+        <div id="categoryNav"></div>
+      </aside>
+
+      <div>
+        <div id="content"></div>
+        <div id="empty" class="empty">No shortcuts matched your search.</div>
+      </div>
+    </div>
+
+    <footer>
+      Based on your current <code>extra/doom/config.el</code> plus a small set of core Doom/Evil defaults. Search matches combo, title, description, category, and tags.
+    </footer>
+  </main>
+
+  <script>
+    const SHORTCUTS = [
+      {
+        combo: "SPC",
+        title: "Open leader menu",
+        category: "Absolute essentials",
+        importance: "essential",
+        description: "Your main command entry point in Doom. Pause after pressing it and let which-key show available options.",
+        tags: ["leader", "which-key", "doom", "menu", "discover"]
+      },
+      {
+        combo: "SPC h k",
+        title: "Describe key",
+        category: "Absolute essentials",
+        importance: "essential",
+        description: "Press this and then any key combo to see what it runs. Best tool for checking and relearning bindings.",
+        tags: ["help", "inspect", "learning", "shortcut"]
+      },
+      {
+        combo: "C-g",
+        title: "Cancel / escape",
+        category: "Absolute essentials",
+        importance: "essential",
+        description: "Back out of prompts, partial key sequences, or odd states when Emacs feels stuck.",
+        tags: ["cancel", "quit", "escape", "stuck"]
+      },
+      {
+        combo: "M-x",
+        title: "Run command by name",
+        category: "Absolute essentials",
+        importance: "essential",
+        description: "Command palette for running Emacs commands directly by name.",
+        tags: ["command", "palette", "execute"]
+      },
+      {
+        combo: "Esc",
+        title: "Return to normal state",
+        category: "Absolute essentials",
+        importance: "essential",
+        description: "In Evil, this gets you out of insert state and back to normal mode.",
+        tags: ["evil", "normal", "insert", "mode"]
+      },
+      {
+        combo: "i",
+        title: "Enter insert state",
+        category: "Absolute essentials",
+        importance: "essential",
+        description: "Basic Evil editing move: go from normal mode into typing mode.",
+        tags: ["evil", "insert", "edit", "mode"]
+      },
+      {
+        combo: "u",
+        title: "Undo",
+        category: "Absolute essentials",
+        importance: "essential",
+        description: "Basic Evil undo in normal mode.",
+        tags: ["evil", "undo", "edit"]
+      },
+      {
+        combo: "C-/",
+        title: "Comment line or region",
+        category: "Your custom setup",
+        importance: "essential",
+        description: "Custom binding from your config. Works across Evil states and is useful enough to memorize early.",
+        tags: ["custom", "comment", "toggle", "code"]
+      },
+      {
+        combo: "C-b",
+        title: "Open Treemacs",
+        category: "Your custom setup",
+        importance: "useful",
+        description: "Custom binding from your config. Opens the project tree across Evil states.",
+        tags: ["custom", "treemacs", "sidebar", "project"]
+      },
+      {
+        combo: "C-`",
+        title: "Toggle terminal",
+        category: "Your custom setup",
+        importance: "useful",
+        description: "Custom binding from your config for quickly showing or hiding vterm.",
+        tags: ["custom", "terminal", "vterm", "shell"]
+      },
+      {
+        combo: "SPC d a",
+        title: "Open agent shell",
+        category: "Your custom setup",
+        importance: "useful",
+        description: "Custom leader binding for your agent shell command.",
+        tags: ["custom", "agent", "shell"]
+      },
+      {
+        combo: "SPC .",
+        title: "Find file",
+        category: "Files and directories",
+        importance: "essential",
+        description: "Custom binding in your config to plain find-file. Good for directly opening files.",
+        tags: ["custom", "file", "open", "find-file"]
+      },
+      {
+        combo: "gd",
+        title: "Jump to definition",
+        category: "Code navigation",
+        importance: "essential",
+        description: "Doom lookup binding. With Eglot active, this usually jumps to the symbol definition.",
+        tags: ["definition", "lookup", "lsp", "eglot", "jump"]
+      },
+      {
+        combo: "gD",
+        title: "Jump to references",
+        category: "Code navigation",
+        importance: "useful",
+        description: "Doom lookup binding for references and usages of the symbol at point.",
+        tags: ["references", "usages", "lookup", "lsp", "eglot", "jump"]
+      },
+      {
+        combo: "K",
+        title: "Show documentation / hover info",
+        category: "Code navigation",
+        importance: "essential",
+        description: "Doom lookup docs. Useful when you want the symbol description, type, or signature on demand.",
+        tags: ["documentation", "hover", "type", "signature", "lookup", "eglot"]
+      },
+      {
+        combo: "SPC f d",
+        title: "Switch directory",
+        category: "Files and directories",
+        importance: "useful",
+        description: "Uses consult-dir so you can jump directories before opening files.",
+        tags: ["custom", "consult-dir", "directory", "path"]
+      },
+      {
+        combo: "C-x C-d",
+        title: "Consult directory in minibuffer",
+        category: "Files and directories",
+        importance: "useful",
+        description: "Available during path completion to switch directories quickly.",
+        tags: ["custom", "consult-dir", "minibuffer", "directory"]
+      },
+      {
+        combo: "C-x C-j",
+        title: "Jump to file from consult-dir",
+        category: "Files and directories",
+        importance: "useful",
+        description: "Minibuffer helper for jumping from a chosen directory straight into a file.",
+        tags: ["custom", "consult-dir", "minibuffer", "file"]
+      },
+      {
+        combo: ":w",
+        title: "Save file",
+        category: "Editing and writing",
+        importance: "essential",
+        description: "Common Evil command-line save. Useful if you think in Vim habits.",
+        tags: ["evil", "save", "write", "vim"]
+      },
+      {
+        combo: "/",
+        title: "Search in current buffer",
+        category: "Editing and writing",
+        importance: "essential",
+        description: "Start an in-buffer search in Evil.",
+        tags: ["evil", "search", "find", "buffer"]
+      },
+      {
+        combo: "n",
+        title: "Next search result",
+        category: "Editing and writing",
+        importance: "useful",
+        description: "Jump to the next match after using search.",
+        tags: ["evil", "search", "next", "match"]
+      },
+      {
+        combo: "N",
+        title: "Previous search result",
+        category: "Editing and writing",
+        importance: "useful",
+        description: "Jump to the previous match after using search.",
+        tags: ["evil", "search", "previous", "match"]
+      },
+      {
+        combo: "yy",
+        title: "Copy line",
+        category: "Editing and writing",
+        importance: "useful",
+        description: "Copy the current line in Evil.",
+        tags: ["evil", "copy", "yank", "line"]
+      },
+      {
+        combo: "dd",
+        title: "Cut line",
+        category: "Editing and writing",
+        importance: "useful",
+        description: "Delete the current line in Evil.",
+        tags: ["evil", "delete", "cut", "line"]
+      },
+      {
+        combo: "p",
+        title: "Paste after cursor",
+        category: "Editing and writing",
+        importance: "useful",
+        description: "Paste after the cursor in Evil normal mode.",
+        tags: ["evil", "paste", "put", "yank"]
+      },
+      {
+        combo: "SPC t t",
+        title: "Run nearest test",
+        category: "Testing",
+        importance: "useful",
+        description: "Custom binding from your config for running the test near point.",
+        tags: ["custom", "test", "eval", "nearest"]
+      },
+      {
+        combo: "SPC t a",
+        title: "Run all project tests",
+        category: "Testing",
+        importance: "useful",
+        description: "Custom binding from your config for the full test suite.",
+        tags: ["custom", "test", "eval", "project"]
+      },
+      {
+        combo: "SPC g B",
+        title: "Git blame current line",
+        category: "Git",
+        importance: "useful",
+        description: "Starts Magit blame for the current file so you can inspect who changed each line and when.",
+        tags: ["git", "blame", "magit", "history", "author"]
+      },
+      {
+        combo: "SPC h f",
+        title: "Describe function",
+        category: "Help and discovery",
+        importance: "useful",
+        description: "Look up what an Emacs command or function does.",
+        tags: ["help", "function", "inspect", "learn"]
+      },
+      {
+        combo: "SPC h v",
+        title: "Describe variable",
+        category: "Help and discovery",
+        importance: "useful",
+        description: "Inspect a variable and its current value.",
+        tags: ["help", "variable", "inspect", "learn"]
+      }
+    ];
+
+    const searchInput = document.getElementById("search");
+    const essentialToggle = document.getElementById("essentialToggle");
+    const clearBtn = document.getElementById("clearBtn");
+    const content = document.getElementById("content");
+    const empty = document.getElementById("empty");
+    const visibleCount = document.getElementById("visibleCount");
+    const totalCount = document.getElementById("totalCount");
+    const categoryNav = document.getElementById("categoryNav");
+
+    let showEssentialOnly = false;
+    let selectedCategory = "All";
+
+    totalCount.textContent = SHORTCUTS.length;
+
+    function escapeHtml(text) {
+      return text
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;");
+    }
+
+    function highlight(text, query) {
+      const safe = escapeHtml(text);
+      if (!query) return safe;
+      const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      return safe.replace(new RegExp(`(${escapedQuery})`, "ig"), "<mark>$1</mark>");
+    }
+
+    function matchesQuery(item, query) {
+      if (!query) return true;
+      const haystack = [
+        item.combo,
+        item.title,
+        item.category,
+        item.description,
+        ...item.tags
+      ].join(" ").toLowerCase();
+      return haystack.includes(query.toLowerCase());
+    }
+
+    function getVisibleItems() {
+      const query = searchInput.value.trim();
+      return SHORTCUTS.filter((item) => {
+        const queryOk = matchesQuery(item, query);
+        const essentialOk = !showEssentialOnly || item.importance === "essential";
+        const categoryOk = selectedCategory === "All" || item.category === selectedCategory;
+        return queryOk && essentialOk && categoryOk;
+      });
+    }
+
+    function renderNav(items) {
+      const counts = new Map();
+      counts.set("All", items.length);
+      for (const item of items) {
+        counts.set(item.category, (counts.get(item.category) || 0) + 1);
+      }
+
+      categoryNav.innerHTML = "";
+      for (const [category, count] of counts.entries()) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "cat-btn";
+        if (category === selectedCategory) button.classList.add("selected");
+        button.innerHTML = `<span>${escapeHtml(category)}</span><span class="count">${count}</span>`;
+        button.addEventListener("click", () => {
+          selectedCategory = category;
+          render();
+        });
+        categoryNav.appendChild(button);
+      }
+    }
+
+    function render() {
+      const query = searchInput.value.trim();
+      const baseItems = SHORTCUTS.filter((item) => {
+        const queryOk = matchesQuery(item, query);
+        const essentialOk = !showEssentialOnly || item.importance === "essential";
+        return queryOk && essentialOk;
+      });
+
+      const availableCategories = new Set(["All", ...baseItems.map((item) => item.category)]);
+      if (!availableCategories.has(selectedCategory)) {
+        selectedCategory = "All";
+      }
+
+      renderNav(baseItems);
+
+      const visibleItems = getVisibleItems();
+      visibleCount.textContent = visibleItems.length;
+      content.innerHTML = "";
+
+      if (!visibleItems.length) {
+        empty.style.display = "block";
+        return;
+      }
+
+      empty.style.display = "none";
+
+      const grouped = new Map();
+      for (const item of visibleItems) {
+        if (!grouped.has(item.category)) grouped.set(item.category, []);
+        grouped.get(item.category).push(item);
+      }
+
+      for (const [category, items] of grouped.entries()) {
+        const section = document.createElement("section");
+        section.className = "category";
+
+        const cards = items.map((item) => `
+          <article class="card ${item.importance === "essential" ? "essential" : ""}">
+            <div class="topline">
+              <kbd>${highlight(item.combo, query)}</kbd>
+              ${item.importance === "essential" ? '<span class="star">★</span>' : ""}
+            </div>
+            <h3>${highlight(item.title, query)}</h3>
+            <p>${highlight(item.description, query)}</p>
+            <div class="tags">
+              ${item.tags.map((tag) => `<span class="tag">${highlight(tag, query)}</span>`).join("")}
+            </div>
+          </article>
+        `).join("");
+
+        section.innerHTML = `
+          <div class="category-title">
+            <h2>${escapeHtml(category)}</h2>
+            <span>${items.length} item${items.length === 1 ? "" : "s"}</span>
+          </div>
+          <div class="grid">${cards}</div>
+        `;
+
+        content.appendChild(section);
+      }
+    }
+
+    searchInput.addEventListener("input", render);
+    essentialToggle.addEventListener("click", () => {
+      showEssentialOnly = !showEssentialOnly;
+      essentialToggle.classList.toggle("active", showEssentialOnly);
+      render();
+    });
+    clearBtn.addEventListener("click", () => {
+      searchInput.value = "";
+      showEssentialOnly = false;
+      selectedCategory = "All";
+      essentialToggle.classList.remove("active");
+      render();
+      searchInput.focus();
+    });
+
+    render();
+  </script>
+</body>
+</html>
