@@ -696,3 +696,5 @@
   (map! :map minibuffer-local-completion-map
         "C-x C-d" #'consult-dir
         "C-x C-j" #'consult-dir-jump-file))
+
+(setq confirm-kill-emacs nil)
