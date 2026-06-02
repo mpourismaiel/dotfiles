@@ -490,7 +490,7 @@
     (expand-file-name root)))
 
 (defun mp/pipenv-allowed-p (&optional dir)
-  (and (mp/pipenv-project-p dir) t))
+  (not (null (mp/pipenv-project-p dir))))
 
 (defun mp/pipenv-command-p (program)
   (and (stringp program)
@@ -576,37 +576,25 @@
   (add-to-list 'projectile-project-root-files "Pipfile"))
 
 (after! project
+  (defun mp/project-root-from-markers (dir markers)
+    "Return the first project root above DIR matching one of MARKERS."
+    (when-let ((root (seq-some (lambda (marker)
+                                 (locate-dominating-file dir marker))
+                               markers)))
+      (cons 'transient root)))
+
   ;; Prefer language-specific roots inside monorepos over the repository root.
   ;; This keeps `server/` Python tooling anchored to its own Pipfile/pyproject
   ;; instead of falling back to the top-level `.git` directory.
   (add-hook 'project-find-functions
             (lambda (dir)
-              (cond
-               ;; Go projects
-               ((locate-dominating-file dir "go.mod")
-                (cons 'transient (locate-dominating-file dir "go.mod")))
-
-               ;; Rust projects
-               ((locate-dominating-file dir "Cargo.toml")
-                (cons 'transient (locate-dominating-file dir "Cargo.toml")))
-
-               ;; Node.js projects
-               ((locate-dominating-file dir "package.json")
-                (cons 'transient (locate-dominating-file dir "package.json")))
-
-               ;; Python projects (multiple markers)
-               ((or (locate-dominating-file dir "Pipfile")
-                    (locate-dominating-file dir "pyproject.toml")
-                    (locate-dominating-file dir "setup.py")
-                    (locate-dominating-file dir "requirements.txt"))
-                (cons 'transient (or (locate-dominating-file dir "Pipfile")
-                                     (locate-dominating-file dir "pyproject.toml")
-                                     (locate-dominating-file dir "setup.py")
-                                     (locate-dominating-file dir "requirements.txt"))))
-
-               ;; Generic git projects (fallback)
-               ((locate-dominating-file dir ".git")
-                (cons 'transient (locate-dominating-file dir ".git")))))))
+              (or (mp/project-root-from-markers dir '("go.mod"))
+                  (mp/project-root-from-markers dir '("Cargo.toml"))
+                  (mp/project-root-from-markers dir '("package.json"))
+                  (mp/project-root-from-markers
+                   dir
+                   '("Pipfile" "pyproject.toml" "setup.py" "requirements.txt"))
+                  (mp/project-root-from-markers dir '(".git"))))))
 
 (map! :leader
       :desc "Run nearest test" "t t" #'+eval/test
@@ -691,16 +679,13 @@
         eldoc-box-offset '(16 12 16)))
 
 (after! evil
-  (define-key evil-motion-state-map (kbd "C-b") #'treemacs)
-  (define-key evil-normal-state-map (kbd "C-b") #'treemacs)
-  (define-key evil-insert-state-map (kbd "C-b") #'treemacs)
-  (define-key evil-emacs-state-map (kbd "C-b") #'treemacs)
-  (define-key evil-visual-state-map (kbd "C-b") #'treemacs)
-  (define-key evil-motion-state-map (kbd "C-/") #'comment-line)
-  (define-key evil-normal-state-map (kbd "C-/") #'comment-line)
-  (define-key evil-insert-state-map (kbd "C-/") #'comment-line)
-  (define-key evil-emacs-state-map (kbd "C-/") #'comment-line)
-  (define-key evil-visual-state-map (kbd "C-/") #'comment-line))
+  (dolist (state-map (list evil-motion-state-map
+                           evil-normal-state-map
+                           evil-insert-state-map
+                           evil-emacs-state-map
+                           evil-visual-state-map))
+    (define-key state-map (kbd "C-b") #'treemacs)
+    (define-key state-map (kbd "C-/") #'comment-line)))
 
 (use-package! consult-dir
   :defer t
