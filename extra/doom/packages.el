@@ -52,9 +52,11 @@
 ;; (unpin! pinned-package another-pinned-package)
 ;; ...Or *all* packages (NOT RECOMMENDED; will likely break things)
 ;; (unpin! t)
-(package! consult-dir)
-(package! eldoc-box)
-(package! pipenv :disable t)
-(package! shell-maker)
 (package! acp)
 (package! agent-shell)
+(package! consult-dir)
+(package! eldoc-box)
+;; Keep `pipenv` disabled, but leave the declaration so Doom won't re-enable it
+;; if package state changes during future experiments.
+(package! pipenv :disable t)
+(package! shell-maker)
