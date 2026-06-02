@@ -89,18 +89,102 @@
 ;; Speed of which-key popup
 (setq which-key-idle-delay 0.2)
 
+;; Never let Doom infer or create a Pipenv project at a monorepo root.
+;; Only an already-existing ancestor Pipfile counts as a valid Pipenv root.
+(defun mp/pipenv-project-p (&optional dir)
+  (when-let ((root (locate-dominating-file (or dir default-directory) "Pipfile")))
+    (expand-file-name root)))
+
+(defun mp/pipenv-allowed-p (&optional dir)
+  (and (mp/pipenv-project-p dir) t))
+
+(defun mp/pipenv-command-p (program)
+  (and (stringp program)
+       (string= (file-name-nondirectory program) "pipenv")))
+
+(defun mp/pipenv-command-list-p (command)
+  (and (consp command)
+       (mp/pipenv-command-p (car command))))
+
+(defun mp/block-pipenv-outside-project (origin &optional dir)
+  (unless (mp/pipenv-allowed-p dir)
+    (user-error "Blocked %s outside a directory that already contains an ancestor Pipfile" origin)))
+
+(defun mp/call-process-guard-a (fn program &rest args)
+  (when (mp/pipenv-command-p program)
+    (mp/block-pipenv-outside-project 'call-process default-directory))
+  (apply fn program args))
+
+(defun mp/process-file-guard-a (fn program &rest args)
+  (when (mp/pipenv-command-p program)
+    (mp/block-pipenv-outside-project 'process-file default-directory))
+  (apply fn program args))
+
+(defun mp/start-file-process-guard-a (fn name buffer program &rest program-args)
+  (when (mp/pipenv-command-p program)
+    (mp/block-pipenv-outside-project 'start-file-process default-directory))
+  (apply fn name buffer program program-args))
+
+(defun mp/make-process-guard-a (fn &rest args)
+  (let ((command (plist-get args :command))
+        (dir (or (plist-get args :default-directory) default-directory)))
+    (when (mp/pipenv-command-list-p command)
+      (mp/block-pipenv-outside-project 'make-process dir)))
+  (apply fn args))
+
+;; Define this early so any stale autoloads or callers resolve to the safe
+;; version even if the `pipenv' package is disabled.
+(defalias 'pipenv-project-p #'mp/pipenv-project-p)
+(advice-add 'call-process :around #'mp/call-process-guard-a)
+(advice-add 'process-file :around #'mp/process-file-guard-a)
+(advice-add 'start-file-process :around #'mp/start-file-process-guard-a)
+(advice-add 'make-process :around #'mp/make-process-guard-a)
+
 (after! python
   ;; Stop Doom/python-mode from auto-enabling pipenv.
   (remove-hook 'python-mode-local-vars-hook #'pipenv-mode)
+  (remove-hook 'python-ts-mode-local-vars-hook #'pipenv-mode)
 
   ;; Hard-disable pipenv-mode if loaded.
-  (setq pipenv-with-projectile nil))
+  (setq pipenv-with-projectile nil)
+
+  ;; Doom's default REPL helper tries to route through pipenv when available.
+  ;; Force plain `run-python' so opening a REPL never shells out to pipenv.
+  (defun mp/+python/open-repl-no-pipenv ()
+    (interactive)
+    (require 'python)
+    (unless python-shell-interpreter
+      (user-error "`python-shell-interpreter' isn't set"))
+    (pop-to-buffer
+     (process-buffer
+      (run-python nil (bound-and-true-p python-shell-dedicated) t))))
+
+  (advice-add '+python/open-repl :override #'mp/+python/open-repl-no-pipenv)
+
+  ;; Likewise, project script execution should run the interpreter directly.
+  (set-eval-handler! '(python-mode python-ts-mode)
+    '((:command . (lambda () python-shell-interpreter))
+      (:exec . (lambda () "%c %o %s %a"))
+      (:description . "Run Python script"))))
 
 (after! pipenv
+  (advice-add 'pipenv-project-p :override #'mp/pipenv-project-p)
   (pipenv-mode -1))
 
+(after! doom-modeline
+  ;; The Python env segment can shell out to `pipenv run ...` on Python buffers.
+  ;; Disable it so merely visiting files can't hit pipenv.
+  (setq doom-modeline-env-enable-python nil))
+
+(after! projectile
+  ;; Doom's Python helpers still consult Projectile in a few places.
+  ;; Make sure `server/Pipfile` counts as a project root before `.git` does.
+  (add-to-list 'projectile-project-root-files "Pipfile"))
+
 (after! project
-  ;; Master project detection function - extensible for all project types
+  ;; Prefer language-specific roots inside monorepos over the repository root.
+  ;; This keeps `server/` Python tooling anchored to its own Pipfile/pyproject
+  ;; instead of falling back to the top-level `.git` directory.
   (add-hook 'project-find-functions
             (lambda (dir)
               (cond
@@ -117,10 +201,12 @@
                 (cons 'transient (locate-dominating-file dir "package.json")))
 
                ;; Python projects (multiple markers)
-               ((or (locate-dominating-file dir "pyproject.toml")
+               ((or (locate-dominating-file dir "Pipfile")
+                    (locate-dominating-file dir "pyproject.toml")
                     (locate-dominating-file dir "setup.py")
                     (locate-dominating-file dir "requirements.txt"))
-                (cons 'transient (or (locate-dominating-file dir "pyproject.toml")
+                (cons 'transient (or (locate-dominating-file dir "Pipfile")
+                                     (locate-dominating-file dir "pyproject.toml")
                                      (locate-dominating-file dir "setup.py")
                                      (locate-dominating-file dir "requirements.txt"))))
 
