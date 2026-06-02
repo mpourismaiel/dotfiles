@@ -582,6 +582,33 @@
         "C-x C-d" #'consult-dir
         "C-x C-j" #'consult-dir-jump-file))
 
+(after! which-key
+  (which-key-add-keymap-based-replacements doom-leader-map
+    "TAB" "workspace"
+    "a" "actions"
+    "b" "buffers"
+    "c" "code"
+    "d" "agent"
+    "f" "files"
+    "g" "git"
+    "h" "help"
+    "i" "insert"
+    "n" "notes"
+    "o" "open"
+    "p" "project"
+    "q" "quit/session"
+    "s" "search"
+    "t" "toggle"
+    "w" "windows"
+    "x" "text")
+
+  (which-key-add-keymap-based-replacements doom-localleader-map
+    "m" "local"
+    "t" "test"
+    "r" "run"
+    "g" "goto"
+    "h" "help"))
+
 (after! treemacs
   (setq treemacs-show-hidden-files t)
 
