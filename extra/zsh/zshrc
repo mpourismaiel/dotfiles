@@ -5,7 +5,7 @@ export UPDATE_ZSH_DAYS=14
 HIST_STAMPS="yyyy-mm-dd"
 
 # Oh-my-zsh config (add more in ~/.zsh/extra_config.zsh to avoid cluttering git diff)
-plugins=(git fzf dnf foot gitfast)
+plugins=(git fzf dnf foot gitfast zsh-autosuggestions)
 
 # Default editor in different environments (change in ~/.zsh/extra_config.zsh)
 export SUDO_EDITOR=vim
