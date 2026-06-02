@@ -298,6 +298,66 @@
       color: var(--text);
     }
 
+    .guide {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+
+    .guide-card {
+      border: 1px solid var(--border);
+      background: linear-gradient(180deg, rgba(32, 35, 43, 0.92), rgba(24, 26, 32, 0.92));
+      border-radius: var(--radius);
+      padding: 16px;
+      box-shadow: 0 12px 26px var(--shadow);
+    }
+
+    .guide-card h2 {
+      margin: 0 0 10px;
+      font-size: 1rem;
+      letter-spacing: -0.02em;
+    }
+
+    .guide-card p {
+      margin: 0 0 10px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .guide-card ul {
+      margin: 0;
+      padding-left: 18px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .guide-card li + li {
+      margin-top: 6px;
+    }
+
+    .mini-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .mini-table th,
+    .mini-table td {
+      text-align: left;
+      padding: 8px 0;
+      vertical-align: top;
+      border-bottom: 1px solid rgba(48, 52, 64, 0.75);
+    }
+
+    .mini-table th {
+      color: var(--text);
+      font-weight: 700;
+      padding-right: 12px;
+      width: 34%;
+    }
+
     .empty {
       display: none;
       border: 1px dashed var(--border);
@@ -348,7 +408,7 @@
     <div class="wrap hero">
       <div>
         <h1>Mahdi's Doom Cheatsheet</h1>
-        <p class="subtitle">A conservative, searchable set of shortcuts. It keeps your custom bindings and only includes core Doom/Evil keys that are worth repeated review while learning.</p>
+        <p class="subtitle">A conservative, searchable set of shortcuts plus a compact Org-mode guide for maintaining your literate Doom config in <code>extra/doom/config.org</code>.</p>
       </div>
       <div class="controls">
         <input id="search" type="search" placeholder="Search by key, action, category, or tag" autocomplete="off">
@@ -360,8 +420,43 @@
 
   <main class="wrap">
     <div class="note">
-      <strong>How to grow this page:</strong> if a binding becomes part of your real workflow, keep it. If you never use it, remove it. When in doubt, check <code>SPC h k</code>.
+      <strong>How to grow this page:</strong> if a binding becomes part of your real workflow, keep it. If you never use it, remove it. Your source of truth is now <code>extra/doom/config.org</code>; <code>config.el</code> is generated automatically when you save it.
     </div>
+
+    <section class="guide" aria-label="Org mode quick guide">
+      <article class="guide-card">
+        <h2>How this config works</h2>
+        <p>Your Doom setup is now a literate Org document. You write notes and structure with Org headings, and you put real Emacs Lisp inside source blocks.</p>
+        <ul>
+          <li>Plain text outside code blocks is documentation.</li>
+          <li><code>#+begin_src emacs-lisp</code> ... <code>#+end_src</code> is real config code.</li>
+          <li>Saving <code>config.org</code> auto-tangles it into <code>config.el</code>.</li>
+          <li>Edit the Org file, not the generated Elisp file.</li>
+        </ul>
+      </article>
+
+      <article class="guide-card">
+        <h2>Org formatting you need</h2>
+        <table class="mini-table">
+          <tr><th><code>* Heading</code></th><td>Top-level section. More stars means deeper nesting.</td></tr>
+          <tr><th><code>- item</code></th><td>Bullet list item.</td></tr>
+          <tr><th><code>=code=</code></th><td>Inline code or exact command names.</td></tr>
+          <tr><th><code>#+begin_src</code></th><td>Start a source block that can be tangled and evaluated.</td></tr>
+          <tr><th><code>| ... |</code></th><td>Org table rows. Useful for keybinding summaries.</td></tr>
+          <tr><th><code>#+TOC:</code></th><td>Request a table of contents in the buffer.</td></tr>
+        </table>
+      </article>
+
+      <article class="guide-card">
+        <h2>Maintenance flow</h2>
+        <p>The usual cycle is simple: open <code>config.org</code>, navigate to the right heading, edit prose or code, save, then reload Doom or re-evaluate as needed.</p>
+        <ul>
+          <li>Use headings to organize by topic instead of appending random config at the bottom.</li>
+          <li>Keep related explanation directly above the code block it describes.</li>
+          <li>If a new section grows large, split it with subheadings before adding more Elisp.</li>
+        </ul>
+      </article>
+    </section>
 
     <div class="stats">
       <span class="pill"><strong id="visibleCount">0</strong> shown</span>
@@ -382,7 +477,7 @@
     </div>
 
     <footer>
-      Based on your current <code>extra/doom/config.el</code> plus a small set of core Doom/Evil defaults. Search matches combo, title, description, category, and tags.
+      Based on your current <code>extra/doom/config.org</code> and generated <code>config.el</code>, plus a small set of core Doom, Evil, and Org defaults. Search matches combo, title, description, category, and tags.
     </footer>
   </main>
 
@@ -483,6 +578,54 @@
         importance: "essential",
         description: "Custom binding in your config to plain find-file. Good for directly opening files.",
         tags: ["custom", "file", "open", "find-file"]
+      },
+      {
+        combo: "TAB",
+        title: "Cycle heading or block",
+        category: "Org mode for config",
+        importance: "essential",
+        description: "Fold or unfold the current Org heading, list item, or source block. This is the main navigation key in config.org.",
+        tags: ["org", "fold", "cycle", "heading", "config"]
+      },
+      {
+        combo: "S-TAB",
+        title: "Cycle whole document visibility",
+        category: "Org mode for config",
+        importance: "useful",
+        description: "Rotate the entire Org buffer between overview, contents, and fully expanded states.",
+        tags: ["org", "fold", "overview", "visibility", "document"]
+      },
+      {
+        combo: "M-RET",
+        title: "Insert new heading or list item",
+        category: "Org mode for config",
+        importance: "essential",
+        description: "Create the next heading or bullet without manually fixing structure.",
+        tags: ["org", "heading", "list", "insert", "structure"]
+      },
+      {
+        combo: "C-c C-c",
+        title: "Context action at point",
+        category: "Org mode for config",
+        importance: "useful",
+        description: "Runs the context-sensitive Org action at point, such as refreshing metadata, toggling checkboxes, or operating on blocks.",
+        tags: ["org", "context", "action", "refresh"]
+      },
+      {
+        combo: "C-c C-v t",
+        title: "Tangle Org to config.el",
+        category: "Org mode for config",
+        importance: "essential",
+        description: "Explicitly generate config.el from config.org. Saving now does this automatically for your Doom config.",
+        tags: ["org", "babel", "tangle", "config", "elisp"]
+      },
+      {
+        combo: "SPC h k",
+        title: "Describe key while learning Org",
+        category: "Org mode for config",
+        importance: "useful",
+        description: "Use this while learning Org to inspect any unfamiliar key directly from Emacs.",
+        tags: ["org", "help", "inspect", "learning"]
       },
       {
         combo: "gd",
