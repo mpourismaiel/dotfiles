@@ -54,6 +54,8 @@
 ;; (unpin! t)
 (package! acp)
 (package! agent-shell)
+(package! agent-shell-notifications
+  :recipe (:host github :repo "zackattackz/agent-shell-notifications"))
 (package! consult-dir)
 (package! eldoc-box)
 ;; Keep `pipenv` disabled, but leave the declaration so Doom won't re-enable it
