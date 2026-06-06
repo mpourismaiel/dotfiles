@@ -6,6 +6,9 @@
 (setq user-full-name "Mahdi Pourismaiel"
       user-mail-address "mpourismaiel@gmail.com")
 
+(use-package! agent-shell-notifications
+  :hook (agent-shell-mode . agent-shell-notifications-mode))
+
 (setq doom-theme 'doom-one)
 (setq doom-font (font-spec :family "CaskaydiaCove Nerd Font Mono" :size 16))
 
@@ -558,6 +561,44 @@
       (:prefix ("d" . "agent")
        :desc "Agent shell" "a" #'agent-shell))
 
+(map! :n "gr" #'xref-find-references)
+
+(global-set-key [mouse-8] #'xref-go-back)
+(global-set-key [mouse-9] #'xref-go-forward)
+
+(defun mp/project-root-default-directory (&optional dir)
+  "Return the preferred project root for DIR, or `default-directory'."
+  (let ((dir (file-name-as-directory
+              (expand-file-name (or dir default-directory)))))
+    (or (when (fboundp 'projectile-project-root)
+          (let ((default-directory dir))
+            (ignore-errors
+              (file-name-as-directory
+               (expand-file-name (projectile-project-root))))))
+        (when (fboundp 'doom-project-root)
+          (ignore-errors
+            (file-name-as-directory
+             (expand-file-name (doom-project-root dir)))))
+        dir)))
+
+(defun mp/vterm-toggle ()
+  "Toggle the vterm popup from the current project root."
+  (interactive)
+  (let ((default-directory (mp/project-root-default-directory)))
+    (+vterm/toggle nil)))
+
+(defun mp/vterm-new ()
+  "Open a fresh vterm buffer in the current window at project root."
+  (interactive)
+  (require 'vterm)
+  (let* ((default-directory (mp/project-root-default-directory))
+         (buffer-name (format "*vterm:%s*" (format-time-string "%Y%m%d-%H%M%S")))
+         (buffer (generate-new-buffer buffer-name))
+         (display-buffer-alist nil))
+    (with-current-buffer buffer
+      (vterm-mode))
+    (switch-to-buffer buffer)))
+
 (defun mp/line-move-bounds ()
   "Return the line-aligned bounds for the current line or active region."
   (if (use-region-p)
@@ -612,7 +653,8 @@
 ;; Global GUI-style bindings.
 ;; Keeps a terminal toggle, line commenting, and line movement available
 ;; through familiar keys.
-(map! :g "C-`" #'+vterm/toggle
+(map! :g "C-`" #'mp/vterm-toggle
+      :g "C-\\" #'mp/vterm-new
       :g "C-/" #'comment-line
       :g "M-<up>" #'mp/move-lines-up
       :g "M-<down>" #'mp/move-lines-down)
@@ -624,9 +666,39 @@
                            evil-emacs-state-map
                            evil-visual-state-map))
     (define-key state-map (kbd "C-b") #'treemacs)
+    (define-key state-map (kbd "C-\\") #'mp/vterm-new)
     (define-key state-map (kbd "C-/") #'comment-line)
     (define-key state-map (kbd "M-<up>") #'mp/move-lines-up)
     (define-key state-map (kbd "M-<down>") #'mp/move-lines-down)))
+
+(defun mp/close-window-preserve-buffer ()
+  "Close the selected window without killing popup or terminal buffers."
+  (interactive)
+  (if (and (featurep '+popup)
+           (+popup-window-p))
+      (let* ((window (selected-window))
+             (buffer (window-buffer window))
+             (+popup--inhibit-transient t)
+             (ignore-window-parameters t))
+        (if-let ((wconf (window-parameter window 'saved-wconf)))
+            (set-window-configuration wconf)
+          (delete-window window))
+        (when (buffer-live-p buffer)
+          (with-current-buffer buffer
+            (set-buffer-modified-p nil)
+            (when (bound-and-true-p +popup-buffer-mode)
+              (+popup-buffer-mode -1))
+            (bury-buffer buffer))))
+    (call-interactively #'delete-window)))
+
+(after! workspaces
+  (map! :leader
+        (:prefix ("w" . "workspaces/windows")
+         :desc "Delete window" "d" #'mp/close-window-preserve-buffer
+         :desc "Delete window/workspace" "D" #'+workspace/close-window-or-workspace))
+  (map! :map evil-window-map
+        "d" #'mp/close-window-preserve-buffer
+        "D" #'+workspace/close-window-or-workspace))
 
 (use-package! consult-dir
   :defer t
@@ -657,7 +729,7 @@
       "s" "search"
       "t" "toggle"
       "w" "windows"
-      "x" "text"))))
+      "x" "text")))
 
 (after! treemacs
   (setq treemacs-show-hidden-files t)

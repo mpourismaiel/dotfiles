@@ -29,6 +29,17 @@ Basic user identity and early package requirements that other sections rely on.
       user-mail-address "mpourismaiel@gmail.com")
 #+end_src
 
+* Agent Shell
+Agent shell is a core part of this setup, so related integrations live together here.
+
+** Desktop Notifications
+Enable desktop notifications for agent-shell buffers so turns that need attention can surface even when the shell is out of focus.
+
+#+begin_src emacs-lisp
+(use-package! agent-shell-notifications
+  :hook (agent-shell-mode . agent-shell-notifications-mode))
+#+end_src
+
 * Appearance
 Visual defaults for theme, fonts, line numbers, and general editor spacing.
 
@@ -644,7 +655,8 @@ This section documents the custom bindings defined in this configuration.
 ** Reference Table
 | Context     | Keys      | Command                 | Purpose                                                                     |
 |-------------+-----------+-------------------------+-----------------------------------------------------------------------------|
-| Global      | =C-`=     | =+vterm/toggle=         | Toggle the vterm popup.                                                     |
+| Global      | =C-`=     | =mp/vterm-toggle=       | Toggle the vterm popup from the current project root.                       |
+| Global      | =C-\=     | =mp/vterm-new=          | Open a new uniquely named vterm buffer for another long-running process.    |
 | Global      | =C-/=     | =comment-line=          | Comment or uncomment the current line or region.                            |
 | Global      | =M-<up>=  | =mp/move-lines-up=      | Move the current line, or the selected lines, upward by one line.           |
 | Global      | =M-<down>=| =mp/move-lines-down=    | Move the current line, or the selected lines, downward by one line.         |
@@ -658,7 +670,8 @@ This section documents the custom bindings defined in this configuration.
 | Evil states | =C-b=     | =treemacs=              | Open or focus Treemacs in motion, normal, insert, emacs, and visual states. |
 | Evil states | =C-/=     | =comment-line=          | Keep commenting available consistently across Evil states.                  |
 
-** Test And Agent Commands
+** General Shortcuts
+*** With Leader
 #+begin_src emacs-lisp
 (map! :leader
       :desc "Run nearest test" "t t" #'+eval/test
@@ -667,8 +680,52 @@ This section documents the custom bindings defined in this configuration.
        :desc "Agent shell" "a" #'agent-shell))
 #+end_src
 
+*** Leaderless
+#+begin_src emacs-lisp
+(map! :n "gr" #'xref-find-references)
+#+end_src
+
+*** Mouse
+#+begin_src emacs-lisp
+(global-set-key [mouse-8] #'xref-go-back)
+(global-set-key [mouse-9] #'xref-go-forward)
+#+end_src
+
 ** Global Shortcuts
 #+begin_src emacs-lisp
+(defun mp/project-root-default-directory (&optional dir)
+  "Return the preferred project root for DIR, or `default-directory'."
+  (let ((dir (file-name-as-directory
+              (expand-file-name (or dir default-directory)))))
+    (or (when (fboundp 'projectile-project-root)
+          (let ((default-directory dir))
+            (ignore-errors
+              (file-name-as-directory
+               (expand-file-name (projectile-project-root))))))
+        (when (fboundp 'doom-project-root)
+          (ignore-errors
+            (file-name-as-directory
+             (expand-file-name (doom-project-root dir)))))
+        dir)))
+
+(defun mp/vterm-toggle ()
+  "Toggle the vterm popup from the current project root."
+  (interactive)
+  (let ((default-directory (mp/project-root-default-directory)))
+    (+vterm/toggle nil)))
+
+(defun mp/vterm-new ()
+  "Open a fresh vterm buffer in the current window at project root."
+  (interactive)
+  (require 'vterm)
+  (let* ((default-directory (mp/project-root-default-directory))
+         (buffer-name (format "*vterm:%s*" (format-time-string "%Y%m%d-%H%M%S")))
+         (buffer (generate-new-buffer buffer-name))
+         (display-buffer-alist nil))
+    (with-current-buffer buffer
+      (vterm-mode))
+    (switch-to-buffer buffer)))
+
 (defun mp/line-move-bounds ()
   "Return the line-aligned bounds for the current line or active region."
   (if (use-region-p)
@@ -723,7 +780,8 @@ This section documents the custom bindings defined in this configuration.
 ;; Global GUI-style bindings.
 ;; Keeps a terminal toggle, line commenting, and line movement available
 ;; through familiar keys.
-(map! :g "C-`" #'+vterm/toggle
+(map! :g "C-`" #'mp/vterm-toggle
+      :g "C-\\" #'mp/vterm-new
       :g "C-/" #'comment-line
       :g "M-<up>" #'mp/move-lines-up
       :g "M-<down>" #'mp/move-lines-down)
@@ -738,9 +796,39 @@ This section documents the custom bindings defined in this configuration.
                            evil-emacs-state-map
                            evil-visual-state-map))
     (define-key state-map (kbd "C-b") #'treemacs)
+    (define-key state-map (kbd "C-\\") #'mp/vterm-new)
     (define-key state-map (kbd "C-/") #'comment-line)
     (define-key state-map (kbd "M-<up>") #'mp/move-lines-up)
     (define-key state-map (kbd "M-<down>") #'mp/move-lines-down)))
+
+(defun mp/close-window-preserve-buffer ()
+  "Close the selected window without killing popup or terminal buffers."
+  (interactive)
+  (if (and (featurep '+popup)
+           (+popup-window-p))
+      (let* ((window (selected-window))
+             (buffer (window-buffer window))
+             (+popup--inhibit-transient t)
+             (ignore-window-parameters t))
+        (if-let ((wconf (window-parameter window 'saved-wconf)))
+            (set-window-configuration wconf)
+          (delete-window window))
+        (when (buffer-live-p buffer)
+          (with-current-buffer buffer
+            (set-buffer-modified-p nil)
+            (when (bound-and-true-p +popup-buffer-mode)
+              (+popup-buffer-mode -1))
+            (bury-buffer buffer))))
+    (call-interactively #'delete-window)))
+
+(after! workspaces
+  (map! :leader
+        (:prefix ("w" . "workspaces/windows")
+         :desc "Delete window" "d" #'mp/close-window-preserve-buffer
+         :desc "Delete window/workspace" "D" #'+workspace/close-window-or-workspace))
+  (map! :map evil-window-map
+        "d" #'mp/close-window-preserve-buffer
+        "D" #'+workspace/close-window-or-workspace))
 #+end_src
 
 ** Directory Navigation In Completion
@@ -779,7 +867,7 @@ Some Doom prefix maps are still present but may show up as generic =+prefix= ent
       "s" "search"
       "t" "toggle"
       "w" "windows"
-      "x" "text"))))
+      "x" "text")))
 #+end_src
 
 * Treemacs
