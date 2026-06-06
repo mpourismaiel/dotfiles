@@ -57,6 +57,40 @@
 
   (add-hook 'org-mode-hook #'mp/enable-doom-config-auto-tangle-h))
 
+(add-hook 'org-mode-hook 'visual-line-mode)
+(add-hook 'org-mode-hook 'olivetti-mode)
+(add-hook 'org-mode-hook (lambda () (display-line-numbers-mode -1)))
+
+;; Show line numbers only in insert state, hide in normal state.
+(add-hook 'evil-insert-state-entry-hook
+          (lambda () (when (derived-mode-p 'org-mode) (display-line-numbers-mode 1))))
+(add-hook 'evil-insert-state-exit-hook
+          (lambda () (when (derived-mode-p 'org-mode) (display-line-numbers-mode -1))))
+
+(after! or
+  ;; Prevent alphabetical list markers from conflicting with checkbox parsing.
+  (setq org-list-allow-alphabetical nil)
+
+  (setq org-auto-align-tags nil
+        org-tags-column 0
+        org-catch-invisible-edits 'show-and-error
+        org-special-ctrl-a/e t
+        org-insert-heading-respect-content t
+        org-hide-emphasis-markers t
+        org-pretty-entities t
+        org-agenda-tags-column 0
+        org-ellipsis "…"))
+
+(after! org-modern
+  (setq org-modern-symbol 'caskaydia)
+  (dolist (face '(window-divider
+                  window-divider-first-pixel
+                  window-divider-last-pixel))
+    (face-spec-reset-face face)
+    (set-face-foreground face (face-attribute 'default :background)))
+  (set-face-background 'fringe (face-attribute 'default :background))
+  (global-org-modern-mode))
+
 (setq which-key-idle-delay 0.2)
 
 ;; Give hover/help text enough room to be readable.
