@@ -62,3 +62,5 @@
 ;; if package state changes during future experiments.
 (package! pipenv :disable t)
 (package! shell-maker)
+(package! olivetti)
+(package! org-modern)
