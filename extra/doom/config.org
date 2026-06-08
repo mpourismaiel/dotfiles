@@ -64,6 +64,8 @@ This adds a small amount of extra vertical space in buffers intended for writing
 
 * Configuration
 ** Completion Styles
+I really have to organize
+
 #+begin_src emacs-lisp
 (after! vertico
   (setq completion-styles '(flex orderless basic)
