@@ -29,6 +29,23 @@
   (setq completion-styles '(flex orderless basic)
         completion-category-defaults nil))
 
+(use-package doom-modeline
+  :ensure t
+  :hook (emacs-startup . doom-modeline-mode)
+  :config (column-number-mode 1)
+  :custom
+  (doom-modeline-height 40)
+  (doom-modeline-window-width-limit nil)
+
+  (doom-modeline-buffer-file-name-style 'relative-from-project)
+
+  (doom-modeline-icon t)
+  (doom-modeline-major-mode-color-icon t)
+  (doom-modeline-buffer-modification-icon t)
+  (doom-modeline-buffer-state-icon t)
+
+  (doom-modeline-indent-info t))
+
 (setq org-directory "~/org/")
 
 ;; Send files to trash instead of fully deleting.

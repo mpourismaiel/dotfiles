@@ -72,6 +72,25 @@ I really have to organize
         completion-category-defaults nil))
 #+end_src
 
+** Mode Line
+#+begin_src emacs-lisp
+(use-package doom-modeline
+  :ensure t
+  :hook (emacs-startup . doom-modeline-mode)
+  :config (column-number-mode 1)
+  :custom
+  (doom-modeline-height 40)
+  (doom-modeline-window-width-limit nil)
+
+  (doom-modeline-buffer-file-name-style 'relative-from-project)
+
+  (doom-modeline-icon t)
+  (doom-modeline-major-mode-color-icon t)
+  (doom-modeline-buffer-modification-icon t)
+  (doom-modeline-buffer-state-icon t)
+
+  (doom-modeline-indent-info t))
+#+end_src
 * File And Org Defaults
 Core path and file behavior settings.
 
