@@ -6,9 +6,6 @@
 (setq user-full-name "Mahdi Pourismaiel"
       user-mail-address "mpourismaiel@gmail.com")
 
-(use-package! agent-shell-notifications
-  :hook (agent-shell-mode . agent-shell-notifications-mode))
-
 (setq doom-theme 'doom-one)
 (setq doom-font (font-spec :family "CaskaydiaCove Nerd Font Mono" :size 16))
 
@@ -27,6 +24,10 @@
 (add-hook 'conf-mode-hook #'mp/apply-editor-line-spacing-h)
 
 (setq display-line-numbers-type t)
+
+(after! vertico
+  (setq completion-styles '(flex orderless basic)
+        completion-category-defaults nil))
 
 (setq org-directory "~/org/")
 
@@ -90,6 +91,32 @@
     (set-face-foreground face (face-attribute 'default :background)))
   (set-face-background 'fringe (face-attribute 'default :background))
   (global-org-modern-mode))
+
+(use-package! agent-shell-notifications
+  :hook (agent-shell-mode . agent-shell-notifications-mode))
+
+(use-package! minuet
+  :commands (minuet-show-suggestion
+             minuet-configure-provider
+             minuet-previous-suggestion
+             minuet-next-suggestion
+             minuet-accept-suggestion
+             minuet-dismiss-suggestion
+             minuet-accept-suggestion-line)
+  :init
+  (map! :leader
+        (:prefix ("d" . "agent")
+         :desc "Show Minuet suggestion" "d" #'minuet-complete-with-minibuffer
+         :desc "Configure Minuet provider" "m" #'minuet-configure-provider))
+  :config
+  (setq minuet-provider 'codestral)
+  (plist-put minuet-codestral-options
+             :api-key
+             "CODESTRAL_API_KEY")
+  (minuet-set-optional-options minuet-codestral-options :stop ("\n\n"))
+  (minuet-set-optional-options minuet-codestral-options :max_tokens 1024)
+  (setq minuet-show-error-message-on-minibuffer t
+        minuet-request-timeout 10))
 
 (setq which-key-idle-delay 0.2)
 
@@ -752,6 +779,7 @@
       "b" "buffers"
       "c" "code"
       "d" "agent"
+      "e" "easysession"
       "f" "files"
       "g" "git"
       "h" "help"
@@ -842,3 +870,41 @@
         eldoc-box-offset '(16 12 16)))
 
 (setq confirm-kill-emacs nil)
+
+;; (use-package! easysession
+;;   :demand t
+;;   :init
+;;   (map! :leader
+;;         (:prefix ("e" . "easysession")
+;;          :desc "Save" "s" #'easysession-save
+;;          :desc "Load" "l" #'easysession-switch-to
+;;          :desc "Rename" "r" #'easysession-rename
+;;          :desc "Unload" "d" #'easysession-unload
+;;          :desc "Delete" "k" #'easysession-delete))
+;;   :config
+;;   (setq easysession-save-interval (* 10 60))
+;;   (setq easysession-switch-to-save-session t)
+;;   (setq easysession-switch-to-exclude-current nil)
+;;   (easysession-setup))
+
+(use-package! evil-mc
+  :after evil
+  :config
+  (global-evil-mc-mode 1)
+
+  (map! :n "C-M-<down>"  #'evil-mc-make-cursor-move-next-line
+        :n "C-M-<up>"    #'evil-mc-make-cursor-move-prev-line
+        :n "C-M-<right>" #'evil-mc-make-all-cursors)
+
+  (defun my/evil-mc-escape ()
+    (interactive)
+    (if (and (bound-and-true-p evil-mc-mode)
+             evil-mc-cursor-list)
+        (evil-mc-undo-all-cursors)
+      (evil-force-normal-state)))
+
+  (map! :i "<escape>" #'my/evil-mc-escape
+        :n "<escape>" #'my/evil-mc-escape))
+
+(map! :nv "C-d" #'evil-multiedit-match-and-next
+      :i  "C-d" #'evil-multiedit-toggle-marker-here)
