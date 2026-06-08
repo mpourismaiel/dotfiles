@@ -58,9 +58,12 @@
   :recipe (:host github :repo "zackattackz/agent-shell-notifications"))
 (package! consult-dir)
 (package! eldoc-box)
+(package! minuet)
 ;; Keep `pipenv` disabled, but leave the declaration so Doom won't re-enable it
 ;; if package state changes during future experiments.
 (package! pipenv :disable t)
 (package! shell-maker)
 (package! olivetti)
 (package! org-modern)
+;; (package! easysession)
+(package! evil-mc)

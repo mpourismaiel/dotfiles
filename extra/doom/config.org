@@ -16,7 +16,7 @@ This configuration focuses on a few clear goals:
 - Prevent accidental Python and Pipenv behavior inside monorepos.
 - Add a small set of practical keybindings without turning the setup into a grab bag.
 
-* Core Identity
+Core Identity
 Basic user identity and early package requirements that other sections rely on.
 
 #+begin_src emacs-lisp
@@ -27,17 +27,6 @@ Basic user identity and early package requirements that other sections rely on.
 
 (setq user-full-name "Mahdi Pourismaiel"
       user-mail-address "mpourismaiel@gmail.com")
-#+end_src
-
-* Agent Shell
-Agent shell is a core part of this setup, so related integrations live together here.
-
-** Desktop Notifications
-Enable desktop notifications for agent-shell buffers so turns that need attention can surface even when the shell is out of focus.
-
-#+begin_src emacs-lisp
-(use-package! agent-shell-notifications
-  :hook (agent-shell-mode . agent-shell-notifications-mode))
 #+end_src
 
 * Appearance
@@ -71,6 +60,14 @@ This adds a small amount of extra vertical space in buffers intended for writing
 ** Line Numbers
 #+begin_src emacs-lisp
 (setq display-line-numbers-type t)
+#+end_src
+
+* Configuration
+** Completion Styles
+#+begin_src emacs-lisp
+(after! vertico
+  (setq completion-styles '(flex orderless basic)
+        completion-category-defaults nil))
 #+end_src
 
 * File And Org Defaults
@@ -148,6 +145,46 @@ When this exact file is saved, Emacs immediately regenerates =config.el=. That k
     (set-face-foreground face (face-attribute 'default :background)))
   (set-face-background 'fringe (face-attribute 'default :background))
   (global-org-modern-mode))
+#+end_src
+
+* AI Agents and Completion
+** Agent Shell
+Agent shell is a core part of this setup, so related integrations live together here.
+
+*** Desktop Notifications
+Enable desktop notifications for agent-shell buffers so turns that need attention can surface even when the shell is out of focus.
+
+#+begin_src emacs-lisp
+(use-package! agent-shell-notifications
+  :hook (agent-shell-mode . agent-shell-notifications-mode))
+#+end_src
+
+** AI Suggestions
+Minuet is installed as a Doom package and kept manual-only. Use =SPC d s= to request a suggestion and =SPC d m= to configure the provider; the remaining keys apply while a Minuet suggestion is visible.
+
+#+begin_src emacs-lisp
+(use-package! minuet
+  :commands (minuet-show-suggestion
+             minuet-configure-provider
+             minuet-previous-suggestion
+             minuet-next-suggestion
+             minuet-accept-suggestion
+             minuet-dismiss-suggestion
+             minuet-accept-suggestion-line)
+  :init
+  (map! :leader
+        (:prefix ("d" . "agent")
+         :desc "Show Minuet suggestion" "d" #'minuet-complete-with-minibuffer
+         :desc "Configure Minuet provider" "m" #'minuet-configure-provider))
+  :config
+  (setq minuet-provider 'codestral)
+  (plist-put minuet-codestral-options
+             :api-key
+             "CODESTRAL_API_KEY")
+  (minuet-set-optional-options minuet-codestral-options :stop ("\n\n"))
+  (minuet-set-optional-options minuet-codestral-options :max_tokens 1024)
+  (setq minuet-show-error-message-on-minibuffer t
+        minuet-request-timeout 10))
 #+end_src
 
 * Help And Feedback
@@ -691,22 +728,30 @@ Prefer language-specific project markers over the repository root when working i
 This section documents the custom bindings defined in this configuration.
 
 ** Reference Table
-| Context     | Keys      | Command                 | Purpose                                                                     |
-|-------------+-----------+-------------------------+-----------------------------------------------------------------------------|
-| Global      | =C-`=     | =mp/vterm-toggle=       | Toggle the vterm popup from the current project root.                       |
-| Global      | =C-\=     | =mp/vterm-new=          | Open a new uniquely named vterm buffer for another long-running process.    |
-| Global      | =C-/=     | =comment-line=          | Comment or uncomment the current line or region.                            |
-| Global      | =M-<up>=  | =mp/move-lines-up=      | Move the current line, or the selected lines, upward by one line.           |
-| Global      | =M-<down>=| =mp/move-lines-down=    | Move the current line, or the selected lines, downward by one line.         |
-| Leader      | =SPC t t= | =+eval/test=            | Run the nearest test.                                                       |
-| Leader      | =SPC t a= | =+eval/test-all=        | Run all tests for the current project.                                      |
-| Leader      | =SPC d a= | =agent-shell=           | Open the agent shell.                                                       |
-| Leader      | =SPC .=   | =find-file=             | Find a file from the current directory.                                     |
-| Leader      | =SPC f d= | =consult-dir=           | Switch directories from the minibuffer workflow.                            |
-| Minibuffer  | =C-x C-d= | =consult-dir=           | Pick a directory during completion.                                         |
-| Minibuffer  | =C-x C-j= | =consult-dir-jump-file= | Jump to a file in another directory during completion.                      |
-| Evil states | =C-b=     | =treemacs=              | Open or focus Treemacs in motion, normal, insert, emacs, and visual states. |
-| Evil states | =C-/=     | =comment-line=          | Keep commenting available consistently across Evil states.                  |
+| Context     | Keys       | Command                         | Purpose                                                                     |
+|-------------+------------+---------------------------------+-----------------------------------------------------------------------------|
+| Global      | =C-`=      | =mp/vterm-toggle=               | Toggle the vterm popup from the current project root.                       |
+| Global      | =C-\=      | =mp/vterm-new=                  | Open a new uniquely named vterm buffer for another long-running process.    |
+| Global      | =C-/=      | =comment-line=                  | Comment or uncomment the current line or region.                            |
+| Global      | =M-<up>=   | =mp/move-lines-up=              | Move the current line, or the selected lines, upward by one line.           |
+| Global      | =M-<down>= | =mp/move-lines-down=            | Move the current line, or the selected lines, downward by one line.         |
+| Leader      | =SPC t t=  | =+eval/test=                    | Run the nearest test.                                                       |
+| Leader      | =SPC t a=  | =+eval/test-all=                | Run all tests for the current project.                                      |
+| Leader      | =SPC d a=  | =agent-shell=                   | Open the agent shell.                                                       |
+| Leader      | =SPC d s=  | =minuet-show-suggestion=        | Request a Minuet overlay suggestion.                                        |
+| Leader      | =SPC d m=  | =minuet-configure-provider=     | Configure the active Minuet provider and model.                             |
+| Minuet      | =h=        | =minuet-previous-suggestion=    | Move to the previous visible suggestion.                                    |
+| Minuet      | =l=        | =minuet-next-suggestion=        | Move to the next visible suggestion.                                        |
+| Minuet      | =TAB=      | =minuet-accept-suggestion=      | Accept the whole visible suggestion.                                        |
+| Minuet      | =RET=      | =minuet-accept-suggestion=      | Accept the whole visible suggestion.                                        |
+| Minuet      | =x=        | =minuet-dismiss-suggestion=     | Dismiss the visible suggestion.                                             |
+| Minuet      | =a=        | =minuet-accept-suggestion-line= | Accept one line of the visible suggestion.                                  |
+| Leader      | =SPC .=    | =find-file=                     | Find a file from the current directory.                                     |
+| Leader      | =SPC f d=  | =consult-dir=                   | Switch directories from the minibuffer workflow.                            |
+| Minibuffer  | =C-x C-d=  | =consult-dir=                   | Pick a directory during completion.                                         |
+| Minibuffer  | =C-x C-j=  | =consult-dir-jump-file=         | Jump to a file in another directory during completion.                      |
+| Evil states | =C-b=      | =treemacs=                      | Open or focus Treemacs in motion, normal, insert, emacs, and visual states. |
+| Evil states | =C-/=      | =comment-line=                  | Keep commenting available consistently across Evil states.                  |
 
 ** General Shortcuts
 *** With Leader
@@ -894,6 +939,7 @@ Some Doom prefix maps are still present but may show up as generic =+prefix= ent
       "b" "buffers"
       "c" "code"
       "d" "agent"
+      "e" "easysession"
       "f" "files"
       "g" "git"
       "h" "help"
@@ -1000,12 +1046,61 @@ Use =eldoc-box= to show multi-line hover documentation with more generous dimens
 #+end_src
 
 * Session Behavior
+** Emacs
+
 Quit confirmation is disabled for faster exits.
 
 #+begin_src emacs-lisp
 (setq confirm-kill-emacs nil)
 #+end_src
 
+** EasySession
+
+#+begin_src emacs-lisp
+;; (use-package! easysession
+;;   :demand t
+;;   :init
+;;   (map! :leader
+;;         (:prefix ("e" . "easysession")
+;;          :desc "Save" "s" #'easysession-save
+;;          :desc "Load" "l" #'easysession-switch-to
+;;          :desc "Rename" "r" #'easysession-rename
+;;          :desc "Unload" "d" #'easysession-unload
+;;          :desc "Delete" "k" #'easysession-delete))
+;;   :config
+;;   (setq easysession-save-interval (* 10 60))
+;;   (setq easysession-switch-to-save-session t)
+;;   (setq easysession-switch-to-exclude-current nil)
+;;   (easysession-setup))
+#+end_src
+
+* Editing
+** Multi Cursor
+#+begin_src emacs-lisp
+(use-package! evil-mc
+  :after evil
+  :config
+  (global-evil-mc-mode 1)
+
+  (map! :n "C-M-<down>"  #'evil-mc-make-cursor-move-next-line
+        :n "C-M-<up>"    #'evil-mc-make-cursor-move-prev-line
+        :n "C-M-<right>" #'evil-mc-make-all-cursors)
+
+  (defun my/evil-mc-escape ()
+    (interactive)
+    (if (and (bound-and-true-p evil-mc-mode)
+             evil-mc-cursor-list)
+        (evil-mc-undo-all-cursors)
+      (evil-force-normal-state)))
+
+  (map! :i "<escape>" #'my/evil-mc-escape
+        :n "<escape>" #'my/evil-mc-escape))
+
+(map! :nv "C-d" #'evil-multiedit-match-and-next
+      :i  "C-d" #'evil-multiedit-toggle-marker-here)
+#+end_src
+
+** Find in project
 * Future Configuration
 Reserved sections for later additions so new config does not need to be bolted onto the end of the file.
 
