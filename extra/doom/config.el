@@ -925,3 +925,51 @@
 
 (map! :nv "C-d" #'evil-multiedit-match-and-next
       :i  "C-d" #'evil-multiedit-toggle-marker-here)
+
+(defvar my/project-running-scripts (make-hash-table :test 'equal))
+
+(defun my/project-scripts-dir ()
+  (expand-file-name "__ignore__/scripts/" (projectile-project-root)))
+
+(defun my/project-script-files ()
+  (let ((dir (my/project-scripts-dir)))
+    (when (file-directory-p dir)
+      (directory-files dir t "\\.sh$"))))
+
+(defun my/project-script-label (file)
+  (let* ((project (projectile-project-root))
+         (key (concat project "::" file))
+         (name (file-name-base file)))
+    (if (gethash key my/project-running-scripts)
+        (concat "✓ " name)
+      name)))
+
+(defun my/run-project-script ()
+  "Pick a project script and run it in a vterm buffer."
+  (interactive)
+  (let* ((project (projectile-project-root))
+         (files (my/project-script-files)))
+    (unless files
+      (user-error "No scripts found in __ignore__/scripts/"))
+
+    (let* ((choices
+            (mapcar (lambda (file)
+                      (cons (my/project-script-label file) file))
+                    files))
+           (picked-label (completing-read "Run script: " choices nil t))
+           (file (cdr (assoc picked-label choices)))
+           (name (file-name-base file))
+           (key (concat project "::" file))
+           (buf-name (format "*project:%s*" name)))
+
+      (puthash key t my/project-running-scripts)
+
+      (let ((default-directory project))
+        (vterm buf-name)
+        (vterm-send-string (shell-quote-argument file))
+        (vterm-send-return)
+        (delete-other-windows)))))
+
+(map! :leader
+      :desc "Run project script"
+      "p S" #'my/run-project-script)
