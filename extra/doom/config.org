@@ -386,7 +386,7 @@ When this exact file is saved, Emacs immediately regenerates =config.el=. That k
                   window-divider-last-pixel))
     (face-spec-reset-face face)
     (set-face-foreground face (face-attribute 'default :background)))
-  (set-face-background 'fringe (face-attribute 'default :background))
+  ;; (set-face-background 'fringe (face-attribute 'default :background))
   (setq org-modern-block-fringe t)
   (global-org-modern-mode))
 #+end_src
@@ -1404,6 +1404,148 @@ Quit confirmation is disabled for faster exits.
 (map! :leader
       :desc "Run project script"
       "p S" #'my/run-project-script)
+#+end_src
+
+* Org Mode
+#+begin_src emacs-lisp
+;;; org-basic.el --- sane Org defaults for Doom
+
+;; Main Org directory.
+(setq org-directory "~/org/")
+
+;; Files scanned by org-agenda.
+;; Only put actionable/date-based files here.
+(setq org-agenda-files
+      '("~/org/inbox.org"
+        "~/org/tasks.org"
+        "~/org/projects.org"
+        "~/org/calendar.org"))
+
+;; Basic TODO workflow.
+;; TODO      = not started
+;; NEXT      = next concrete action
+;; WAIT      = blocked by someone/something
+;; SOMEDAY   = intentionally inactive
+;; DONE      = completed
+;; CANCELLED = no longer relevant
+(setq org-todo-keywords
+      '((sequence "TODO(t)" "NEXT(n)" "WAIT(w)" "SOMEDAY(s)" "|"
+                  "DONE(d)" "CANCELLED(c)")))
+
+;; Save timestamp when marking DONE.
+(setq org-log-done 'time)
+
+;; Save note when moving into WAIT or CANCELLED.
+(setq org-todo-keyword-faces
+      '(("TODO" . warning)
+        ("NEXT" . success)
+        ("WAIT" . font-lock-constant-face)
+        ("SOMEDAY" . font-lock-doc-face)
+        ("DONE" . shadow)
+        ("CANCELLED" . shadow)))
+
+(setq org-todo-keywords
+      '((sequence "TODO" "|" "DONE")))
+
+;; Use fast todo selection.
+(setq org-use-fast-todo-selection t)
+
+;; Hide completed scheduled/deadline tasks from agenda after done.
+(setq org-agenda-skip-scheduled-if-done t)
+(setq org-agenda-skip-deadline-if-done t)
+
+;; Show agenda starting today.
+;; (setq org-agenda-start-on-weekday nil)
+
+;; Show 14 days by default.
+(setq org-agenda-span 14)
+
+;; Warn about deadlines 7 days in advance.
+(setq org-deadline-warning-days 7)
+
+;; Make indentation readable.
+(setq org-startup-indented t)
+
+;; Hide leading stars visually.
+(setq org-hide-leading-stars t)
+
+;; Open folded files cleanly.
+(setq org-startup-folded 'content)
+
+;; Log state changes into a drawer to avoid visual noise.
+(setq org-log-into-drawer t)
+
+;; Refile targets.
+;; This lets you move captured items from inbox.org into real files.
+(setq org-refile-targets
+      '(("~/org/tasks.org" :maxlevel . 3)
+        ("~/org/projects.org" :maxlevel . 4)
+        ("~/org/calendar.org" :maxlevel . 2)
+        ("~/org/someday.org" :maxlevel . 2)))
+
+;; Make refile completion use full paths.
+(setq org-refile-use-outline-path 'file)
+(setq org-outline-path-complete-in-steps nil)
+
+;; Archive completed old tasks here.
+(setq org-archive-location "~/org/archive.org::* From %s")
+
+;; Capture templates.
+(setq org-capture-templates
+      '(("t" "Todo" entry
+         (file "~/org/inbox.org")
+         "* TODO %?\nCREATED: %U\n")
+
+        ("d" "Todo with deadline" entry
+         (file "~/org/inbox.org")
+         "* TODO %?\nDEADLINE: %^t\nCREATED: %U\n")
+
+        ("s" "Scheduled todo" entry
+         (file "~/org/inbox.org")
+         "* TODO %?\nSCHEDULED: %^t\nCREATED: %U\n")
+
+        ("e" "Event / calendar date" entry
+         (file "~/org/calendar.org")
+         "* %?\n%^T\n")
+
+        ("r" "Repeating event" entry
+         (file "~/org/calendar.org")
+         "* %?\n%^T\n")
+
+        ("p" "Project task" entry
+         (file "~/org/projects.org")
+         "* TODO %?\nCREATED: %U\n")
+
+        ("n" "Note" entry
+         (file "~/org/notes.org")
+         "* %?\nCREATED: %U\n")))
+
+;; Custom agenda views.
+(setq org-agenda-custom-commands
+      '(("d" "Dashboard"
+         ((agenda "" ((org-agenda-span 14)))
+          (todo "NEXT"
+                ((org-agenda-overriding-header "Next actions")))
+          (todo "WAIT"
+                ((org-agenda-overriding-header "Waiting")))
+          (todo "TODO"
+                ((org-agenda-overriding-header "Unprocessed todos")))))
+
+        ("i" "Inbox"
+         ((tags "REFILE|TODO"
+                ((org-agenda-files '("~/org/inbox.org"))
+                 (org-agenda-overriding-header "Inbox")))))
+
+        ("p" "Projects"
+         ((tags "project"
+                ((org-agenda-overriding-header "Projects")))))))
+#+end_src
+* Project management
+
+#+begin_src emacs-lisp
+(defun mp/run-project-elvou ()
+  (interactive)
+  (projectile-switch-project-by-name "elvou-backend"))
 #+end_src
 
 * Future Configuration
