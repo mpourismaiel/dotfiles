@@ -92,6 +92,143 @@ I really have to organize
   (doom-modeline-indent-info t))
 #+end_src
 
+** Header Line
+#+begin_src emacs-lisp
+(require 'subr-x)
+
+(defvar mp/header-line-height 32
+  "Target height of the custom header line, in pixels.")
+
+(defvar mp/header-line-horizontal-padding " "
+  "Horizontal padding inserted around each header line block.")
+
+(defvar mp/header-line-buffer-foreground-faces
+  '(doom-modeline-buffer-file mode-line-buffer-id mode-line)
+  "Faces whose foreground is reused for header file and major-mode text.")
+
+(defvar mp/header-line-position-foreground-faces
+  '(doom-modeline mode-line line-number)
+  "Faces whose foreground is reused for the header status text.")
+
+(custom-set-faces!
+  '(header-line :inherit mode-line))
+
+(defun mp/header-line-color-value (value)
+  "Return VALUE unless it is an unspecified face color."
+  (unless (or (null value)
+              (eq value 'unspecified)
+              (and (stringp value)
+                   (string-prefix-p "unspecified-" value)))
+    value))
+
+(defun mp/header-line-face-attribute (face attribute)
+  "Return FACE ATTRIBUTE after resolving inheritance where possible."
+  (when (facep face)
+    (mp/header-line-color-value
+     (face-attribute face attribute nil 'default))))
+
+(defun mp/header-line-first-face-attribute (faces attribute fallback)
+  "Return the first usable ATTRIBUTE from FACES, or FALLBACK."
+  (or (catch 'value
+        (dolist (face faces)
+          (when-let ((value (mp/header-line-face-attribute face attribute)))
+            (throw 'value value))))
+      (mp/header-line-color-value fallback)))
+
+(defun mp/header-line-background ()
+  "Return the themed background color for the header line."
+  (mp/header-line-first-face-attribute
+   '(header-line mode-line default)
+   :background
+   (face-attribute 'default :background nil 'default)))
+
+(defun mp/header-line-buffer-foreground ()
+  "Return the themed modeline buffer-name foreground color."
+  (mp/header-line-first-face-attribute
+   mp/header-line-buffer-foreground-faces
+   :foreground
+   (face-attribute 'mode-line :foreground nil 'default)))
+
+(defun mp/header-line-position-foreground ()
+  "Return the themed modeline position foreground color."
+  (mp/header-line-first-face-attribute
+   mp/header-line-position-foreground-faces
+   :foreground
+   (face-attribute 'mode-line :foreground nil 'default)))
+
+(defun mp/header-line-vertical-padding ()
+  "Return vertical padding needed to approach `mp/header-line-height'."
+  (if (display-graphic-p)
+      (ceiling (max 0 (- mp/header-line-height (frame-char-height))) 2)
+    0))
+
+(defun mp/header-line-face (foreground background &optional weight)
+  "Return a face plist for a padded header line block."
+  (append
+   (when foreground
+     `(:foreground ,foreground))
+   (when background
+     `(:background ,background))
+   (when weight
+     `(:weight ,weight))
+   (when-let ((padding (mp/header-line-vertical-padding)))
+     (when (> padding 0)
+       `(:box (:line-width (0 . ,padding)
+               ,@(when background
+                   `(:color ,background))))))))
+
+(defun mp/header-line-block (text face)
+  "Return TEXT as a padded header line block using FACE."
+  (propertize
+   (concat mp/header-line-horizontal-padding
+           text
+           mp/header-line-horizontal-padding)
+   'face face))
+
+(defun mp/header-line-buffer-name ()
+  "Return the file name or buffer name for the header line."
+  (or (when buffer-file-name
+        (file-name-nondirectory buffer-file-name))
+      (buffer-name)
+      ""))
+
+(defun mp/header-line-mode-name ()
+  "Return the current major mode name for the header line."
+  (let ((name (string-trim (format-mode-line mode-name))))
+    (if (string-empty-p name)
+        "unknown"
+      (downcase name))))
+
+(defun mp/header-line-buffer-status ()
+  "Return the current buffer status label."
+  (cond (buffer-read-only
+         "RO")
+        ((buffer-modified-p)
+         "W!")
+        (t
+         "RW")))
+
+(defun mp/header-line-format ()
+  "Return a left-aligned custom header line for the current buffer."
+  (let* ((background (mp/header-line-background))
+         (buffer-foreground (mp/header-line-buffer-foreground))
+         (position-foreground (mp/header-line-position-foreground))
+         (status-background "#ecbe7b")
+         (status-foreground "#ffffff")
+         (status-face (mp/header-line-face
+                       status-foreground status-background 'bold))
+         (buffer-face (mp/header-line-face
+                       buffer-foreground background 'bold))
+         (major-face (mp/header-line-face
+                      buffer-foreground background 'normal)))
+    (list
+     (mp/header-line-block (mp/header-line-buffer-status) status-face)
+     (mp/header-line-block (mp/header-line-buffer-name) buffer-face)
+     (mp/header-line-block (mp/header-line-mode-name) major-face))))
+
+(setq-default header-line-format '(:eval (mp/header-line-format)))
+#+end_src
+
 * File And Org Defaults
 Core path and file behavior settings.
 
@@ -1174,6 +1311,7 @@ Quit confirmation is disabled for faster exits.
       :desc "Run project script"
       "p S" #'my/run-project-script)
 #+end_src
+
 * Future Configuration
 Reserved sections for later additions so new config does not need to be bolted onto the end of the file.
 
