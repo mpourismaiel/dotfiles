@@ -180,6 +180,29 @@
 
 (setq-default header-line-format '(:eval (mp/header-line-format)))
 
+(use-package! vertico-posframe
+  :after vertico
+  :config
+  (setq vertico-posframe-width 120
+        vertico-posframe-height 16
+        vertico-posframe-border-width 12
+        vertico-posframe-poshandler
+        #'posframe-poshandler-frame-center)
+
+  (vertico-posframe-mode 1))
+
+(use-package! spacious-padding
+  :custom
+  (spacious-padding-widths
+        '( :internal-border-width 8
+           :header-line-width 0
+           :mode-line-width 0
+           :tab-width 4
+           :right-divider-width 30
+           :scroll-bar-width 8))
+
+  (spacious-padding-mode 1))
+
 (setq org-directory "~/org/")
 
 ;; Send files to trash instead of fully deleting.

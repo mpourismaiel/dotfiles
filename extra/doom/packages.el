@@ -67,3 +67,5 @@
 (package! org-modern)
 ;; (package! easysession)
 (package! evil-mc)
+(package! spacious-padding)
+(package! vertico-posframe)
