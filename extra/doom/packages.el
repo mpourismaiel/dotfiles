@@ -69,3 +69,5 @@
 (package! evil-mc)
 (package! spacious-padding)
 (package! vertico-posframe)
+(package! dimmer)
+(package! svg-tag-mode)

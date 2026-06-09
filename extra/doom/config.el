@@ -25,6 +25,16 @@
 
 (setq display-line-numbers-type t)
 
+(setq scroll-preserve-screen-position t
+      scroll-conservatively 101
+      scroll-margin 0
+      mouse-wheel-follow-mouse t
+      mouse-wheel-scroll-amount '(3 ((shift) . 1))
+      mouse-wheel-progressive-speed nil)
+
+(after! evil
+  (setq evil-want-C-u-scroll t))
+
 (after! vertico
   (setq completion-styles '(flex orderless basic)
         completion-category-defaults nil))
@@ -184,12 +194,51 @@
   :after vertico
   :config
   (setq vertico-posframe-width 120
-        vertico-posframe-height 16
-        vertico-posframe-border-width 12
-        vertico-posframe-poshandler
-        #'posframe-poshandler-frame-center)
+        vertico-posframe-height 14
+        vertico-posframe-border-width 4
+        vertico-posframe-poshandler #'posframe-poshandler-frame-center
+        vertico-posframe-parameters
+        '((left-fringe . 16)
+          (right-fringe . 16)
+          (internal-border-width . 12)
+          (alpha-background . 96)
+          (undecorated . t)))
+
+  (custom-set-faces!
+    '(vertico-posframe :background "#232833")
+    '(vertico-posframe-border :background "#3b4252")
+    '(vertico-current :background "#343b4a" :weight bold)
+    '(minibuffer-prompt :foreground "#c678dd" :weight bold))
 
   (vertico-posframe-mode 1))
+
+(use-package! dimmer
+  :config
+  (setq dimmer-fraction 0.5
+        dimmer-use-colorspace :rgb
+        dimmer-watch-frame-focus-events nil
+        dimmer-adjustment-mode :foreground
+        dimmer-exclusion-regexp-list
+        '("^ \\*Minibuf"
+          "^\\*Echo Area"
+          "^\\*which-key"
+          "^ \\*which-key"
+          "^\\*Completions"
+          "^\\*corfu"
+          "^ \\*LV\\*"))
+
+  ;; Do NOT let every transient minibuffer/evil command trigger dimming.
+  ;; Only force dimming around Vertico/posframe minibuffer sessions.
+  (add-hook 'vertico-posframe-mode-hook
+            (lambda ()
+              (if vertico-posframe-mode
+                  (progn
+                    (add-hook 'minibuffer-setup-hook #'dimmer-process-all)
+                    (add-hook 'minibuffer-exit-hook  #'dimmer-process-all))
+                (remove-hook 'minibuffer-setup-hook #'dimmer-process-all)
+                (remove-hook 'minibuffer-exit-hook  #'dimmer-process-all))))
+
+  (dimmer-mode 1))
 
 (use-package! spacious-padding
   :custom
@@ -264,6 +313,7 @@
     (face-spec-reset-face face)
     (set-face-foreground face (face-attribute 'default :background)))
   (set-face-background 'fringe (face-attribute 'default :background))
+  (setq org-modern-block-fringe t)
   (global-org-modern-mode))
 
 (use-package! agent-shell-notifications
