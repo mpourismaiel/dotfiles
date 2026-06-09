@@ -63,6 +63,18 @@ This adds a small amount of extra vertical space in buffers intended for writing
 #+end_src
 
 * Configuration
+** Editor Experience
+#+begin_src emacs-lisp
+(setq scroll-preserve-screen-position t
+      scroll-conservatively 101
+      scroll-margin 0
+      mouse-wheel-follow-mouse t
+      mouse-wheel-scroll-amount '(3 ((shift) . 1))
+      mouse-wheel-progressive-speed nil)
+
+(after! evil
+  (setq evil-want-C-u-scroll t))
+#+end_src
 ** Completion Styles
 I really have to organize
 
@@ -230,18 +242,63 @@ I really have to organize
 #+end_src
 
 ** Minibuffer
+
+*** Vertico posframe
 #+begin_src emacs-lisp
 (use-package! vertico-posframe
   :after vertico
   :config
   (setq vertico-posframe-width 120
-        vertico-posframe-height 16
-        vertico-posframe-border-width 12
-        vertico-posframe-poshandler
-        #'posframe-poshandler-frame-center)
+        vertico-posframe-height 14
+        vertico-posframe-border-width 4
+        vertico-posframe-poshandler #'posframe-poshandler-frame-center
+        vertico-posframe-parameters
+        '((left-fringe . 16)
+          (right-fringe . 16)
+          (internal-border-width . 12)
+          (alpha-background . 96)
+          (undecorated . t)))
+
+  (custom-set-faces!
+    '(vertico-posframe :background "#232833")
+    '(vertico-posframe-border :background "#3b4252")
+    '(vertico-current :background "#343b4a" :weight bold)
+    '(minibuffer-prompt :foreground "#c678dd" :weight bold))
 
   (vertico-posframe-mode 1))
 #+end_src
+
+*** dimmer
+#+begin_src emacs-lisp
+(use-package! dimmer
+  :config
+  (setq dimmer-fraction 0.5
+        dimmer-use-colorspace :rgb
+        dimmer-watch-frame-focus-events nil
+        dimmer-adjustment-mode :foreground
+        dimmer-exclusion-regexp-list
+        '("^ \\*Minibuf"
+          "^\\*Echo Area"
+          "^\\*which-key"
+          "^ \\*which-key"
+          "^\\*Completions"
+          "^\\*corfu"
+          "^ \\*LV\\*"))
+
+  ;; Do NOT let every transient minibuffer/evil command trigger dimming.
+  ;; Only force dimming around Vertico/posframe minibuffer sessions.
+  (add-hook 'vertico-posframe-mode-hook
+            (lambda ()
+              (if vertico-posframe-mode
+                  (progn
+                    (add-hook 'minibuffer-setup-hook #'dimmer-process-all)
+                    (add-hook 'minibuffer-exit-hook  #'dimmer-process-all))
+                (remove-hook 'minibuffer-setup-hook #'dimmer-process-all)
+                (remove-hook 'minibuffer-exit-hook  #'dimmer-process-all))))
+
+  (dimmer-mode 1))
+#+end_src
+
 ** Visuals
 #+begin_src emacs-lisp
 (use-package! spacious-padding
@@ -330,6 +387,7 @@ When this exact file is saved, Emacs immediately regenerates =config.el=. That k
     (face-spec-reset-face face)
     (set-face-foreground face (face-attribute 'default :background)))
   (set-face-background 'fringe (face-attribute 'default :background))
+  (setq org-modern-block-fringe t)
   (global-org-modern-mode))
 #+end_src
 
