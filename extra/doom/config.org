@@ -936,7 +936,8 @@ This section documents the custom bindings defined in this configuration.
 | Leader      | =SPC f d=  | =consult-dir=                   | Switch directories from the minibuffer workflow.                            |
 | Minibuffer  | =C-x C-d=  | =consult-dir=                   | Pick a directory during completion.                                         |
 | Minibuffer  | =C-x C-j=  | =consult-dir-jump-file=         | Jump to a file in another directory during completion.                      |
-| Evil states | =C-b=      | =treemacs=                      | Open or focus Treemacs in motion, normal, insert, emacs, and visual states. |
+| Evil states | =C-b=      | =mp/treemacs-toggle-current-project= | Toggle Treemacs scoped to the current project across all Evil states.   |
+| Evil states | =C-S-e=    | =treemacs-find-file=            | Reveal the current file in Treemacs.                                        |
 | Evil states | =C-/=      | =comment-line=                  | Keep commenting available consistently across Evil states.                  |
 
 ** General Shortcuts
@@ -1064,7 +1065,8 @@ This section documents the custom bindings defined in this configuration.
                            evil-insert-state-map
                            evil-emacs-state-map
                            evil-visual-state-map))
-    (define-key state-map (kbd "C-b") #'treemacs)
+    (define-key state-map (kbd "C-b") #'mp/treemacs-toggle-current-project)
+    (define-key state-map (kbd "C-S-e") #'treemacs-find-file)
     (define-key state-map (kbd "C-\\") #'mp/vterm-new)
     (define-key state-map (kbd "C-/") #'comment-line)
     (define-key state-map (kbd "M-<up>") #'mp/move-lines-up)
@@ -1146,6 +1148,13 @@ Treemacs is configured to show hidden files and to preserve git-state visibility
 #+begin_src emacs-lisp
 (after! treemacs
   (setq treemacs-show-hidden-files t)
+
+  (defun mp/treemacs-toggle-current-project ()
+    "Toggle Treemacs, always scoped to the current project."
+    (interactive)
+    (pcase (treemacs-current-visibility)
+      ('visible (delete-window (treemacs-get-local-window)))
+      (_ (treemacs-display-current-project-exclusively))))
 
   (defface mp/treemacs-dotfile-face
     '((t :inherit shadow :slant italic))
