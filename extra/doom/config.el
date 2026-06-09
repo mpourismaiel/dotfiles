@@ -900,7 +900,8 @@
                            evil-insert-state-map
                            evil-emacs-state-map
                            evil-visual-state-map))
-    (define-key state-map (kbd "C-b") #'treemacs)
+    (define-key state-map (kbd "C-b") #'mp/treemacs-toggle-current-project)
+    (define-key state-map (kbd "C-S-e") #'treemacs-find-file)
     (define-key state-map (kbd "C-\\") #'mp/vterm-new)
     (define-key state-map (kbd "C-/") #'comment-line)
     (define-key state-map (kbd "M-<up>") #'mp/move-lines-up)
@@ -969,6 +970,13 @@
 
 (after! treemacs
   (setq treemacs-show-hidden-files t)
+
+  (defun mp/treemacs-toggle-current-project ()
+    "Toggle Treemacs, always scoped to the current project."
+    (interactive)
+    (pcase (treemacs-current-visibility)
+      ('visible (delete-window (treemacs-get-local-window)))
+      (_ (treemacs-display-current-project-exclusively))))
 
   (defface mp/treemacs-dotfile-face
     '((t :inherit shadow :slant italic))
