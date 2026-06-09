@@ -229,6 +229,33 @@ I really have to organize
 (setq-default header-line-format '(:eval (mp/header-line-format)))
 #+end_src
 
+** Minibuffer
+#+begin_src emacs-lisp
+(use-package! vertico-posframe
+  :after vertico
+  :config
+  (setq vertico-posframe-width 120
+        vertico-posframe-height 16
+        vertico-posframe-border-width 12
+        vertico-posframe-poshandler
+        #'posframe-poshandler-frame-center)
+
+  (vertico-posframe-mode 1))
+#+end_src
+** Visuals
+#+begin_src emacs-lisp
+(use-package! spacious-padding
+  :custom
+  (spacious-padding-widths
+        '( :internal-border-width 8
+           :header-line-width 0
+           :mode-line-width 0
+           :tab-width 4
+           :right-divider-width 30
+           :scroll-bar-width 8))
+
+  (spacious-padding-mode 1))
+#+end_src
 * File And Org Defaults
 Core path and file behavior settings.
 
