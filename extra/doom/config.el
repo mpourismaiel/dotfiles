@@ -56,23 +56,90 @@
 (after! evil
   (setq evil-want-C-u-scroll t))
 
-(setq image-scaling-factor 1.0)
-(setq image-use-external-converter nil)
+(defvar mp/project-bundles nil
+  "Private project bundles loaded from private.el.")
 
-(setq image-mode-winprops-alist
-      '((display-buffer-reuse-window display-buffer-same-window)))
+(let ((private-config "~/.config/doom/private.el"))
+  (when (file-exists-p private-config)
+    (load-file private-config)))
 
-(defun my/image-mode-center ()
-  (setq-local mode-line-format nil)
-  (let* ((img (image-get-display-property))
-         (size (image-size img t))
-         (img-width (car size))
-         (window-width-px (window-pixel-width))
-         (margin (/ (max 0 (- window-width-px img-width)) 2)
-                    (frame-char-width))))
-    (set-window-margins nil (max 0 margin) (max 0 margin))))
+(defun mp/open-project-root (project-dir)
+  "Open PROJECT-DIR without Projectile's project-action prompt."
+  (let* ((dir (file-name-as-directory (expand-file-name project-dir)))
+         (preferred-files '("README.md" "package.json" "Cargo.toml" "pyproject.toml"))
+         (file (seq-find
+                (lambda (name)
+                  (file-exists-p (expand-file-name name dir)))
+                preferred-files)))
+    (unless (file-directory-p dir)
+      (user-error "Project directory does not exist: %s" dir))
+    (projectile-add-known-project dir)
+    (setq default-directory dir)
+    (if file
+        (find-file (expand-file-name file dir))
+      (dired dir))))
 
-(add-hook 'image-mode-hook #'my/image-mode-center)
+(defun mp/open-project-bundle (bundle-name)
+  "Open project bundle BUNDLE-NAME in separate Doom workspaces."
+  (interactive
+   (list (completing-read "Bundle: " (mapcar #'car mp/project-bundles) nil t)))
+  (let ((projects (cdr (assoc bundle-name mp/project-bundles))))
+    (unless projects
+      (user-error "Unknown bundle: %s" bundle-name))
+    (dolist (project projects)
+      (+workspace-switch (car project) t)
+      (mp/open-project-root (cdr project)))))
+
+(defun mp/open-elvou-bundle ()
+  "Open Elvou backend/frontend/app projects."
+  (interactive)
+  (mp/open-project-bundle "elvou"))
+
+(defun mp/project-menu ()
+  "Project menu with colorized bundles plus Projectile projects."
+  (interactive)
+  (let* ((bundle-prefix "▶ Bundle: ")
+
+         (bundle-candidates
+          (mapcar
+           (lambda (bundle)
+             (let* ((name (car bundle))
+                    (label (concat bundle-prefix name)))
+               (cons
+                (propertize label 'face '(:foreground "#a6e3a1" :weight bold))
+                label)))
+           mp/project-bundles))
+
+         (project-candidates
+          (mapcar
+           (lambda (project)
+             (let* ((dir (directory-file-name project))
+                    (name (file-name-nondirectory dir))
+                    (parent (file-name-directory dir))
+                    (label
+                     (concat
+                      parent
+                      (propertize name 'face '(:foreground "#89b4fa" :weight bold)))))
+               (cons label project)))
+           (projectile-relevant-known-projects)))
+
+         (candidates (append bundle-candidates project-candidates))
+         (choice
+          (completing-read
+           "Project: "
+           candidates
+           nil
+           t)))
+
+    (let ((real-value (cdr (assoc choice candidates))))
+      (if (string-prefix-p bundle-prefix real-value)
+          (mp/open-project-bundle
+           (string-remove-prefix bundle-prefix real-value))
+        (projectile-switch-project-by-name real-value)))))
+
+(map! :leader
+      :desc "Project menu"
+      "p p" #'mp/project-menu)
 
 (defun mp/save-without-format ()
   "Save current buffer without running format-on-save hooks."
@@ -421,32 +488,6 @@
   ;; (set-face-background 'fringe (face-attribute 'default :background))
   (setq org-modern-block-fringe t)
   (global-org-modern-mode))
-
-(use-package! agent-shell-notifications
-  :hook (agent-shell-mode . agent-shell-notifications-mode))
-
-(use-package! minuet
-  :commands (minuet-show-suggestion
-             minuet-configure-provider
-             minuet-previous-suggestion
-             minuet-next-suggestion
-             minuet-accept-suggestion
-             minuet-dismiss-suggestion
-             minuet-accept-suggestion-line)
-  :init
-  (map! :leader
-        (:prefix ("d" . "agent")
-         :desc "Show Minuet suggestion" "d" #'minuet-complete-with-minibuffer
-         :desc "Configure Minuet provider" "m" #'minuet-configure-provider))
-  :config
-  (setq minuet-provider 'codestral)
-  (plist-put minuet-codestral-options
-             :api-key
-             "CODESTRAL_API_KEY")
-  (minuet-set-optional-options minuet-codestral-options :stop ("\n\n"))
-  (minuet-set-optional-options minuet-codestral-options :max_tokens 1024)
-  (setq minuet-show-error-message-on-minibuffer t
-        minuet-request-timeout 10))
 
 (setq which-key-idle-delay 0.2)
 
