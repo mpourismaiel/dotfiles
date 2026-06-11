@@ -104,6 +104,27 @@ This adds a small amount of extra vertical space in buffers intended for writing
   (setq evil-want-C-u-scroll t))
 #+end_src
 
+*** Image viewer
+#+begin_src emacs-lisp
+(setq image-scaling-factor 1.0)
+(setq image-use-external-converter nil)
+
+(setq image-mode-winprops-alist
+      '((display-buffer-reuse-window display-buffer-same-window)))
+
+(defun my/image-mode-center ()
+  (setq-local mode-line-format nil)
+  (let* ((img (image-get-display-property))
+         (size (image-size img t))
+         (img-width (car size))
+         (window-width-px (window-pixel-width))
+         (margin (/ (max 0 (- window-width-px img-width)) 2)
+                    (frame-char-width))))
+    (set-window-margins nil (max 0 margin) (max 0 margin))))
+
+(add-hook 'image-mode-hook #'my/image-mode-center)
+#+end_src
+
 ** Formatting
 #+begin_src emacs-lisp
 (defun mp/save-without-format ()
@@ -367,7 +388,7 @@ Use consult for `SPC SPC` and be done with `SPC b b`.
   :after vertico
   :config
   (setq vertico-posframe-width 120
-        vertico-posframe-height 14
+        vertico-posframe-height 18
         vertico-posframe-border-width 4
         vertico-posframe-poshandler #'posframe-poshandler-frame-center
         vertico-posframe-parameters
