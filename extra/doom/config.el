@@ -56,6 +56,24 @@
 (after! evil
   (setq evil-want-C-u-scroll t))
 
+(setq image-scaling-factor 1.0)
+(setq image-use-external-converter nil)
+
+(setq image-mode-winprops-alist
+      '((display-buffer-reuse-window display-buffer-same-window)))
+
+(defun my/image-mode-center ()
+  (setq-local mode-line-format nil)
+  (let* ((img (image-get-display-property))
+         (size (image-size img t))
+         (img-width (car size))
+         (window-width-px (window-pixel-width))
+         (margin (/ (max 0 (- window-width-px img-width)) 2)
+                    (frame-char-width))))
+    (set-window-margins nil (max 0 margin) (max 0 margin))))
+
+(add-hook 'image-mode-hook #'my/image-mode-center)
+
 (defun mp/save-without-format ()
   "Save current buffer without running format-on-save hooks."
   (interactive)
@@ -282,7 +300,7 @@
   :after vertico
   :config
   (setq vertico-posframe-width 120
-        vertico-posframe-height 14
+        vertico-posframe-height 18
         vertico-posframe-border-width 4
         vertico-posframe-poshandler #'posframe-poshandler-frame-center
         vertico-posframe-parameters
