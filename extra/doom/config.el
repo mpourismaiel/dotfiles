@@ -6,6 +6,27 @@
 (setq user-full-name "Mahdi Pourismaiel"
       user-mail-address "mpourismaiel@gmail.com")
 
+(defun mp/nvm-add-to-path ()
+  "Add the nvm default node bin directory to `exec-path' and PATH."
+  (let* ((nvm-dir (expand-file-name "~/.nvm"))
+         (alias-file (expand-file-name "alias/default" nvm-dir))
+         (versions-dir (expand-file-name "versions/node" nvm-dir)))
+    (when (file-readable-p alias-file)
+      (let* ((alias (string-trim (with-temp-buffer
+                                   (insert-file-contents alias-file)
+                                   (buffer-string))))
+             (match (car (last (sort
+                                (seq-filter #'file-directory-p
+                                            (file-expand-wildcards
+                                             (expand-file-name (concat alias "*") versions-dir)))
+                                #'string<))))
+             (bin (when match (expand-file-name "bin" match))))
+        (when (and bin (file-directory-p bin))
+          (add-to-list 'exec-path bin)
+          (setenv "PATH" (concat bin path-separator (getenv "PATH"))))))))
+
+(mp/nvm-add-to-path)
+
 (setq doom-theme 'doom-one)
 (setq doom-font (font-spec :family "CaskaydiaCove Nerd Font Mono" :size 16))
 
@@ -38,6 +59,13 @@
 (after! vertico
   (setq completion-styles '(flex orderless basic)
         completion-category-defaults nil))
+
+(after! corfu
+  (setq corfu-auto t
+        corfu-auto-delay 0.1
+        corfu-auto-prefix 1
+        corfu-preview-current nil
+        corfu-preselect 'prompt))
 
 (use-package doom-modeline
   :ensure t
@@ -291,7 +319,7 @@
 (add-hook 'evil-insert-state-exit-hook
           (lambda () (when (derived-mode-p 'org-mode) (display-line-numbers-mode -1))))
 
-(after! or
+(after! org
   ;; Prevent alphabetical list markers from conflicting with checkbox parsing.
   (setq org-list-allow-alphabetical nil)
 
@@ -1092,14 +1120,55 @@
         magit-diff-highlight-trailing t))
 
 (use-package! eldoc-box
-  :after eglot
-  :hook (eglot-managed-mode . eldoc-box-hover-at-point-mode)
+  :after lsp-mode
+  :hook (lsp-managed-mode . eldoc-box-hover-at-point-mode)
   :config
   (setq eldoc-box-clear-with-C-g t
         eldoc-box-only-multi-line t
         eldoc-box-max-pixel-width 720
         eldoc-box-max-pixel-height 360
         eldoc-box-offset '(16 12 16)))
+
+(after! lsp-mode
+  (setq lsp-idle-delay 0.1
+        lsp-enable-symbol-highlighting t
+        lsp-headerline-breadcrumb-enable nil
+        lsp-modeline-diagnostics-enable t
+        lsp-diagnostics-provider :flycheck
+        lsp-auto-guess-root t
+        lsp-keep-workspace-alive nil
+        lsp-restart 'interactive
+        lsp-session-file (expand-file-name ".local/etc/lsp-session-v1" doom-user-dir)
+        lsp-completion-provider :none))  ; corfu handles completion via capf
+(add-hook 'typescript-mode-hook #'lsp!)
+(add-hook 'typescript-tsx-mode-hook #'lsp!)
+(add-hook 'js-mode-hook #'lsp!)
+(add-hook 'js2-mode-hook #'lsp!)
+(add-hook 'web-mode-hook #'lsp!)
+(add-hook 'svelte-mode-hook #'lsp!)
+(add-hook 'python-mode-hook #'lsp!)
+(add-hook 'go-mode-hook #'lsp!)
+
+(after! lsp-tailwindcss
+  (setq lsp-tailwindcss-add-on-mode t
+        lsp-tailwindcss-server-path
+          (executable-find "tailwindcss-language-server")))
+
+(after! lsp-ui
+  (setq lsp-ui-doc-enable nil
+        lsp-ui-sideline-enable t
+        lsp-ui-sideline-show-diagnostics t
+        lsp-ui-sideline-show-code-actions t
+        lsp-ui-peek-enable t
+        lsp-ui-peek-always-show t)
+
+  (map! :n "gd" #'lsp-ui-peek-find-definitions
+        :n "gr" #'lsp-ui-peek-find-references
+        :n "gI" #'lsp-ui-peek-find-implementation))
+
+(after! flycheck
+  (setq flycheck-idle-change-delay 0.2
+        flycheck-display-errors-delay 0.2))
 
 (setq confirm-kill-emacs nil)
 
