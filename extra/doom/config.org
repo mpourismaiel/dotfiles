@@ -92,6 +92,7 @@ This adds a small amount of extra vertical space in buffers intended for writing
 
 * Configuration
 ** Editor Experience
+*** Scrolling
 #+begin_src emacs-lisp
 (setq scroll-preserve-screen-position t
       scroll-conservatively 101
@@ -104,25 +105,92 @@ This adds a small amount of extra vertical space in buffers intended for writing
   (setq evil-want-C-u-scroll t))
 #+end_src
 
-*** Image viewer
+*** Project management
 #+begin_src emacs-lisp
-(setq image-scaling-factor 1.0)
-(setq image-use-external-converter nil)
+(defvar mp/project-bundles nil
+  "Private project bundles loaded from private.el.")
 
-(setq image-mode-winprops-alist
-      '((display-buffer-reuse-window display-buffer-same-window)))
+(let ((private-config "~/.config/doom/private.el"))
+  (when (file-exists-p private-config)
+    (load-file private-config)))
 
-(defun my/image-mode-center ()
-  (setq-local mode-line-format nil)
-  (let* ((img (image-get-display-property))
-         (size (image-size img t))
-         (img-width (car size))
-         (window-width-px (window-pixel-width))
-         (margin (/ (max 0 (- window-width-px img-width)) 2)
-                    (frame-char-width))))
-    (set-window-margins nil (max 0 margin) (max 0 margin))))
+(defun mp/open-project-root (project-dir)
+  "Open PROJECT-DIR without Projectile's project-action prompt."
+  (let* ((dir (file-name-as-directory (expand-file-name project-dir)))
+         (preferred-files '("README.md" "package.json" "Cargo.toml" "pyproject.toml"))
+         (file (seq-find
+                (lambda (name)
+                  (file-exists-p (expand-file-name name dir)))
+                preferred-files)))
+    (unless (file-directory-p dir)
+      (user-error "Project directory does not exist: %s" dir))
+    (projectile-add-known-project dir)
+    (setq default-directory dir)
+    (if file
+        (find-file (expand-file-name file dir))
+      (dired dir))))
 
-(add-hook 'image-mode-hook #'my/image-mode-center)
+(defun mp/open-project-bundle (bundle-name)
+  "Open project bundle BUNDLE-NAME in separate Doom workspaces."
+  (interactive
+   (list (completing-read "Bundle: " (mapcar #'car mp/project-bundles) nil t)))
+  (let ((projects (cdr (assoc bundle-name mp/project-bundles))))
+    (unless projects
+      (user-error "Unknown bundle: %s" bundle-name))
+    (dolist (project projects)
+      (+workspace-switch (car project) t)
+      (mp/open-project-root (cdr project)))))
+
+(defun mp/open-elvou-bundle ()
+  "Open Elvou backend/frontend/app projects."
+  (interactive)
+  (mp/open-project-bundle "elvou"))
+
+(defun mp/project-menu ()
+  "Project menu with colorized bundles plus Projectile projects."
+  (interactive)
+  (let* ((bundle-prefix "▶ Bundle: ")
+
+         (bundle-candidates
+          (mapcar
+           (lambda (bundle)
+             (let* ((name (car bundle))
+                    (label (concat bundle-prefix name)))
+               (cons
+                (propertize label 'face '(:foreground "#a6e3a1" :weight bold))
+                label)))
+           mp/project-bundles))
+
+         (project-candidates
+          (mapcar
+           (lambda (project)
+             (let* ((dir (directory-file-name project))
+                    (name (file-name-nondirectory dir))
+                    (parent (file-name-directory dir))
+                    (label
+                     (concat
+                      parent
+                      (propertize name 'face '(:foreground "#89b4fa" :weight bold)))))
+               (cons label project)))
+           (projectile-relevant-known-projects)))
+
+         (candidates (append bundle-candidates project-candidates))
+         (choice
+          (completing-read
+           "Project: "
+           candidates
+           nil
+           t)))
+
+    (let ((real-value (cdr (assoc choice candidates))))
+      (if (string-prefix-p bundle-prefix real-value)
+          (mp/open-project-bundle
+           (string-remove-prefix bundle-prefix real-value))
+        (projectile-switch-project-by-name real-value)))))
+
+(map! :leader
+      :desc "Project menu"
+      "p p" #'mp/project-menu)
 #+end_src
 
 ** Formatting
@@ -452,7 +520,8 @@ Use consult for `SPC SPC` and be done with `SPC b b`.
 
   (spacious-padding-mode 1))
 #+end_src
-* File And Org Defaults
+* Org Defaults
+** Org defaults
 Core path and file behavior settings.
 
 #+begin_src emacs-lisp
@@ -528,46 +597,6 @@ When this exact file is saved, Emacs immediately regenerates =config.el=. That k
   ;; (set-face-background 'fringe (face-attribute 'default :background))
   (setq org-modern-block-fringe t)
   (global-org-modern-mode))
-#+end_src
-
-* AI Agents and Completion
-** Agent Shell
-Agent shell is a core part of this setup, so related integrations live together here.
-
-*** Desktop Notifications
-Enable desktop notifications for agent-shell buffers so turns that need attention can surface even when the shell is out of focus.
-
-#+begin_src emacs-lisp
-(use-package! agent-shell-notifications
-  :hook (agent-shell-mode . agent-shell-notifications-mode))
-#+end_src
-
-** AI Suggestions
-Minuet is installed as a Doom package and kept manual-only. Use =SPC d s= to request a suggestion and =SPC d m= to configure the provider; the remaining keys apply while a Minuet suggestion is visible.
-
-#+begin_src emacs-lisp
-(use-package! minuet
-  :commands (minuet-show-suggestion
-             minuet-configure-provider
-             minuet-previous-suggestion
-             minuet-next-suggestion
-             minuet-accept-suggestion
-             minuet-dismiss-suggestion
-             minuet-accept-suggestion-line)
-  :init
-  (map! :leader
-        (:prefix ("d" . "agent")
-         :desc "Show Minuet suggestion" "d" #'minuet-complete-with-minibuffer
-         :desc "Configure Minuet provider" "m" #'minuet-configure-provider))
-  :config
-  (setq minuet-provider 'codestral)
-  (plist-put minuet-codestral-options
-             :api-key
-             "CODESTRAL_API_KEY")
-  (minuet-set-optional-options minuet-codestral-options :stop ("\n\n"))
-  (minuet-set-optional-options minuet-codestral-options :max_tokens 1024)
-  (setq minuet-show-error-message-on-minibuffer t
-        minuet-request-timeout 10))
 #+end_src
 
 * Help And Feedback
