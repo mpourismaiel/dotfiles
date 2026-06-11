@@ -56,6 +56,36 @@
 (after! evil
   (setq evil-want-C-u-scroll t))
 
+(defun mp/save-without-format ()
+  "Save current buffer without running format-on-save hooks."
+  (interactive)
+  (let ((before-save-hook
+         (remove #'+format/buffer before-save-hook)))
+    (save-buffer)))
+
+(map! :leader
+      (:prefix ("f" . "file")
+        :desc "Save without formatting" "!"
+        #'mp/save-without-format))
+
+(after! format-all
+  (setq-hook! '(js-mode-hook
+                js-ts-mode-hook
+                typescript-mode-hook
+                typescript-ts-mode-hook
+                typescript-tsx-mode-hook
+                tsx-ts-mode-hook
+                web-mode-hook
+                css-mode-hook
+                css-ts-mode-hook
+                scss-mode-hook)
+    +format-with 'prettier))
+
+;; ((nil . ((eval . (format-all-mode -1)))))
+
+;; ((python-mode . ((+format-with . ("ruff" "format" "-"))))
+;;  (python-ts-mode . ((+format-with . ("ruff" "format" "-")))))
+
 (after! vertico
   (setq completion-styles '(flex orderless basic)
         completion-category-defaults nil))
@@ -217,6 +247,36 @@
      (mp/header-line-block (mp/header-line-mode-name) major-face))))
 
 (setq-default header-line-format '(:eval (mp/header-line-format)))
+
+(defvar consult-source-projectile-file
+  `(:name "Projectile File"
+    :narrow (?p . "Projectile File")
+    :category file
+    :face consult-file
+    :history file-name-history
+    :state ,#'consult--file-state
+    :action ,#'consult--file-action
+    :new ,#'consult--file-action
+    :enabled ,(lambda ()
+                (and (bound-and-true-p projectile-mode)
+                     (projectile-project-p)))
+    :items ,(lambda ()
+              (let ((root (projectile-project-root)))
+                (mapcar
+                 (lambda (file)
+                   (cons file (expand-file-name file root)))
+                 (projectile-project-files root))))))
+
+(with-eval-after-load 'consult
+  (setq consult-buffer-sources
+        '(consult-source-buffer
+          consult-source-projectile-file
+          consult-source-hidden-buffer
+          consult-source-project-buffer-hidden
+          consult-source-project-recent-file-hidden)))
+
+(map! :leader
+     "SPC" #'consult-buffer)
 
 (use-package! vertico-posframe
   :after vertico
@@ -1138,6 +1198,7 @@
         lsp-auto-guess-root t
         lsp-keep-workspace-alive nil
         lsp-restart 'interactive
+        lsp-file-watch-threshold 2500
         lsp-session-file (expand-file-name ".local/etc/lsp-session-v1" doom-user-dir)
         lsp-completion-provider :none))  ; corfu handles completion via capf
 (add-hook 'typescript-mode-hook #'lsp!)
