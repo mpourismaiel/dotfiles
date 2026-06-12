@@ -33,6 +33,22 @@
 ;; Let Treemacs use richer git-state highlighting when Python is available.
 (setq +treemacs-git-mode 'deferred)
 
+(after! doom-themes
+  (custom-set-faces!
+    ;; JSX / HTML tags: <div>
+    '(web-mode-html-tag-face :foreground "#ffcc66" :weight bold)
+    '(web-mode-html-tag-bracket-face :foreground "#ffcc66")
+    '(web-mode-html-attr-name-face :foreground "#82aaff")
+
+    ;; React component / constructor-like names: BaseMaterialContainer
+    '(font-lock-type-face :foreground "#c792ea" :weight bold)
+
+    ;; Variables / props
+    '(font-lock-variable-name-face :foreground "#89ddff")
+
+    ;; Function names
+    '(font-lock-function-name-face :foreground "#82aaff" :weight bold)))
+
 (defvar mp/editor-line-spacing 0.6
   "Preferred extra line spacing for editing buffers.")
 
@@ -140,6 +156,43 @@
 (map! :leader
       :desc "Project menu"
       "p p" #'mp/project-menu)
+
+(defun mp/split-target-buffer ()
+  "Populate a newly-created split."
+  (if (derived-mode-p 'vterm-mode)
+      ;; If we're currently in vterm, create a fresh vterm.
+      (mp/vterm-new)
+
+    ;; Otherwise show the Doom dashboard.
+    (cond
+     ;; Reuse existing dashboard buffer.
+     ((get-buffer "*doom*")
+      (switch-to-buffer "*doom*"))
+
+     ;; Create a dashboard if possible.
+     ((fboundp '+doom-dashboard/open)
+      (+doom-dashboard/open))
+
+     ;; Fallback for non-dashboard Doom configs.
+     (t
+      (switch-to-buffer (generate-new-buffer "untitled"))))))
+
+(defun mp/split-window-right-fresh ()
+  "Split right and show a fresh buffer."
+  (interactive)
+  (select-window (split-window-right))
+  (mp/split-target-buffer))
+
+(defun mp/split-window-below-fresh ()
+  "Split below and show a fresh buffer."
+  (interactive)
+  (select-window (split-window-below))
+  (mp/split-target-buffer))
+
+(map! :leader
+      (:prefix ("w" . "window")
+       :desc "Split right (fresh)" "v" #'mp/split-window-right-fresh
+       :desc "Split below (fresh)" "s" #'mp/split-window-below-fresh))
 
 (defun mp/save-without-format ()
   "Save current buffer without running format-on-save hooks."
