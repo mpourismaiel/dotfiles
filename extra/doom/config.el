@@ -574,7 +574,7 @@
         dimmer-use-colorspace :rgb
         dimmer-watch-frame-focus-events nil
         dimmer-adjustment-mode :foreground
-        dimmer-exclusion-regexp-list
+        dimmer-buffer-exclusion-regexps
         '("^ \\*Minibuf"
           "^\\*Echo Area"
           "^\\*which-key"
@@ -653,8 +653,7 @@
 
   (setq org-auto-align-tags nil
         org-tags-column 0
-        org-catch-invisible-edits 'show-and-error
-        org-special-ctrl-a/e t
+        org-fold-catch-invisible-edits 'show-and-error        org-special-ctrl-a/e t
         org-insert-heading-respect-content t
         org-hide-emphasis-markers t
         org-pretty-entities t
@@ -1575,7 +1574,7 @@
   :config
   (setq minuet-provider 'codestral)
   (plist-put minuet-codestral-options :api-key "CODESTRAL_API_KEY")
-  (minuet-set-optional-options minuet-codestral-options :stop ("\n\n"))
+  (minuet-set-optional-options minuet-codestral-options :stop `("\n\n"))
   (minuet-set-optional-options minuet-codestral-options :max_tokens 1024)
   (setq minuet-show-error-message-on-minibuffer t
         minuet-request-timeout 10))
