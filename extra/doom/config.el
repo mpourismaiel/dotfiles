@@ -194,6 +194,12 @@
        :desc "Split right (fresh)" "v" #'mp/split-window-right-fresh
        :desc "Split below (fresh)" "s" #'mp/split-window-below-fresh))
 
+(after! popup
+  (set-popup-rule! "^\\*Flycheck errors" :side 'bottom :size 0.25 :select t :quit t)
+  (set-popup-rule! "^\\*xref\\*"          :side 'bottom :size 0.3  :select t :quit t)
+  (set-popup-rule! "^\\*Warnings\\*"      :side 'bottom :size 0.25 :select t :quit t)
+  (set-popup-rule! "^\\*Backtrace\\*"     :side 'bottom :size 0.35 :select t :quit nil))
+
 (defun mp/save-without-format ()
   "Save current buffer without running format-on-save hooks."
   (interactive)
@@ -366,23 +372,52 @@
         (t
          "RW")))
 
+(after! flycheck
+  (defun mp/flycheck-counts ()
+    "Return (errors warnings infos) for current buffer."
+    (let ((errors 0)
+          (warnings 0)
+          (infos 0))
+      (dolist (err flycheck-current-errors)
+        (pcase (flycheck-error-level err)
+          ('error (cl-incf errors))
+          ('warning (cl-incf warnings))
+          ('info (cl-incf infos))))
+      (list errors warnings infos)))
+
+  (defun mp/header-line-diagnostics ()
+    "Return a prominent diagnostics block for the header line."
+    (when (bound-and-true-p flycheck-mode)
+      (pcase-let ((`(,errors ,warnings ,infos) (mp/flycheck-counts)))
+        (cond
+         ((> errors 0)
+          (mp/header-line-block
+           (format "E:%d W:%d" errors warnings)
+           (mp/header-line-face "#ffffff" "#ff5370" 'bold)))
+         ((> warnings 0)
+          (mp/header-line-block
+           (format "W:%d" warnings)
+           (mp/header-line-face "#1f2430" "#ffcb6b" 'bold)))
+         ((> infos 0)
+          (mp/header-line-block
+           (format "I:%d" infos)
+           (mp/header-line-face "#ffffff" "#82aaff" 'bold))))))))
+
 (defun mp/header-line-format ()
   "Return a left-aligned custom header line for the current buffer."
   (let* ((background (mp/header-line-background))
          (buffer-foreground (mp/header-line-buffer-foreground))
-         (position-foreground (mp/header-line-position-foreground))
          (status-background "#ecbe7b")
          (status-foreground "#ffffff")
-         (status-face (mp/header-line-face
-                       status-foreground status-background 'bold))
-         (buffer-face (mp/header-line-face
-                       buffer-foreground background 'bold))
-         (major-face (mp/header-line-face
-                      buffer-foreground background 'normal)))
-    (list
-     (mp/header-line-block (mp/header-line-buffer-status) status-face)
-     (mp/header-line-block (mp/header-line-buffer-name) buffer-face)
-     (mp/header-line-block (mp/header-line-mode-name) major-face))))
+         (status-face (mp/header-line-face status-foreground status-background 'bold))
+         (buffer-face (mp/header-line-face buffer-foreground background 'bold))
+         (major-face (mp/header-line-face buffer-foreground background 'normal)))
+    (delq nil
+          (list
+           (mp/header-line-block (mp/header-line-buffer-status) status-face)
+           (mp/header-line-block (mp/header-line-buffer-name) buffer-face)
+           (mp/header-line-block (mp/header-line-mode-name) major-face)
+           (mp/header-line-diagnostics)))))
 
 (setq-default header-line-format '(:eval (mp/header-line-format)))
 
@@ -1299,7 +1334,6 @@
       "b" "buffers"
       "c" "code"
       "d" "agent"
-      "e" "easysession"
       "f" "files"
       "g" "git"
       "h" "help"
@@ -1312,6 +1346,14 @@
       "t" "toggle"
       "w" "windows"
       "x" "text")))
+
+(after! flycheck
+  (map! :leader
+        (:prefix ("e" . "errors")
+         :desc "List errors" "l" #'flycheck-list-errors
+         :desc "Next error" "n" #'flycheck-next-error
+         :desc "Previous error" "p" #'flycheck-previous-error
+         :desc "Verify checker" "v" #'flycheck-verify-setup)))
 
 (after! treemacs
   (setq treemacs-show-hidden-files t)
@@ -1539,22 +1581,6 @@
         minuet-request-timeout 10))
 
 (setq confirm-kill-emacs nil)
-
-;; (use-package! easysession
-;;   :demand t
-;;   :init
-;;   (map! :leader
-;;         (:prefix ("e" . "easysession")
-;;          :desc "Save" "s" #'easysession-save
-;;          :desc "Load" "l" #'easysession-switch-to
-;;          :desc "Rename" "r" #'easysession-rename
-;;          :desc "Unload" "d" #'easysession-unload
-;;          :desc "Delete" "k" #'easysession-delete))
-;;   :config
-;;   (setq easysession-save-interval (* 10 60))
-;;   (setq easysession-switch-to-save-session t)
-;;   (setq easysession-switch-to-exclude-current nil)
-;;   (easysession-setup))
 
 (use-package! evil-mc
   :after evil
