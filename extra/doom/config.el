@@ -386,8 +386,101 @@
 
 (setq-default header-line-format '(:eval (mp/header-line-format)))
 
-(defvar consult-source-projectile-file
-  `(:name "Projectile File"
+;;; consult-buffer with:
+;;; 1. current-workspace normal buffers
+;;; 2. current-workspace agent-shell buffers
+;;; 3. current-workspace vterm buffers
+;;; 4. current-project Projectile files
+;;; 5. hidden/project fallback sources
+
+(defun mp/workspace-buffers ()
+  "Return buffers belonging to current Doom workspace."
+  (if (fboundp '+workspace-buffer-list)
+      (+workspace-buffer-list)
+    (buffer-list)))
+
+(defun mp/current-workspace-buffer-p (buf)
+  "Return non-nil if BUF belongs to current Doom workspace."
+  (memq buf (mp/workspace-buffers)))
+
+(defun mp/vterm-buffer-p (buf)
+  "Return non-nil if BUF is a vterm buffer."
+  (with-current-buffer buf
+    (derived-mode-p 'vterm-mode)))
+
+(defun mp/agent-shell-buffer-p (buf)
+  "Return non-nil if BUF is an agent-shell/Codex agent buffer."
+  (let ((name (buffer-name buf)))
+    (or
+     (string-match-p "\\`Agent @ " name)
+     (string-match-p "\\`\\*agent-shell" name)
+     (with-current-buffer buf
+       (or
+        (derived-mode-p 'agent-shell-mode)
+        (derived-mode-p 'codex-mode))))))
+
+(defun mp/special-buffer-p (buf)
+  "Return non-nil if BUF is a special star buffer."
+  (string-prefix-p "*" (buffer-name buf)))
+
+(defvar mp/consult-source-buffer
+  `(:name "[B]uffer"
+    :narrow (?b . "Buffer")
+    :category buffer
+    :face consult-buffer
+    :history buffer-name-history
+    :state ,#'consult--buffer-state
+    :default t
+    :items ,(lambda ()
+              (consult--buffer-query
+               :sort 'visibility
+               :as #'buffer-name
+               :predicate
+               (lambda (buf)
+                 (and
+                  (mp/current-workspace-buffer-p buf)
+                  (not (mp/special-buffer-p buf))
+                  (not (mp/agent-shell-buffer-p buf))
+                  (not (mp/vterm-buffer-p buf))))))))
+
+(defvar mp/consult-source-agent-shell-buffer
+  `(:name "[A]gent Shell"
+    :narrow (?a . "Agent Shell")
+    :category buffer
+    :face consult-buffer
+    :history buffer-name-history
+    :state ,#'consult--buffer-state
+    :action ,#'consult--buffer-action
+    :items ,(lambda ()
+              (consult--buffer-query
+               :sort 'visibility
+               :as #'buffer-name
+               :predicate
+               (lambda (buf)
+                 (and
+                  (mp/current-workspace-buffer-p buf)
+                  (mp/agent-shell-buffer-p buf)))))))
+
+(defvar mp/consult-source-vterm-buffer
+  `(:name "[V]Term"
+    :narrow (?v . "VTerm")
+    :category buffer
+    :face consult-buffer
+    :history buffer-name-history
+    :state ,#'consult--buffer-state
+    :action ,#'consult--buffer-action
+    :items ,(lambda ()
+              (consult--buffer-query
+               :sort 'visibility
+               :as #'buffer-name
+               :predicate
+               (lambda (buf)
+                 (and
+                  (mp/current-workspace-buffer-p buf)
+                  (mp/vterm-buffer-p buf)))))))
+
+(defvar mp/consult-source-projectile-file
+  `(:name "[P]rojectile File"
     :narrow (?p . "Projectile File")
     :category file
     :face consult-file
@@ -407,14 +500,16 @@
 
 (with-eval-after-load 'consult
   (setq consult-buffer-sources
-        '(consult-source-buffer
-          consult-source-projectile-file
+        '(mp/consult-source-buffer
+          mp/consult-source-agent-shell-buffer
+          mp/consult-source-vterm-buffer
+          mp/consult-source-projectile-file
           consult-source-hidden-buffer
           consult-source-project-buffer-hidden
           consult-source-project-recent-file-hidden)))
 
 (map! :leader
-     "SPC" #'consult-buffer)
+      "SPC" #'consult-buffer)
 
 (use-package! vertico-posframe
   :after vertico
@@ -1291,57 +1386,157 @@
         magit-diff-paint-whitespace-lines 'both
         magit-diff-highlight-trailing t))
 
-(use-package! eldoc-box
-  :after lsp-mode
-  :hook (lsp-managed-mode . eldoc-box-hover-at-point-mode)
+(use-package! clutch
+  :defer t
   :config
-  (setq eldoc-box-clear-with-C-g t
-        eldoc-box-only-multi-line t
-        eldoc-box-max-pixel-width 720
-        eldoc-box-max-pixel-height 360
-        eldoc-box-offset '(16 12 16)))
+  (setq clutch-connect-timeout-seconds 10
+        clutch-read-idle-timeout-seconds 30
+        clutch-query-timeout-seconds 20
+        clutch-jdbc-rpc-timeout-seconds 15))
 
-(after! lsp-mode
-  (setq lsp-idle-delay 0.1
-        lsp-enable-symbol-highlighting t
-        lsp-headerline-breadcrumb-enable nil
-        lsp-modeline-diagnostics-enable t
-        lsp-diagnostics-provider :flycheck
-        lsp-auto-guess-root t
-        lsp-keep-workspace-alive nil
-        lsp-restart 'interactive
-        lsp-file-watch-threshold 2500
-        lsp-session-file (expand-file-name ".local/etc/lsp-session-v1" doom-user-dir)
-        lsp-completion-provider :none))  ; corfu handles completion via capf
-(add-hook 'typescript-mode-hook #'lsp!)
-(add-hook 'typescript-tsx-mode-hook #'lsp!)
-(add-hook 'js-mode-hook #'lsp!)
-(add-hook 'js2-mode-hook #'lsp!)
-(add-hook 'web-mode-hook #'lsp!)
-(add-hook 'svelte-mode-hook #'lsp!)
-(add-hook 'python-mode-hook #'lsp!)
-(add-hook 'go-mode-hook #'lsp!)
+(require 'json)
+(require 'subr-x)
 
-(after! lsp-tailwindcss
-  (setq lsp-tailwindcss-add-on-mode t
-        lsp-tailwindcss-server-path
-          (executable-find "tailwindcss-language-server")))
+(defvar mp/clutch-connections-file
+  (expand-file-name "connections.json" doom-user-dir))
 
-(after! lsp-ui
-  (setq lsp-ui-doc-enable nil
-        lsp-ui-sideline-enable t
-        lsp-ui-sideline-show-diagnostics t
-        lsp-ui-sideline-show-code-actions t
-        lsp-ui-peek-enable t
-        lsp-ui-peek-always-show t)
+(defun mp/clutch--json-key-to-keyword (key)
+  (intern (concat ":" key)))
 
-  (map! :n "gd" #'lsp-ui-peek-find-definitions
-        :n "gr" #'lsp-ui-peek-find-references
-        :n "gI" #'lsp-ui-peek-find-implementation))
+(defun mp/clutch--json-object-to-plist (obj)
+  (let (plist)
+    (dolist (pair obj (nreverse plist))
+      (let ((key (car pair))
+            (value (cdr pair)))
+        (setq plist
+              (cons value
+                    (cons (mp/clutch--json-key-to-keyword key)
+                          plist)))))))
 
-(after! flycheck
-  (setq flycheck-idle-change-delay 0.2
-        flycheck-display-errors-delay 0.2))
+(defun mp/clutch--uri-to-plist (uri)
+  (cond
+   ;; PostgreSQL:
+   ;; postgresql://user:pass@host:5432/database
+   ((string-match
+     "\\`\\(postgresql\\|postgres\\)://\\(?:\\([^:/@]+\\)\\(?::\\([^@/]*\\)\\)?@\\)?\\([^:/]+\\)\\(?::\\([0-9]+\\)\\)?/\\(.+\\)\\'"
+     uri)
+    (let ((user (match-string 2 uri))
+          (password (match-string 3 uri))
+          (host (match-string 4 uri))
+          (port (match-string 5 uri))
+          (database (match-string 6 uri)))
+      (append
+       (list :backend 'pg
+             :host host
+             :database (url-unhex-string database))
+       (when port
+         (list :port (string-to-number port)))
+       (when user
+         (list :user (url-unhex-string user)))
+       (when password
+         (list :password (url-unhex-string password))))))
+
+   ;; MySQL:
+   ;; mysql://user:pass@host:3306/database
+   ((string-match
+     "\\`mysql://\\(?:\\([^:/@]+\\)\\(?::\\([^@/]*\\)\\)?@\\)?\\([^:/]+\\)\\(?::\\([0-9]+\\)\\)?/\\(.+\\)\\'"
+     uri)
+    (let ((user (match-string 1 uri))
+          (password (match-string 2 uri))
+          (host (match-string 3 uri))
+          (port (match-string 4 uri))
+          (database (match-string 5 uri)))
+      (append
+       (list :backend 'mysql
+             :host host
+             :database (url-unhex-string database))
+       (when port
+         (list :port (string-to-number port)))
+       (when user
+         (list :user (url-unhex-string user)))
+       (when password
+         (list :password (url-unhex-string password))))))
+
+   ;; SQLite:
+   ;; sqlite:///home/mahdi/sqlite.db
+   ((string-match "\\`sqlite://\\(.+\\)\\'" uri)
+    (list :backend 'sqlite
+          :database (url-unhex-string (match-string 1 uri))))
+
+   (t
+    (user-error "Unsupported connection URI: %s" uri))))
+
+(defun mp/clutch--normalize-backend (plist)
+  (let ((backend (plist-get plist :backend)))
+    (plist-put plist :backend
+               (cond
+                ((symbolp backend) backend)
+                ((string= backend "postgres") 'pg)
+                ((string= backend "postgresql") 'pg)
+                ((string= backend "pg") 'pg)
+                ((string= backend "mysql") 'mysql)
+                ((string= backend "sqlite") 'sqlite)
+                (t (intern backend))))))
+
+(defun mp/clutch--normalize-connection (value)
+  (cond
+   ((stringp value)
+    (mp/clutch--uri-to-plist value))
+   ((listp value)
+    (mp/clutch--normalize-backend
+     (mp/clutch--json-object-to-plist value)))
+   (t
+    (user-error "Invalid connection value: %S" value))))
+
+(defun mp/clutch-load-connections ()
+  (when (file-exists-p mp/clutch-connections-file)
+    (let ((json-object-type 'alist)
+          (json-array-type 'list)
+          (json-key-type 'string))
+      (mapcar
+       (lambda (entry)
+         (cons (car entry)
+               (mp/clutch--normalize-connection (cdr entry))))
+       (json-read-file mp/clutch-connections-file)))))
+
+(defun mp/clutch-apply-connections ()
+  (interactive)
+  (setq clutch-connection-alist
+        (mp/clutch-load-connections))
+  (message "Loaded %d Clutch connections from %s"
+           (length clutch-connection-alist)
+           mp/clutch-connections-file))
+
+(with-eval-after-load 'clutch
+  (mp/clutch-apply-connections))
+
+(map! :leader
+      :desc "Clutch query console"
+      "o s" #'clutch-query-console)
+
+(use-package! agent-shell-notifications
+  :hook (agent-shell-mode . agent-shell-notifications-mode))
+
+(use-package! minuet
+  :commands (minuet-show-suggestion
+             minuet-configure-provider
+             minuet-previous-suggestion
+             minuet-next-suggestion
+             minuet-accept-suggestion
+             minuet-dismiss-suggestion
+             minuet-accept-suggestion-line)
+  :init
+  (map! :leader
+        (:prefix ("d" . "agent")
+         :desc "Show Minuet suggestion" "s" #'minuet-show-suggestion
+         :desc "Configure Minuet provider" "m" #'minuet-configure-provider))
+  :config
+  (setq minuet-provider 'codestral)
+  (plist-put minuet-codestral-options :api-key "CODESTRAL_API_KEY")
+  (minuet-set-optional-options minuet-codestral-options :stop ("\n\n"))
+  (minuet-set-optional-options minuet-codestral-options :max_tokens 1024)
+  (setq minuet-show-error-message-on-minibuffer t
+        minuet-request-timeout 10))
 
 (setq confirm-kill-emacs nil)
 
@@ -1562,7 +1757,3 @@
         ("p" "Projects"
          ((tags "project"
                 ((org-agenda-overriding-header "Projects")))))))
-
-(defun mp/run-project-elvou ()
-  (interactive)
-  (projectile-switch-project-by-name "elvou-backend"))
