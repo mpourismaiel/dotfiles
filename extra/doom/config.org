@@ -1,22 +1,225 @@
 #+title: Doom Emacs Configuration
 #+author: Mahdi Pourismaiel
 #+startup: overview
-#+options: toc:3 num:nil
-#+TOC: headlines 3
-#+PROPERTY: header-args:emacs-lisp :tangle config.el
+#+options: toc:5 num:nil
+#+TOC: headlines 5
 
-This file is the literate version of the Doom Emacs configuration in this directory.
-All Emacs Lisp blocks in this document tangle to =config.el= in the same folder.
+* Doom
+** Init
+:PROPERTIES:
+:header-args:emacs-lisp: :tangle init.el
+:END:
 
-* Overview
-This configuration focuses on a few clear goals:
+*** init.el
+#+begin_src emacs-lisp
+;;; init.el -*- lexical-binding: t; -*-
 
-- Keep the editing experience comfortable and readable.
-- Make project navigation and dashboard workflows faster.
-- Prevent accidental Python and Pipenv behavior inside monorepos.
-- Add a small set of practical keybindings without turning the setup into a grab bag.
+;; This file controls what Doom modules are enabled and what order they load
+;; in. Remember to run 'doom sync' after modifying it!
 
-Core Identity
+;; NOTE: Press 'SPC h d h' (or 'C-h d h' for non-vim users) to access Doom's
+;;   documentation. There you'll find a link to Doom's Module Index where all of
+;;   our modules are listed, including what flags they support.
+
+;; NOTE: Move your cursor over a module's name (or its flags) and press 'K' (or
+;;   'C-c c k' for non-vim users) to view its documentation. This works on flags
+;;   as well (those symbols that start with a plus).
+;;
+;;   Alternatively, press 'gd' (or 'C-c c d') on a module to browse its
+;;   directory (for easy access to its source code).
+
+(doom! :input
+       ;;bidi              ; (tfel ot) thgir etirw uoy gnipleh
+       ;;chinese
+       ;;japanese
+       ;;layout            ; auie,ctsrnm is the superior home row
+
+       :completion
+       ;;company           ; the ultimate code completion backend
+       (corfu +orderless)  ; complete with cap(f), cape and a flying feather!
+       ;;helm              ; the *other* search engine for love and life
+       ;;ido               ; the other *other* search engine...
+       ;;ivy               ; a search engine for love and life
+       vertico            ; the search engine of the future
+
+       :ui
+       ;;deft              ; notational velocity for Emacs
+       doom              ; what makes DOOM look the way it does
+       dashboard         ; a nifty splash screen for Emacs
+       ;;doom-quit         ; DOOM quit-message prompts when you quit Emacs
+       (emoji +unicode)  ; 🙂
+       hl-todo           ; highlight TODO/FIXME/NOTE/DEPRECATED/HACK/REVIEW
+       indent-guides     ; highlighted indent columns
+       ligatures         ; ligatures and symbols to make your code pretty again
+       ;;minimap           ; show a map of the code on the side
+       modeline          ; snazzy, Atom-inspired modeline, plus API
+       ;;nav-flash         ; blink cursor line after big motions
+       ;;neotree           ; a project drawer, like NERDTree for vim
+       ophints           ; highlight the region an operation acts on
+       (popup +defaults) ; tame sudden yet inevitable temporary windows
+       ;;smooth-scroll     ; So smooth you won't believe it's not butter
+       ;;tabs              ; a tab bar for Emacs
+       treemacs          ; a project drawer, like neotree but cooler
+       ;;unicode           ; extended unicode support for various languages
+       (vc-gutter +pretty) ; vcs diff in the fringe
+       vi-tilde-fringe   ; fringe tildes to mark beyond EOB
+       ;;window-select     ; visually switch windows
+       workspaces        ; tab emulation, persistence & separate workspaces
+       ;;zen               ; distraction-free coding or writing
+
+       :editor
+       (evil +everywhere); come to the dark side, we have cookies
+       file-templates    ; auto-snippets for empty files
+       fold              ; (nigh) universal code folding
+       (format +onsave)  ; automated prettiness
+       ;;god               ; run Emacs commands without modifier keys
+       ;;lispy             ; vim for lisp, for people who don't like vim
+       multiple-cursors  ; editing in many places at once
+       ;;objed             ; text object editing for the innocent
+       ;;parinfer          ; turn lisp into python, sort of
+       ;;rotate-text       ; cycle region at point between text candidates
+       snippets          ; my elves. They type so I don't have to
+       (whitespace +guess +trim)  ; a butler for your whitespace
+       word-wrap         ; soft wrapping with language-aware indent
+
+       :emacs
+       dired             ; making dired pretty [functional]
+       electric          ; smarter, keyword-based electric-indent
+       ;;eww               ; the internet is gross
+       ;;ibuffer           ; interactive buffer management
+       tramp             ; remote files at your arthritic fingertips
+       undo              ; persistent, smarter undo for your inevitable mistakes
+       vc                ; version-control and Emacs, sitting in a tree
+
+       :term
+       eshell            ; the elisp shell that works everywhere
+       ;;shell             ; simple shell REPL for Emacs
+       ;;term              ; basic terminal emulator for Emacs
+       vterm             ; the best terminal emulation in Emacs
+
+       :checkers
+       syntax              ; tasing you for every semicolon you forget
+       ;;(spell +flyspell) ; tasing you for misspelling mispelling
+       ;;grammar           ; tasing grammar mistake every you make
+
+       :tools
+       ;;ansible
+       ;;biblio            ; Writes a PhD for you (citation needed)
+       ;;collab            ; buffers with friends
+       ;;debugger          ; stepping through code, to help you add bugs
+       direnv
+       docker
+       editorconfig      ; let someone else argue about tabs vs spaces
+       ;;ein               ; tame Jupyter notebooks with emacs
+       (eval +overlay)     ; run code, run (also, repls)
+       lookup              ; navigate your code and its documentation
+       ;;llm               ; when I said you needed friends, I didn't mean...
+       (lsp +peek)       ; M-x vscode (lsp-mode + lsp-ui-peek)
+       magit             ; a git porcelain for Emacs
+       ;;make              ; run make tasks from Emacs
+       ;;pass              ; password manager for nerds
+       ;;pdf               ; pdf enhancements
+       ;;terraform         ; infrastructure as code
+       ;;tmux              ; an API for interacting with tmux
+       tree-sitter       ; syntax and parsing, sitting in a tree...
+       ;;upload            ; map local to remote projects via ssh/ftp
+
+       :os
+       (:if (featurep :system 'macos) macos)  ; improve compatibility with macOS
+       ;;tty               ; improve the terminal Emacs experience
+
+       :lang
+       ;;ada               ; In strong typing we (blindly) trust
+       ;;(agda +local)     ; types of types of types of types...
+       ;;beancount         ; mind the GAAP
+       ;;(cc +lsp)         ; C > C++ == 1
+       ;;clojure           ; java with a lisp
+       ;;common-lisp       ; if you've seen one lisp, you've seen them all
+       ;;coq               ; proofs-as-programs
+       ;;crystal           ; ruby at the speed of c
+       ;;csharp            ; unity, .NET, and mono shenanigans
+       (data +lsp +tree-sitter)              ; config/data formats
+       ;;(dart +flutter)   ; paint ui and not much else
+       ;;dhall
+       ;;elixir            ; erlang done right
+       ;;elm               ; care for a cup of TEA?
+       (emacs-lisp +lsp +tree-sitter)        ; drown in parentheses
+       ;;erlang            ; an elegant language for a more civilized age
+       ;;ess               ; emacs speaks statistics
+       ;;factor
+       ;;faust             ; dsp, but you get to keep your soul
+       ;;fortran           ; in FORTRAN, GOD is REAL (unless declared INTEGER)
+       ;;fsharp            ; ML stands for Microsoft's Language
+       ;;fstar             ; (dependent) types and (monadic) effects and Z3
+       ;;gdscript          ; the language you waited for
+       (go +lsp +tree-sitter) ; the hipster dialect
+       (graphql +lsp)    ; Give queries a REST
+       ;;(haskell +lsp)    ; a language that's lazier than I am
+       ;;hy                ; readability of scheme w/ speed of python
+       ;;idris             ; a language you can depend on
+       (json +tree-sitter) ; At least it ain't XML
+       ;;janet             ; Fun fact: Janet is me!
+       ;;(java +lsp)       ; the poster child for carpal tunnel syndrome
+       (javascript +lsp +tree-sitter) ; all(hope(abandon(ye(who(enter(here))))))
+       ;;julia             ; a better, faster MATLAB
+       ;;kotlin            ; a better, slicker Java(Script)
+       ;;latex             ; writing papers in Emacs has never been so fun
+       ;;lean              ; for folks with too much to prove
+       ;;ledger            ; be audit you can be
+       (lua +lsp +tree-sitter)               ; one-based indices? one-based indices
+       markdown          ; writing docs for people to ignore
+       ;;nim               ; python + lisp at the speed of c
+       ;;nix               ; I hereby declare "nix geht mehr!"
+       ;;ocaml             ; an objective camel
+       ;;odin              ; C, minus its footguns
+       (org +pretty)     ; organize your plain life in plain text
+       (php +lsp +tree-sitter)               ; perl's insecure younger brother
+       ;;plantuml          ; diagrams for confusing people more
+       ;;graphviz          ; diagrams for confusing yourself even more
+       ;;purescript        ; javascript, but functional
+       (python +lsp +pyright +tree-sitter) ; beautiful is better than ugly
+       qt                ; the 'cutest' gui framework ever
+       ;;racket            ; a DSL for DSLs
+       ;;raku              ; the artist formerly known as perl6
+       rest              ; Emacs as a REST client
+       ;;rst               ; ReST in peace
+       ;;(ruby +rails)     ; 1.step {|i| p "Ruby is #{i.even? ? 'love' : 'life'}"}
+       ;;(rust +lsp)       ; Fe2O3.unwrap().unwrap().unwrap().unwrap()
+       ;;scala             ; java, but good
+       ;;(scheme +guile)   ; a fully conniving family of lisps
+       (sh +tree-sitter) ; she sells {ba,z,fi}sh shells on the C xor
+       ;;sml
+       ;;solidity          ; do you need a blockchain? No.
+       ;;swift             ; who asked for emoji variables?
+       ;;terra             ; Earth and Moon in alignment for performance.
+       (web +lsp +tree-sitter)               ; the tubes
+       (yaml +tree-sitter) ; JSON, but readable
+       ;;zig               ; C, but simpler
+
+       :email
+       ;;(mu4e +org +gmail)
+       ;;notmuch
+       ;;(wanderlust +gmail)
+
+       :app
+       ;;calendar
+       ;;emms
+       ;;everywhere        ; *leave* Emacs!? You must be joking
+       ;;irc               ; how neckbeards socialize
+       ;;(rss +org)        ; emacs as an RSS reader
+
+       :config
+       literate
+       (default +bindings +smartparens))
+#+end_src
+
+** Config
+:PROPERTIES:
+:header-args:emacs-lisp: :tangle config.el
+:END:
+
+*** Overview
+**** Core Identity
 Basic user identity and early package requirements that other sections rely on.
 
 #+begin_src emacs-lisp
@@ -29,7 +232,7 @@ Basic user identity and early package requirements that other sections rely on.
       user-mail-address "mpourismaiel@gmail.com")
 #+end_src
 
-** NVM Path
+**** NVM Path
 nvm is sourced in =.bashrc= which Emacs never reads. Add the active nvm node
 bin to =exec-path= and =PATH= early so =executable-find= resolves node tools
 like =tailwindcss-language-server= correctly.
@@ -57,10 +260,10 @@ like =tailwindcss-language-server= correctly.
 (mp/nvm-add-to-path)
 #+end_src
 
-* Appearance
+*** Appearance
 Visual defaults for theme, fonts, line numbers, and general editor spacing.
 
-** Theme And Fonts
+**** Theme And Fonts
 #+begin_src emacs-lisp
 (setq doom-theme 'doom-one)
 (setq doom-font (font-spec :family "CaskaydiaCove Nerd Font Mono" :size 16))
@@ -85,7 +288,7 @@ Visual defaults for theme, fonts, line numbers, and general editor spacing.
     '(font-lock-function-name-face :foreground "#82aaff" :weight bold)))
 #+end_src
 
-** Comfortable Editing Spacing
+**** Comfortable Editing Spacing
 This adds a small amount of extra vertical space in buffers intended for writing or editing code and config.
 
 #+begin_src emacs-lisp
@@ -101,14 +304,14 @@ This adds a small amount of extra vertical space in buffers intended for writing
 (add-hook 'conf-mode-hook #'mp/apply-editor-line-spacing-h)
 #+end_src
 
-** Line Numbers
+**** Line Numbers
 #+begin_src emacs-lisp
 (setq display-line-numbers-type t)
 #+end_src
 
-* Configuration
-** Editor Experience
-*** Scrolling
+*** Configuration
+**** Editor Experience
+***** Scrolling
 #+begin_src emacs-lisp
 (setq scroll-preserve-screen-position t
       scroll-conservatively 101
@@ -121,7 +324,7 @@ This adds a small amount of extra vertical space in buffers intended for writing
   (setq evil-want-C-u-scroll t))
 #+end_src
 
-*** Project management
+***** Project management
 #+begin_src emacs-lisp
 (defvar mp/project-bundles nil
   "Private project bundles loaded from private.el.")
@@ -209,7 +412,7 @@ This adds a small amount of extra vertical space in buffers intended for writing
       "p p" #'mp/project-menu)
 #+end_src
 
-*** Splits
+***** Splits
 Use Doom Dashboard as buffer for the new split.
 Also focus the new split immediately.
 #+begin_src emacs-lisp
@@ -251,7 +454,7 @@ Also focus the new split immediately.
        :desc "Split below (fresh)" "s" #'mp/split-window-below-fresh))
 #+end_src
 
-*** Popups
+***** Popups
 #+begin_src emacs-lisp
 (after! popup
   (set-popup-rule! "^\\*Flycheck errors" :side 'bottom :size 0.25 :select t :quit t)
@@ -259,7 +462,7 @@ Also focus the new split immediately.
   (set-popup-rule! "^\\*Warnings\\*"      :side 'bottom :size 0.25 :select t :quit t)
   (set-popup-rule! "^\\*Backtrace\\*"     :side 'bottom :size 0.35 :select t :quit nil))
 #+end_src
-** Formatting
+**** Formatting
 #+begin_src emacs-lisp
 (defun mp/save-without-format ()
   "Save current buffer without running format-on-save hooks."
@@ -287,7 +490,7 @@ Also focus the new split immediately.
     +format-with 'prettier))
 #+end_src
 
-*** Special formatting
+***** Special formatting
 To disable formatting create .dir-locals.el
 
 #+begin_src emacs-lisp
@@ -301,7 +504,7 @@ To change formatter to Ruff for python files in a certain project use this
 ;;  (python-ts-mode . ((+format-with . ("ruff" "format" "-")))))
 #+end_src
 
-** Completion Styles
+**** Completion Styles
 I really have to organize
 
 #+begin_src emacs-lisp
@@ -310,7 +513,7 @@ I really have to organize
         completion-category-defaults nil))
 #+end_src
 
-** Corfu
+**** Corfu
 Enable automatic popup with short delay and single-character prefix so completion feels instant, like VSCode IntelliSense.
 
 #+begin_src emacs-lisp
@@ -322,7 +525,7 @@ Enable automatic popup with short delay and single-character prefix so completio
         corfu-preselect 'prompt))
 #+end_src
 
-** Mode Line
+**** Mode Line
 #+begin_src emacs-lisp
 (use-package doom-modeline
   :ensure t
@@ -342,7 +545,7 @@ Enable automatic popup with short delay and single-character prefix so completio
   (doom-modeline-indent-info t))
 #+end_src
 
-** Header Line
+**** Header Line
 #+begin_src emacs-lisp
 (require 'subr-x)
 
@@ -508,7 +711,7 @@ Enable automatic popup with short delay and single-character prefix so completio
 (setq-default header-line-format '(:eval (mp/header-line-format)))
 #+end_src
 
-** Consult
+**** Consult
 Use consult for `SPC SPC` and be done with `SPC b b`.
 
 #+begin_src emacs-lisp
@@ -638,9 +841,9 @@ Use consult for `SPC SPC` and be done with `SPC b b`.
       "SPC" #'consult-buffer)
 #+end_src
 
-** Minibuffer
+**** Minibuffer
 
-*** Vertico posframe
+***** Vertico posframe
 #+begin_src emacs-lisp
 (use-package! vertico-posframe
   :after vertico
@@ -665,7 +868,7 @@ Use consult for `SPC SPC` and be done with `SPC b b`.
   (vertico-posframe-mode 1))
 #+end_src
 
-*** dimmer
+***** dimmer
 #+begin_src emacs-lisp
 (use-package! dimmer
   :config
@@ -673,7 +876,7 @@ Use consult for `SPC SPC` and be done with `SPC b b`.
         dimmer-use-colorspace :rgb
         dimmer-watch-frame-focus-events nil
         dimmer-adjustment-mode :foreground
-        dimmer-exclusion-regexp-list
+        dimmer-buffer-exclusion-regexps
         '("^ \\*Minibuf"
           "^\\*Echo Area"
           "^\\*which-key"
@@ -696,7 +899,7 @@ Use consult for `SPC SPC` and be done with `SPC b b`.
   (dimmer-mode 1))
 #+end_src
 
-** Visuals
+**** Visuals
 #+begin_src emacs-lisp
 (use-package! spacious-padding
   :custom
@@ -710,8 +913,8 @@ Use consult for `SPC SPC` and be done with `SPC b b`.
 
   (spacious-padding-mode 1))
 #+end_src
-* Org Defaults
-** Org defaults
+*** Org Defaults
+**** Org defaults
 Core path and file behavior settings.
 
 #+begin_src emacs-lisp
@@ -724,7 +927,7 @@ Core path and file behavior settings.
 (setq auto-save-default t)
 #+end_src
 
-** Auto-Tangle On Save
+**** Auto-Tangle On Save
 When this exact file is saved, Emacs immediately regenerates =config.el=. That keeps the literate source and the generated file synchronized without manual copying.
 
 #+begin_src emacs-lisp
@@ -750,7 +953,7 @@ When this exact file is saved, Emacs immediately regenerates =config.el=. That k
   (add-hook 'org-mode-hook #'mp/enable-doom-config-auto-tangle-h))
 #+end_src
 
-** Org mode specifics
+**** Org mode specifics
 
 #+begin_src  emacs-lisp
 (add-hook 'org-mode-hook 'visual-line-mode)
@@ -769,8 +972,7 @@ When this exact file is saved, Emacs immediately regenerates =config.el=. That k
 
   (setq org-auto-align-tags nil
         org-tags-column 0
-        org-catch-invisible-edits 'show-and-error
-        org-special-ctrl-a/e t
+        org-fold-catch-invisible-edits 'show-and-error        org-special-ctrl-a/e t
         org-insert-heading-respect-content t
         org-hide-emphasis-markers t
         org-pretty-entities t
@@ -789,7 +991,7 @@ When this exact file is saved, Emacs immediately regenerates =config.el=. That k
   (global-org-modern-mode))
 #+end_src
 
-* Help And Feedback
+*** Help And Feedback
 Make transient help UI appear quickly and remain readable.
 
 #+begin_src emacs-lisp
@@ -799,10 +1001,10 @@ Make transient help UI appear quickly and remain readable.
 (setq eldoc-echo-area-use-multiline-p 3)
 #+end_src
 
-* Dashboard
+*** Dashboard
 The stock Doom dashboard is replaced with a project-aware workspace card that surfaces common actions, recent files, and lightweight git status.
 
-** Layout And Faces
+**** Layout And Faces
 #+begin_src emacs-lisp
 (when (modulep! :ui dashboard)
   (require 'cl-lib)
@@ -887,7 +1089,7 @@ The stock Doom dashboard is replaced with a project-aware workspace card that su
   (add-hook '+dashboard-mode-hook #'mp/dashboard-buffer-setup-h)
 #+end_src
 
-** Project Helpers
+**** Project Helpers
 #+begin_src emacs-lisp
   (defun mp/dashboard-project-root ()
     "Return the current dashboard project root, if any."
@@ -934,7 +1136,7 @@ The stock Doom dashboard is replaced with a project-aware workspace card that su
       (cl-subseq files 0 (min (or limit 5) (length files)))))
 #+end_src
 
-** Rendering Helpers
+**** Rendering Helpers
 #+begin_src emacs-lisp
   (defun mp/dashboard-insert-block-title (title &optional subtitle)
     "Insert a centered TITLE and optional SUBTITLE."
@@ -1018,7 +1220,7 @@ The stock Doom dashboard is replaced with a project-aware workspace card that su
      (propertize text 'face (or face 'mp/dashboard-meta-face))))
 #+end_src
 
-** Dashboard Widgets
+**** Dashboard Widgets
 #+begin_src emacs-lisp
   (defun mp/dashboard-widget-recent-files ()
     "Show the five most recent files for the active project."
@@ -1182,7 +1384,7 @@ The stock Doom dashboard is replaced with a project-aware workspace card that su
           +dashboard-widget-footer)))
 #+end_src
 
-* Whitespace And Indentation
+*** Whitespace And Indentation
 Make tabs and spaces visible in code-like buffers so indentation issues are easy to spot.
 
 #+begin_src emacs-lisp
@@ -1199,10 +1401,10 @@ Make tabs and spaces visible in code-like buffers so indentation issues are easy
 (add-hook 'conf-mode-hook #'mp/show-indent-style-h)
 #+end_src
 
-* Python And Pipenv Safeguards
+*** Python And Pipenv Safeguards
 This section exists to stop Pipenv from being inferred, created, or invoked in the wrong directory, especially inside monorepos where a repository root is not the correct Python project root.
 
-** Project Detection And Process Guards
+**** Project Detection And Process Guards
 #+begin_src emacs-lisp
 ;; Never let Doom infer or create a Pipenv project at a monorepo root.
 ;; Only an already-existing ancestor Pipfile counts as a valid Pipenv root.
@@ -1256,7 +1458,7 @@ This section exists to stop Pipenv from being inferred, created, or invoked in t
 (advice-add 'make-process :around #'mp/make-process-guard-a)
 #+end_src
 
-** Doom Python Integration Overrides
+**** Doom Python Integration Overrides
 #+begin_src emacs-lisp
 (after! python
   ;; Stop Doom/python-mode from auto-enabling pipenv.
@@ -1295,7 +1497,7 @@ This section exists to stop Pipenv from being inferred, created, or invoked in t
   (setq doom-modeline-env-enable-python nil))
 #+end_src
 
-* Project Root Behavior
+*** Project Root Behavior
 Prefer language-specific project markers over the repository root when working in monorepos.
 
 #+begin_src emacs-lisp
@@ -1326,10 +1528,10 @@ Prefer language-specific project markers over the repository root when working i
                   (mp/project-root-from-markers dir '(".git"))))))
 #+end_src
 
-* Keybindings
+*** Keybindings
 This section documents the custom bindings defined in this configuration.
 
-** Reference Table
+**** Reference Table
 | Context     | Keys       | Command                         | Purpose                                                                     |
 |-------------+------------+---------------------------------+-----------------------------------------------------------------------------|
 | Global      | =C-`=      | =mp/vterm-toggle=               | Toggle the vterm popup from the current project root.                       |
@@ -1356,8 +1558,8 @@ This section documents the custom bindings defined in this configuration.
 | Evil states | =C-S-e=    | =treemacs-find-file=            | Reveal the current file in Treemacs.                                        |
 | Evil states | =C-/=      | =comment-line=                  | Keep commenting available consistently across Evil states.                  |
 
-** General Shortcuts
-*** With Leader
+**** General Shortcuts
+***** With Leader
 #+begin_src emacs-lisp
 (map! :leader
       :desc "Run nearest test" "t t" #'+eval/test
@@ -1366,18 +1568,18 @@ This section documents the custom bindings defined in this configuration.
        :desc "Agent shell" "a" #'agent-shell))
 #+end_src
 
-*** Leaderless
+***** Leaderless
 #+begin_src emacs-lisp
 (map! :n "gr" #'xref-find-references)
 #+end_src
 
-*** Mouse
+***** Mouse
 #+begin_src emacs-lisp
 (global-set-key [mouse-8] #'xref-go-back)
 (global-set-key [mouse-9] #'xref-go-forward)
 #+end_src
 
-** Global Shortcuts
+**** Global Shortcuts
 #+begin_src emacs-lisp
 (defun mp/project-root-default-directory (&optional dir)
   "Return the preferred project root for DIR, or `default-directory'."
@@ -1473,7 +1675,7 @@ This section documents the custom bindings defined in this configuration.
       :g "M-<down>" #'mp/move-lines-down)
 #+end_src
 
-** Evil State Overrides
+**** Evil State Overrides
 #+begin_src emacs-lisp
 (after! evil
   (dolist (state-map (list evil-motion-state-map
@@ -1518,7 +1720,7 @@ This section documents the custom bindings defined in this configuration.
         "D" #'+workspace/close-window-or-workspace))
 #+end_src
 
-** Directory Navigation In Completion
+**** Directory Navigation In Completion
 #+begin_src emacs-lisp
 (use-package! consult-dir
   :defer t
@@ -1531,7 +1733,7 @@ This section documents the custom bindings defined in this configuration.
         "C-x C-j" #'consult-dir-jump-file))
 #+end_src
 
-** Which-Key Group Labels
+**** Which-Key Group Labels
 Some Doom prefix maps are still present but may show up as generic =+prefix= entries in which-key. These replacements restore readable group names for the menus behind =SPC= and local leader prefixes.
 
 #+begin_src emacs-lisp
@@ -1557,7 +1759,7 @@ Some Doom prefix maps are still present but may show up as generic =+prefix= ent
       "x" "text")))
 #+end_src
 
-** Error related keys
+**** Error related keys
 #+begin_src emacs-lisp
 (after! flycheck
   (map! :leader
@@ -1567,7 +1769,7 @@ Some Doom prefix maps are still present but may show up as generic =+prefix= ent
          :desc "Previous error" "p" #'flycheck-previous-error
          :desc "Verify checker" "v" #'flycheck-verify-setup)))
 #+end_src
-* Treemacs
+*** Treemacs
 Treemacs is configured to show hidden files and to preserve git-state visibility while dimming dotfiles.
 
 #+begin_src emacs-lisp
@@ -1635,7 +1837,7 @@ Treemacs is configured to show hidden files and to preserve git-state visibility
   (add-hook 'treemacs-post-refresh-hook #'mp/treemacs-apply-dotfile-face-h))
 #+end_src
 
-* Magit
+*** Magit
 Magit can refine diff hunks to show the exact changed characters inside a line instead of only marking the entire line as added or removed. That also makes indentation-only edits much easier to see.
 
 #+begin_src emacs-lisp
@@ -1650,9 +1852,9 @@ Magit can refine diff hunks to show the exact changed characters inside a line i
         magit-diff-highlight-trailing t))
 #+end_src
 
-* Databases
-** Clutch
-*** Configuration
+*** Databases
+**** Clutch
+***** Configuration
 #+begin_src emacs-lisp
 (use-package! clutch
   :defer t
@@ -1663,7 +1865,7 @@ Magit can refine diff hunks to show the exact changed characters inside a line i
         clutch-jdbc-rpc-timeout-seconds 15))
 #+end_src
 
-*** Connections JSON
+***** Connections JSON
 #+begin_src emacs-lisp
 (require 'json)
 (require 'subr-x)
@@ -1782,18 +1984,18 @@ Magit can refine diff hunks to show the exact changed characters inside a line i
   (mp/clutch-apply-connections))
 #+end_src
 
-*** Keybindings
+***** Keybindings
 #+begin_src emacs-lisp
 (map! :leader
       :desc "Clutch query console"
       "o s" #'clutch-query-console)
 #+end_src
 
-* AI Agents and Completion
-** Agent Shell
+*** AI Agents and Completion
+**** Agent Shell
 Agent shell is a core part of this setup, so related integrations live together here.
 
-*** Desktop Notifications
+***** Desktop Notifications
 Enable desktop notifications for agent-shell buffers so turns that need attention can surface even when the shell is out of focus.
 
 #+begin_src emacs-lisp
@@ -1801,7 +2003,7 @@ Enable desktop notifications for agent-shell buffers so turns that need attentio
   :hook (agent-shell-mode . agent-shell-notifications-mode))
 #+end_src
 
-** AI Suggestions
+**** AI Suggestions
 Minuet is installed as a Doom package and kept manual-only.  Use =SPC d s= to request a suggestion and =SPC d m= to configure the provider; the remaining keys apply while a Minuet suggestion is visible.
 
 #+begin_src emacs-lisp
@@ -1821,14 +2023,14 @@ Minuet is installed as a Doom package and kept manual-only.  Use =SPC d s= to re
   :config
   (setq minuet-provider 'codestral)
   (plist-put minuet-codestral-options :api-key "CODESTRAL_API_KEY")
-  (minuet-set-optional-options minuet-codestral-options :stop ("\n\n"))
+  (minuet-set-optional-options minuet-codestral-options :stop `("\n\n"))
   (minuet-set-optional-options minuet-codestral-options :max_tokens 1024)
   (setq minuet-show-error-message-on-minibuffer t
         minuet-request-timeout 10))
 #+end_src
 
-* Session Behavior
-** Emacs
+*** Session Behavior
+**** Emacs
 
 Quit confirmation is disabled for faster exits.
 
@@ -1836,8 +2038,8 @@ Quit confirmation is disabled for faster exits.
 (setq confirm-kill-emacs nil)
 #+end_src
 
-* Editing
-** Multi Cursor
+*** Editing
+**** Multi Cursor
 #+begin_src emacs-lisp
 (use-package! evil-mc
   :after evil
@@ -1862,9 +2064,9 @@ Quit confirmation is disabled for faster exits.
       :i  "C-d" #'evil-multiedit-toggle-marker-here)
 #+end_src
 
-** Find in project
-* Scripts
-** Project Scripts runner
+**** Find in project
+*** Scripts
+**** Project Scripts runner
 #+begin_src emacs-lisp
 (defvar my/project-running-scripts (make-hash-table :test 'equal))
 
@@ -1915,7 +2117,7 @@ Quit confirmation is disabled for faster exits.
       "p S" #'my/run-project-script)
 #+end_src
 
-* Org Mode
+*** Org Mode
 #+begin_src emacs-lisp
 ;;; org-basic.el --- sane Org defaults for Doom
 
@@ -2049,17 +2251,90 @@ Quit confirmation is disabled for faster exits.
          ((tags "project"
                 ((org-agenda-overriding-header "Projects")))))))
 #+end_src
-* Future Configuration
+*** Future Configuration
 Reserved sections for later additions so new config does not need to be bolted onto the end of the file.
 
-** Local Machine Or OS-Specific Settings
+**** Local Machine Or OS-Specific Settings
 Use this section for machine-specific behavior, platform-specific shell paths, or display quirks.
 
-** Language-Specific Overrides
+**** Language-Specific Overrides
 Use this section for per-language helpers that do not belong in the shared project-root or tooling sections.
 
-** Workflow Automation
+**** Workflow Automation
 Use this section for commands, macros, transient menus, and integrations that automate recurring tasks.
 
-** Temporary Experiments
+**** Temporary Experiments
 Use this section for short-lived experiments before they are promoted into a stable section above or removed.
+** Packages
+:PROPERTIES:
+:header-args:emacs-lisp: :tangle packages.el
+:END:
+
+*** Lexical binding
+#+begin_src emacs-lisp
+;;; packages.el -*- lexical-binding: t; -*-
+#+end_src
+
+*** General
+- https://github.com/gabesoft/evil-mc
+- https://github.com/minad/org-modern
+- https://github.com/tumashu/vertico-posframe
+- https://github.com/karthink/consult-dir
+
+#+begin_src emacs-lisp
+;; multi cursor
+(package! evil-mc)
+(package! org-modern)
+(package! vertico-posframe)
+(package! consult-dir)
+#+end_src
+
+*** AI
+- https://github.com/xenodium/acp.el
+- https://github.com/xenodium/agent-shell
+- https://github.com/zackattackz/agent-shell-notifications
+- https://github.com/milanglacier/minuet-ai.el
+
+#+begin_src emacs-lisp
+(package! acp)
+(package! agent-shell)
+(package! agent-shell-notifications
+  :recipe (:host github :repo "zackattackz/agent-shell-notifications"))
+(package! minuet)
+#+end_src
+
+*** Programming
+**** General
+- https://github.com/casouri/eldoc-box
+- https://github.com/pwalsh/pipenv.el
+
+#+begin_src emacs-lisp
+(package! eldoc-box)
+;; Keep `pipenv` disabled, but leave the declaration so Doom won't re-enable it
+;; if package state changes during future experiments.
+(package! pipenv :disable t)
+#+end_src
+
+*** Visuals
+- https://github.com/xenodium/shell-maker
+- https://github.com/rnkn/olivetti
+- https://github.com/protesilaos/spacious-padding
+- https://github.com/gonewest818/dimmer.el
+
+#+begin_src emacs-lisp
+(package! shell-maker)
+(package! olivetti)
+(package! spacious-padding)
+(package! dimmer)
+#+end_src
+
+*** Database
+- https://github.com/LuciusChen/clutch
+- https://github.com/emarsden/pg-el
+- https://github.com/LuciusChen/mysql.el
+
+#+begin_src emacs-lisp
+(package! clutch)
+(package! pg)
+(package! mysql)
+#+end_src
