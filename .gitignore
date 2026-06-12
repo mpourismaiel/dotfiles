@@ -20,4 +20,5 @@ node_modules
 *.css.map
 
 ags/config.json
-private.el
+extra/doom/private.el
+extra/doom/connections.json

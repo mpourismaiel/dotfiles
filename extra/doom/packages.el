@@ -71,3 +71,7 @@
 (package! vertico-posframe)
 (package! dimmer)
 (package! svg-tag-mode)
+
+(package! clutch)
+(package! pg)
+(package! mysql)
