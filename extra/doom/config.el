@@ -75,9 +75,17 @@
 (defvar mp/project-bundles nil
   "Private project bundles loaded from private.el.")
 
+(defvar mp/workspace-project-roots (make-hash-table :test 'equal)
+  "Map Doom workspace names to their intended project roots.")
+
 (let ((private-config "~/.config/doom/private.el"))
   (when (file-exists-p private-config)
     (load-file private-config)))
+
+(defun mp/current-workspace-project-root ()
+  "Return the project root explicitly assigned to the current workspace."
+  (when (fboundp '+workspace-current-name)
+    (gethash (+workspace-current-name) mp/workspace-project-roots)))
 
 (defun mp/open-project-root (project-dir)
   "Open PROJECT-DIR without Projectile's project-action prompt."
@@ -103,54 +111,39 @@
     (unless projects
       (user-error "Unknown bundle: %s" bundle-name))
     (dolist (project projects)
-      (+workspace-switch (car project) t)
-      (mp/open-project-root (cdr project)))))
-
-(defun mp/open-elvou-bundle ()
-  "Open Elvou backend/frontend/app projects."
-  (interactive)
-  (mp/open-project-bundle "elvou"))
+      (let* ((workspace (car project))
+             (root (file-name-as-directory (expand-file-name (cdr project)))))
+        (+workspace-switch workspace t)
+        (puthash workspace root mp/workspace-project-roots)
+        (mp/open-project-root root)))))
 
 (defun mp/project-menu ()
   "Project menu with colorized bundles plus Projectile projects."
   (interactive)
   (let* ((bundle-prefix "▶ Bundle: ")
-
          (bundle-candidates
           (mapcar
            (lambda (bundle)
              (let* ((name (car bundle))
                     (label (concat bundle-prefix name)))
-               (cons
-                (propertize label 'face '(:foreground "#a6e3a1" :weight bold))
-                label)))
+               (cons (propertize label 'face '(:foreground "#a6e3a1" :weight bold))
+                     label)))
            mp/project-bundles))
-
          (project-candidates
           (mapcar
            (lambda (project)
              (let* ((dir (directory-file-name project))
                     (name (file-name-nondirectory dir))
                     (parent (file-name-directory dir))
-                    (label
-                     (concat
-                      parent
-                      (propertize name 'face '(:foreground "#89b4fa" :weight bold)))))
+                    (label (concat parent
+                                   (propertize name 'face '(:foreground "#89b4fa" :weight bold)))))
                (cons label project)))
            (projectile-relevant-known-projects)))
-
          (candidates (append bundle-candidates project-candidates))
-         (choice
-          (completing-read
-           "Project: "
-           candidates
-           nil
-           t)))
-
+         (choice (completing-read "Project: " candidates nil t)))
     (let ((real-value (cdr (assoc choice candidates))))
       (if (string-prefix-p bundle-prefix real-value)
-          (mp/open-project-bundle
-           (string-remove-prefix bundle-prefix real-value))
+          (mp/open-project-bundle (string-remove-prefix bundle-prefix real-value))
         (projectile-switch-project-by-name real-value)))))
 
 (map! :leader
@@ -422,11 +415,22 @@
 (setq-default header-line-format '(:eval (mp/header-line-format)))
 
 ;;; consult-buffer with:
-;;; 1. current-workspace normal buffers
-;;; 2. current-workspace agent-shell buffers
-;;; 3. current-workspace vterm buffers
-;;; 4. current-project Projectile files
-;;; 5. hidden/project fallback sources
+;;; project workspace:
+;;;   1. current-workspace normal buffers
+;;;   2. current-workspace agent-shell buffers
+;;;   3. current-workspace vterm buffers
+;;;   4. current-project Projectile files
+;;; projectless workspace:
+;;;   1. all normal buffers
+;;;   2. all agent-shell buffers
+;;;   3. all vterm buffers
+;;;   4. known Projectile projects
+;;;   5. hidden buffers
+
+(defun mp/project-workspace-p ()
+  "Return non-nil when the current workspace has a Projectile project."
+  (and (bound-and-true-p projectile-mode)
+       (projectile-project-p)))
 
 (defun mp/workspace-buffers ()
   "Return buffers belonging to current Doom workspace."
@@ -446,19 +450,24 @@
 (defun mp/agent-shell-buffer-p (buf)
   "Return non-nil if BUF is an agent-shell/Codex agent buffer."
   (let ((name (buffer-name buf)))
-    (or
-     (string-match-p "\\`Agent @ " name)
-     (string-match-p "\\`\\*agent-shell" name)
-     (with-current-buffer buf
-       (or
-        (derived-mode-p 'agent-shell-mode)
-        (derived-mode-p 'codex-mode))))))
+    (or (string-match-p "\\`Agent @ " name)
+        (string-match-p "\\`\\*agent-shell" name)
+        (with-current-buffer buf
+          (or (derived-mode-p 'agent-shell-mode)
+              (derived-mode-p 'codex-mode))))))
 
 (defun mp/special-buffer-p (buf)
   "Return non-nil if BUF is a special star buffer."
   (string-prefix-p "*" (buffer-name buf)))
 
-(defvar mp/consult-source-buffer
+(defun mp/normal-buffer-p (buf)
+  "Return non-nil for ordinary user-facing buffers."
+  (and (buffer-live-p buf)
+       (not (mp/special-buffer-p buf))
+       (not (mp/agent-shell-buffer-p buf))
+       (not (mp/vterm-buffer-p buf))))
+
+(defvar mp/consult-source-workspace-buffer
   `(:name "[B]uffer"
     :narrow (?b . "Buffer")
     :category buffer
@@ -466,17 +475,29 @@
     :history buffer-name-history
     :state ,#'consult--buffer-state
     :default t
+    :enabled ,#'mp/project-workspace-p
     :items ,(lambda ()
               (consult--buffer-query
                :sort 'visibility
                :as #'buffer-name
-               :predicate
-               (lambda (buf)
-                 (and
-                  (mp/current-workspace-buffer-p buf)
-                  (not (mp/special-buffer-p buf))
-                  (not (mp/agent-shell-buffer-p buf))
-                  (not (mp/vterm-buffer-p buf))))))))
+               :predicate (lambda (buf)
+                            (and (mp/current-workspace-buffer-p buf)
+                                 (mp/normal-buffer-p buf)))))))
+
+(defvar mp/consult-source-all-buffer
+  `(:name "[B]uffer"
+    :narrow (?b . "Buffer")
+    :category buffer
+    :face consult-buffer
+    :history buffer-name-history
+    :state ,#'consult--buffer-state
+    :default t
+    :enabled ,(lambda () (not (mp/project-workspace-p)))
+    :items ,(lambda ()
+              (consult--buffer-query
+               :sort 'visibility
+               :as #'buffer-name
+               :predicate #'mp/normal-buffer-p))))
 
 (defvar mp/consult-source-agent-shell-buffer
   `(:name "[A]gent Shell"
@@ -490,11 +511,11 @@
               (consult--buffer-query
                :sort 'visibility
                :as #'buffer-name
-               :predicate
-               (lambda (buf)
-                 (and
-                  (mp/current-workspace-buffer-p buf)
-                  (mp/agent-shell-buffer-p buf)))))))
+               :predicate (lambda (buf)
+                            (and (if (mp/project-workspace-p)
+                                     (mp/current-workspace-buffer-p buf)
+                                   t)
+                                 (mp/agent-shell-buffer-p buf)))))))
 
 (defvar mp/consult-source-vterm-buffer
   `(:name "[V]Term"
@@ -508,24 +529,22 @@
               (consult--buffer-query
                :sort 'visibility
                :as #'buffer-name
-               :predicate
-               (lambda (buf)
-                 (and
-                  (mp/current-workspace-buffer-p buf)
-                  (mp/vterm-buffer-p buf)))))))
+               :predicate (lambda (buf)
+                            (and (if (mp/project-workspace-p)
+                                     (mp/current-workspace-buffer-p buf)
+                                   t)
+                                 (mp/vterm-buffer-p buf)))))))
 
 (defvar mp/consult-source-projectile-file
   `(:name "[P]rojectile File"
-    :narrow (?p . "Projectile File")
+    :narrow (?f . "Projectile File")
     :category file
     :face consult-file
     :history file-name-history
     :state ,#'consult--file-state
     :action ,#'consult--file-action
     :new ,#'consult--file-action
-    :enabled ,(lambda ()
-                (and (bound-and-true-p projectile-mode)
-                     (projectile-project-p)))
+    :enabled ,#'mp/project-workspace-p
     :items ,(lambda ()
               (let ((root (projectile-project-root)))
                 (mapcar
@@ -533,18 +552,43 @@
                    (cons file (expand-file-name file root)))
                  (projectile-project-files root))))))
 
+(defvar mp/projectile-project-history nil
+  "History for selecting Projectile projects through Consult.")
+
+(defvar mp/consult-source-projectile-project
+  `(:name "[P]roject"
+    :narrow (?p . "Project")
+    :category file
+    :face consult-file
+    :history mp/projectile-project-history
+    :action ,(lambda (project)
+               (projectile-switch-project-by-name project))
+    :enabled ,(lambda ()
+                (and (bound-and-true-p projectile-mode)
+                     (not (mp/project-workspace-p))))
+    :items ,(lambda ()
+              (mapcar
+               (lambda (project)
+                 (let* ((dir (directory-file-name project))
+                        (name (file-name-nondirectory dir))
+                        (parent (file-name-directory dir))
+                        (label (concat parent name)))
+                   (cons label project)))
+               (projectile-relevant-known-projects)))))
+
 (with-eval-after-load 'consult
   (setq consult-buffer-sources
-        '(mp/consult-source-buffer
+        '(mp/consult-source-workspace-buffer
+          mp/consult-source-all-buffer
           mp/consult-source-agent-shell-buffer
           mp/consult-source-vterm-buffer
           mp/consult-source-projectile-file
+          mp/consult-source-projectile-project
           consult-source-hidden-buffer
           consult-source-project-buffer-hidden
           consult-source-project-recent-file-hidden)))
 
-(map! :leader
-      "SPC" #'consult-buffer)
+(map! :leader "SPC" #'consult-buffer)
 
 (use-package! vertico-posframe
   :after vertico
@@ -1181,19 +1225,21 @@
 (global-set-key [mouse-9] #'xref-go-forward)
 
 (defun mp/project-root-default-directory (&optional dir)
-  "Return the preferred project root for DIR, or `default-directory'."
-  (let ((dir (file-name-as-directory
-              (expand-file-name (or dir default-directory)))))
-    (or (when (fboundp 'projectile-project-root)
-          (let ((default-directory dir))
-            (ignore-errors
-              (file-name-as-directory
-               (expand-file-name (projectile-project-root))))))
-        (when (fboundp 'doom-project-root)
-          (ignore-errors
-            (file-name-as-directory
-             (expand-file-name (doom-project-root dir)))))
-        dir)))
+  "Return the preferred project root for DIR, preferring explicit workspace roots."
+  (or (mp/current-workspace-project-root)
+      (let ((dir (file-name-as-directory
+                  (expand-file-name (or dir default-directory)))))
+        (or
+         (when (fboundp 'projectile-project-root)
+           (let ((default-directory dir))
+             (ignore-errors
+               (file-name-as-directory
+                (expand-file-name (projectile-project-root))))))
+         (when (fboundp 'doom-project-root)
+           (ignore-errors
+             (file-name-as-directory
+              (expand-file-name (doom-project-root dir)))))
+         dir))))
 
 (defun mp/vterm-toggle ()
   "Toggle the vterm popup from the current project root."
