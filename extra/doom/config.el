@@ -72,6 +72,12 @@
 (after! evil
   (setq evil-want-C-u-scroll t))
 
+(use-package! expand-region
+  :commands (er/expand-region er/contract-region)
+  :init
+  (map! :g "M-d" #'er/expand-region
+        :g "M-D" #'er/contract-region))
+
 (defvar mp/project-bundles nil
   "Private project bundles loaded from private.el.")
 
@@ -223,16 +229,26 @@
 ;; ((python-mode . ((+format-with . ("ruff" "format" "-"))))
 ;;  (python-ts-mode . ((+format-with . ("ruff" "format" "-")))))
 
-(after! vertico
-  (setq completion-styles '(flex orderless basic)
-        completion-category-defaults nil))
+(after! orderless
+  (setq completion-styles '(orderless basic)
+        completion-category-defaults nil
+        completion-category-overrides
+        '((file (styles orderless partial-completion))
+          (lsp-capf (styles orderless basic)))))
 
 (after! corfu
   (setq corfu-auto t
-        corfu-auto-delay 0.1
-        corfu-auto-prefix 1
         corfu-preview-current nil
-        corfu-preselect 'prompt))
+        corfu-preselect 'prompt
+        corfu-cycle t
+        corfu-on-exact-match nil))
+
+(after! corfu-auto
+  (setq corfu-auto-delay 0.12
+        corfu-auto-prefix 2))
+
+(after! corfu-popupinfo
+  (setq corfu-popupinfo-delay '(0.35 . 0.2)))
 
 (use-package doom-modeline
   :ensure t
@@ -252,6 +268,15 @@
   (doom-modeline-indent-info t))
 
 (require 'subr-x)
+(require 'seq)
+
+(use-package! breadcrumb
+  :defer t
+  :init
+  (setq breadcrumb-project-max-length 0.42
+        breadcrumb-imenu-max-length 0.36
+        breadcrumb-project-crumb-separator " / "
+        breadcrumb-imenu-crumb-separator " > "))
 
 (defvar mp/header-line-height 32
   "Target height of the custom header line, in pixels.")
@@ -365,6 +390,29 @@
         (t
          "RW")))
 
+(defun mp/header-line-nonempty-string-p (value)
+  "Return non-nil when VALUE is a non-empty string."
+  (and (stringp value)
+       (not (string-empty-p (string-trim (substring-no-properties value))))))
+
+(defun mp/header-line-breadcrumbs ()
+  "Return breadcrumb project and imenu context for the header line."
+  (when (fboundp 'breadcrumb-project-crumbs)
+    (let* ((project (ignore-errors (breadcrumb-project-crumbs)))
+           (imenu (ignore-errors (breadcrumb-imenu-crumbs)))
+           (crumbs (seq-filter #'mp/header-line-nonempty-string-p
+                               (list project imenu))))
+      (when crumbs
+        (let ((padding (propertize mp/header-line-horizontal-padding
+                                   'face 'header-line))
+              (separator (propertize "  >  "
+                                     'face (if (facep 'breadcrumb-face)
+                                               'breadcrumb-face
+                                             'shadow))))
+          (concat padding
+                  (string-join crumbs separator)
+                  padding))))))
+
 (after! flycheck
   (defun mp/flycheck-counts ()
     "Return (errors warnings infos) for current buffer."
@@ -400,6 +448,7 @@
   "Return a left-aligned custom header line for the current buffer."
   (let* ((background (mp/header-line-background))
          (buffer-foreground (mp/header-line-buffer-foreground))
+         (breadcrumbs (mp/header-line-breadcrumbs))
          (status-background "#ecbe7b")
          (status-foreground "#ffffff")
          (status-face (mp/header-line-face status-foreground status-background 'bold))
@@ -408,11 +457,43 @@
     (delq nil
           (list
            (mp/header-line-block (mp/header-line-buffer-status) status-face)
-           (mp/header-line-block (mp/header-line-buffer-name) buffer-face)
+           (or breadcrumbs
+               (mp/header-line-block (mp/header-line-buffer-name) buffer-face))
            (mp/header-line-block (mp/header-line-mode-name) major-face)
            (mp/header-line-diagnostics)))))
 
 (setq-default header-line-format '(:eval (mp/header-line-format)))
+
+(use-package! sideline
+  :hook ((lsp-mode . sideline-mode)
+         (flycheck-mode . sideline-mode))
+  :init
+  (setq sideline-backends-right '(sideline-lsp
+                                  sideline-flycheck
+                                  sideline-blame)
+        sideline-display-backend-name nil
+        sideline-delay 0.2
+        sideline-order-right 'up
+        sideline-backends-right-skip-current-line nil
+        sideline-force-display-if-exceeds nil))
+
+(use-package! sideline-lsp
+  :after (sideline lsp-mode)
+  :init
+  (setq sideline-lsp-update-mode 'line
+        sideline-lsp-ignore-duplicate t
+        sideline-lsp-code-actions-prefix "A: "))
+
+(use-package! sideline-flycheck
+  :after (sideline flycheck)
+  :hook (flycheck-mode . sideline-flycheck-setup)
+  :init
+  (setq sideline-flycheck-display-mode 'point
+        sideline-flycheck-max-lines 1
+        sideline-flycheck-show-checker-name nil))
+
+(after! lsp-ui
+  (setq lsp-ui-sideline-enable nil))
 
 ;;; consult-buffer with:
 ;;; project workspace:
@@ -625,7 +706,27 @@
           "^ \\*which-key"
           "^\\*Completions"
           "^\\*corfu"
+          "^ \\*corfu"
+          "^\\*corfu-popupinfo"
+          "^ \\*corfu-popupinfo"
+          "^ \\*.*posframe.*buffer.*\\*"
           "^ \\*LV\\*"))
+
+  ;; (defun mp/frame-visible-p (frame)
+  ;;   "Return non-nil when FRAME is live and visible."
+  ;;   (and (framep frame)
+  ;;        (frame-live-p frame)
+  ;;        (frame-visible-p frame)))
+
+  ;; (defun mp/dimmer-completion-frame-visible-p ()
+  ;;   "Prevent dimming changes while child-frame completion UI is visible."
+  ;;   (or (and (boundp 'corfu--frame)
+  ;;            (mp/frame-visible-p corfu--frame))
+  ;;       (and (boundp 'vertico-posframe--frame)
+  ;;            (mp/frame-visible-p vertico-posframe--frame))))
+
+  ;; (add-to-list 'dimmer-prevent-dimming-predicates
+  ;;              #'mp/dimmer-completion-frame-visible-p)
 
   ;; Do NOT let every transient minibuffer/evil command trigger dimming.
   ;; Only force dimming around Vertico/posframe minibuffer sessions.
@@ -640,6 +741,20 @@
 
   (dimmer-mode 1))
 
+(use-package blamer
+  :bind (("s-i" . blamer-show-commit-info))
+  :defer 20
+  :custom
+  (blamer-idle-time 0.3)
+  (blamer-min-offset 70)
+  :custom-face
+  (blamer-face ((t :foreground "#7a88cf"
+                    :background nil
+                    :height 140
+                    :italic t)))
+  :config
+  (global-blamer-mode 1))
+
 (use-package! spacious-padding
   :custom
   (spacious-padding-widths
@@ -651,6 +766,10 @@
            :scroll-bar-width 8))
 
   (spacious-padding-mode 1))
+
+(after! demap
+  (setq demap-minimap-window-side 'right
+        demap-minimap-window-width 18))
 
 (setq org-directory "~/org/")
 
@@ -719,6 +838,18 @@
 
 ;; Give hover/help text enough room to be readable.
 (setq eldoc-echo-area-use-multiline-p 3)
+
+(use-package! eldoc-box
+  :commands (eldoc-box-help-at-point)
+  :init
+  (map! :leader
+        (:prefix ("c" . "code")
+         :desc "Hover docs" "h" #'eldoc-box-help-at-point))
+  :config
+  (setq eldoc-box-max-pixel-width 900
+        eldoc-box-max-pixel-height 520
+        eldoc-box-cleanup-interval 0.35
+        eldoc-box-only-multi-line nil))
 
 (when (modulep! :ui dashboard)
   (require 'cl-lib)
@@ -1329,6 +1460,8 @@
     (define-key state-map (kbd "C-S-e") #'treemacs-find-file)
     (define-key state-map (kbd "C-\\") #'mp/vterm-new)
     (define-key state-map (kbd "C-/") #'comment-line)
+    (define-key state-map (kbd "M-d") #'er/expand-region)
+    (define-key state-map (kbd "M-D") #'er/contract-region)
     (define-key state-map (kbd "M-<up>") #'mp/move-lines-up)
     (define-key state-map (kbd "M-<down>") #'mp/move-lines-down)))
 
@@ -1465,6 +1598,7 @@
 
 (after! magit
   (setq magit-diff-refine-hunk 'all
+        magit-diff-fontify-hunk 'all
         ;; Keep whitespace visible inside refined hunks so indentation-only
         ;; changes are highlighted instead of being treated as irrelevant.
         magit-diff-refine-ignore-whitespace nil
