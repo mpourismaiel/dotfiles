@@ -1475,6 +1475,11 @@
       :g "M-<up>" #'mp/move-lines-up
       :g "M-<down>" #'mp/move-lines-down)
 
+(defun mp/clipboard-copy ()
+  (interactive)
+  (clipboard-kill-ring-save (region-beginning) (region-end))
+  (evil-exit-visual-state))
+
 (after! evil
   (dolist (state-map (list evil-motion-state-map
                            evil-normal-state-map
@@ -1483,12 +1488,19 @@
                            evil-visual-state-map))
     (define-key state-map (kbd "C-b") #'mp/treemacs-toggle-current-project)
     (define-key state-map (kbd "C-S-e") #'treemacs-find-file)
+    (define-key state-map (kbd "C-S-c") #'mp/clipboard-copy)
+    (define-key state-map (kbd "C-S-v") #'clipboard-yank)
     (define-key state-map (kbd "C-\\") #'mp/vterm-new)
     (define-key state-map (kbd "C-/") #'comment-line)
     (define-key state-map (kbd "M-d") #'er/expand-region)
     (define-key state-map (kbd "M-D") #'er/contract-region)
     (define-key state-map (kbd "M-<up>") #'mp/move-lines-up)
-    (define-key state-map (kbd "M-<down>") #'mp/move-lines-down)))
+    (define-key state-map (kbd "M-<down>") #'mp/move-lines-down))
+
+  (map! :leader
+        (:prefix ("v" . "visual")
+         :desc "Visual line" "v" #'evil-visual-line
+         :desc "Visual block" "b" #'evil-visual-block)))
 
 (defun mp/close-window-preserve-buffer ()
   "Close the selected window without killing popup or terminal buffers."
@@ -1547,6 +1559,7 @@
       "q" "quit/session"
       "s" "search"
       "t" "toggle"
+      "v" "visual"
       "w" "windows"
       "x" "text")))
 
