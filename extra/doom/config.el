@@ -27,7 +27,13 @@
 
 (mp/nvm-add-to-path)
 
-(setq doom-theme 'doom-one)
+(setq doom-theme nil)
+
+(load-theme 'doom-one t)
+(add-to-list 'custom-theme-load-path
+             (expand-file-name "themes" doom-user-dir))
+(load-theme 'dobri-c07 t)
+
 (setq doom-font (font-spec :family "CaskaydiaCove Nerd Font Mono" :size 16))
 
 ;; Let Treemacs use richer git-state highlighting when Python is available.
@@ -469,8 +475,7 @@
          (flycheck-mode . sideline-mode))
   :init
   (setq sideline-backends-right '(sideline-lsp
-                                  sideline-flycheck
-                                  sideline-blame)
+                                  sideline-flycheck)
         sideline-display-backend-name nil
         sideline-delay 0.2
         sideline-order-right 'up
@@ -616,22 +621,48 @@
                                    t)
                                  (mp/vterm-buffer-p buf)))))))
 
-(defvar mp/consult-source-projectile-file
-  `(:name "[P]rojectile File"
-    :narrow (?f . "Projectile File")
+(defun mp/live-project-files (root)
+  "Return live relative file list under ROOT using fd, falling back to Elisp."
+  (let ((root (file-name-as-directory (expand-file-name root))))
+    (if-let ((fd (executable-find "fd")))
+        (let ((default-directory root))
+          (process-lines fd
+                         "--type" "f"
+                         "--strip-cwd-prefix"
+                         "--color" "never"
+                         "."))
+      (mapcar
+       (lambda (file)
+         (file-relative-name file root))
+       (directory-files-recursively
+        root
+        ".*"
+        nil
+        (lambda (dir)
+          (not (string-match-p "/\\.git\\(?:/\\|\\'\\)" dir))))))))
+
+(defvar mp/consult-source-live-project-file
+  `(:name "[F]ile"
+    :narrow (?f . "File")
     :category file
     :face consult-file
     :history file-name-history
     :state ,#'consult--file-state
     :action ,#'consult--file-action
     :new ,#'consult--file-action
-    :enabled ,#'mp/project-workspace-p
+    :enabled ,(lambda ()
+                (or (mp/current-workspace-project-root)
+                    (and (bound-and-true-p projectile-mode)
+                         (projectile-project-p))))
     :items ,(lambda ()
-              (let ((root (projectile-project-root)))
+              (let* ((root (file-name-as-directory
+                            (expand-file-name
+                             (or (mp/current-workspace-project-root)
+                                 (projectile-project-root))))))
                 (mapcar
                  (lambda (file)
                    (cons file (expand-file-name file root)))
-                 (projectile-project-files root))))))
+                 (mp/live-project-files root))))))
 
 (defvar mp/projectile-project-history nil
   "History for selecting Projectile projects through Consult.")
@@ -659,15 +690,15 @@
 
 (with-eval-after-load 'consult
   (setq consult-buffer-sources
-        '(mp/consult-source-workspace-buffer
-          mp/consult-source-all-buffer
-          mp/consult-source-agent-shell-buffer
-          mp/consult-source-vterm-buffer
-          mp/consult-source-projectile-file
-          mp/consult-source-projectile-project
-          consult-source-hidden-buffer
-          consult-source-project-buffer-hidden
-          consult-source-project-recent-file-hidden)))
+      '(mp/consult-source-workspace-buffer
+        mp/consult-source-all-buffer
+        mp/consult-source-agent-shell-buffer
+        mp/consult-source-vterm-buffer
+        mp/consult-source-live-project-file
+        mp/consult-source-projectile-project
+        consult-source-hidden-buffer
+        consult-source-project-buffer-hidden
+        consult-source-project-recent-file-hidden)))
 
 (map! :leader "SPC" #'consult-buffer)
 
@@ -684,12 +715,6 @@
           (internal-border-width . 12)
           (alpha-background . 96)
           (undecorated . t)))
-
-  (custom-set-faces!
-    '(vertico-posframe :background "#232833")
-    '(vertico-posframe-border :background "#3b4252")
-    '(vertico-current :background "#343b4a" :weight bold)
-    '(minibuffer-prompt :foreground "#c678dd" :weight bold))
 
   (vertico-posframe-mode 1))
 
@@ -750,10 +775,10 @@
   :custom-face
   (blamer-face ((t :foreground "#7a88cf"
                     :background nil
-                    :height 140
+                    :height 14
                     :italic t)))
   :config
-  (global-blamer-mode 1))
+  (global-blamer-mode nil))
 
 (use-package! spacious-padding
   :custom
