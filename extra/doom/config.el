@@ -720,7 +720,7 @@
 
 (use-package! dimmer
   :config
-  (setq dimmer-fraction 0.5
+  (setq dimmer-fraction 0.1
         dimmer-use-colorspace :rgb
         dimmer-watch-frame-focus-events nil
         dimmer-adjustment-mode :foreground

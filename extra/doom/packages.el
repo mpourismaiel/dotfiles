@@ -29,6 +29,7 @@
 (package! olivetti)
 (package! spacious-padding)
 (package! dimmer)
+(package! rainbow-delimiters)
 
 (package! clutch)
 (package! pg)

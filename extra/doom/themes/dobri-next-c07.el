@@ -34,7 +34,7 @@
    `(mode-line-inactive ((t (:background ,bg-dark :foreground ,comment))))
    `(header-line ((t (:background ,bg-alt :foreground ,fg))))
 
-   `(font-lock-comment-face ((t (:foreground ,comment :slant italic :weight thin))))
+   `(font-lock-comment-face ((t (:foreground ,comment :slant italic))))
    `(font-lock-doc-face ((t (:foreground ,comment :slant italic))))
    `(font-lock-string-face ((t (:foreground ,green))))
    `(font-lock-keyword-face ((t (:foreground ,purple))))
@@ -62,7 +62,7 @@
    `(tree-sitter-hl-face:method ((t (:foreground ,blue))))
    `(tree-sitter-hl-face:keyword ((t (:foreground ,purple :weight bold))))
    `(tree-sitter-hl-face:string ((t (:foreground ,green))))
-   `(tree-sitter-hl-face:comment ((t (:foreground ,comment :slant italic :weight thin))))
+   `(tree-sitter-hl-face:comment ((t (:foreground ,comment :slant italic))))
    `(tree-sitter-hl-face:type ((t (:foreground ,yellow))))
    `(tree-sitter-hl-face:constant ((t (:foreground ,orange))))
    `(tree-sitter-hl-face:variable ((t (:foreground ,red))))

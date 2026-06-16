@@ -1034,7 +1034,7 @@ Use consult for `SPC SPC` and be done with `SPC b b`.
 #+begin_src emacs-lisp
 (use-package! dimmer
   :config
-  (setq dimmer-fraction 0.5
+  (setq dimmer-fraction 0.1
         dimmer-use-colorspace :rgb
         dimmer-watch-frame-focus-events nil
         dimmer-adjustment-mode :foreground
@@ -2555,12 +2555,14 @@ Use this section for short-lived experiments before they are promoted into a sta
 - https://github.com/rnkn/olivetti
 - https://github.com/protesilaos/spacious-padding
 - https://github.com/gonewest818/dimmer.el
+- https://github.com/Fanael/rainbow-delimiters
 
 #+begin_src emacs-lisp
 (package! shell-maker)
 (package! olivetti)
 (package! spacious-padding)
 (package! dimmer)
+(package! rainbow-delimiters)
 #+end_src
 
 *** Database
