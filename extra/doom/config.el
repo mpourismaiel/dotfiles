@@ -470,48 +470,7 @@
 
 (setq-default header-line-format '(:eval (mp/header-line-format)))
 
-(use-package! sideline
-  :hook ((lsp-mode . sideline-mode)
-         (flycheck-mode . sideline-mode))
-  :init
-  (setq sideline-backends-right '(sideline-lsp
-                                  sideline-flycheck)
-        sideline-display-backend-name nil
-        sideline-delay 0.2
-        sideline-order-right 'up
-        sideline-backends-right-skip-current-line nil
-        sideline-force-display-if-exceeds nil))
-
-(use-package! sideline-lsp
-  :after (sideline lsp-mode)
-  :init
-  (setq sideline-lsp-update-mode 'line
-        sideline-lsp-ignore-duplicate t
-        sideline-lsp-code-actions-prefix "A: "))
-
-(use-package! sideline-flycheck
-  :after (sideline flycheck)
-  :hook (flycheck-mode . sideline-flycheck-setup)
-  :init
-  (setq sideline-flycheck-display-mode 'point
-        sideline-flycheck-max-lines 1
-        sideline-flycheck-show-checker-name nil))
-
-(after! lsp-ui
-  (setq lsp-ui-sideline-enable nil))
-
-;;; consult-buffer with:
-;;; project workspace:
-;;;   1. current-workspace normal buffers
-;;;   2. current-workspace agent-shell buffers
-;;;   3. current-workspace vterm buffers
-;;;   4. current-project Projectile files
-;;; projectless workspace:
-;;;   1. all normal buffers
-;;;   2. all agent-shell buffers
-;;;   3. all vterm buffers
-;;;   4. known Projectile projects
-;;;   5. hidden buffers
+;;; consult-buffer with history-sorted custom sources.
 
 (defun mp/project-workspace-p ()
   "Return non-nil when the current workspace has a Projectile project."
@@ -553,6 +512,25 @@
        (not (mp/agent-shell-buffer-p buf))
        (not (mp/vterm-buffer-p buf))))
 
+(defun mp/history-index (item history)
+  "Return ITEM position in HISTORY, or a large number."
+  (or (cl-position item history :test #'equal)
+      most-positive-fixnum))
+
+(defun mp/sort-strings-by-history (items history)
+  "Sort string ITEMS by their position in HISTORY."
+  (sort items
+        (lambda (a b)
+          (< (mp/history-index a history)
+             (mp/history-index b history)))))
+
+(defun mp/sort-cons-candidates-by-history (candidates history)
+  "Sort cons CANDIDATES by their cdr position in HISTORY."
+  (sort candidates
+        (lambda (a b)
+          (< (mp/history-index (cdr a) history)
+             (mp/history-index (cdr b) history)))))
+
 (defvar mp/consult-source-workspace-buffer
   `(:name "[B]uffer"
     :narrow (?b . "Buffer")
@@ -563,12 +541,15 @@
     :default t
     :enabled ,#'mp/project-workspace-p
     :items ,(lambda ()
-              (consult--buffer-query
-               :sort 'visibility
-               :as #'buffer-name
-               :predicate (lambda (buf)
-                            (and (mp/current-workspace-buffer-p buf)
-                                 (mp/normal-buffer-p buf)))))))
+              (mp/sort-strings-by-history
+               (consult--buffer-query
+                :sort nil
+                :as #'buffer-name
+                :predicate
+                (lambda (buf)
+                  (and (mp/current-workspace-buffer-p buf)
+                       (mp/normal-buffer-p buf))))
+               buffer-name-history))))
 
 (defvar mp/consult-source-all-buffer
   `(:name "[B]uffer"
@@ -580,10 +561,12 @@
     :default t
     :enabled ,(lambda () (not (mp/project-workspace-p)))
     :items ,(lambda ()
-              (consult--buffer-query
-               :sort 'visibility
-               :as #'buffer-name
-               :predicate #'mp/normal-buffer-p))))
+              (mp/sort-strings-by-history
+               (consult--buffer-query
+                :sort nil
+                :as #'buffer-name
+                :predicate #'mp/normal-buffer-p)
+               buffer-name-history))))
 
 (defvar mp/consult-source-agent-shell-buffer
   `(:name "[A]gent Shell"
@@ -594,14 +577,17 @@
     :state ,#'consult--buffer-state
     :action ,#'consult--buffer-action
     :items ,(lambda ()
-              (consult--buffer-query
-               :sort 'visibility
-               :as #'buffer-name
-               :predicate (lambda (buf)
-                            (and (if (mp/project-workspace-p)
-                                     (mp/current-workspace-buffer-p buf)
-                                   t)
-                                 (mp/agent-shell-buffer-p buf)))))))
+              (mp/sort-strings-by-history
+               (consult--buffer-query
+                :sort nil
+                :as #'buffer-name
+                :predicate
+                (lambda (buf)
+                  (and (if (mp/project-workspace-p)
+                           (mp/current-workspace-buffer-p buf)
+                         t)
+                       (mp/agent-shell-buffer-p buf))))
+               buffer-name-history))))
 
 (defvar mp/consult-source-vterm-buffer
   `(:name "[V]Term"
@@ -612,32 +598,29 @@
     :state ,#'consult--buffer-state
     :action ,#'consult--buffer-action
     :items ,(lambda ()
-              (consult--buffer-query
-               :sort 'visibility
-               :as #'buffer-name
-               :predicate (lambda (buf)
-                            (and (if (mp/project-workspace-p)
-                                     (mp/current-workspace-buffer-p buf)
-                                   t)
-                                 (mp/vterm-buffer-p buf)))))))
+              (mp/sort-strings-by-history
+               (consult--buffer-query
+                :sort nil
+                :as #'buffer-name
+                :predicate
+                (lambda (buf)
+                  (and (if (mp/project-workspace-p)
+                           (mp/current-workspace-buffer-p buf)
+                         t)
+                       (mp/vterm-buffer-p buf))))
+               buffer-name-history))))
 
 (defun mp/live-project-files (root)
   "Return live relative file list under ROOT using fd, falling back to Elisp."
   (let ((root (file-name-as-directory (expand-file-name root))))
     (if-let ((fd (executable-find "fd")))
         (let ((default-directory root))
-          (process-lines fd
-                         "--type" "f"
-                         "--strip-cwd-prefix"
-                         "--color" "never"
-                         "."))
+          (process-lines fd "--type" "f" "--strip-cwd-prefix" "--color" "never" "."))
       (mapcar
        (lambda (file)
          (file-relative-name file root))
        (directory-files-recursively
-        root
-        ".*"
-        nil
+        root ".*" nil
         (lambda (dir)
           (not (string-match-p "/\\.git\\(?:/\\|\\'\\)" dir))))))))
 
@@ -658,11 +641,14 @@
               (let* ((root (file-name-as-directory
                             (expand-file-name
                              (or (mp/current-workspace-project-root)
-                                 (projectile-project-root))))))
-                (mapcar
-                 (lambda (file)
-                   (cons file (expand-file-name file root)))
-                 (mp/live-project-files root))))))
+                                 (projectile-project-root)))))
+                     (candidates
+                      (mapcar
+                       (lambda (file)
+                         (cons file (expand-file-name file root)))
+                       (mp/live-project-files root))))
+                (mp/sort-cons-candidates-by-history
+                 candidates file-name-history)))))
 
 (defvar mp/projectile-project-history nil
   "History for selecting Projectile projects through Consult.")
@@ -679,26 +665,28 @@
                 (and (bound-and-true-p projectile-mode)
                      (not (mp/project-workspace-p))))
     :items ,(lambda ()
-              (mapcar
-               (lambda (project)
-                 (let* ((dir (directory-file-name project))
-                        (name (file-name-nondirectory dir))
-                        (parent (file-name-directory dir))
-                        (label (concat parent name)))
-                   (cons label project)))
-               (projectile-relevant-known-projects)))))
+              (mp/sort-cons-candidates-by-history
+               (mapcar
+                (lambda (project)
+                  (let* ((dir (directory-file-name project))
+                         (name (file-name-nondirectory dir))
+                         (parent (file-name-directory dir))
+                         (label (concat parent name)))
+                    (cons label project)))
+                (projectile-relevant-known-projects))
+               mp/projectile-project-history))))
 
 (with-eval-after-load 'consult
   (setq consult-buffer-sources
-      '(mp/consult-source-workspace-buffer
-        mp/consult-source-all-buffer
-        mp/consult-source-agent-shell-buffer
-        mp/consult-source-vterm-buffer
-        mp/consult-source-live-project-file
-        mp/consult-source-projectile-project
-        consult-source-hidden-buffer
-        consult-source-project-buffer-hidden
-        consult-source-project-recent-file-hidden)))
+        '(mp/consult-source-workspace-buffer
+          mp/consult-source-all-buffer
+          mp/consult-source-agent-shell-buffer
+          mp/consult-source-vterm-buffer
+          mp/consult-source-live-project-file
+          mp/consult-source-projectile-project
+          consult-source-hidden-buffer
+          consult-source-project-buffer-hidden
+          consult-source-project-recent-file-hidden)))
 
 (map! :leader "SPC" #'consult-buffer)
 
@@ -718,68 +706,6 @@
 
   (vertico-posframe-mode 1))
 
-(use-package! dimmer
-  :config
-  (setq dimmer-fraction 0.1
-        dimmer-use-colorspace :rgb
-        dimmer-watch-frame-focus-events nil
-        dimmer-adjustment-mode :foreground
-        dimmer-buffer-exclusion-regexps
-        '("^ \\*Minibuf"
-          "^\\*Echo Area"
-          "^\\*which-key"
-          "^ \\*which-key"
-          "^\\*Completions"
-          "^\\*corfu"
-          "^ \\*corfu"
-          "^\\*corfu-popupinfo"
-          "^ \\*corfu-popupinfo"
-          "^ \\*.*posframe.*buffer.*\\*"
-          "^ \\*LV\\*"))
-
-  ;; (defun mp/frame-visible-p (frame)
-  ;;   "Return non-nil when FRAME is live and visible."
-  ;;   (and (framep frame)
-  ;;        (frame-live-p frame)
-  ;;        (frame-visible-p frame)))
-
-  ;; (defun mp/dimmer-completion-frame-visible-p ()
-  ;;   "Prevent dimming changes while child-frame completion UI is visible."
-  ;;   (or (and (boundp 'corfu--frame)
-  ;;            (mp/frame-visible-p corfu--frame))
-  ;;       (and (boundp 'vertico-posframe--frame)
-  ;;            (mp/frame-visible-p vertico-posframe--frame))))
-
-  ;; (add-to-list 'dimmer-prevent-dimming-predicates
-  ;;              #'mp/dimmer-completion-frame-visible-p)
-
-  ;; Do NOT let every transient minibuffer/evil command trigger dimming.
-  ;; Only force dimming around Vertico/posframe minibuffer sessions.
-  (add-hook 'vertico-posframe-mode-hook
-            (lambda ()
-              (if vertico-posframe-mode
-                  (progn
-                    (add-hook 'minibuffer-setup-hook #'dimmer-process-all)
-                    (add-hook 'minibuffer-exit-hook  #'dimmer-process-all))
-                (remove-hook 'minibuffer-setup-hook #'dimmer-process-all)
-                (remove-hook 'minibuffer-exit-hook  #'dimmer-process-all))))
-
-  (dimmer-mode 1))
-
-(use-package blamer
-  :bind (("s-i" . blamer-show-commit-info))
-  :defer 20
-  :custom
-  (blamer-idle-time 0.3)
-  (blamer-min-offset 70)
-  :custom-face
-  (blamer-face ((t :foreground "#7a88cf"
-                    :background nil
-                    :height 14
-                    :italic t)))
-  :config
-  (global-blamer-mode nil))
-
 (use-package! spacious-padding
   :custom
   (spacious-padding-widths
@@ -795,6 +721,12 @@
 (after! demap
   (setq demap-minimap-window-side 'right
         demap-minimap-window-width 18))
+
+(use-package! rainbow-delimiters
+  :hook ((prog-mode . rainbow-delimiters-mode)))
+
+(after! olivetti
+  (setq olivetti-body-width 100))
 
 (setq org-directory "~/org/")
 
@@ -1375,7 +1307,9 @@
       (:prefix ("d" . "agent")
        :desc "Agent shell" "a" #'agent-shell))
 
-(map! :n "gr" #'xref-find-references)
+(map! :n "gr" #'xref-find-references
+      :n "g[" #'xref-go-back
+      :n "g]" #'xref-go-forward)
 
 (global-set-key [mouse-8] #'xref-go-back)
 (global-set-key [mouse-9] #'xref-go-forward)
