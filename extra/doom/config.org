@@ -751,6 +751,7 @@ for every single letter.
 #+end_src
 
 **** Consult
+***** Super menu
 Use consult for `SPC SPC` and be done with `SPC b b`.
 
 #+begin_src emacs-lisp
@@ -977,6 +978,10 @@ Use consult for `SPC SPC` and be done with `SPC b b`.
 
 #+RESULTS:
 : consult-buffer
+***** Consult menus
+#+begin_src emacs-lisp
+(map! :leader :desc "File symbols" "m g f s" #'consult-lsp-file-symbols)
+#+end_src
 
 **** Minibuffer
 
@@ -1685,6 +1690,9 @@ This section documents the custom bindings defined in this configuration.
 | Evil states | =C-b=      | =mp/treemacs-toggle-current-project= | Toggle Treemacs scoped to the current project across all Evil states.   |
 | Evil states | =C-S-e=    | =treemacs-find-file=            | Reveal the current file in Treemacs.                                        |
 | Evil states | =C-/=      | =comment-line=                  | Keep commenting available consistently across Evil states.                  |
+| Leader      | =SPC s r f=| =color-rg-search-input-in-current-file= | Search the current file with color-rg.                              |
+| Leader      | =SPC s r p=| =color-rg-search-input-in-project= | Search the project with color-rg.                                       |
+| Evil states | =z 1=…=z 9=| =mp/fold-to-level=              | Fold all regions to that nesting level (toggles open on repeat).            |
 
 **** General Shortcuts
 ***** With Leader
@@ -2213,6 +2221,183 @@ Quit confirmation is disabled for faster exits.
 #+end_src
 
 **** Find in project
+[[https://github.com/manateelazycat/color-rg][color-rg]] provides a ripgrep
+results buffer you can navigate, filter, and—most usefully—edit in place to
+refactor matches across a project. =SPC s r f= searches the current file and
+=SPC s r p= searches the project. These live under a dedicated =r= prefix so
+Doom's stock =SPC s f= (locate file) and =SPC s p= (live project search) stay
+available.
+
+Inside a result buffer: =j=/=k= move between matches, =h=/=l= jump between
+files, =e= switches to edit mode (=C-c C-c= applies, =C-c C-v= cancels), =r=
+replaces all matches, =I= toggles whether ignore files are respected, and =q=
+quits.
+
+#+begin_src emacs-lisp
+(use-package! color-rg
+  :commands (color-rg-search-input
+             color-rg-search-symbol
+             color-rg-search-input-in-project
+             color-rg-search-symbol-in-project
+             color-rg-search-input-in-current-file
+             color-rg-search-symbol-in-current-file)
+  :init
+  ;; `color-rg-mac-load-path-from-shell' only matters on macOS; Doom already
+  ;; manages PATH (see the NVM Path section), so the shell import is unneeded.
+  (setq color-rg-mac-load-path-from-shell nil)
+  (map! :leader
+        (:prefix ("s" . "search")
+         (:prefix ("r" . "color-rg")
+          :desc "Search in file"    "f" #'color-rg-search-input-in-current-file
+          :desc "Search in project" "p" #'color-rg-search-input-in-project)))
+  :config
+  ;; Respect .gitignore so project searches stay focused like an IDE.
+  ;; Toggle per-search inside the results buffer with `I'.
+  (setq color-rg-search-no-ignore-file nil)
+  ;; `color-rg-mode' derives from `text-mode' and ships its own single-key view
+  ;; bindings (j/k navigate, e edit, r replace, q quit). Hand the buffer to
+  ;; Evil's Emacs state so those keys aren't shadowed.
+  (after! evil
+    (evil-set-initial-state 'color-rg-mode 'emacs)))
+#+end_src
+
+**** Tree-sitter Grammars
+Without a grammar, a =*-ts-mode= silently falls back to its non-tree-sitter
+counterpart, which is what makes JSX folding collapse the whole function body
+and breaks tree-sitter-aware editing. Install grammars on demand instead of
+asking each time (needs a C compiler and network access on first use).
+
+After tangling, install the ones you use right away with =M-x
+treesit-install-language-grammar= (e.g. =tsx=, =typescript=, =javascript=,
+=html=, =css=, =json=); otherwise they install automatically the next time you
+open such a file.
+
+#+begin_src emacs-lisp
+(setq treesit-auto-install-grammar 'always)
+#+end_src
+
+**** Code Folding
+With grammars installed, folding routes through =treesit-fold= and operates on
+the syntax tree, so the stock Evil keys do what an IDE does:
+
+- =zc= folds the innermost element/block at point (the direct parent of the
+  current line).
+- =zo= opens the fold on the current line (where the =…= ellipsis shows).
+- =za= toggles, =zr= opens every fold, =zm= folds everything.
+
+=tsx-ts-mode= (used for =.jsx= and =.tsx=) already folds JSX elements. The block
+below extends the plain JS modes so JSX embedded in a =.js= file folds at the
+element level too, instead of only collapsing the enclosing function.
+
+#+begin_src emacs-lisp
+(after! treesit-fold
+  (dolist (mode '(js-mode js-ts-mode javascript-mode))
+    (when-let ((cell (assq mode treesit-fold-range-alist)))
+      (dolist (rule '((jsx_element  . treesit-fold-range-html)
+                      (jsx_fragment . treesit-fold-range-html)))
+        (unless (assq (car rule) (cdr cell))
+          (setcdr cell (append (cdr cell) (list rule))))))))
+#+end_src
+
+**** Fold By Level
+VSCode-style "fold everything to level N", bound to =z 1= … =z 9= (=z= then a
+digit). Level 1 is the outermost construct, higher numbers reveal more nesting,
+and the level is clamped to the deepest fold the buffer actually has (so =z9= in
+a shallow file folds the innermost level). Shallower levels stay open, anything
+deeper is hidden inside the folded level—exactly the VSCode behaviour.
+
+It toggles: pressing the same level again, while that level is folded, reveals
+everything. In tree-sitter buffers this walks the syntax tree to compute true
+nesting depth; elsewhere it falls back to Doom's hideshow/outline level folding.
+
+#+begin_src emacs-lisp
+(defun mp/treesit-fold-active-p ()
+  "Return non-nil when `treesit-fold' can operate on the current buffer."
+  (and (fboundp 'treesit-fold-ready-p)
+       (treesit-fold-ready-p)
+       (treesit-fold-usable-mode-p)))
+
+(defun mp/treesit-fold--node-foldable-p (node)
+  "Return non-nil when NODE defines a multi-line fold."
+  (when-let ((range (treesit-fold--get-fold-range node)))
+    (not (treesit-fold--range-on-same-line range))))
+
+(defun mp/treesit-fold--depth (node)
+  "Return the fold-nesting depth of NODE (1 = outermost foldable)."
+  (let ((depth 0)
+        (current node))
+    (while current
+      (when (mp/treesit-fold--node-foldable-p current)
+        (cl-incf depth))
+      (setq current (treesit-node-parent current)))
+    depth))
+
+(defun mp/treesit-fold--foldable-nodes ()
+  "Return every multi-line foldable node in the buffer."
+  (let* ((root (treesit-buffer-root-node))
+         (ranges (alist-get major-mode treesit-fold-range-alist))
+         (patterns (seq-mapcat (lambda (range) `((,(car range)) @name)) ranges))
+         (query (treesit-query-compile (treesit-node-language root) patterns)))
+    (cl-remove-if-not #'mp/treesit-fold--node-foldable-p
+                      (mapcar #'cdr (treesit-query-capture root query)))))
+
+(defun mp/treesit-fold-to-level (level)
+  "Fold every node at LEVEL, keeping shallower levels open (VSCode-style).
+If LEVEL is already folded, reveal everything instead."
+  (let* ((nodes (mp/treesit-fold--foldable-nodes))
+         (depths (mapcar #'mp/treesit-fold--depth nodes))
+         (max-depth (if depths (apply #'max depths) 0)))
+    (when (zerop max-depth)
+      (user-error "Nothing foldable in this buffer"))
+    (let* ((level (min level max-depth))
+           (at-level (cl-loop for node in nodes
+                              for depth in depths
+                              when (= depth level) collect node))
+           (folded (cl-some #'treesit-fold-overlay-at at-level)))
+      (treesit-fold-open-all)
+      (if folded
+          (message "Fold level %d revealed" level)
+        (dolist (node at-level)
+          (treesit-fold-close node))
+        (message "Folded to level %d" level)))))
+
+(defvar-local mp/fold--last-level nil
+  "Last fold level applied in a non-tree-sitter buffer, for toggling.")
+
+(defun mp/fold--fallback-to-level (level)
+  "Fold to LEVEL with hideshow/outline, toggling open on repeat."
+  (if (eq mp/fold--last-level level)
+      (progn (+fold/open-all)
+             (setq mp/fold--last-level nil)
+             (message "Fold level %d revealed" level))
+    (+fold/open-all)
+    (+fold/close-all level)
+    (setq mp/fold--last-level level)
+    (message "Folded to level %d" level)))
+
+(defun mp/fold-to-level (&optional level)
+  "Fold all regions down to LEVEL (1 = outermost), VSCode-style.
+Re-invoking the same level reveals everything again.  When called from the
+z1..z9 keys, LEVEL is read from the triggering digit."
+  (interactive)
+  (let ((level (or level
+                   (let ((event last-command-event))
+                     (and (characterp event)
+                          (<= ?1 event ?9)
+                          (- event ?0))))))
+    (unless (and (integerp level) (<= 1 level 9))
+      (user-error "Fold level must be between 1 and 9"))
+    (if (mp/treesit-fold-active-p)
+        (mp/treesit-fold-to-level level)
+      (mp/fold--fallback-to-level level))))
+
+(after! evil
+  (dolist (level (number-sequence 1 9))
+    (let ((key (vector ?z (+ ?0 level))))
+      (define-key evil-normal-state-map key #'mp/fold-to-level)
+      (define-key evil-motion-state-map key #'mp/fold-to-level))))
+#+end_src
+
 *** Scripts
 **** Project Scripts runner
 #+begin_src emacs-lisp

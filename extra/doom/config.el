@@ -674,6 +674,8 @@
 
 (map! :leader "SPC" #'consult-buffer)
 
+(map! :leader :desc "File symbols" "m g f s" #'consult-lsp-file-symbols)
+
 (use-package! vertico-posframe
   :after vertico
   :config
@@ -1738,6 +1740,128 @@
 
 (map! :nv "C-d" #'evil-multiedit-match-and-next
       :i  "C-d" #'evil-multiedit-toggle-marker-here)
+
+(use-package! color-rg
+  :commands (color-rg-search-input
+             color-rg-search-symbol
+             color-rg-search-input-in-project
+             color-rg-search-symbol-in-project
+             color-rg-search-input-in-current-file
+             color-rg-search-symbol-in-current-file)
+  :init
+  ;; `color-rg-mac-load-path-from-shell' only matters on macOS; Doom already
+  ;; manages PATH (see the NVM Path section), so the shell import is unneeded.
+  (setq color-rg-mac-load-path-from-shell nil)
+  (map! :leader
+        (:prefix ("s" . "search")
+         (:prefix ("r" . "color-rg")
+          :desc "Search in file"    "f" #'color-rg-search-input-in-current-file
+          :desc "Search in project" "p" #'color-rg-search-input-in-project)))
+  :config
+  ;; Respect .gitignore so project searches stay focused like an IDE.
+  ;; Toggle per-search inside the results buffer with `I'.
+  (setq color-rg-search-no-ignore-file nil)
+  ;; `color-rg-mode' derives from `text-mode' and ships its own single-key view
+  ;; bindings (j/k navigate, e edit, r replace, q quit). Hand the buffer to
+  ;; Evil's Emacs state so those keys aren't shadowed.
+  (after! evil
+    (evil-set-initial-state 'color-rg-mode 'emacs)))
+
+(setq treesit-auto-install-grammar 'always)
+
+(after! treesit-fold
+  (dolist (mode '(js-mode js-ts-mode javascript-mode))
+    (when-let ((cell (assq mode treesit-fold-range-alist)))
+      (dolist (rule '((jsx_element  . treesit-fold-range-html)
+                      (jsx_fragment . treesit-fold-range-html)))
+        (unless (assq (car rule) (cdr cell))
+          (setcdr cell (append (cdr cell) (list rule))))))))
+
+(defun mp/treesit-fold-active-p ()
+  "Return non-nil when `treesit-fold' can operate on the current buffer."
+  (and (fboundp 'treesit-fold-ready-p)
+       (treesit-fold-ready-p)
+       (treesit-fold-usable-mode-p)))
+
+(defun mp/treesit-fold--node-foldable-p (node)
+  "Return non-nil when NODE defines a multi-line fold."
+  (when-let ((range (treesit-fold--get-fold-range node)))
+    (not (treesit-fold--range-on-same-line range))))
+
+(defun mp/treesit-fold--depth (node)
+  "Return the fold-nesting depth of NODE (1 = outermost foldable)."
+  (let ((depth 0)
+        (current node))
+    (while current
+      (when (mp/treesit-fold--node-foldable-p current)
+        (cl-incf depth))
+      (setq current (treesit-node-parent current)))
+    depth))
+
+(defun mp/treesit-fold--foldable-nodes ()
+  "Return every multi-line foldable node in the buffer."
+  (let* ((root (treesit-buffer-root-node))
+         (ranges (alist-get major-mode treesit-fold-range-alist))
+         (patterns (seq-mapcat (lambda (range) `((,(car range)) @name)) ranges))
+         (query (treesit-query-compile (treesit-node-language root) patterns)))
+    (cl-remove-if-not #'mp/treesit-fold--node-foldable-p
+                      (mapcar #'cdr (treesit-query-capture root query)))))
+
+(defun mp/treesit-fold-to-level (level)
+  "Fold every node at LEVEL, keeping shallower levels open (VSCode-style).
+If LEVEL is already folded, reveal everything instead."
+  (let* ((nodes (mp/treesit-fold--foldable-nodes))
+         (depths (mapcar #'mp/treesit-fold--depth nodes))
+         (max-depth (if depths (apply #'max depths) 0)))
+    (when (zerop max-depth)
+      (user-error "Nothing foldable in this buffer"))
+    (let* ((level (min level max-depth))
+           (at-level (cl-loop for node in nodes
+                              for depth in depths
+                              when (= depth level) collect node))
+           (folded (cl-some #'treesit-fold-overlay-at at-level)))
+      (treesit-fold-open-all)
+      (if folded
+          (message "Fold level %d revealed" level)
+        (dolist (node at-level)
+          (treesit-fold-close node))
+        (message "Folded to level %d" level)))))
+
+(defvar-local mp/fold--last-level nil
+  "Last fold level applied in a non-tree-sitter buffer, for toggling.")
+
+(defun mp/fold--fallback-to-level (level)
+  "Fold to LEVEL with hideshow/outline, toggling open on repeat."
+  (if (eq mp/fold--last-level level)
+      (progn (+fold/open-all)
+             (setq mp/fold--last-level nil)
+             (message "Fold level %d revealed" level))
+    (+fold/open-all)
+    (+fold/close-all level)
+    (setq mp/fold--last-level level)
+    (message "Folded to level %d" level)))
+
+(defun mp/fold-to-level (&optional level)
+  "Fold all regions down to LEVEL (1 = outermost), VSCode-style.
+Re-invoking the same level reveals everything again.  When called from the
+z1..z9 keys, LEVEL is read from the triggering digit."
+  (interactive)
+  (let ((level (or level
+                   (let ((event last-command-event))
+                     (and (characterp event)
+                          (<= ?1 event ?9)
+                          (- event ?0))))))
+    (unless (and (integerp level) (<= 1 level 9))
+      (user-error "Fold level must be between 1 and 9"))
+    (if (mp/treesit-fold-active-p)
+        (mp/treesit-fold-to-level level)
+      (mp/fold--fallback-to-level level))))
+
+(after! evil
+  (dolist (level (number-sequence 1 9))
+    (let ((key (vector ?z (+ ?0 level))))
+      (define-key evil-normal-state-map key #'mp/fold-to-level)
+      (define-key evil-motion-state-map key #'mp/fold-to-level))))
 
 (defvar my/project-running-scripts (make-hash-table :test 'equal))
 
