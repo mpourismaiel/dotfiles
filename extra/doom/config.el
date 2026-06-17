@@ -52,211 +52,6 @@
 
 (setq display-line-numbers-type t)
 
-(setq scroll-preserve-screen-position t
-      scroll-conservatively 101
-      scroll-margin 0
-      mouse-wheel-follow-mouse t
-      mouse-wheel-scroll-amount '(3 ((shift) . 1))
-      mouse-wheel-progressive-speed nil)
-
-(after! evil
-  (setq evil-want-C-u-scroll t))
-
-(use-package! expand-region
-  :commands (er/expand-region er/contract-region)
-  :init
-  (map! :g "M-d" #'er/expand-region
-        :g "M-D" #'er/contract-region))
-
-(defvar mp/project-bundles nil
-  "Private project bundles loaded from private.el.")
-
-(defvar mp/workspace-project-roots (make-hash-table :test 'equal)
-  "Map Doom workspace names to their intended project roots.")
-
-(let ((private-config "~/.config/doom/private.el"))
-  (when (file-exists-p private-config)
-    (load-file private-config)))
-
-(defun mp/current-workspace-project-root ()
-  "Return the project root explicitly assigned to the current workspace."
-  (when (fboundp '+workspace-current-name)
-    (gethash (+workspace-current-name) mp/workspace-project-roots)))
-
-(defun mp/open-project-root (project-dir)
-  "Open PROJECT-DIR without Projectile's project-action prompt."
-  (let* ((dir (file-name-as-directory (expand-file-name project-dir)))
-         (preferred-files '("README.md" "package.json" "Cargo.toml" "pyproject.toml"))
-         (file (seq-find
-                (lambda (name)
-                  (file-exists-p (expand-file-name name dir)))
-                preferred-files)))
-    (unless (file-directory-p dir)
-      (user-error "Project directory does not exist: %s" dir))
-    (projectile-add-known-project dir)
-    (setq default-directory dir)
-    (if file
-        (find-file (expand-file-name file dir))
-      (dired dir))))
-
-(defun mp/open-project-bundle (bundle-name)
-  "Open project bundle BUNDLE-NAME in separate Doom workspaces."
-  (interactive
-   (list (completing-read "Bundle: " (mapcar #'car mp/project-bundles) nil t)))
-  (let ((projects (cdr (assoc bundle-name mp/project-bundles))))
-    (unless projects
-      (user-error "Unknown bundle: %s" bundle-name))
-    (dolist (project projects)
-      (let* ((workspace (car project))
-             (root (file-name-as-directory (expand-file-name (cdr project)))))
-        (+workspace-switch workspace t)
-        (puthash workspace root mp/workspace-project-roots)
-        (mp/open-project-root root)))))
-
-(defun mp/project-menu ()
-  "Project menu with colorized bundles plus Projectile projects."
-  (interactive)
-  (let* ((bundle-prefix "▶ Bundle: ")
-         (bundle-candidates
-          (mapcar
-           (lambda (bundle)
-             (let* ((name (car bundle))
-                    (label (concat bundle-prefix name)))
-               (cons (propertize label 'face '(:foreground "#a6e3a1" :weight bold))
-                     label)))
-           mp/project-bundles))
-         (project-candidates
-          (mapcar
-           (lambda (project)
-             (let* ((dir (directory-file-name project))
-                    (name (file-name-nondirectory dir))
-                    (parent (file-name-directory dir))
-                    (label (concat parent
-                                   (propertize name 'face '(:foreground "#89b4fa" :weight bold)))))
-               (cons label project)))
-           (projectile-relevant-known-projects)))
-         (candidates (append bundle-candidates project-candidates))
-         (choice (completing-read "Project: " candidates nil t)))
-    (let ((real-value (cdr (assoc choice candidates))))
-      (if (string-prefix-p bundle-prefix real-value)
-          (mp/open-project-bundle (string-remove-prefix bundle-prefix real-value))
-        (projectile-switch-project-by-name real-value)))))
-
-(map! :leader
-      :desc "Project menu"
-      "p p" #'mp/project-menu)
-
-(defun mp/split-target-buffer ()
-  "Populate a newly-created split."
-  (if (derived-mode-p 'vterm-mode)
-      ;; If we're currently in vterm, create a fresh vterm.
-      (mp/vterm-new)
-
-    ;; Otherwise show the Doom dashboard.
-    (cond
-     ;; Reuse existing dashboard buffer.
-     ((get-buffer "*doom*")
-      (switch-to-buffer "*doom*"))
-
-     ;; Create a dashboard if possible.
-     ((fboundp '+doom-dashboard/open)
-      (+doom-dashboard/open))
-
-     ;; Fallback for non-dashboard Doom configs.
-     (t
-      (switch-to-buffer (generate-new-buffer "untitled"))))))
-
-(defun mp/split-window-right-fresh ()
-  "Split right and show a fresh buffer."
-  (interactive)
-  (select-window (split-window-right))
-  (mp/split-target-buffer))
-
-(defun mp/split-window-below-fresh ()
-  "Split below and show a fresh buffer."
-  (interactive)
-  (select-window (split-window-below))
-  (mp/split-target-buffer))
-
-(map! :leader
-      (:prefix ("w" . "window")
-       :desc "Split right (fresh)" "v" #'mp/split-window-right-fresh
-       :desc "Split below (fresh)" "s" #'mp/split-window-below-fresh))
-
-(after! popup
-  (set-popup-rule! "^\\*Flycheck errors" :side 'bottom :size 0.25 :select t :quit t)
-  (set-popup-rule! "^\\*xref\\*"          :side 'bottom :size 0.3  :select t :quit t)
-  (set-popup-rule! "^\\*Warnings\\*"      :side 'bottom :size 0.25 :select t :quit t)
-  (set-popup-rule! "^\\*Backtrace\\*"     :side 'bottom :size 0.35 :select t :quit nil))
-
-(defun mp/save-without-format ()
-  "Save current buffer without running format-on-save hooks."
-  (interactive)
-  (let ((before-save-hook
-         (remove #'+format/buffer before-save-hook)))
-    (save-buffer)))
-
-(map! :leader
-      (:prefix ("f" . "file")
-        :desc "Save without formatting" "!"
-        #'mp/save-without-format))
-
-(after! format-all
-  (setq-hook! '(js-mode-hook
-                js-ts-mode-hook
-                typescript-mode-hook
-                typescript-ts-mode-hook
-                typescript-tsx-mode-hook
-                tsx-ts-mode-hook
-                web-mode-hook
-                css-mode-hook
-                css-ts-mode-hook
-                scss-mode-hook)
-    +format-with 'prettier))
-
-;; ((nil . ((eval . (format-all-mode -1)))))
-
-;; ((python-mode . ((+format-with . ("ruff" "format" "-"))))
-;;  (python-ts-mode . ((+format-with . ("ruff" "format" "-")))))
-
-(after! orderless
-  (setq completion-styles '(orderless basic)
-        completion-category-defaults nil
-        completion-category-overrides
-        '((file (styles orderless partial-completion))
-          (lsp-capf (styles orderless basic)))))
-
-(after! corfu
-  (setq corfu-auto t
-        corfu-preview-current nil
-        corfu-preselect 'prompt
-        corfu-cycle t
-        corfu-on-exact-match nil))
-
-(after! corfu-auto
-  (setq corfu-auto-delay 0.12
-        corfu-auto-prefix 2))
-
-(after! corfu-popupinfo
-  (setq corfu-popupinfo-delay '(0.35 . 0.2)))
-
-(use-package doom-modeline
-  :ensure t
-  :hook (emacs-startup . doom-modeline-mode)
-  :config (column-number-mode 1)
-  :custom
-  (doom-modeline-height 40)
-  (doom-modeline-window-width-limit nil)
-
-  (doom-modeline-buffer-file-name-style 'relative-from-project)
-
-  (doom-modeline-icon t)
-  (doom-modeline-major-mode-color-icon t)
-  (doom-modeline-buffer-modification-icon t)
-  (doom-modeline-buffer-state-icon t)
-
-  (doom-modeline-indent-info t))
-
 (require 'subr-x)
 (require 'seq)
 
@@ -450,9 +245,629 @@
            (or breadcrumbs
                (mp/header-line-block (mp/header-line-buffer-name) buffer-face))
            (mp/header-line-block (mp/header-line-mode-name) major-face)
-           (mp/header-line-diagnostics)))))
+           (when (fboundp 'mp/header-line-diagnostics)
+             (mp/header-line-diagnostics))))))
 
 (setq-default header-line-format '(:eval (mp/header-line-format)))
+
+(defun mp/show-indent-style-h ()
+  "Show tabs and spaces visibly in code-like buffers."
+  (setq-local whitespace-style
+              '(face tabs tab-mark spaces space-mark trailing))
+  (setq-local whitespace-display-mappings
+              '((tab-mark ?\t [?\u2192 ?\t] [?\\ ?\t])
+                (space-mark ?\  [?\u00b7] [?.])))
+  (whitespace-mode +1))
+
+(add-hook 'prog-mode-hook #'mp/show-indent-style-h)
+(add-hook 'conf-mode-hook #'mp/show-indent-style-h)
+
+;; Disable annoying emacs exit confirmation message
+(setq confirm-kill-emacs nil)
+
+;; Send files to trash instead of fully deleting.
+(setq delete-by-moving-to-trash t)
+
+;; Save automatically.
+(setq auto-save-default t)
+
+(setq scroll-preserve-screen-position t
+      scroll-conservatively 101
+      scroll-margin 0
+      mouse-wheel-follow-mouse t
+      mouse-wheel-scroll-amount '(3 ((shift) . 1))
+      mouse-wheel-progressive-speed nil)
+
+(after! evil
+  (setq evil-want-C-u-scroll t))
+
+(use-package! expand-region
+  :commands (er/expand-region er/contract-region)
+  :init
+  (map! :g "M-d" #'er/expand-region
+        :g "M-D" #'er/contract-region))
+
+(defvar mp/project-bundles nil
+  "Private project bundles loaded from private.el.")
+
+(defvar mp/workspace-project-roots (make-hash-table :test 'equal)
+  "Map Doom workspace names to their intended project roots.")
+
+(let ((private-config "~/.config/doom/private.el"))
+  (when (file-exists-p private-config)
+    (load-file private-config)))
+
+(defun mp/current-workspace-project-root ()
+  "Return the project root explicitly assigned to the current workspace."
+  (when (fboundp '+workspace-current-name)
+    (gethash (+workspace-current-name) mp/workspace-project-roots)))
+
+(defun mp/open-project-root (project-dir)
+  "Open PROJECT-DIR without Projectile's project-action prompt."
+  (let* ((dir (file-name-as-directory (expand-file-name project-dir)))
+         (preferred-files '("README.md" "package.json" "Cargo.toml" "pyproject.toml"))
+         (file (seq-find
+                (lambda (name)
+                  (file-exists-p (expand-file-name name dir)))
+                preferred-files)))
+    (unless (file-directory-p dir)
+      (user-error "Project directory does not exist: %s" dir))
+    (projectile-add-known-project dir)
+    (setq default-directory dir)
+    (if file
+        (find-file (expand-file-name file dir))
+      (dired dir))))
+
+(defun mp/open-project-bundle (bundle-name)
+  "Open project bundle BUNDLE-NAME in separate Doom workspaces."
+  (interactive
+   (list (completing-read "Bundle: " (mapcar #'car mp/project-bundles) nil t)))
+  (let ((projects (cdr (assoc bundle-name mp/project-bundles))))
+    (unless projects
+      (user-error "Unknown bundle: %s" bundle-name))
+    (dolist (project projects)
+      (let* ((workspace (car project))
+             (root (file-name-as-directory (expand-file-name (cdr project)))))
+        (+workspace-switch workspace t)
+        (puthash workspace root mp/workspace-project-roots)
+        (mp/open-project-root root)))))
+
+(defun mp/project-menu ()
+  "Project menu with colorized bundles plus Projectile projects."
+  (interactive)
+  (let* ((bundle-prefix "▶ Bundle: ")
+         (bundle-candidates
+          (mapcar
+           (lambda (bundle)
+             (let* ((name (car bundle))
+                    (label (concat bundle-prefix name)))
+               (cons (propertize label 'face '(:foreground "#a6e3a1" :weight bold))
+                     label)))
+           mp/project-bundles))
+         (project-candidates
+          (mapcar
+           (lambda (project)
+             (let* ((dir (directory-file-name project))
+                    (name (file-name-nondirectory dir))
+                    (parent (file-name-directory dir))
+                    (label (concat parent
+                                   (propertize name 'face '(:foreground "#89b4fa" :weight bold)))))
+               (cons label project)))
+           (projectile-relevant-known-projects)))
+         (candidates (append bundle-candidates project-candidates))
+         (choice (completing-read "Project: " candidates nil t)))
+    (let ((real-value (cdr (assoc choice candidates))))
+      (if (string-prefix-p bundle-prefix real-value)
+          (mp/open-project-bundle (string-remove-prefix bundle-prefix real-value))
+        (projectile-switch-project-by-name real-value)))))
+
+(map! :leader
+      :desc "Project menu"
+      "p p" #'mp/project-menu)
+
+(defun mp/split-target-buffer ()
+  "Populate a newly-created split."
+  (if (derived-mode-p 'vterm-mode)
+      ;; If we're currently in vterm, create a fresh vterm.
+      (mp/vterm-new)
+
+    ;; Otherwise show the Doom dashboard.
+    (cond
+     ;; Reuse existing dashboard buffer.
+     ((get-buffer "*doom*")
+      (switch-to-buffer "*doom*"))
+
+     ;; Create a dashboard if possible.
+     ((fboundp '+doom-dashboard/open)
+      (+doom-dashboard/open))
+
+     ;; Fallback for non-dashboard Doom configs.
+     (t
+      (switch-to-buffer (generate-new-buffer "untitled"))))))
+
+(defun mp/split-window-right-fresh ()
+  "Split right and show a fresh buffer."
+  (interactive)
+  (select-window (split-window-right))
+  (mp/split-target-buffer))
+
+(defun mp/split-window-below-fresh ()
+  "Split below and show a fresh buffer."
+  (interactive)
+  (select-window (split-window-below))
+  (mp/split-target-buffer))
+
+(map! :leader
+      (:prefix ("w" . "window")
+       :desc "Split right (fresh)" "v" #'mp/split-window-right-fresh
+       :desc "Split below (fresh)" "s" #'mp/split-window-below-fresh))
+
+(after! popup
+  (set-popup-rule! "^\\*Flycheck errors" :side 'bottom :size 0.25 :select t :quit t)
+  (set-popup-rule! "^\\*xref\\*"          :side 'bottom :size 0.3  :select t :quit t)
+  (set-popup-rule! "^\\*Warnings\\*"      :side 'bottom :size 0.25 :select t :quit t)
+  (set-popup-rule! "^\\*Backtrace\\*"     :side 'bottom :size 0.35 :select t :quit nil))
+
+(defun mp/save-without-format ()
+  "Save current buffer without running format-on-save hooks."
+  (interactive)
+  (let ((before-save-hook
+         (remove #'+format/buffer before-save-hook)))
+    (save-buffer)))
+
+(map! :leader
+      (:prefix ("f" . "file")
+        :desc "Save without formatting" "!"
+        #'mp/save-without-format))
+
+(after! format-all
+  (setq-hook! '(js-mode-hook
+                js-ts-mode-hook
+                typescript-mode-hook
+                typescript-ts-mode-hook
+                typescript-tsx-mode-hook
+                tsx-ts-mode-hook
+                web-mode-hook
+                css-mode-hook
+                css-ts-mode-hook
+                scss-mode-hook)
+    +format-with 'prettier))
+
+;; ((nil . ((eval . (format-all-mode -1)))))
+
+;; ((python-mode . ((+format-with . ("ruff" "format" "-"))))
+;;  (python-ts-mode . ((+format-with . ("ruff" "format" "-")))))
+
+(after! orderless
+  (setq completion-styles '(orderless basic)
+        completion-category-defaults nil
+        completion-category-overrides
+        '((file (styles orderless partial-completion))
+          (lsp-capf (styles orderless basic)))))
+
+(after! projectile
+  ;; Doom's Python helpers still consult Projectile in a few places.
+  ;; Make sure `server/Pipfile` counts as a project root before `.git` does.
+  (add-to-list 'projectile-project-root-files "Pipfile"))
+
+(after! project
+  (defun mp/project-root-from-markers (dir markers)
+    "Return the first project root above DIR matching one of MARKERS."
+    (when-let ((root (seq-some (lambda (marker)
+                                 (locate-dominating-file dir marker))
+                               markers)))
+      (cons 'transient root)))
+
+  ;; Prefer language-specific roots inside monorepos over the repository root.
+  ;; This keeps `server/` Python tooling anchored to its own Pipfile/pyproject
+  ;; instead of falling back to the top-level `.git` directory.
+  (add-hook 'project-find-functions
+            (lambda (dir)
+              (or (mp/project-root-from-markers dir '("go.mod"))
+                  (mp/project-root-from-markers dir '("Cargo.toml"))
+                  (mp/project-root-from-markers dir '("package.json"))
+                  (mp/project-root-from-markers
+                   dir
+                   '("Pipfile" "pyproject.toml" "setup.py" "requirements.txt"))
+                  (mp/project-root-from-markers dir '(".git"))))))
+
+(use-package! evil-mc
+  :after evil
+  :config
+  (global-evil-mc-mode 1)
+
+  (map! :n "C-M-<down>"  #'evil-mc-make-cursor-move-next-line
+        :n "C-M-<up>"    #'evil-mc-make-cursor-move-prev-line
+        :n "C-M-<right>" #'evil-mc-make-all-cursors)
+
+  (defun my/evil-mc-escape ()
+    (interactive)
+    (if (and (bound-and-true-p evil-mc-mode)
+             evil-mc-cursor-list)
+        (evil-mc-undo-all-cursors)
+      (evil-force-normal-state)))
+
+  (map! :i "<escape>" #'my/evil-mc-escape
+        :n "<escape>" #'my/evil-mc-escape))
+
+(map! :nv "C-d" #'evil-multiedit-match-and-next
+      :i  "C-d" #'evil-multiedit-toggle-marker-here)
+
+(use-package! color-rg
+  :commands (color-rg-search-input
+             color-rg-search-symbol
+             color-rg-search-input-in-project
+             color-rg-search-symbol-in-project
+             color-rg-search-input-in-current-file
+             color-rg-search-symbol-in-current-file)
+  :init
+  ;; `color-rg-mac-load-path-from-shell' only matters on macOS; Doom already
+  ;; manages PATH (see the NVM Path section), so the shell import is unneeded.
+  (setq color-rg-mac-load-path-from-shell nil)
+  ;; NOTE: `SPC s r' is bound to `evil-show-marks' in Doom, so it can't become
+  ;; a prefix until that binding is cleared. Unbind it first, then nest under it.
+  (map! :leader
+        (:prefix ("s" . "search")
+         "r" nil
+         (:prefix ("r" . "color-rg")
+          :desc "Search in file"    "f" #'color-rg-search-input-in-current-file
+          :desc "Search in project" "p" #'color-rg-search-input-in-project)))
+  :config
+  ;; Respect .gitignore so project searches stay focused like an IDE.
+  ;; Toggle per-search inside the results buffer with `I'.
+  (setq color-rg-search-no-ignore-file nil)
+  ;; `color-rg-mode' derives from `text-mode' and ships its own single-key view
+  ;; bindings (j/k navigate, e edit, r replace, q quit). Hand the buffer to
+  ;; Evil's Emacs state so those keys aren't shadowed.
+  (after! evil
+    (evil-set-initial-state 'color-rg-mode 'emacs)))
+
+(setq treesit-auto-install-grammar 'always)
+
+(after! treesit-fold
+  (dolist (mode '(js-mode js-ts-mode javascript-mode))
+    (when-let ((cell (assq mode treesit-fold-range-alist)))
+      (dolist (rule '((jsx_element  . treesit-fold-range-html)
+                      (jsx_fragment . treesit-fold-range-html)))
+        (unless (assq (car rule) (cdr cell))
+          (setcdr cell (append (cdr cell) (list rule))))))))
+
+(defun mp/treesit-fold-active-p ()
+  "Return non-nil when `treesit-fold' can operate on the current buffer."
+  (and (fboundp 'treesit-fold-ready-p)
+       (treesit-fold-ready-p)
+       (treesit-fold-usable-mode-p)))
+
+(defun mp/treesit-fold--node-foldable-p (node)
+  "Return non-nil when NODE defines a multi-line fold."
+  (when-let ((range (treesit-fold--get-fold-range node)))
+    (not (treesit-fold--range-on-same-line range))))
+
+(defun mp/treesit-fold--depth (node)
+  "Return the fold-nesting depth of NODE (1 = outermost foldable)."
+  (let ((depth 0)
+        (current node))
+    (while current
+      (when (mp/treesit-fold--node-foldable-p current)
+        (cl-incf depth))
+      (setq current (treesit-node-parent current)))
+    depth))
+
+(defun mp/treesit-fold--foldable-nodes ()
+  "Return every multi-line foldable node in the buffer."
+  (let* ((root (treesit-buffer-root-node))
+         (ranges (alist-get major-mode treesit-fold-range-alist))
+         (patterns (seq-mapcat (lambda (range) `((,(car range)) @name)) ranges))
+         (query (treesit-query-compile (treesit-node-language root) patterns)))
+    (cl-remove-if-not #'mp/treesit-fold--node-foldable-p
+                      (mapcar #'cdr (treesit-query-capture root query)))))
+
+(defun mp/treesit-fold-to-level (level)
+  "Fold every node at LEVEL, keeping shallower levels open (VSCode-style).
+If LEVEL is already folded, reveal everything instead."
+  (let* ((nodes (mp/treesit-fold--foldable-nodes))
+         (depths (mapcar #'mp/treesit-fold--depth nodes))
+         (max-depth (if depths (apply #'max depths) 0)))
+    (when (zerop max-depth)
+      (user-error "Nothing foldable in this buffer"))
+    (let* ((level (min level max-depth))
+           (at-level (cl-loop for node in nodes
+                              for depth in depths
+                              when (= depth level) collect node))
+           (folded (cl-some #'treesit-fold-overlay-at at-level)))
+      (treesit-fold-open-all)
+      (if folded
+          (message "Fold level %d revealed" level)
+        (dolist (node at-level)
+          (treesit-fold-close node))
+        (message "Folded to level %d" level)))))
+
+(defvar-local mp/fold--last-level nil
+  "Last fold level applied in a non-tree-sitter buffer, for toggling.")
+
+(defun mp/fold--fallback-to-level (level)
+  "Fold to LEVEL with hideshow/outline, toggling open on repeat."
+  (if (eq mp/fold--last-level level)
+      (progn (+fold/open-all)
+             (setq mp/fold--last-level nil)
+             (message "Fold level %d revealed" level))
+    (+fold/open-all)
+    (+fold/close-all level)
+    (setq mp/fold--last-level level)
+    (message "Folded to level %d" level)))
+
+(defun mp/fold-to-level (&optional level)
+  "Fold all regions down to LEVEL (1 = outermost), VSCode-style.
+Re-invoking the same level reveals everything again.  When called from the
+z1..z9 keys, LEVEL is read from the triggering digit."
+  (interactive)
+  (let ((level (or level
+                   (let ((event last-command-event))
+                     (and (characterp event)
+                          (<= ?1 event ?9)
+                          (- event ?0))))))
+    (unless (and (integerp level) (<= 1 level 9))
+      (user-error "Fold level must be between 1 and 9"))
+    (if (mp/treesit-fold-active-p)
+        (mp/treesit-fold-to-level level)
+      (mp/fold--fallback-to-level level))))
+
+(after! evil
+  (dolist (level (number-sequence 1 9))
+    (let ((key (vector ?z (+ ?0 level))))
+      (define-key evil-normal-state-map key #'mp/fold-to-level)
+      (define-key evil-motion-state-map key #'mp/fold-to-level))))
+
+;;; org-basic.el --- sane Org defaults for Doom
+(setq org-directory "~/org/")
+
+;; Files scanned by org-agenda.
+;; Only put actionable/date-based files here.
+(setq org-agenda-files
+      '("~/org/inbox.org"
+        "~/org/tasks.org"
+        "~/org/projects.org"
+        "~/org/calendar.org"))
+
+;; Basic TODO workflow.
+;; TODO      = not started
+;; NEXT      = next concrete action
+;; WAIT      = blocked by someone/something
+;; SOMEDAY   = intentionally inactive
+;; DONE      = completed
+;; CANCELLED = no longer relevant
+(setq org-todo-keywords
+      '((sequence "TODO(t)" "NEXT(n)" "WAIT(w)" "SOMEDAY(s)" "|"
+                  "DONE(d)" "CANCELLED(c)")))
+
+;; Save timestamp when marking DONE.
+(setq org-log-done 'time)
+
+;; Save note when moving into WAIT or CANCELLED.
+(setq org-todo-keyword-faces
+      '(("TODO" . warning)
+        ("NEXT" . success)
+        ("WAIT" . font-lock-constant-face)
+        ("SOMEDAY" . font-lock-doc-face)
+        ("DONE" . shadow)
+        ("CANCELLED" . shadow)))
+
+(setq org-todo-keywords
+      '((sequence "TODO" "|" "DONE")))
+
+;; Use fast todo selection.
+(setq org-use-fast-todo-selection t)
+
+;; Hide completed scheduled/deadline tasks from agenda after done.
+(setq org-agenda-skip-scheduled-if-done t)
+(setq org-agenda-skip-deadline-if-done t)
+
+;; Show agenda starting today.
+;; (setq org-agenda-start-on-weekday nil)
+
+;; Show 14 days by default.
+(setq org-agenda-span 14)
+
+;; Warn about deadlines 7 days in advance.
+(setq org-deadline-warning-days 7)
+
+;; Make indentation readable.
+(setq org-startup-indented t)
+
+;; Hide leading stars visually.
+(setq org-hide-leading-stars t)
+
+;; Open folded files cleanly.
+(setq org-startup-folded 'content)
+
+;; Log state changes into a drawer to avoid visual noise.
+(setq org-log-into-drawer t)
+
+;; Refile targets.
+;; This lets you move captured items from inbox.org into real files.
+(setq org-refile-targets
+      '(("~/org/tasks.org" :maxlevel . 3)
+        ("~/org/projects.org" :maxlevel . 4)
+        ("~/org/calendar.org" :maxlevel . 2)
+        ("~/org/someday.org" :maxlevel . 2)))
+
+;; Make refile completion use full paths.
+(setq org-refile-use-outline-path 'file)
+(setq org-outline-path-complete-in-steps nil)
+
+;; Archive completed old tasks here.
+(setq org-archive-location "~/org/archive.org::* From %s")
+
+;; Capture templates.
+(setq org-capture-templates
+      '(("t" "Todo" entry
+         (file "~/org/inbox.org")
+         "* TODO %?\nCREATED: %U\n")
+
+        ("d" "Todo with deadline" entry
+         (file "~/org/inbox.org")
+         "* TODO %?\nDEADLINE: %^t\nCREATED: %U\n")
+
+        ("s" "Scheduled todo" entry
+         (file "~/org/inbox.org")
+         "* TODO %?\nSCHEDULED: %^t\nCREATED: %U\n")
+
+        ("e" "Event / calendar date" entry
+         (file "~/org/calendar.org")
+         "* %?\n%^T\n")
+
+        ("r" "Repeating event" entry
+         (file "~/org/calendar.org")
+         "* %?\n%^T\n")
+
+        ("p" "Project task" entry
+         (file "~/org/projects.org")
+         "* TODO %?\nCREATED: %U\n")
+
+        ("n" "Note" entry
+         (file "~/org/notes.org")
+         "* %?\nCREATED: %U\n")))
+
+;; Custom agenda views.
+(setq org-agenda-custom-commands
+      '(("d" "Dashboard"
+         ((agenda "" ((org-agenda-span 14)))
+          (todo "NEXT"
+                ((org-agenda-overriding-header "Next actions")))
+          (todo "WAIT"
+                ((org-agenda-overriding-header "Waiting")))
+          (todo "TODO"
+                ((org-agenda-overriding-header "Unprocessed todos")))))
+
+        ("i" "Inbox"
+         ((tags "REFILE|TODO"
+                ((org-agenda-files '("~/org/inbox.org"))
+                 (org-agenda-overriding-header "Inbox")))))
+
+        ("p" "Projects"
+         ((tags "project"
+                ((org-agenda-overriding-header "Projects")))))))
+
+(after! org
+  (defun mp/doom-config-org-file-p (&optional file)
+    "Return non-nil when FILE is the Doom literate config."
+    (let ((file (or file buffer-file-name)))
+      (and file
+           (file-equal-p (file-truename file)
+                         (file-truename (expand-file-name "config.org" doom-user-dir))))))
+
+  (defun mp/org-babel-tangle-doom-config-h ()
+    "Tangle the Doom literate config after saving `config.org'."
+    (when (mp/doom-config-org-file-p)
+      (let ((org-confirm-babel-evaluate nil))
+        (org-babel-tangle))))
+
+  (defun mp/enable-doom-config-auto-tangle-h ()
+    "Enable local auto-tangling for the Doom literate config buffer."
+    (when (mp/doom-config-org-file-p)
+      (add-hook 'after-save-hook #'mp/org-babel-tangle-doom-config-h nil t)))
+
+  (add-hook 'org-mode-hook #'mp/enable-doom-config-auto-tangle-h))
+
+(add-hook 'org-mode-hook 'visual-line-mode)
+(add-hook 'org-mode-hook 'olivetti-mode)
+(add-hook 'org-mode-hook (lambda () (display-line-numbers-mode -1)))
+
+;; Show line numbers only in insert state, hide in normal state.
+(add-hook 'evil-insert-state-entry-hook
+          (lambda () (when (derived-mode-p 'org-mode) (display-line-numbers-mode 1))))
+(add-hook 'evil-insert-state-exit-hook
+          (lambda () (when (derived-mode-p 'org-mode) (display-line-numbers-mode -1))))
+
+(after! org
+  ;; Prevent alphabetical list markers from conflicting with checkbox parsing.
+  (setq org-list-allow-alphabetical nil)
+
+  (setq org-auto-align-tags nil
+        org-tags-column 0
+        org-fold-catch-invisible-edits 'show-and-error        org-special-ctrl-a/e t
+        org-insert-heading-respect-content t
+        org-hide-emphasis-markers t
+        org-pretty-entities t
+        org-agenda-tags-column 0
+        org-ellipsis "…"))
+
+(after! org-modern
+  (setq org-modern-symbol 'caskaydia)
+  (dolist (face '(window-divider
+                  window-divider-first-pixel
+                  window-divider-last-pixel))
+    (face-spec-reset-face face)
+    (set-face-foreground face (face-attribute 'default :background)))
+  ;; (set-face-background 'fringe (face-attribute 'default :background))
+  (setq org-modern-block-fringe t)
+  (global-org-modern-mode))
+
+(use-package doom-modeline
+  :ensure t
+  :hook (emacs-startup . doom-modeline-mode)
+  :config (column-number-mode 1)
+  :custom
+  (doom-modeline-height 40)
+  (doom-modeline-window-width-limit nil)
+
+  (doom-modeline-buffer-file-name-style 'relative-from-project)
+
+  (doom-modeline-icon t)
+  (doom-modeline-major-mode-color-icon t)
+  (doom-modeline-buffer-modification-icon t)
+  (doom-modeline-buffer-state-icon t)
+
+  (doom-modeline-indent-info t))
+
+(use-package! vertico-posframe
+  :after vertico
+  :config
+  (setq vertico-posframe-width 120
+        vertico-posframe-height 18
+        vertico-posframe-border-width 4
+        vertico-posframe-poshandler #'posframe-poshandler-frame-center
+        vertico-posframe-parameters
+        '((left-fringe . 16)
+          (right-fringe . 16)
+          (internal-border-width . 12)
+          (alpha-background . 96)
+          (undecorated . t)))
+
+  (vertico-posframe-mode 1))
+
+(use-package! spacious-padding
+  :custom
+  (spacious-padding-widths
+        '( :internal-border-width 8
+           :header-line-width 0
+           :mode-line-width 0
+           :tab-width 4
+           :right-divider-width 30
+           :scroll-bar-width 8))
+
+  (spacious-padding-mode 1))
+
+(after! demap
+  (setq demap-minimap-window-side 'right
+        demap-minimap-window-width 18))
+
+(use-package! rainbow-delimiters
+  :hook ((prog-mode . rainbow-delimiters-mode)))
+
+(after! corfu
+  (setq corfu-auto t
+        corfu-preview-current nil
+        corfu-preselect 'prompt
+        corfu-cycle t
+        corfu-on-exact-match nil))
+
+(after! corfu-auto
+  (setq corfu-auto-delay 0.12
+        corfu-auto-prefix 2))
+
+(after! corfu-popupinfo
+  (setq corfu-popupinfo-delay '(0.35 . 0.2)))
 
 ;;; consult-buffer with history-sorted custom sources.
 
@@ -676,106 +1091,8 @@
 
 (map! :leader :desc "File symbols" "m g f s" #'consult-lsp-file-symbols)
 
-(use-package! vertico-posframe
-  :after vertico
-  :config
-  (setq vertico-posframe-width 120
-        vertico-posframe-height 18
-        vertico-posframe-border-width 4
-        vertico-posframe-poshandler #'posframe-poshandler-frame-center
-        vertico-posframe-parameters
-        '((left-fringe . 16)
-          (right-fringe . 16)
-          (internal-border-width . 12)
-          (alpha-background . 96)
-          (undecorated . t)))
-
-  (vertico-posframe-mode 1))
-
-(use-package! spacious-padding
-  :custom
-  (spacious-padding-widths
-        '( :internal-border-width 8
-           :header-line-width 0
-           :mode-line-width 0
-           :tab-width 4
-           :right-divider-width 30
-           :scroll-bar-width 8))
-
-  (spacious-padding-mode 1))
-
-(after! demap
-  (setq demap-minimap-window-side 'right
-        demap-minimap-window-width 18))
-
-(use-package! rainbow-delimiters
-  :hook ((prog-mode . rainbow-delimiters-mode)))
-
 (after! olivetti
   (setq olivetti-body-width 100))
-
-(setq org-directory "~/org/")
-
-;; Send files to trash instead of fully deleting.
-(setq delete-by-moving-to-trash t)
-
-;; Save automatically.
-(setq auto-save-default t)
-
-(after! org
-  (defun mp/doom-config-org-file-p (&optional file)
-    "Return non-nil when FILE is the Doom literate config."
-    (let ((file (or file buffer-file-name)))
-      (and file
-           (file-equal-p (file-truename file)
-                         (file-truename (expand-file-name "config.org" doom-user-dir))))))
-
-  (defun mp/org-babel-tangle-doom-config-h ()
-    "Tangle the Doom literate config after saving `config.org'."
-    (when (mp/doom-config-org-file-p)
-      (let ((org-confirm-babel-evaluate nil))
-        (org-babel-tangle))))
-
-  (defun mp/enable-doom-config-auto-tangle-h ()
-    "Enable local auto-tangling for the Doom literate config buffer."
-    (when (mp/doom-config-org-file-p)
-      (add-hook 'after-save-hook #'mp/org-babel-tangle-doom-config-h nil t)))
-
-  (add-hook 'org-mode-hook #'mp/enable-doom-config-auto-tangle-h))
-
-(add-hook 'org-mode-hook 'visual-line-mode)
-(add-hook 'org-mode-hook 'olivetti-mode)
-(add-hook 'org-mode-hook (lambda () (display-line-numbers-mode -1)))
-
-;; Show line numbers only in insert state, hide in normal state.
-(add-hook 'evil-insert-state-entry-hook
-          (lambda () (when (derived-mode-p 'org-mode) (display-line-numbers-mode 1))))
-(add-hook 'evil-insert-state-exit-hook
-          (lambda () (when (derived-mode-p 'org-mode) (display-line-numbers-mode -1))))
-
-(after! org
-  ;; Prevent alphabetical list markers from conflicting with checkbox parsing.
-  (setq org-list-allow-alphabetical nil)
-
-  (setq org-auto-align-tags nil
-        org-tags-column 0
-        org-fold-catch-invisible-edits 'show-and-error        org-special-ctrl-a/e t
-        org-insert-heading-respect-content t
-        org-hide-emphasis-markers t
-        org-pretty-entities t
-        org-agenda-tags-column 0
-        org-ellipsis "…"))
-
-(after! org-modern
-  (setq org-modern-symbol 'caskaydia)
-  (dolist (face '(window-divider
-                  window-divider-first-pixel
-                  window-divider-last-pixel))
-    (face-spec-reset-face face)
-    (set-face-foreground face (face-attribute 'default :background)))
-  ;; (set-face-background 'fringe (face-attribute 'default :background))
-  (setq org-modern-block-fringe t)
-  (global-org-modern-mode))
 
 (setq which-key-idle-delay 0.2)
 
@@ -1162,335 +1479,6 @@
         +dashboard-widget-loaded
         +dashboard-widget-footer)))
 
-(defun mp/show-indent-style-h ()
-  "Show tabs and spaces visibly in code-like buffers."
-  (setq-local whitespace-style
-              '(face tabs tab-mark spaces space-mark trailing))
-  (setq-local whitespace-display-mappings
-              '((tab-mark ?\t [?\u2192 ?\t] [?\\ ?\t])
-                (space-mark ?\  [?\u00b7] [?.])))
-  (whitespace-mode +1))
-
-(add-hook 'prog-mode-hook #'mp/show-indent-style-h)
-(add-hook 'conf-mode-hook #'mp/show-indent-style-h)
-
-;; Never let Doom infer or create a Pipenv project at a monorepo root.
-;; Only an already-existing ancestor Pipfile counts as a valid Pipenv root.
-(defun mp/pipenv-project-p (&optional dir)
-  (when-let ((root (locate-dominating-file (or dir default-directory) "Pipfile")))
-    (expand-file-name root)))
-
-(defun mp/pipenv-allowed-p (&optional dir)
-  (not (null (mp/pipenv-project-p dir))))
-
-(defun mp/pipenv-command-p (program)
-  (and (stringp program)
-       (string= (file-name-nondirectory program) "pipenv")))
-
-(defun mp/pipenv-command-list-p (command)
-  (and (consp command)
-       (mp/pipenv-command-p (car command))))
-
-(defun mp/block-pipenv-outside-project (origin &optional dir)
-  (unless (mp/pipenv-allowed-p dir)
-    (user-error "Blocked %s outside a directory that already contains an ancestor Pipfile" origin)))
-
-(defun mp/call-process-guard-a (fn program &rest args)
-  (when (mp/pipenv-command-p program)
-    (mp/block-pipenv-outside-project 'call-process default-directory))
-  (apply fn program args))
-
-(defun mp/process-file-guard-a (fn program &rest args)
-  (when (mp/pipenv-command-p program)
-    (mp/block-pipenv-outside-project 'process-file default-directory))
-  (apply fn program args))
-
-(defun mp/start-file-process-guard-a (fn name buffer program &rest program-args)
-  (when (mp/pipenv-command-p program)
-    (mp/block-pipenv-outside-project 'start-file-process default-directory))
-  (apply fn name buffer program program-args))
-
-(defun mp/make-process-guard-a (fn &rest args)
-  (let ((command (plist-get args :command))
-        (dir (or (plist-get args :default-directory) default-directory)))
-    (when (mp/pipenv-command-list-p command)
-      (mp/block-pipenv-outside-project 'make-process dir)))
-  (apply fn args))
-
-;; Define this early so any stale autoloads or callers resolve to the safe
-;; version even if the `pipenv' package is disabled.
-(defalias 'pipenv-project-p #'mp/pipenv-project-p)
-(advice-add 'call-process :around #'mp/call-process-guard-a)
-(advice-add 'process-file :around #'mp/process-file-guard-a)
-(advice-add 'start-file-process :around #'mp/start-file-process-guard-a)
-(advice-add 'make-process :around #'mp/make-process-guard-a)
-
-(after! python
-  ;; Stop Doom/python-mode from auto-enabling pipenv.
-  (remove-hook 'python-mode-local-vars-hook #'pipenv-mode)
-  (remove-hook 'python-ts-mode-local-vars-hook #'pipenv-mode)
-
-  ;; Hard-disable pipenv-mode if loaded.
-  (setq pipenv-with-projectile nil)
-
-  ;; Doom's default REPL helper tries to route through pipenv when available.
-  ;; Force plain `run-python' so opening a REPL never shells out to pipenv.
-  (defun mp/+python/open-repl-no-pipenv ()
-    (interactive)
-    (require 'python)
-    (unless python-shell-interpreter
-      (user-error "`python-shell-interpreter' isn't set"))
-    (pop-to-buffer
-     (process-buffer
-      (run-python nil (bound-and-true-p python-shell-dedicated) t))))
-
-  (advice-add '+python/open-repl :override #'mp/+python/open-repl-no-pipenv)
-
-  ;; Likewise, project script execution should run the interpreter directly.
-  (set-eval-handler! '(python-mode python-ts-mode)
-    '((:command . (lambda () python-shell-interpreter))
-      (:exec . (lambda () "%c %o %s %a"))
-      (:description . "Run Python script"))))
-
-(after! pipenv
-  (advice-add 'pipenv-project-p :override #'mp/pipenv-project-p)
-  (pipenv-mode -1))
-
-(after! doom-modeline
-  ;; The Python env segment can shell out to `pipenv run ...` on Python buffers.
-  ;; Disable it so merely visiting files can't hit pipenv.
-  (setq doom-modeline-env-enable-python nil))
-
-(after! projectile
-  ;; Doom's Python helpers still consult Projectile in a few places.
-  ;; Make sure `server/Pipfile` counts as a project root before `.git` does.
-  (add-to-list 'projectile-project-root-files "Pipfile"))
-
-(after! project
-  (defun mp/project-root-from-markers (dir markers)
-    "Return the first project root above DIR matching one of MARKERS."
-    (when-let ((root (seq-some (lambda (marker)
-                                 (locate-dominating-file dir marker))
-                               markers)))
-      (cons 'transient root)))
-
-  ;; Prefer language-specific roots inside monorepos over the repository root.
-  ;; This keeps `server/` Python tooling anchored to its own Pipfile/pyproject
-  ;; instead of falling back to the top-level `.git` directory.
-  (add-hook 'project-find-functions
-            (lambda (dir)
-              (or (mp/project-root-from-markers dir '("go.mod"))
-                  (mp/project-root-from-markers dir '("Cargo.toml"))
-                  (mp/project-root-from-markers dir '("package.json"))
-                  (mp/project-root-from-markers
-                   dir
-                   '("Pipfile" "pyproject.toml" "setup.py" "requirements.txt"))
-                  (mp/project-root-from-markers dir '(".git"))))))
-
-(map! :leader
-      :desc "Run nearest test" "t t" #'+eval/test
-      :desc "Run all project tests" "t a" #'+eval/test-all
-      (:prefix ("d" . "agent")
-       :desc "Agent shell" "a" #'agent-shell))
-
-(map! :n "gr" #'xref-find-references
-      :n "g[" #'xref-go-back
-      :n "g]" #'xref-go-forward)
-
-(global-set-key [mouse-8] #'xref-go-back)
-(global-set-key [mouse-9] #'xref-go-forward)
-
-(defun mp/project-root-default-directory (&optional dir)
-  "Return the preferred project root for DIR, preferring explicit workspace roots."
-  (or (mp/current-workspace-project-root)
-      (let ((dir (file-name-as-directory
-                  (expand-file-name (or dir default-directory)))))
-        (or
-         (when (fboundp 'projectile-project-root)
-           (let ((default-directory dir))
-             (ignore-errors
-               (file-name-as-directory
-                (expand-file-name (projectile-project-root))))))
-         (when (fboundp 'doom-project-root)
-           (ignore-errors
-             (file-name-as-directory
-              (expand-file-name (doom-project-root dir)))))
-         dir))))
-
-(defun mp/vterm-toggle ()
-  "Toggle the vterm popup from the current project root."
-  (interactive)
-  (let ((default-directory (mp/project-root-default-directory)))
-    (+vterm/toggle nil)))
-
-(defun mp/vterm-new ()
-  "Open a fresh vterm buffer in the current window at project root."
-  (interactive)
-  (require 'vterm)
-  (let* ((default-directory (mp/project-root-default-directory))
-         (buffer-name (format "*vterm:%s*" (format-time-string "%Y%m%d-%H%M%S")))
-         (buffer (generate-new-buffer buffer-name))
-         (display-buffer-alist nil))
-    (with-current-buffer buffer
-      (vterm-mode))
-    (switch-to-buffer buffer)))
-
-(defun mp/line-move-bounds ()
-  "Return the line-aligned bounds for the current line or active region."
-  (if (use-region-p)
-      (cons (save-excursion
-              (goto-char (region-beginning))
-              (line-beginning-position))
-            (save-excursion
-              (goto-char (region-end))
-              (if (bolp)
-                  (point)
-                (line-beginning-position 2))))
-    (cons (line-beginning-position)
-          (line-beginning-position 2))))
-
-(defun mp/move-lines--apply (direction)
-  "Move the current line or active region one line in DIRECTION."
-  (let* ((bounds (mp/line-move-bounds))
-         (had-region (use-region-p))
-         (start (car bounds))
-         (end (cdr bounds)))
-    (save-excursion
-      (goto-char (if (> direction 0) end start))
-      (when (or (and (< direction 0) (= start (point-min)))
-                (and (> direction 0) (= end (point-max))))
-        (user-error "Cannot move further %s" (if (< direction 0) "up" "down"))))
-    (let* ((line-count (count-lines start end))
-           (column (current-column))
-           (text (delete-and-extract-region start end)))
-      (goto-char start)
-      (forward-line direction)
-      (let ((target (point)))
-        (insert text)
-        (if had-region
-            (progn
-              (set-mark target)
-              (goto-char (+ target (length text)))
-              (setq deactivate-mark nil))
-          (goto-char target)
-          (forward-line (if (> direction 0) (1- line-count) 0))
-          (move-to-column column))))))
-
-(defun mp/move-lines-up ()
-  "Move the current line or active region up by one line."
-  (interactive)
-  (mp/move-lines--apply -1))
-
-(defun mp/move-lines-down ()
-  "Move the current line or active region down by one line."
-  (interactive)
-  (mp/move-lines--apply 1))
-
-;; Global GUI-style bindings.
-;; Keeps a terminal toggle, line commenting, and line movement available
-;; through familiar keys.
-(map! :g "C-`" #'mp/vterm-toggle
-      :g "C-\\" #'mp/vterm-new
-      :g "C-/" #'comment-line
-      :g "M-<up>" #'mp/move-lines-up
-      :g "M-<down>" #'mp/move-lines-down)
-
-(defun mp/clipboard-copy ()
-  (interactive)
-  (clipboard-kill-ring-save (region-beginning) (region-end))
-  (evil-exit-visual-state))
-
-(after! evil
-  (dolist (state-map (list evil-motion-state-map
-                           evil-normal-state-map
-                           evil-insert-state-map
-                           evil-emacs-state-map
-                           evil-visual-state-map))
-    (define-key state-map (kbd "C-b") #'mp/treemacs-toggle-current-project)
-    (define-key state-map (kbd "C-S-e") #'treemacs-find-file)
-    (define-key state-map (kbd "C-S-c") #'mp/clipboard-copy)
-    (define-key state-map (kbd "C-S-v") #'clipboard-yank)
-    (define-key state-map (kbd "C-\\") #'mp/vterm-new)
-    (define-key state-map (kbd "C-/") #'comment-line)
-    (define-key state-map (kbd "M-d") #'er/expand-region)
-    (define-key state-map (kbd "M-D") #'er/contract-region)
-    (define-key state-map (kbd "M-<up>") #'mp/move-lines-up)
-    (define-key state-map (kbd "M-<down>") #'mp/move-lines-down))
-
-  (map! :leader
-        (:prefix ("v" . "visual")
-         :desc "Visual line" "v" #'evil-visual-line
-         :desc "Visual block" "b" #'evil-visual-block)))
-
-(defun mp/close-window-preserve-buffer ()
-  "Close the selected window without killing popup or terminal buffers."
-  (interactive)
-  (if (and (featurep '+popup)
-           (+popup-window-p))
-      (let* ((window (selected-window))
-             (buffer (window-buffer window))
-             (+popup--inhibit-transient t)
-             (ignore-window-parameters t))
-        (if-let ((wconf (window-parameter window 'saved-wconf)))
-            (set-window-configuration wconf)
-          (delete-window window))
-        (when (buffer-live-p buffer)
-          (with-current-buffer buffer
-            (set-buffer-modified-p nil)
-            (when (bound-and-true-p +popup-buffer-mode)
-              (+popup-buffer-mode -1))
-            (bury-buffer buffer))))
-    (call-interactively #'delete-window)))
-
-(after! workspaces
-  (map! :leader
-        (:prefix ("w" . "workspaces/windows")
-         :desc "Delete window" "d" #'mp/close-window-preserve-buffer
-         :desc "Delete window/workspace" "D" #'+workspace/close-window-or-workspace))
-  (map! :map evil-window-map
-        "d" #'mp/close-window-preserve-buffer
-        "D" #'+workspace/close-window-or-workspace))
-
-(use-package! consult-dir
-  :defer t
-  :config
-  (map! :leader
-        :desc "Find file from directory" "." #'find-file
-        :desc "Switch directory" "f d" #'consult-dir)
-  (map! :map minibuffer-local-completion-map
-        "C-x C-d" #'consult-dir
-        "C-x C-j" #'consult-dir-jump-file))
-
-(after! which-key
-  (when (boundp 'doom-leader-map)
-    (which-key-add-keymap-based-replacements doom-leader-map
-      "TAB" "workspace"
-      "a" "actions"
-      "b" "buffers"
-      "c" "code"
-      "d" "agent"
-      "f" "files"
-      "g" "git"
-      "h" "help"
-      "i" "insert"
-      "n" "notes"
-      "o" "open"
-      "p" "project"
-      "q" "quit/session"
-      "s" "search"
-      "t" "toggle"
-      "v" "visual"
-      "w" "windows"
-      "x" "text")))
-
-(after! flycheck
-  (map! :leader
-        (:prefix ("e" . "errors")
-         :desc "List errors" "l" #'flycheck-list-errors
-         :desc "Next error" "n" #'flycheck-next-error
-         :desc "Previous error" "p" #'flycheck-previous-error
-         :desc "Verify checker" "v" #'flycheck-verify-setup)))
-
 (after! treemacs
   (setq treemacs-show-hidden-files t)
 
@@ -1717,151 +1705,309 @@
   (setq minuet-show-error-message-on-minibuffer t
         minuet-request-timeout 10))
 
-(setq confirm-kill-emacs nil)
+;; Never let Doom infer or create a Pipenv project at a monorepo root.
+;; Only an already-existing ancestor Pipfile counts as a valid Pipenv root.
+(defun mp/pipenv-project-p (&optional dir)
+  (when-let ((root (locate-dominating-file (or dir default-directory) "Pipfile")))
+    (expand-file-name root)))
 
-(use-package! evil-mc
-  :after evil
-  :config
-  (global-evil-mc-mode 1)
+(defun mp/pipenv-allowed-p (&optional dir)
+  (not (null (mp/pipenv-project-p dir))))
 
-  (map! :n "C-M-<down>"  #'evil-mc-make-cursor-move-next-line
-        :n "C-M-<up>"    #'evil-mc-make-cursor-move-prev-line
-        :n "C-M-<right>" #'evil-mc-make-all-cursors)
+(defun mp/pipenv-command-p (program)
+  (and (stringp program)
+       (string= (file-name-nondirectory program) "pipenv")))
 
-  (defun my/evil-mc-escape ()
+(defun mp/pipenv-command-list-p (command)
+  (and (consp command)
+       (mp/pipenv-command-p (car command))))
+
+(defun mp/block-pipenv-outside-project (origin &optional dir)
+  (unless (mp/pipenv-allowed-p dir)
+    (user-error "Blocked %s outside a directory that already contains an ancestor Pipfile" origin)))
+
+(defun mp/call-process-guard-a (fn program &rest args)
+  (when (mp/pipenv-command-p program)
+    (mp/block-pipenv-outside-project 'call-process default-directory))
+  (apply fn program args))
+
+(defun mp/process-file-guard-a (fn program &rest args)
+  (when (mp/pipenv-command-p program)
+    (mp/block-pipenv-outside-project 'process-file default-directory))
+  (apply fn program args))
+
+(defun mp/start-file-process-guard-a (fn name buffer program &rest program-args)
+  (when (mp/pipenv-command-p program)
+    (mp/block-pipenv-outside-project 'start-file-process default-directory))
+  (apply fn name buffer program program-args))
+
+(defun mp/make-process-guard-a (fn &rest args)
+  (let ((command (plist-get args :command))
+        (dir (or (plist-get args :default-directory) default-directory)))
+    (when (mp/pipenv-command-list-p command)
+      (mp/block-pipenv-outside-project 'make-process dir)))
+  (apply fn args))
+
+;; Define this early so any stale autoloads or callers resolve to the safe
+;; version even if the `pipenv' package is disabled.
+(defalias 'pipenv-project-p #'mp/pipenv-project-p)
+(advice-add 'call-process :around #'mp/call-process-guard-a)
+(advice-add 'process-file :around #'mp/process-file-guard-a)
+(advice-add 'start-file-process :around #'mp/start-file-process-guard-a)
+(advice-add 'make-process :around #'mp/make-process-guard-a)
+
+(after! python
+  ;; Stop Doom/python-mode from auto-enabling pipenv.
+  (remove-hook 'python-mode-local-vars-hook #'pipenv-mode)
+  (remove-hook 'python-ts-mode-local-vars-hook #'pipenv-mode)
+
+  ;; Hard-disable pipenv-mode if loaded.
+  (setq pipenv-with-projectile nil)
+
+  ;; Doom's default REPL helper tries to route through pipenv when available.
+  ;; Force plain `run-python' so opening a REPL never shells out to pipenv.
+  (defun mp/+python/open-repl-no-pipenv ()
     (interactive)
-    (if (and (bound-and-true-p evil-mc-mode)
-             evil-mc-cursor-list)
-        (evil-mc-undo-all-cursors)
-      (evil-force-normal-state)))
+    (require 'python)
+    (unless python-shell-interpreter
+      (user-error "`python-shell-interpreter' isn't set"))
+    (pop-to-buffer
+     (process-buffer
+      (run-python nil (bound-and-true-p python-shell-dedicated) t))))
 
-  (map! :i "<escape>" #'my/evil-mc-escape
-        :n "<escape>" #'my/evil-mc-escape))
+  (advice-add '+python/open-repl :override #'mp/+python/open-repl-no-pipenv)
 
-(map! :nv "C-d" #'evil-multiedit-match-and-next
-      :i  "C-d" #'evil-multiedit-toggle-marker-here)
+  ;; Likewise, project script execution should run the interpreter directly.
+  (set-eval-handler! '(python-mode python-ts-mode)
+    '((:command . (lambda () python-shell-interpreter))
+      (:exec . (lambda () "%c %o %s %a"))
+      (:description . "Run Python script"))))
 
-(use-package! color-rg
-  :commands (color-rg-search-input
-             color-rg-search-symbol
-             color-rg-search-input-in-project
-             color-rg-search-symbol-in-project
-             color-rg-search-input-in-current-file
-             color-rg-search-symbol-in-current-file)
-  :init
-  ;; `color-rg-mac-load-path-from-shell' only matters on macOS; Doom already
-  ;; manages PATH (see the NVM Path section), so the shell import is unneeded.
-  (setq color-rg-mac-load-path-from-shell nil)
-  (map! :leader
-        (:prefix ("s" . "search")
-         (:prefix ("r" . "color-rg")
-          :desc "Search in file"    "f" #'color-rg-search-input-in-current-file
-          :desc "Search in project" "p" #'color-rg-search-input-in-project)))
-  :config
-  ;; Respect .gitignore so project searches stay focused like an IDE.
-  ;; Toggle per-search inside the results buffer with `I'.
-  (setq color-rg-search-no-ignore-file nil)
-  ;; `color-rg-mode' derives from `text-mode' and ships its own single-key view
-  ;; bindings (j/k navigate, e edit, r replace, q quit). Hand the buffer to
-  ;; Evil's Emacs state so those keys aren't shadowed.
-  (after! evil
-    (evil-set-initial-state 'color-rg-mode 'emacs)))
+(after! pipenv
+  (advice-add 'pipenv-project-p :override #'mp/pipenv-project-p)
+  (pipenv-mode -1))
 
-(setq treesit-auto-install-grammar 'always)
+(after! doom-modeline
+  ;; The Python env segment can shell out to `pipenv run ...` on Python buffers.
+  ;; Disable it so merely visiting files can't hit pipenv.
+  (setq doom-modeline-env-enable-python nil))
 
-(after! treesit-fold
-  (dolist (mode '(js-mode js-ts-mode javascript-mode))
-    (when-let ((cell (assq mode treesit-fold-range-alist)))
-      (dolist (rule '((jsx_element  . treesit-fold-range-html)
-                      (jsx_fragment . treesit-fold-range-html)))
-        (unless (assq (car rule) (cdr cell))
-          (setcdr cell (append (cdr cell) (list rule))))))))
+(use-package! renpy-mode
+  :ensure t
+  :custom
+  (renpy-program (or (getenv "RENPY_EXECUTABLE_PATH") "renpy"))
+  :bind
+  ;; Bind some useful commands.
+  ("C-c C-c" . renpy-compile)
+  ("C-c C-r" . renpy-run)
+  ("C-c C-l" . renpy-lint)
+  :hook
+  ((renpy-mode . flymake-mode)
+   (renpy-mode . outline-minor-mode)))
 
-(defun mp/treesit-fold-active-p ()
-  "Return non-nil when `treesit-fold' can operate on the current buffer."
-  (and (fboundp 'treesit-fold-ready-p)
-       (treesit-fold-ready-p)
-       (treesit-fold-usable-mode-p)))
+(map! :leader
+      :desc "Run nearest test" "t t" #'+eval/test
+      :desc "Run all project tests" "t a" #'+eval/test-all
+      (:prefix ("d" . "agent")
+       :desc "Agent shell" "a" #'agent-shell))
 
-(defun mp/treesit-fold--node-foldable-p (node)
-  "Return non-nil when NODE defines a multi-line fold."
-  (when-let ((range (treesit-fold--get-fold-range node)))
-    (not (treesit-fold--range-on-same-line range))))
+(map! :n "gr" #'xref-find-references
+      :n "g[" #'xref-go-back
+      :n "g]" #'xref-go-forward)
 
-(defun mp/treesit-fold--depth (node)
-  "Return the fold-nesting depth of NODE (1 = outermost foldable)."
-  (let ((depth 0)
-        (current node))
-    (while current
-      (when (mp/treesit-fold--node-foldable-p current)
-        (cl-incf depth))
-      (setq current (treesit-node-parent current)))
-    depth))
+(global-set-key [mouse-8] #'xref-go-back)
+(global-set-key [mouse-9] #'xref-go-forward)
 
-(defun mp/treesit-fold--foldable-nodes ()
-  "Return every multi-line foldable node in the buffer."
-  (let* ((root (treesit-buffer-root-node))
-         (ranges (alist-get major-mode treesit-fold-range-alist))
-         (patterns (seq-mapcat (lambda (range) `((,(car range)) @name)) ranges))
-         (query (treesit-query-compile (treesit-node-language root) patterns)))
-    (cl-remove-if-not #'mp/treesit-fold--node-foldable-p
-                      (mapcar #'cdr (treesit-query-capture root query)))))
+(defun mp/project-root-default-directory (&optional dir)
+  "Return the preferred project root for DIR, preferring explicit workspace roots."
+  (or (mp/current-workspace-project-root)
+      (let ((dir (file-name-as-directory
+                  (expand-file-name (or dir default-directory)))))
+        (or
+         (when (fboundp 'projectile-project-root)
+           (let ((default-directory dir))
+             (ignore-errors
+               (file-name-as-directory
+                (expand-file-name (projectile-project-root))))))
+         (when (fboundp 'doom-project-root)
+           (ignore-errors
+             (file-name-as-directory
+              (expand-file-name (doom-project-root dir)))))
+         dir))))
 
-(defun mp/treesit-fold-to-level (level)
-  "Fold every node at LEVEL, keeping shallower levels open (VSCode-style).
-If LEVEL is already folded, reveal everything instead."
-  (let* ((nodes (mp/treesit-fold--foldable-nodes))
-         (depths (mapcar #'mp/treesit-fold--depth nodes))
-         (max-depth (if depths (apply #'max depths) 0)))
-    (when (zerop max-depth)
-      (user-error "Nothing foldable in this buffer"))
-    (let* ((level (min level max-depth))
-           (at-level (cl-loop for node in nodes
-                              for depth in depths
-                              when (= depth level) collect node))
-           (folded (cl-some #'treesit-fold-overlay-at at-level)))
-      (treesit-fold-open-all)
-      (if folded
-          (message "Fold level %d revealed" level)
-        (dolist (node at-level)
-          (treesit-fold-close node))
-        (message "Folded to level %d" level)))))
-
-(defvar-local mp/fold--last-level nil
-  "Last fold level applied in a non-tree-sitter buffer, for toggling.")
-
-(defun mp/fold--fallback-to-level (level)
-  "Fold to LEVEL with hideshow/outline, toggling open on repeat."
-  (if (eq mp/fold--last-level level)
-      (progn (+fold/open-all)
-             (setq mp/fold--last-level nil)
-             (message "Fold level %d revealed" level))
-    (+fold/open-all)
-    (+fold/close-all level)
-    (setq mp/fold--last-level level)
-    (message "Folded to level %d" level)))
-
-(defun mp/fold-to-level (&optional level)
-  "Fold all regions down to LEVEL (1 = outermost), VSCode-style.
-Re-invoking the same level reveals everything again.  When called from the
-z1..z9 keys, LEVEL is read from the triggering digit."
+(defun mp/vterm-toggle ()
+  "Toggle the vterm popup from the current project root."
   (interactive)
-  (let ((level (or level
-                   (let ((event last-command-event))
-                     (and (characterp event)
-                          (<= ?1 event ?9)
-                          (- event ?0))))))
-    (unless (and (integerp level) (<= 1 level 9))
-      (user-error "Fold level must be between 1 and 9"))
-    (if (mp/treesit-fold-active-p)
-        (mp/treesit-fold-to-level level)
-      (mp/fold--fallback-to-level level))))
+  (let ((default-directory (mp/project-root-default-directory)))
+    (+vterm/toggle nil)))
+
+(defun mp/vterm-new ()
+  "Open a fresh vterm buffer in the current window at project root."
+  (interactive)
+  (require 'vterm)
+  (let* ((default-directory (mp/project-root-default-directory))
+         (buffer-name (format "*vterm:%s*" (format-time-string "%Y%m%d-%H%M%S")))
+         (buffer (generate-new-buffer buffer-name))
+         (display-buffer-alist nil))
+    (with-current-buffer buffer
+      (vterm-mode))
+    (switch-to-buffer buffer)))
+
+(defun mp/line-move-bounds ()
+  "Return the line-aligned bounds for the current line or active region."
+  (if (use-region-p)
+      (cons (save-excursion
+              (goto-char (region-beginning))
+              (line-beginning-position))
+            (save-excursion
+              (goto-char (region-end))
+              (if (bolp)
+                  (point)
+                (line-beginning-position 2))))
+    (cons (line-beginning-position)
+          (line-beginning-position 2))))
+
+(defun mp/move-lines--apply (direction)
+  "Move the current line or active region one line in DIRECTION."
+  (let* ((bounds (mp/line-move-bounds))
+         (had-region (use-region-p))
+         (start (car bounds))
+         (end (cdr bounds)))
+    (save-excursion
+      (goto-char (if (> direction 0) end start))
+      (when (or (and (< direction 0) (= start (point-min)))
+                (and (> direction 0) (= end (point-max))))
+        (user-error "Cannot move further %s" (if (< direction 0) "up" "down"))))
+    (let* ((line-count (count-lines start end))
+           (column (current-column))
+           (text (delete-and-extract-region start end)))
+      (goto-char start)
+      (forward-line direction)
+      (let ((target (point)))
+        (insert text)
+        (if had-region
+            (progn
+              (set-mark target)
+              (goto-char (+ target (length text)))
+              (setq deactivate-mark nil))
+          (goto-char target)
+          (forward-line (if (> direction 0) (1- line-count) 0))
+          (move-to-column column))))))
+
+(defun mp/move-lines-up ()
+  "Move the current line or active region up by one line."
+  (interactive)
+  (mp/move-lines--apply -1))
+
+(defun mp/move-lines-down ()
+  "Move the current line or active region down by one line."
+  (interactive)
+  (mp/move-lines--apply 1))
+
+;; Global GUI-style bindings.
+;; Keeps a terminal toggle, line commenting, and line movement available
+;; through familiar keys.
+(map! :g "C-`" #'mp/vterm-toggle
+      :g "C-\\" #'mp/vterm-new
+      :g "C-/" #'comment-line
+      :g "M-<up>" #'mp/move-lines-up
+      :g "M-<down>" #'mp/move-lines-down)
+
+(defun mp/clipboard-copy ()
+  (interactive)
+  (clipboard-kill-ring-save (region-beginning) (region-end))
+  (evil-exit-visual-state))
 
 (after! evil
-  (dolist (level (number-sequence 1 9))
-    (let ((key (vector ?z (+ ?0 level))))
-      (define-key evil-normal-state-map key #'mp/fold-to-level)
-      (define-key evil-motion-state-map key #'mp/fold-to-level))))
+  (dolist (state-map (list evil-motion-state-map
+                           evil-normal-state-map
+                           evil-insert-state-map
+                           evil-emacs-state-map
+                           evil-visual-state-map))
+    (define-key state-map (kbd "C-b") #'mp/treemacs-toggle-current-project)
+    (define-key state-map (kbd "C-S-e") #'treemacs-find-file)
+    (define-key state-map (kbd "C-S-c") #'mp/clipboard-copy)
+    (define-key state-map (kbd "C-S-v") #'clipboard-yank)
+    (define-key state-map (kbd "C-\\") #'mp/vterm-new)
+    (define-key state-map (kbd "C-/") #'comment-line)
+    (define-key state-map (kbd "M-d") #'er/expand-region)
+    (define-key state-map (kbd "M-D") #'er/contract-region)
+    (define-key state-map (kbd "M-<up>") #'mp/move-lines-up)
+    (define-key state-map (kbd "M-<down>") #'mp/move-lines-down))
+
+  (map! :leader
+        (:prefix ("v" . "visual")
+         :desc "Visual line" "v" #'evil-visual-line
+         :desc "Visual block" "b" #'evil-visual-block)))
+
+(defun mp/close-window-preserve-buffer ()
+  "Close the selected window without killing popup or terminal buffers."
+  (interactive)
+  (if (and (featurep '+popup)
+           (+popup-window-p))
+      (let* ((window (selected-window))
+             (buffer (window-buffer window))
+             (+popup--inhibit-transient t)
+             (ignore-window-parameters t))
+        (if-let ((wconf (window-parameter window 'saved-wconf)))
+            (set-window-configuration wconf)
+          (delete-window window))
+        (when (buffer-live-p buffer)
+          (with-current-buffer buffer
+            (set-buffer-modified-p nil)
+            (when (bound-and-true-p +popup-buffer-mode)
+              (+popup-buffer-mode -1))
+            (bury-buffer buffer))))
+    (call-interactively #'delete-window)))
+
+(after! workspaces
+  (map! :leader
+        (:prefix ("w" . "workspaces/windows")
+         :desc "Delete window" "d" #'mp/close-window-preserve-buffer
+         :desc "Delete window/workspace" "D" #'+workspace/close-window-or-workspace))
+  (map! :map evil-window-map
+        "d" #'mp/close-window-preserve-buffer
+        "D" #'+workspace/close-window-or-workspace))
+
+(use-package! consult-dir
+  :defer t
+  :config
+  (map! :leader
+        :desc "Find file from directory" "." #'find-file
+        :desc "Switch directory" "f d" #'consult-dir)
+  (map! :map minibuffer-local-completion-map
+        "C-x C-d" #'consult-dir
+        "C-x C-j" #'consult-dir-jump-file))
+
+(after! which-key
+  (when (boundp 'doom-leader-map)
+    (which-key-add-keymap-based-replacements doom-leader-map
+      "TAB" "workspace"
+      "a" "actions"
+      "b" "buffers"
+      "c" "code"
+      "d" "agent"
+      "f" "files"
+      "g" "git"
+      "h" "help"
+      "i" "insert"
+      "n" "notes"
+      "o" "open"
+      "p" "project"
+      "q" "quit/session"
+      "s" "search"
+      "t" "toggle"
+      "v" "visual"
+      "w" "windows"
+      "x" "text")))
+
+(after! flycheck
+  (map! :leader
+        (:prefix ("e" . "errors")
+         :desc "List errors" "l" #'flycheck-list-errors
+         :desc "Next error" "n" #'flycheck-next-error
+         :desc "Previous error" "p" #'flycheck-previous-error
+         :desc "Verify checker" "v" #'flycheck-verify-setup)))
 
 (defvar my/project-running-scripts (make-hash-table :test 'equal))
 
@@ -1910,135 +2056,3 @@ z1..z9 keys, LEVEL is read from the triggering digit."
 (map! :leader
       :desc "Run project script"
       "p S" #'my/run-project-script)
-
-;;; org-basic.el --- sane Org defaults for Doom
-
-;; Main Org directory.
-(setq org-directory "~/org/")
-
-;; Files scanned by org-agenda.
-;; Only put actionable/date-based files here.
-(setq org-agenda-files
-      '("~/org/inbox.org"
-        "~/org/tasks.org"
-        "~/org/projects.org"
-        "~/org/calendar.org"))
-
-;; Basic TODO workflow.
-;; TODO      = not started
-;; NEXT      = next concrete action
-;; WAIT      = blocked by someone/something
-;; SOMEDAY   = intentionally inactive
-;; DONE      = completed
-;; CANCELLED = no longer relevant
-(setq org-todo-keywords
-      '((sequence "TODO(t)" "NEXT(n)" "WAIT(w)" "SOMEDAY(s)" "|"
-                  "DONE(d)" "CANCELLED(c)")))
-
-;; Save timestamp when marking DONE.
-(setq org-log-done 'time)
-
-;; Save note when moving into WAIT or CANCELLED.
-(setq org-todo-keyword-faces
-      '(("TODO" . warning)
-        ("NEXT" . success)
-        ("WAIT" . font-lock-constant-face)
-        ("SOMEDAY" . font-lock-doc-face)
-        ("DONE" . shadow)
-        ("CANCELLED" . shadow)))
-
-(setq org-todo-keywords
-      '((sequence "TODO" "|" "DONE")))
-
-;; Use fast todo selection.
-(setq org-use-fast-todo-selection t)
-
-;; Hide completed scheduled/deadline tasks from agenda after done.
-(setq org-agenda-skip-scheduled-if-done t)
-(setq org-agenda-skip-deadline-if-done t)
-
-;; Show agenda starting today.
-;; (setq org-agenda-start-on-weekday nil)
-
-;; Show 14 days by default.
-(setq org-agenda-span 14)
-
-;; Warn about deadlines 7 days in advance.
-(setq org-deadline-warning-days 7)
-
-;; Make indentation readable.
-(setq org-startup-indented t)
-
-;; Hide leading stars visually.
-(setq org-hide-leading-stars t)
-
-;; Open folded files cleanly.
-(setq org-startup-folded 'content)
-
-;; Log state changes into a drawer to avoid visual noise.
-(setq org-log-into-drawer t)
-
-;; Refile targets.
-;; This lets you move captured items from inbox.org into real files.
-(setq org-refile-targets
-      '(("~/org/tasks.org" :maxlevel . 3)
-        ("~/org/projects.org" :maxlevel . 4)
-        ("~/org/calendar.org" :maxlevel . 2)
-        ("~/org/someday.org" :maxlevel . 2)))
-
-;; Make refile completion use full paths.
-(setq org-refile-use-outline-path 'file)
-(setq org-outline-path-complete-in-steps nil)
-
-;; Archive completed old tasks here.
-(setq org-archive-location "~/org/archive.org::* From %s")
-
-;; Capture templates.
-(setq org-capture-templates
-      '(("t" "Todo" entry
-         (file "~/org/inbox.org")
-         "* TODO %?\nCREATED: %U\n")
-
-        ("d" "Todo with deadline" entry
-         (file "~/org/inbox.org")
-         "* TODO %?\nDEADLINE: %^t\nCREATED: %U\n")
-
-        ("s" "Scheduled todo" entry
-         (file "~/org/inbox.org")
-         "* TODO %?\nSCHEDULED: %^t\nCREATED: %U\n")
-
-        ("e" "Event / calendar date" entry
-         (file "~/org/calendar.org")
-         "* %?\n%^T\n")
-
-        ("r" "Repeating event" entry
-         (file "~/org/calendar.org")
-         "* %?\n%^T\n")
-
-        ("p" "Project task" entry
-         (file "~/org/projects.org")
-         "* TODO %?\nCREATED: %U\n")
-
-        ("n" "Note" entry
-         (file "~/org/notes.org")
-         "* %?\nCREATED: %U\n")))
-
-;; Custom agenda views.
-(setq org-agenda-custom-commands
-      '(("d" "Dashboard"
-         ((agenda "" ((org-agenda-span 14)))
-          (todo "NEXT"
-                ((org-agenda-overriding-header "Next actions")))
-          (todo "WAIT"
-                ((org-agenda-overriding-header "Waiting")))
-          (todo "TODO"
-                ((org-agenda-overriding-header "Unprocessed todos")))))
-
-        ("i" "Inbox"
-         ((tags "REFILE|TODO"
-                ((org-agenda-files '("~/org/inbox.org"))
-                 (org-agenda-overriding-header "Inbox")))))
-
-        ("p" "Projects"
-         ((tags "project"
-                ((org-agenda-overriding-header "Projects")))))))

@@ -261,8 +261,6 @@ like =tailwindcss-language-server= correctly.
 #+end_src
 
 *** Appearance
-Visual defaults for theme, fonts, line numbers, and general editor spacing.
-
 **** Theme And Fonts
 #+begin_src emacs-lisp
 (setq doom-theme nil)
@@ -299,7 +297,237 @@ This adds a small amount of extra vertical space in buffers intended for writing
 (setq display-line-numbers-type t)
 #+end_src
 
+**** Header Line
+#+begin_src emacs-lisp
+(require 'subr-x)
+(require 'seq)
+
+(use-package! breadcrumb
+  :defer t
+  :init
+  (setq breadcrumb-project-max-length 0.42
+        breadcrumb-imenu-max-length 0.36
+        breadcrumb-project-crumb-separator " / "
+        breadcrumb-imenu-crumb-separator " > "))
+
+(defvar mp/header-line-height 32
+  "Target height of the custom header line, in pixels.")
+
+(defvar mp/header-line-horizontal-padding " "
+  "Horizontal padding inserted around each header line block.")
+
+(defvar mp/header-line-buffer-foreground-faces
+  '(doom-modeline-buffer-file mode-line-buffer-id mode-line)
+  "Faces whose foreground is reused for header file and major-mode text.")
+
+(defvar mp/header-line-position-foreground-faces
+  '(doom-modeline mode-line line-number)
+  "Faces whose foreground is reused for the header status text.")
+
+(custom-set-faces!
+  '(header-line :inherit mode-line))
+
+(defun mp/header-line-color-value (value)
+  "Return VALUE unless it is an unspecified face color."
+  (unless (or (null value)
+              (eq value 'unspecified)
+              (and (stringp value)
+                   (string-prefix-p "unspecified-" value)))
+    value))
+
+(defun mp/header-line-face-attribute (face attribute)
+  "Return FACE ATTRIBUTE after resolving inheritance where possible."
+  (when (facep face)
+    (mp/header-line-color-value
+     (face-attribute face attribute nil 'default))))
+
+(defun mp/header-line-first-face-attribute (faces attribute fallback)
+  "Return the first usable ATTRIBUTE from FACES, or FALLBACK."
+  (or (catch 'value
+        (dolist (face faces)
+          (when-let ((value (mp/header-line-face-attribute face attribute)))
+            (throw 'value value))))
+      (mp/header-line-color-value fallback)))
+
+(defun mp/header-line-background ()
+  "Return the themed background color for the header line."
+  (mp/header-line-first-face-attribute
+   '(header-line mode-line default)
+   :background
+   (face-attribute 'default :background nil 'default)))
+
+(defun mp/header-line-buffer-foreground ()
+  "Return the themed modeline buffer-name foreground color."
+  (mp/header-line-first-face-attribute
+   mp/header-line-buffer-foreground-faces
+   :foreground
+   (face-attribute 'mode-line :foreground nil 'default)))
+
+(defun mp/header-line-position-foreground ()
+  "Return the themed modeline position foreground color."
+  (mp/header-line-first-face-attribute
+   mp/header-line-position-foreground-faces
+   :foreground
+   (face-attribute 'mode-line :foreground nil 'default)))
+
+(defun mp/header-line-vertical-padding ()
+  "Return vertical padding needed to approach `mp/header-line-height'."
+  (if (display-graphic-p)
+      (ceiling (max 0 (- mp/header-line-height (frame-char-height))) 2)
+    0))
+
+(defun mp/header-line-face (foreground background &optional weight)
+  "Return a face plist for a padded header line block."
+  (append
+   (when foreground
+     `(:foreground ,foreground))
+   (when background
+     `(:background ,background))
+   (when weight
+     `(:weight ,weight))
+   (when-let ((padding (mp/header-line-vertical-padding)))
+     (when (> padding 0)
+       `(:box (:line-width (0 . ,padding)
+               ,@(when background
+                   `(:color ,background))))))))
+
+(defun mp/header-line-block (text face)
+  "Return TEXT as a padded header line block using FACE."
+  (propertize
+   (concat mp/header-line-horizontal-padding
+           text
+           mp/header-line-horizontal-padding)
+   'face face))
+
+(defun mp/header-line-buffer-name ()
+  "Return the file name or buffer name for the header line."
+  (or (when buffer-file-name
+        (file-name-nondirectory buffer-file-name))
+      (buffer-name)
+      ""))
+
+(defun mp/header-line-mode-name ()
+  "Return the current major mode name for the header line."
+  (let ((name (string-trim (format-mode-line mode-name))))
+    (if (string-empty-p name)
+        "unknown"
+      (downcase name))))
+
+(defun mp/header-line-buffer-status ()
+  "Return the current buffer status label."
+  (cond (buffer-read-only
+         "RO")
+        ((buffer-modified-p)
+         "W!")
+        (t
+         "RW")))
+
+(defun mp/header-line-nonempty-string-p (value)
+  "Return non-nil when VALUE is a non-empty string."
+  (and (stringp value)
+       (not (string-empty-p (string-trim (substring-no-properties value))))))
+
+(defun mp/header-line-breadcrumbs ()
+  "Return breadcrumb project and imenu context for the header line."
+  (when (fboundp 'breadcrumb-project-crumbs)
+    (let* ((project (ignore-errors (breadcrumb-project-crumbs)))
+           (imenu (ignore-errors (breadcrumb-imenu-crumbs)))
+           (crumbs (seq-filter #'mp/header-line-nonempty-string-p
+                               (list project imenu))))
+      (when crumbs
+        (let ((padding (propertize mp/header-line-horizontal-padding
+                                   'face 'header-line))
+              (separator (propertize "  >  "
+                                     'face (if (facep 'breadcrumb-face)
+                                               'breadcrumb-face
+                                             'shadow))))
+          (concat padding
+                  (string-join crumbs separator)
+                  padding))))))
+
+(after! flycheck
+  (defun mp/flycheck-counts ()
+    "Return (errors warnings infos) for current buffer."
+    (let ((errors 0)
+          (warnings 0)
+          (infos 0))
+      (dolist (err flycheck-current-errors)
+        (pcase (flycheck-error-level err)
+          ('error (cl-incf errors))
+          ('warning (cl-incf warnings))
+          ('info (cl-incf infos))))
+      (list errors warnings infos)))
+
+  (defun mp/header-line-diagnostics ()
+    "Return a prominent diagnostics block for the header line."
+    (when (bound-and-true-p flycheck-mode)
+      (pcase-let ((`(,errors ,warnings ,infos) (mp/flycheck-counts)))
+        (cond
+         ((> errors 0)
+          (mp/header-line-block
+           (format "E:%d W:%d" errors warnings)
+           (mp/header-line-face "#ffffff" "#ff5370" 'bold)))
+         ((> warnings 0)
+          (mp/header-line-block
+           (format "W:%d" warnings)
+           (mp/header-line-face "#1f2430" "#ffcb6b" 'bold)))
+         ((> infos 0)
+          (mp/header-line-block
+           (format "I:%d" infos)
+           (mp/header-line-face "#ffffff" "#82aaff" 'bold))))))))
+
+(defun mp/header-line-format ()
+  "Return a left-aligned custom header line for the current buffer."
+  (let* ((background (mp/header-line-background))
+         (buffer-foreground (mp/header-line-buffer-foreground))
+         (breadcrumbs (mp/header-line-breadcrumbs))
+         (status-background "#ecbe7b")
+         (status-foreground "#ffffff")
+         (status-face (mp/header-line-face status-foreground status-background 'bold))
+         (buffer-face (mp/header-line-face buffer-foreground background 'bold))
+         (major-face (mp/header-line-face buffer-foreground background 'normal)))
+    (delq nil
+          (list
+           (mp/header-line-block (mp/header-line-buffer-status) status-face)
+           (or breadcrumbs
+               (mp/header-line-block (mp/header-line-buffer-name) buffer-face))
+           (mp/header-line-block (mp/header-line-mode-name) major-face)
+           (when (fboundp 'mp/header-line-diagnostics)
+             (mp/header-line-diagnostics))))))
+
+(setq-default header-line-format '(:eval (mp/header-line-format)))
+#+end_src
+
+**** Whitespace And Indentation
+Make tabs and spaces visible in code-like buffers so indentation issues are easy to spot.
+
+#+begin_src emacs-lisp
+(defun mp/show-indent-style-h ()
+  "Show tabs and spaces visibly in code-like buffers."
+  (setq-local whitespace-style
+              '(face tabs tab-mark spaces space-mark trailing))
+  (setq-local whitespace-display-mappings
+              '((tab-mark ?\t [?\u2192 ?\t] [?\\ ?\t])
+                (space-mark ?\  [?\u00b7] [?.])))
+  (whitespace-mode +1))
+
+(add-hook 'prog-mode-hook #'mp/show-indent-style-h)
+(add-hook 'conf-mode-hook #'mp/show-indent-style-h)
+#+end_src
 *** Configuration
+**** Emacs
+Quit confirmation is disabled for faster exits.
+#+begin_src emacs-lisp
+;; Disable annoying emacs exit confirmation message
+(setq confirm-kill-emacs nil)
+
+;; Send files to trash instead of fully deleting.
+(setq delete-by-moving-to-trash t)
+
+;; Save automatically.
+(setq auto-save-default t)
+#+end_src
+
 **** Editor Experience
 ***** Scrolling
 #+begin_src emacs-lisp
@@ -509,25 +737,437 @@ fallbacks kept for file paths and completion-at-point providers.
           (lsp-capf (styles orderless basic)))))
 #+end_src
 
-**** Corfu
-Enable automatic popup with a short delay while requiring two characters before
-auto-completion appears. This keeps the IDE feel without opening the child frame
-for every single letter.
+**** Project Root Behavior
+Prefer language-specific project markers over the repository root when working in monorepos.
 
 #+begin_src emacs-lisp
-(after! corfu
-  (setq corfu-auto t
-        corfu-preview-current nil
-        corfu-preselect 'prompt
-        corfu-cycle t
-        corfu-on-exact-match nil))
+(after! projectile
+  ;; Doom's Python helpers still consult Projectile in a few places.
+  ;; Make sure `server/Pipfile` counts as a project root before `.git` does.
+  (add-to-list 'projectile-project-root-files "Pipfile"))
 
-(after! corfu-auto
-  (setq corfu-auto-delay 0.12
-        corfu-auto-prefix 2))
+(after! project
+  (defun mp/project-root-from-markers (dir markers)
+    "Return the first project root above DIR matching one of MARKERS."
+    (when-let ((root (seq-some (lambda (marker)
+                                 (locate-dominating-file dir marker))
+                               markers)))
+      (cons 'transient root)))
 
-(after! corfu-popupinfo
-  (setq corfu-popupinfo-delay '(0.35 . 0.2)))
+  ;; Prefer language-specific roots inside monorepos over the repository root.
+  ;; This keeps `server/` Python tooling anchored to its own Pipfile/pyproject
+  ;; instead of falling back to the top-level `.git` directory.
+  (add-hook 'project-find-functions
+            (lambda (dir)
+              (or (mp/project-root-from-markers dir '("go.mod"))
+                  (mp/project-root-from-markers dir '("Cargo.toml"))
+                  (mp/project-root-from-markers dir '("package.json"))
+                  (mp/project-root-from-markers
+                   dir
+                   '("Pipfile" "pyproject.toml" "setup.py" "requirements.txt"))
+                  (mp/project-root-from-markers dir '(".git"))))))
+#+end_src
+**** Multi Cursor
+#+begin_src emacs-lisp
+(use-package! evil-mc
+  :after evil
+  :config
+  (global-evil-mc-mode 1)
+
+  (map! :n "C-M-<down>"  #'evil-mc-make-cursor-move-next-line
+        :n "C-M-<up>"    #'evil-mc-make-cursor-move-prev-line
+        :n "C-M-<right>" #'evil-mc-make-all-cursors)
+
+  (defun my/evil-mc-escape ()
+    (interactive)
+    (if (and (bound-and-true-p evil-mc-mode)
+             evil-mc-cursor-list)
+        (evil-mc-undo-all-cursors)
+      (evil-force-normal-state)))
+
+  (map! :i "<escape>" #'my/evil-mc-escape
+        :n "<escape>" #'my/evil-mc-escape))
+
+(map! :nv "C-d" #'evil-multiedit-match-and-next
+      :i  "C-d" #'evil-multiedit-toggle-marker-here)
+#+end_src
+
+**** Find in project
+[[https://github.com/manateelazycat/color-rg][color-rg]] provides a ripgrep
+results buffer you can navigate, filter, and—most usefully—edit in place to
+refactor matches across a project. =SPC s r f= searches the current file and
+=SPC s r p= searches the project. These live under a dedicated =r= prefix so
+Doom's stock =SPC s f= (locate file) and =SPC s p= (live project search) stay
+available.
+
+Inside a result buffer: =j=/=k= move between matches, =h=/=l= jump between
+files, =e= switches to edit mode (=C-c C-c= applies, =C-c C-v= cancels), =r=
+replaces all matches, =I= toggles whether ignore files are respected, and =q=
+quits.
+
+#+begin_src emacs-lisp
+(use-package! color-rg
+  :commands (color-rg-search-input
+             color-rg-search-symbol
+             color-rg-search-input-in-project
+             color-rg-search-symbol-in-project
+             color-rg-search-input-in-current-file
+             color-rg-search-symbol-in-current-file)
+  :init
+  ;; `color-rg-mac-load-path-from-shell' only matters on macOS; Doom already
+  ;; manages PATH (see the NVM Path section), so the shell import is unneeded.
+  (setq color-rg-mac-load-path-from-shell nil)
+  ;; NOTE: `SPC s r' is bound to `evil-show-marks' in Doom, so it can't become
+  ;; a prefix until that binding is cleared. Unbind it first, then nest under it.
+  (map! :leader
+        (:prefix ("s" . "search")
+         "r" nil
+         (:prefix ("r" . "color-rg")
+          :desc "Search in file"    "f" #'color-rg-search-input-in-current-file
+          :desc "Search in project" "p" #'color-rg-search-input-in-project)))
+  :config
+  ;; Respect .gitignore so project searches stay focused like an IDE.
+  ;; Toggle per-search inside the results buffer with `I'.
+  (setq color-rg-search-no-ignore-file nil)
+  ;; `color-rg-mode' derives from `text-mode' and ships its own single-key view
+  ;; bindings (j/k navigate, e edit, r replace, q quit). Hand the buffer to
+  ;; Evil's Emacs state so those keys aren't shadowed.
+  (after! evil
+    (evil-set-initial-state 'color-rg-mode 'emacs)))
+#+end_src
+
+**** Tree-sitter Grammars
+Without a grammar, a =*-ts-mode= silently falls back to its non-tree-sitter
+counterpart, which is what makes JSX folding collapse the whole function body
+and breaks tree-sitter-aware editing. Install grammars on demand instead of
+asking each time (needs a C compiler and network access on first use).
+
+After tangling, install the ones you use right away with =M-x
+treesit-install-language-grammar= (e.g. =tsx=, =typescript=, =javascript=,
+=html=, =css=, =json=); otherwise they install automatically the next time you
+open such a file.
+
+#+begin_src emacs-lisp
+(setq treesit-auto-install-grammar 'always)
+#+end_src
+
+**** Code Folding
+With grammars installed, folding routes through =treesit-fold= and operates on
+the syntax tree, so the stock Evil keys do what an IDE does:
+
+- =zc= folds the innermost element/block at point (the direct parent of the
+  current line).
+- =zo= opens the fold on the current line (where the =…= ellipsis shows).
+- =za= toggles, =zr= opens every fold, =zm= folds everything.
+
+=tsx-ts-mode= (used for =.jsx= and =.tsx=) already folds JSX elements. The block
+below extends the plain JS modes so JSX embedded in a =.js= file folds at the
+element level too, instead of only collapsing the enclosing function.
+
+#+begin_src emacs-lisp
+(after! treesit-fold
+  (dolist (mode '(js-mode js-ts-mode javascript-mode))
+    (when-let ((cell (assq mode treesit-fold-range-alist)))
+      (dolist (rule '((jsx_element  . treesit-fold-range-html)
+                      (jsx_fragment . treesit-fold-range-html)))
+        (unless (assq (car rule) (cdr cell))
+          (setcdr cell (append (cdr cell) (list rule))))))))
+#+end_src
+
+**** Fold By Level
+VSCode-style "fold everything to level N", bound to =z 1= … =z 9= (=z= then a
+digit). Level 1 is the outermost construct, higher numbers reveal more nesting,
+and the level is clamped to the deepest fold the buffer actually has (so =z9= in
+a shallow file folds the innermost level). Shallower levels stay open, anything
+deeper is hidden inside the folded level—exactly the VSCode behaviour.
+
+It toggles: pressing the same level again, while that level is folded, reveals
+everything. In tree-sitter buffers this walks the syntax tree to compute true
+nesting depth; elsewhere it falls back to Doom's hideshow/outline level folding.
+
+#+begin_src emacs-lisp
+(defun mp/treesit-fold-active-p ()
+  "Return non-nil when `treesit-fold' can operate on the current buffer."
+  (and (fboundp 'treesit-fold-ready-p)
+       (treesit-fold-ready-p)
+       (treesit-fold-usable-mode-p)))
+
+(defun mp/treesit-fold--node-foldable-p (node)
+  "Return non-nil when NODE defines a multi-line fold."
+  (when-let ((range (treesit-fold--get-fold-range node)))
+    (not (treesit-fold--range-on-same-line range))))
+
+(defun mp/treesit-fold--depth (node)
+  "Return the fold-nesting depth of NODE (1 = outermost foldable)."
+  (let ((depth 0)
+        (current node))
+    (while current
+      (when (mp/treesit-fold--node-foldable-p current)
+        (cl-incf depth))
+      (setq current (treesit-node-parent current)))
+    depth))
+
+(defun mp/treesit-fold--foldable-nodes ()
+  "Return every multi-line foldable node in the buffer."
+  (let* ((root (treesit-buffer-root-node))
+         (ranges (alist-get major-mode treesit-fold-range-alist))
+         (patterns (seq-mapcat (lambda (range) `((,(car range)) @name)) ranges))
+         (query (treesit-query-compile (treesit-node-language root) patterns)))
+    (cl-remove-if-not #'mp/treesit-fold--node-foldable-p
+                      (mapcar #'cdr (treesit-query-capture root query)))))
+
+(defun mp/treesit-fold-to-level (level)
+  "Fold every node at LEVEL, keeping shallower levels open (VSCode-style).
+If LEVEL is already folded, reveal everything instead."
+  (let* ((nodes (mp/treesit-fold--foldable-nodes))
+         (depths (mapcar #'mp/treesit-fold--depth nodes))
+         (max-depth (if depths (apply #'max depths) 0)))
+    (when (zerop max-depth)
+      (user-error "Nothing foldable in this buffer"))
+    (let* ((level (min level max-depth))
+           (at-level (cl-loop for node in nodes
+                              for depth in depths
+                              when (= depth level) collect node))
+           (folded (cl-some #'treesit-fold-overlay-at at-level)))
+      (treesit-fold-open-all)
+      (if folded
+          (message "Fold level %d revealed" level)
+        (dolist (node at-level)
+          (treesit-fold-close node))
+        (message "Folded to level %d" level)))))
+
+(defvar-local mp/fold--last-level nil
+  "Last fold level applied in a non-tree-sitter buffer, for toggling.")
+
+(defun mp/fold--fallback-to-level (level)
+  "Fold to LEVEL with hideshow/outline, toggling open on repeat."
+  (if (eq mp/fold--last-level level)
+      (progn (+fold/open-all)
+             (setq mp/fold--last-level nil)
+             (message "Fold level %d revealed" level))
+    (+fold/open-all)
+    (+fold/close-all level)
+    (setq mp/fold--last-level level)
+    (message "Folded to level %d" level)))
+
+(defun mp/fold-to-level (&optional level)
+  "Fold all regions down to LEVEL (1 = outermost), VSCode-style.
+Re-invoking the same level reveals everything again.  When called from the
+z1..z9 keys, LEVEL is read from the triggering digit."
+  (interactive)
+  (let ((level (or level
+                   (let ((event last-command-event))
+                     (and (characterp event)
+                          (<= ?1 event ?9)
+                          (- event ?0))))))
+    (unless (and (integerp level) (<= 1 level 9))
+      (user-error "Fold level must be between 1 and 9"))
+    (if (mp/treesit-fold-active-p)
+        (mp/treesit-fold-to-level level)
+      (mp/fold--fallback-to-level level))))
+
+(after! evil
+  (dolist (level (number-sequence 1 9))
+    (let ((key (vector ?z (+ ?0 level))))
+      (define-key evil-normal-state-map key #'mp/fold-to-level)
+      (define-key evil-motion-state-map key #'mp/fold-to-level))))
+#+end_src
+
+*** Plugins
+**** Org Mode
+***** Org defaults
+#+begin_src emacs-lisp
+;;; org-basic.el --- sane Org defaults for Doom
+(setq org-directory "~/org/")
+
+;; Files scanned by org-agenda.
+;; Only put actionable/date-based files here.
+(setq org-agenda-files
+      '("~/org/inbox.org"
+        "~/org/tasks.org"
+        "~/org/projects.org"
+        "~/org/calendar.org"))
+
+;; Basic TODO workflow.
+;; TODO      = not started
+;; NEXT      = next concrete action
+;; WAIT      = blocked by someone/something
+;; SOMEDAY   = intentionally inactive
+;; DONE      = completed
+;; CANCELLED = no longer relevant
+(setq org-todo-keywords
+      '((sequence "TODO(t)" "NEXT(n)" "WAIT(w)" "SOMEDAY(s)" "|"
+                  "DONE(d)" "CANCELLED(c)")))
+
+;; Save timestamp when marking DONE.
+(setq org-log-done 'time)
+
+;; Save note when moving into WAIT or CANCELLED.
+(setq org-todo-keyword-faces
+      '(("TODO" . warning)
+        ("NEXT" . success)
+        ("WAIT" . font-lock-constant-face)
+        ("SOMEDAY" . font-lock-doc-face)
+        ("DONE" . shadow)
+        ("CANCELLED" . shadow)))
+
+(setq org-todo-keywords
+      '((sequence "TODO" "|" "DONE")))
+
+;; Use fast todo selection.
+(setq org-use-fast-todo-selection t)
+
+;; Hide completed scheduled/deadline tasks from agenda after done.
+(setq org-agenda-skip-scheduled-if-done t)
+(setq org-agenda-skip-deadline-if-done t)
+
+;; Show agenda starting today.
+;; (setq org-agenda-start-on-weekday nil)
+
+;; Show 14 days by default.
+(setq org-agenda-span 14)
+
+;; Warn about deadlines 7 days in advance.
+(setq org-deadline-warning-days 7)
+
+;; Make indentation readable.
+(setq org-startup-indented t)
+
+;; Hide leading stars visually.
+(setq org-hide-leading-stars t)
+
+;; Open folded files cleanly.
+(setq org-startup-folded 'content)
+
+;; Log state changes into a drawer to avoid visual noise.
+(setq org-log-into-drawer t)
+
+;; Refile targets.
+;; This lets you move captured items from inbox.org into real files.
+(setq org-refile-targets
+      '(("~/org/tasks.org" :maxlevel . 3)
+        ("~/org/projects.org" :maxlevel . 4)
+        ("~/org/calendar.org" :maxlevel . 2)
+        ("~/org/someday.org" :maxlevel . 2)))
+
+;; Make refile completion use full paths.
+(setq org-refile-use-outline-path 'file)
+(setq org-outline-path-complete-in-steps nil)
+
+;; Archive completed old tasks here.
+(setq org-archive-location "~/org/archive.org::* From %s")
+
+;; Capture templates.
+(setq org-capture-templates
+      '(("t" "Todo" entry
+         (file "~/org/inbox.org")
+         "* TODO %?\nCREATED: %U\n")
+
+        ("d" "Todo with deadline" entry
+         (file "~/org/inbox.org")
+         "* TODO %?\nDEADLINE: %^t\nCREATED: %U\n")
+
+        ("s" "Scheduled todo" entry
+         (file "~/org/inbox.org")
+         "* TODO %?\nSCHEDULED: %^t\nCREATED: %U\n")
+
+        ("e" "Event / calendar date" entry
+         (file "~/org/calendar.org")
+         "* %?\n%^T\n")
+
+        ("r" "Repeating event" entry
+         (file "~/org/calendar.org")
+         "* %?\n%^T\n")
+
+        ("p" "Project task" entry
+         (file "~/org/projects.org")
+         "* TODO %?\nCREATED: %U\n")
+
+        ("n" "Note" entry
+         (file "~/org/notes.org")
+         "* %?\nCREATED: %U\n")))
+
+;; Custom agenda views.
+(setq org-agenda-custom-commands
+      '(("d" "Dashboard"
+         ((agenda "" ((org-agenda-span 14)))
+          (todo "NEXT"
+                ((org-agenda-overriding-header "Next actions")))
+          (todo "WAIT"
+                ((org-agenda-overriding-header "Waiting")))
+          (todo "TODO"
+                ((org-agenda-overriding-header "Unprocessed todos")))))
+
+        ("i" "Inbox"
+         ((tags "REFILE|TODO"
+                ((org-agenda-files '("~/org/inbox.org"))
+                 (org-agenda-overriding-header "Inbox")))))
+
+        ("p" "Projects"
+         ((tags "project"
+                ((org-agenda-overriding-header "Projects")))))))
+#+end_src
+***** Auto-Tangle On Save
+When this exact file is saved, Emacs immediately regenerates =config.el=. That keeps the literate source and the generated file synchronized without manual copying.
+
+#+begin_src emacs-lisp
+(after! org
+  (defun mp/doom-config-org-file-p (&optional file)
+    "Return non-nil when FILE is the Doom literate config."
+    (let ((file (or file buffer-file-name)))
+      (and file
+           (file-equal-p (file-truename file)
+                         (file-truename (expand-file-name "config.org" doom-user-dir))))))
+
+  (defun mp/org-babel-tangle-doom-config-h ()
+    "Tangle the Doom literate config after saving `config.org'."
+    (when (mp/doom-config-org-file-p)
+      (let ((org-confirm-babel-evaluate nil))
+        (org-babel-tangle))))
+
+  (defun mp/enable-doom-config-auto-tangle-h ()
+    "Enable local auto-tangling for the Doom literate config buffer."
+    (when (mp/doom-config-org-file-p)
+      (add-hook 'after-save-hook #'mp/org-babel-tangle-doom-config-h nil t)))
+
+  (add-hook 'org-mode-hook #'mp/enable-doom-config-auto-tangle-h))
+#+end_src
+
+***** Org mode specifics
+#+begin_src  emacs-lisp
+(add-hook 'org-mode-hook 'visual-line-mode)
+(add-hook 'org-mode-hook 'olivetti-mode)
+(add-hook 'org-mode-hook (lambda () (display-line-numbers-mode -1)))
+
+;; Show line numbers only in insert state, hide in normal state.
+(add-hook 'evil-insert-state-entry-hook
+          (lambda () (when (derived-mode-p 'org-mode) (display-line-numbers-mode 1))))
+(add-hook 'evil-insert-state-exit-hook
+          (lambda () (when (derived-mode-p 'org-mode) (display-line-numbers-mode -1))))
+
+(after! org
+  ;; Prevent alphabetical list markers from conflicting with checkbox parsing.
+  (setq org-list-allow-alphabetical nil)
+
+  (setq org-auto-align-tags nil
+        org-tags-column 0
+        org-fold-catch-invisible-edits 'show-and-error        org-special-ctrl-a/e t
+        org-insert-heading-respect-content t
+        org-hide-emphasis-markers t
+        org-pretty-entities t
+        org-agenda-tags-column 0
+        org-ellipsis "…"))
+
+(after! org-modern
+  (setq org-modern-symbol 'caskaydia)
+  (dolist (face '(window-divider
+                  window-divider-first-pixel
+                  window-divider-last-pixel))
+    (face-spec-reset-face face)
+    (set-face-foreground face (face-attribute 'default :background)))
+  ;; (set-face-background 'fringe (face-attribute 'default :background))
+  (setq org-modern-block-fringe t)
+  (global-org-modern-mode))
 #+end_src
 
 **** Mode Line
@@ -550,206 +1190,68 @@ for every single letter.
   (doom-modeline-indent-info t))
 #+end_src
 
-**** Header Line
+**** Minibuffer
+
+***** Vertico posframe
 #+begin_src emacs-lisp
-(require 'subr-x)
-(require 'seq)
+(use-package! vertico-posframe
+  :after vertico
+  :config
+  (setq vertico-posframe-width 120
+        vertico-posframe-height 18
+        vertico-posframe-border-width 4
+        vertico-posframe-poshandler #'posframe-poshandler-frame-center
+        vertico-posframe-parameters
+        '((left-fringe . 16)
+          (right-fringe . 16)
+          (internal-border-width . 12)
+          (alpha-background . 96)
+          (undecorated . t)))
 
-(use-package! breadcrumb
-  :defer t
-  :init
-  (setq breadcrumb-project-max-length 0.42
-        breadcrumb-imenu-max-length 0.36
-        breadcrumb-project-crumb-separator " / "
-        breadcrumb-imenu-crumb-separator " > "))
-
-(defvar mp/header-line-height 32
-  "Target height of the custom header line, in pixels.")
-
-(defvar mp/header-line-horizontal-padding " "
-  "Horizontal padding inserted around each header line block.")
-
-(defvar mp/header-line-buffer-foreground-faces
-  '(doom-modeline-buffer-file mode-line-buffer-id mode-line)
-  "Faces whose foreground is reused for header file and major-mode text.")
-
-(defvar mp/header-line-position-foreground-faces
-  '(doom-modeline mode-line line-number)
-  "Faces whose foreground is reused for the header status text.")
-
-(custom-set-faces!
-  '(header-line :inherit mode-line))
-
-(defun mp/header-line-color-value (value)
-  "Return VALUE unless it is an unspecified face color."
-  (unless (or (null value)
-              (eq value 'unspecified)
-              (and (stringp value)
-                   (string-prefix-p "unspecified-" value)))
-    value))
-
-(defun mp/header-line-face-attribute (face attribute)
-  "Return FACE ATTRIBUTE after resolving inheritance where possible."
-  (when (facep face)
-    (mp/header-line-color-value
-     (face-attribute face attribute nil 'default))))
-
-(defun mp/header-line-first-face-attribute (faces attribute fallback)
-  "Return the first usable ATTRIBUTE from FACES, or FALLBACK."
-  (or (catch 'value
-        (dolist (face faces)
-          (when-let ((value (mp/header-line-face-attribute face attribute)))
-            (throw 'value value))))
-      (mp/header-line-color-value fallback)))
-
-(defun mp/header-line-background ()
-  "Return the themed background color for the header line."
-  (mp/header-line-first-face-attribute
-   '(header-line mode-line default)
-   :background
-   (face-attribute 'default :background nil 'default)))
-
-(defun mp/header-line-buffer-foreground ()
-  "Return the themed modeline buffer-name foreground color."
-  (mp/header-line-first-face-attribute
-   mp/header-line-buffer-foreground-faces
-   :foreground
-   (face-attribute 'mode-line :foreground nil 'default)))
-
-(defun mp/header-line-position-foreground ()
-  "Return the themed modeline position foreground color."
-  (mp/header-line-first-face-attribute
-   mp/header-line-position-foreground-faces
-   :foreground
-   (face-attribute 'mode-line :foreground nil 'default)))
-
-(defun mp/header-line-vertical-padding ()
-  "Return vertical padding needed to approach `mp/header-line-height'."
-  (if (display-graphic-p)
-      (ceiling (max 0 (- mp/header-line-height (frame-char-height))) 2)
-    0))
-
-(defun mp/header-line-face (foreground background &optional weight)
-  "Return a face plist for a padded header line block."
-  (append
-   (when foreground
-     `(:foreground ,foreground))
-   (when background
-     `(:background ,background))
-   (when weight
-     `(:weight ,weight))
-   (when-let ((padding (mp/header-line-vertical-padding)))
-     (when (> padding 0)
-       `(:box (:line-width (0 . ,padding)
-               ,@(when background
-                   `(:color ,background))))))))
-
-(defun mp/header-line-block (text face)
-  "Return TEXT as a padded header line block using FACE."
-  (propertize
-   (concat mp/header-line-horizontal-padding
-           text
-           mp/header-line-horizontal-padding)
-   'face face))
-
-(defun mp/header-line-buffer-name ()
-  "Return the file name or buffer name for the header line."
-  (or (when buffer-file-name
-        (file-name-nondirectory buffer-file-name))
-      (buffer-name)
-      ""))
-
-(defun mp/header-line-mode-name ()
-  "Return the current major mode name for the header line."
-  (let ((name (string-trim (format-mode-line mode-name))))
-    (if (string-empty-p name)
-        "unknown"
-      (downcase name))))
-
-(defun mp/header-line-buffer-status ()
-  "Return the current buffer status label."
-  (cond (buffer-read-only
-         "RO")
-        ((buffer-modified-p)
-         "W!")
-        (t
-         "RW")))
-
-(defun mp/header-line-nonempty-string-p (value)
-  "Return non-nil when VALUE is a non-empty string."
-  (and (stringp value)
-       (not (string-empty-p (string-trim (substring-no-properties value))))))
-
-(defun mp/header-line-breadcrumbs ()
-  "Return breadcrumb project and imenu context for the header line."
-  (when (fboundp 'breadcrumb-project-crumbs)
-    (let* ((project (ignore-errors (breadcrumb-project-crumbs)))
-           (imenu (ignore-errors (breadcrumb-imenu-crumbs)))
-           (crumbs (seq-filter #'mp/header-line-nonempty-string-p
-                               (list project imenu))))
-      (when crumbs
-        (let ((padding (propertize mp/header-line-horizontal-padding
-                                   'face 'header-line))
-              (separator (propertize "  >  "
-                                     'face (if (facep 'breadcrumb-face)
-                                               'breadcrumb-face
-                                             'shadow))))
-          (concat padding
-                  (string-join crumbs separator)
-                  padding))))))
-
-(after! flycheck
-  (defun mp/flycheck-counts ()
-    "Return (errors warnings infos) for current buffer."
-    (let ((errors 0)
-          (warnings 0)
-          (infos 0))
-      (dolist (err flycheck-current-errors)
-        (pcase (flycheck-error-level err)
-          ('error (cl-incf errors))
-          ('warning (cl-incf warnings))
-          ('info (cl-incf infos))))
-      (list errors warnings infos)))
-
-  (defun mp/header-line-diagnostics ()
-    "Return a prominent diagnostics block for the header line."
-    (when (bound-and-true-p flycheck-mode)
-      (pcase-let ((`(,errors ,warnings ,infos) (mp/flycheck-counts)))
-        (cond
-         ((> errors 0)
-          (mp/header-line-block
-           (format "E:%d W:%d" errors warnings)
-           (mp/header-line-face "#ffffff" "#ff5370" 'bold)))
-         ((> warnings 0)
-          (mp/header-line-block
-           (format "W:%d" warnings)
-           (mp/header-line-face "#1f2430" "#ffcb6b" 'bold)))
-         ((> infos 0)
-          (mp/header-line-block
-           (format "I:%d" infos)
-           (mp/header-line-face "#ffffff" "#82aaff" 'bold))))))))
-
-(defun mp/header-line-format ()
-  "Return a left-aligned custom header line for the current buffer."
-  (let* ((background (mp/header-line-background))
-         (buffer-foreground (mp/header-line-buffer-foreground))
-         (breadcrumbs (mp/header-line-breadcrumbs))
-         (status-background "#ecbe7b")
-         (status-foreground "#ffffff")
-         (status-face (mp/header-line-face status-foreground status-background 'bold))
-         (buffer-face (mp/header-line-face buffer-foreground background 'bold))
-         (major-face (mp/header-line-face buffer-foreground background 'normal)))
-    (delq nil
-          (list
-           (mp/header-line-block (mp/header-line-buffer-status) status-face)
-           (or breadcrumbs
-               (mp/header-line-block (mp/header-line-buffer-name) buffer-face))
-           (mp/header-line-block (mp/header-line-mode-name) major-face)
-           (mp/header-line-diagnostics)))))
-
-(setq-default header-line-format '(:eval (mp/header-line-format)))
+  (vertico-posframe-mode 1))
 #+end_src
 
+**** Visuals
+#+begin_src emacs-lisp
+(use-package! spacious-padding
+  :custom
+  (spacious-padding-widths
+        '( :internal-border-width 8
+           :header-line-width 0
+           :mode-line-width 0
+           :tab-width 4
+           :right-divider-width 30
+           :scroll-bar-width 8))
+
+  (spacious-padding-mode 1))
+
+(after! demap
+  (setq demap-minimap-window-side 'right
+        demap-minimap-window-width 18))
+
+(use-package! rainbow-delimiters
+  :hook ((prog-mode . rainbow-delimiters-mode)))
+#+end_src
+**** Corfu
+Enable automatic popup with a short delay while requiring two characters before
+auto-completion appears. This keeps the IDE feel without opening the child frame
+for every single letter.
+
+#+begin_src emacs-lisp
+(after! corfu
+  (setq corfu-auto t
+        corfu-preview-current nil
+        corfu-preselect 'prompt
+        corfu-cycle t
+        corfu-on-exact-match nil))
+
+(after! corfu-auto
+  (setq corfu-auto-delay 0.12
+        corfu-auto-prefix 2))
+
+(after! corfu-popupinfo
+  (setq corfu-popupinfo-delay '(0.35 . 0.2)))
+#+end_src
 **** Consult
 ***** Super menu
 Use consult for `SPC SPC` and be done with `SPC b b`.
@@ -983,135 +1485,13 @@ Use consult for `SPC SPC` and be done with `SPC b b`.
 (map! :leader :desc "File symbols" "m g f s" #'consult-lsp-file-symbols)
 #+end_src
 
-**** Minibuffer
-
-***** Vertico posframe
-#+begin_src emacs-lisp
-(use-package! vertico-posframe
-  :after vertico
-  :config
-  (setq vertico-posframe-width 120
-        vertico-posframe-height 18
-        vertico-posframe-border-width 4
-        vertico-posframe-poshandler #'posframe-poshandler-frame-center
-        vertico-posframe-parameters
-        '((left-fringe . 16)
-          (right-fringe . 16)
-          (internal-border-width . 12)
-          (alpha-background . 96)
-          (undecorated . t)))
-
-  (vertico-posframe-mode 1))
-#+end_src
-
-**** Visuals
-#+begin_src emacs-lisp
-(use-package! spacious-padding
-  :custom
-  (spacious-padding-widths
-        '( :internal-border-width 8
-           :header-line-width 0
-           :mode-line-width 0
-           :tab-width 4
-           :right-divider-width 30
-           :scroll-bar-width 8))
-
-  (spacious-padding-mode 1))
-
-(after! demap
-  (setq demap-minimap-window-side 'right
-        demap-minimap-window-width 18))
-
-(use-package! rainbow-delimiters
-  :hook ((prog-mode . rainbow-delimiters-mode)))
-#+end_src
 **** Olivetti
 #+begin_src emacs-lisp
 (after! olivetti
   (setq olivetti-body-width 100))
 #+end_src
 
-*** Org Defaults
-**** Org defaults
-Core path and file behavior settings.
-
-#+begin_src emacs-lisp
-(setq org-directory "~/org/")
-
-;; Send files to trash instead of fully deleting.
-(setq delete-by-moving-to-trash t)
-
-;; Save automatically.
-(setq auto-save-default t)
-#+end_src
-
-**** Auto-Tangle On Save
-When this exact file is saved, Emacs immediately regenerates =config.el=. That keeps the literate source and the generated file synchronized without manual copying.
-
-#+begin_src emacs-lisp
-(after! org
-  (defun mp/doom-config-org-file-p (&optional file)
-    "Return non-nil when FILE is the Doom literate config."
-    (let ((file (or file buffer-file-name)))
-      (and file
-           (file-equal-p (file-truename file)
-                         (file-truename (expand-file-name "config.org" doom-user-dir))))))
-
-  (defun mp/org-babel-tangle-doom-config-h ()
-    "Tangle the Doom literate config after saving `config.org'."
-    (when (mp/doom-config-org-file-p)
-      (let ((org-confirm-babel-evaluate nil))
-        (org-babel-tangle))))
-
-  (defun mp/enable-doom-config-auto-tangle-h ()
-    "Enable local auto-tangling for the Doom literate config buffer."
-    (when (mp/doom-config-org-file-p)
-      (add-hook 'after-save-hook #'mp/org-babel-tangle-doom-config-h nil t)))
-
-  (add-hook 'org-mode-hook #'mp/enable-doom-config-auto-tangle-h))
-#+end_src
-
-**** Org mode specifics
-
-#+begin_src  emacs-lisp
-(add-hook 'org-mode-hook 'visual-line-mode)
-(add-hook 'org-mode-hook 'olivetti-mode)
-(add-hook 'org-mode-hook (lambda () (display-line-numbers-mode -1)))
-
-;; Show line numbers only in insert state, hide in normal state.
-(add-hook 'evil-insert-state-entry-hook
-          (lambda () (when (derived-mode-p 'org-mode) (display-line-numbers-mode 1))))
-(add-hook 'evil-insert-state-exit-hook
-          (lambda () (when (derived-mode-p 'org-mode) (display-line-numbers-mode -1))))
-
-(after! org
-  ;; Prevent alphabetical list markers from conflicting with checkbox parsing.
-  (setq org-list-allow-alphabetical nil)
-
-  (setq org-auto-align-tags nil
-        org-tags-column 0
-        org-fold-catch-invisible-edits 'show-and-error        org-special-ctrl-a/e t
-        org-insert-heading-respect-content t
-        org-hide-emphasis-markers t
-        org-pretty-entities t
-        org-agenda-tags-column 0
-        org-ellipsis "…"))
-
-(after! org-modern
-  (setq org-modern-symbol 'caskaydia)
-  (dolist (face '(window-divider
-                  window-divider-first-pixel
-                  window-divider-last-pixel))
-    (face-spec-reset-face face)
-    (set-face-foreground face (face-attribute 'default :background)))
-  ;; (set-face-background 'fringe (face-attribute 'default :background))
-  (setq org-modern-block-fringe t)
-  (global-org-modern-mode))
-#+end_src
-
-*** Help And Feedback
-Make transient help UI appear quickly and remain readable.
-
+**** WhichKey
 #+begin_src emacs-lisp
 (setq which-key-idle-delay 0.2)
 
@@ -1130,11 +1510,10 @@ Make transient help UI appear quickly and remain readable.
         eldoc-box-cleanup-interval 0.35
         eldoc-box-only-multi-line nil))
 #+end_src
-
-*** Dashboard
+**** Dashboard
 The stock Doom dashboard is replaced with a project-aware workspace card that surfaces common actions, recent files, and lightweight git status.
 
-**** Layout And Faces
+***** Layout And Faces
 #+begin_src emacs-lisp
 (when (modulep! :ui dashboard)
   (require 'cl-lib)
@@ -1219,7 +1598,7 @@ The stock Doom dashboard is replaced with a project-aware workspace card that su
   (add-hook '+dashboard-mode-hook #'mp/dashboard-buffer-setup-h)
 #+end_src
 
-**** Project Helpers
+***** Project Helpers
 #+begin_src emacs-lisp
   (defun mp/dashboard-project-root ()
     "Return the current dashboard project root, if any."
@@ -1266,7 +1645,7 @@ The stock Doom dashboard is replaced with a project-aware workspace card that su
       (cl-subseq files 0 (min (or limit 5) (length files)))))
 #+end_src
 
-**** Rendering Helpers
+***** Rendering Helpers
 #+begin_src emacs-lisp
   (defun mp/dashboard-insert-block-title (title &optional subtitle)
     "Insert a centered TITLE and optional SUBTITLE."
@@ -1350,7 +1729,7 @@ The stock Doom dashboard is replaced with a project-aware workspace card that su
      (propertize text 'face (or face 'mp/dashboard-meta-face))))
 #+end_src
 
-**** Dashboard Widgets
+***** Dashboard Widgets
 #+begin_src emacs-lisp
   (defun mp/dashboard-widget-recent-files ()
     "Show the five most recent files for the active project."
@@ -1514,27 +1893,270 @@ The stock Doom dashboard is replaced with a project-aware workspace card that su
           +dashboard-widget-footer)))
 #+end_src
 
-*** Whitespace And Indentation
-Make tabs and spaces visible in code-like buffers so indentation issues are easy to spot.
+**** Treemacs
+Treemacs is configured to show hidden files and to preserve git-state visibility while dimming dotfiles.
 
 #+begin_src emacs-lisp
-(defun mp/show-indent-style-h ()
-  "Show tabs and spaces visibly in code-like buffers."
-  (setq-local whitespace-style
-              '(face tabs tab-mark spaces space-mark trailing))
-  (setq-local whitespace-display-mappings
-              '((tab-mark ?\t [?\u2192 ?\t] [?\\ ?\t])
-                (space-mark ?\  [?\u00b7] [?.])))
-  (whitespace-mode +1))
+(after! treemacs
+  (setq treemacs-show-hidden-files t)
 
-(add-hook 'prog-mode-hook #'mp/show-indent-style-h)
-(add-hook 'conf-mode-hook #'mp/show-indent-style-h)
+  (defun mp/treemacs-toggle-current-project ()
+    "Toggle Treemacs, always scoped to the current project."
+    (interactive)
+    (pcase (treemacs-current-visibility)
+      ('visible (delete-window (treemacs-get-local-window)))
+      (_ (treemacs-display-current-project-exclusively))))
+
+  (defface mp/treemacs-dotfile-face
+    '((t :inherit shadow :slant italic))
+    "Face used to de-emphasize visible dotfiles in Treemacs.")
+
+  (set-face-attribute 'treemacs-git-ignored-face nil
+                      :inherit 'shadow
+                      :slant 'italic)
+  (set-face-attribute 'treemacs-git-untracked-face nil
+                      :foreground "#98c379")
+  (set-face-attribute 'treemacs-git-modified-face nil
+                      :foreground "#e5c07b"
+                      :weight 'semi-bold)
+  (set-face-attribute 'treemacs-git-added-face nil
+                      :foreground "#61afef"
+                      :weight 'semi-bold)
+  (set-face-attribute 'treemacs-git-renamed-face nil
+                      :foreground "#c678dd")
+  (set-face-attribute 'treemacs-git-conflict-face nil
+                      :foreground "#e06c75"
+                      :weight 'bold)
+
+  (defun mp/treemacs--dotfile-p (path)
+    "Return non-nil when PATH points to a visible dotfile or dotdir."
+    (let ((name (file-name-nondirectory (directory-file-name path))))
+      (and (string-prefix-p "." name)
+           (not (member name '("." ".."))))))
+
+  (defun mp/treemacs--append-face (start end face)
+    "Append FACE to the existing face property between START and END."
+    (let* ((existing (get-text-property start 'face))
+           (faces (delete-dups
+                   (append (if (listp existing) existing (list existing))
+                           (list face)))))
+      (put-text-property start end 'face (delq nil faces))))
+
+  (defun mp/treemacs-apply-dotfile-face-h ()
+    "Dim dotfiles in the current Treemacs buffer without hiding git status."
+    (when (derived-mode-p 'treemacs-mode)
+      (let ((inhibit-read-only t)
+            (btn (next-button (point-min) t)))
+        (while btn
+          (let ((path (ignore-errors (treemacs-button-get btn :path))))
+            (when (and (stringp path)
+                       (mp/treemacs--dotfile-p path))
+              (mp/treemacs--append-face
+               (button-start btn)
+               (button-end btn)
+               'mp/treemacs-dotfile-face)))
+          (setq btn (next-button (button-end btn) t))))))
+
+  (add-hook 'treemacs-post-buffer-init-hook #'mp/treemacs-apply-dotfile-face-h)
+  (add-hook 'treemacs-post-refresh-hook #'mp/treemacs-apply-dotfile-face-h))
 #+end_src
 
-*** Python And Pipenv Safeguards
+**** Magit
+Magit can refine diff hunks to show the exact changed characters inside a line instead of only marking the entire line as added or removed. That also makes indentation-only edits much easier to see.
+
+#+begin_src emacs-lisp
+(after! magit
+  (setq magit-diff-refine-hunk 'all
+        magit-diff-fontify-hunk 'all
+        ;; Keep whitespace visible inside refined hunks so indentation-only
+        ;; changes are highlighted instead of being treated as irrelevant.
+        magit-diff-refine-ignore-whitespace nil
+        ;; Paint actual whitespace problems in both added and removed lines.
+        magit-diff-paint-whitespace t
+        magit-diff-paint-whitespace-lines 'both
+        magit-diff-highlight-trailing t))
+#+end_src
+
+**** Clutch
+***** Configuration
+#+begin_src emacs-lisp
+(use-package! clutch
+  :defer t
+  :config
+  (setq clutch-connect-timeout-seconds 10
+        clutch-read-idle-timeout-seconds 30
+        clutch-query-timeout-seconds 20
+        clutch-jdbc-rpc-timeout-seconds 15))
+#+end_src
+
+***** Connections JSON
+#+begin_src emacs-lisp
+(require 'json)
+(require 'subr-x)
+
+(defvar mp/clutch-connections-file
+  (expand-file-name "connections.json" doom-user-dir))
+
+(defun mp/clutch--json-key-to-keyword (key)
+  (intern (concat ":" key)))
+
+(defun mp/clutch--json-object-to-plist (obj)
+  (let (plist)
+    (dolist (pair obj (nreverse plist))
+      (let ((key (car pair))
+            (value (cdr pair)))
+        (setq plist
+              (cons value
+                    (cons (mp/clutch--json-key-to-keyword key)
+                          plist)))))))
+
+(defun mp/clutch--uri-to-plist (uri)
+  (cond
+   ;; PostgreSQL:
+   ;; postgresql://user:pass@host:5432/database
+   ((string-match
+     "\\`\\(postgresql\\|postgres\\)://\\(?:\\([^:/@]+\\)\\(?::\\([^@/]*\\)\\)?@\\)?\\([^:/]+\\)\\(?::\\([0-9]+\\)\\)?/\\(.+\\)\\'"
+     uri)
+    (let ((user (match-string 2 uri))
+          (password (match-string 3 uri))
+          (host (match-string 4 uri))
+          (port (match-string 5 uri))
+          (database (match-string 6 uri)))
+      (append
+       (list :backend 'pg
+             :host host
+             :database (url-unhex-string database))
+       (when port
+         (list :port (string-to-number port)))
+       (when user
+         (list :user (url-unhex-string user)))
+       (when password
+         (list :password (url-unhex-string password))))))
+
+   ;; MySQL:
+   ;; mysql://user:pass@host:3306/database
+   ((string-match
+     "\\`mysql://\\(?:\\([^:/@]+\\)\\(?::\\([^@/]*\\)\\)?@\\)?\\([^:/]+\\)\\(?::\\([0-9]+\\)\\)?/\\(.+\\)\\'"
+     uri)
+    (let ((user (match-string 1 uri))
+          (password (match-string 2 uri))
+          (host (match-string 3 uri))
+          (port (match-string 4 uri))
+          (database (match-string 5 uri)))
+      (append
+       (list :backend 'mysql
+             :host host
+             :database (url-unhex-string database))
+       (when port
+         (list :port (string-to-number port)))
+       (when user
+         (list :user (url-unhex-string user)))
+       (when password
+         (list :password (url-unhex-string password))))))
+
+   ;; SQLite:
+   ;; sqlite:///home/mahdi/sqlite.db
+   ((string-match "\\`sqlite://\\(.+\\)\\'" uri)
+    (list :backend 'sqlite
+          :database (url-unhex-string (match-string 1 uri))))
+
+   (t
+    (user-error "Unsupported connection URI: %s" uri))))
+
+(defun mp/clutch--normalize-backend (plist)
+  (let ((backend (plist-get plist :backend)))
+    (plist-put plist :backend
+               (cond
+                ((symbolp backend) backend)
+                ((string= backend "postgres") 'pg)
+                ((string= backend "postgresql") 'pg)
+                ((string= backend "pg") 'pg)
+                ((string= backend "mysql") 'mysql)
+                ((string= backend "sqlite") 'sqlite)
+                (t (intern backend))))))
+
+(defun mp/clutch--normalize-connection (value)
+  (cond
+   ((stringp value)
+    (mp/clutch--uri-to-plist value))
+   ((listp value)
+    (mp/clutch--normalize-backend
+     (mp/clutch--json-object-to-plist value)))
+   (t
+    (user-error "Invalid connection value: %S" value))))
+
+(defun mp/clutch-load-connections ()
+  (when (file-exists-p mp/clutch-connections-file)
+    (let ((json-object-type 'alist)
+          (json-array-type 'list)
+          (json-key-type 'string))
+      (mapcar
+       (lambda (entry)
+         (cons (car entry)
+               (mp/clutch--normalize-connection (cdr entry))))
+       (json-read-file mp/clutch-connections-file)))))
+
+(defun mp/clutch-apply-connections ()
+  (interactive)
+  (setq clutch-connection-alist
+        (mp/clutch-load-connections))
+  (message "Loaded %d Clutch connections from %s"
+           (length clutch-connection-alist)
+           mp/clutch-connections-file))
+
+(with-eval-after-load 'clutch
+  (mp/clutch-apply-connections))
+#+end_src
+
+***** Keybindings
+#+begin_src emacs-lisp
+(map! :leader
+      :desc "Clutch query console"
+      "o s" #'clutch-query-console)
+#+end_src
+
+**** Agent Shell
+Agent shell is a core part of this setup, so related integrations live together here.
+
+***** Desktop Notifications
+Enable desktop notifications for agent-shell buffers so turns that need attention can surface even when the shell is out of focus.
+
+#+begin_src emacs-lisp
+(use-package! agent-shell-notifications
+  :hook (agent-shell-mode . agent-shell-notifications-mode))
+#+end_src
+
+**** AI Suggestions
+Minuet is installed as a Doom package and kept manual-only.  Use =SPC d s= to request a suggestion and =SPC d m= to configure the provider; the remaining keys apply while a Minuet suggestion is visible.
+
+#+begin_src emacs-lisp
+(use-package! minuet
+  :commands (minuet-show-suggestion
+             minuet-configure-provider
+             minuet-previous-suggestion
+             minuet-next-suggestion
+             minuet-accept-suggestion
+             minuet-dismiss-suggestion
+             minuet-accept-suggestion-line)
+  :init
+  (map! :leader
+        (:prefix ("d" . "agent")
+         :desc "Show Minuet suggestion" "s" #'minuet-show-suggestion
+         :desc "Configure Minuet provider" "m" #'minuet-configure-provider))
+  :config
+  (setq minuet-provider 'codestral)
+  (plist-put minuet-codestral-options :api-key "CODESTRAL_API_KEY")
+  (minuet-set-optional-options minuet-codestral-options :stop `("\n\n"))
+  (minuet-set-optional-options minuet-codestral-options :max_tokens 1024)
+  (setq minuet-show-error-message-on-minibuffer t
+        minuet-request-timeout 10))
+#+end_src
+
+*** Languages
+**** Python And Pipenv Safeguards
 This section exists to stop Pipenv from being inferred, created, or invoked in the wrong directory, especially inside monorepos where a repository root is not the correct Python project root.
 
-**** Project Detection And Process Guards
+***** Project Detection And Process Guards
 #+begin_src emacs-lisp
 ;; Never let Doom infer or create a Pipenv project at a monorepo root.
 ;; Only an already-existing ancestor Pipfile counts as a valid Pipenv root.
@@ -1588,7 +2210,7 @@ This section exists to stop Pipenv from being inferred, created, or invoked in t
 (advice-add 'make-process :around #'mp/make-process-guard-a)
 #+end_src
 
-**** Doom Python Integration Overrides
+***** Doom Python Integration Overrides
 #+begin_src emacs-lisp
 (after! python
   ;; Stop Doom/python-mode from auto-enabling pipenv.
@@ -1627,75 +2249,30 @@ This section exists to stop Pipenv from being inferred, created, or invoked in t
   (setq doom-modeline-env-enable-python nil))
 #+end_src
 
-*** Project Root Behavior
-Prefer language-specific project markers over the repository root when working in monorepos.
-
+**** Ren'Py
+=renpy-mode= derives from =python-mode= and already autoloads itself for =.rpy=
+files; this block just makes the association explicit so it survives any future
+=auto-mode-alist= shuffling.
 #+begin_src emacs-lisp
-(after! projectile
-  ;; Doom's Python helpers still consult Projectile in a few places.
-  ;; Make sure `server/Pipfile` counts as a project root before `.git` does.
-  (add-to-list 'projectile-project-root-files "Pipfile"))
-
-(after! project
-  (defun mp/project-root-from-markers (dir markers)
-    "Return the first project root above DIR matching one of MARKERS."
-    (when-let ((root (seq-some (lambda (marker)
-                                 (locate-dominating-file dir marker))
-                               markers)))
-      (cons 'transient root)))
-
-  ;; Prefer language-specific roots inside monorepos over the repository root.
-  ;; This keeps `server/` Python tooling anchored to its own Pipfile/pyproject
-  ;; instead of falling back to the top-level `.git` directory.
-  (add-hook 'project-find-functions
-            (lambda (dir)
-              (or (mp/project-root-from-markers dir '("go.mod"))
-                  (mp/project-root-from-markers dir '("Cargo.toml"))
-                  (mp/project-root-from-markers dir '("package.json"))
-                  (mp/project-root-from-markers
-                   dir
-                   '("Pipfile" "pyproject.toml" "setup.py" "requirements.txt"))
-                  (mp/project-root-from-markers dir '(".git"))))))
+(use-package! renpy-mode
+  :ensure t
+  :custom
+  (renpy-program (or (getenv "RENPY_EXECUTABLE_PATH") "renpy"))
+  :bind
+  ;; Bind some useful commands.
+  ("C-c C-c" . renpy-compile)
+  ("C-c C-r" . renpy-run)
+  ("C-c C-l" . renpy-lint)
+  :hook
+  ((renpy-mode . flymake-mode)
+   (renpy-mode . outline-minor-mode)))
 #+end_src
 
+*** Org Defaults
 *** Keybindings
 This section documents the custom bindings defined in this configuration.
-
-**** Reference Table
-| Context     | Keys       | Command                         | Purpose                                                                     |
-|-------------+------------+---------------------------------+-----------------------------------------------------------------------------|
-| Global      | =C-`=      | =mp/vterm-toggle=               | Toggle the vterm popup from the current project root.                       |
-| Global      | =C-\=      | =mp/vterm-new=                  | Open a new uniquely named vterm buffer for another long-running process.    |
-| Global      | =C-/=      | =comment-line=                  | Comment or uncomment the current line or region.                            |
-| Global      | =M-d=      | =er/expand-region=              | Expand the active region semantically.                                      |
-| Global      | =M-D=      | =er/contract-region=            | Contract the last region expansion.                                         |
-| Global      | =M-<up>=   | =mp/move-lines-up=              | Move the current line, or the selected lines, upward by one line.           |
-| Global      | =M-<down>= | =mp/move-lines-down=            | Move the current line, or the selected lines, downward by one line.         |
-| Leader      | =SPC t t=  | =+eval/test=                    | Run the nearest test.                                                       |
-| Leader      | =SPC t a=  | =+eval/test-all=                | Run all tests for the current project.                                      |
-| Leader      | =SPC d a=  | =agent-shell=                   | Open the agent shell.                                                       |
-| Leader      | =SPC d s=  | =minuet-show-suggestion=        | Request a Minuet overlay suggestion.                                        |
-| Leader      | =SPC d m=  | =minuet-configure-provider=     | Configure the active Minuet provider and model.                             |
-| Minuet      | =h=        | =minuet-previous-suggestion=    | Move to the previous visible suggestion.                                    |
-| Minuet      | =l=        | =minuet-next-suggestion=        | Move to the next visible suggestion.                                        |
-| Minuet      | =TAB=      | =minuet-accept-suggestion=      | Accept the whole visible suggestion.                                        |
-| Minuet      | =RET=      | =minuet-accept-suggestion=      | Accept the whole visible suggestion.                                        |
-| Minuet      | =x=        | =minuet-dismiss-suggestion=     | Dismiss the visible suggestion.                                             |
-| Minuet      | =a=        | =minuet-accept-suggestion-line= | Accept one line of the visible suggestion.                                  |
-| Leader      | =SPC c h=  | =eldoc-box-help-at-point=       | Show hover documentation on demand.                                         |
-| Leader      | =SPC .=    | =find-file=                     | Find a file from the current directory.                                     |
-| Leader      | =SPC f d=  | =consult-dir=                   | Switch directories from the minibuffer workflow.                            |
-| Minibuffer  | =C-x C-d=  | =consult-dir=                   | Pick a directory during completion.                                         |
-| Minibuffer  | =C-x C-j=  | =consult-dir-jump-file=         | Jump to a file in another directory during completion.                      |
-| Evil states | =C-b=      | =mp/treemacs-toggle-current-project= | Toggle Treemacs scoped to the current project across all Evil states.   |
-| Evil states | =C-S-e=    | =treemacs-find-file=            | Reveal the current file in Treemacs.                                        |
-| Evil states | =C-/=      | =comment-line=                  | Keep commenting available consistently across Evil states.                  |
-| Leader      | =SPC s r f=| =color-rg-search-input-in-current-file= | Search the current file with color-rg.                              |
-| Leader      | =SPC s r p=| =color-rg-search-input-in-project= | Search the project with color-rg.                                       |
-| Evil states | =z 1=…=z 9=| =mp/fold-to-level=              | Fold all regions to that nesting level (toggles open on repeat).            |
-
 **** General Shortcuts
-***** With Leader
+***** Tests
 #+begin_src emacs-lisp
 (map! :leader
       :desc "Run nearest test" "t t" #'+eval/test
@@ -1704,20 +2281,21 @@ This section documents the custom bindings defined in this configuration.
        :desc "Agent shell" "a" #'agent-shell))
 #+end_src
 
-***** Leaderless
+***** Code Navigation
+With keyboard:
 #+begin_src emacs-lisp
 (map! :n "gr" #'xref-find-references
       :n "g[" #'xref-go-back
       :n "g]" #'xref-go-forward)
 #+end_src
 
-***** Mouse
+With mouse:
 #+begin_src emacs-lisp
 (global-set-key [mouse-8] #'xref-go-back)
 (global-set-key [mouse-9] #'xref-go-forward)
 #+end_src
 
-**** Global Shortcuts
+**** Custom Shortcuts
 #+begin_src emacs-lisp
 (defun mp/project-root-default-directory (&optional dir)
   "Return the preferred project root for DIR, preferring explicit workspace roots."
@@ -1924,481 +2502,7 @@ Some Doom prefix maps are still present but may show up as generic =+prefix= ent
          :desc "Previous error" "p" #'flycheck-previous-error
          :desc "Verify checker" "v" #'flycheck-verify-setup)))
 #+end_src
-*** Treemacs
-Treemacs is configured to show hidden files and to preserve git-state visibility while dimming dotfiles.
-
-#+begin_src emacs-lisp
-(after! treemacs
-  (setq treemacs-show-hidden-files t)
-
-  (defun mp/treemacs-toggle-current-project ()
-    "Toggle Treemacs, always scoped to the current project."
-    (interactive)
-    (pcase (treemacs-current-visibility)
-      ('visible (delete-window (treemacs-get-local-window)))
-      (_ (treemacs-display-current-project-exclusively))))
-
-  (defface mp/treemacs-dotfile-face
-    '((t :inherit shadow :slant italic))
-    "Face used to de-emphasize visible dotfiles in Treemacs.")
-
-  (set-face-attribute 'treemacs-git-ignored-face nil
-                      :inherit 'shadow
-                      :slant 'italic)
-  (set-face-attribute 'treemacs-git-untracked-face nil
-                      :foreground "#98c379")
-  (set-face-attribute 'treemacs-git-modified-face nil
-                      :foreground "#e5c07b"
-                      :weight 'semi-bold)
-  (set-face-attribute 'treemacs-git-added-face nil
-                      :foreground "#61afef"
-                      :weight 'semi-bold)
-  (set-face-attribute 'treemacs-git-renamed-face nil
-                      :foreground "#c678dd")
-  (set-face-attribute 'treemacs-git-conflict-face nil
-                      :foreground "#e06c75"
-                      :weight 'bold)
-
-  (defun mp/treemacs--dotfile-p (path)
-    "Return non-nil when PATH points to a visible dotfile or dotdir."
-    (let ((name (file-name-nondirectory (directory-file-name path))))
-      (and (string-prefix-p "." name)
-           (not (member name '("." ".."))))))
-
-  (defun mp/treemacs--append-face (start end face)
-    "Append FACE to the existing face property between START and END."
-    (let* ((existing (get-text-property start 'face))
-           (faces (delete-dups
-                   (append (if (listp existing) existing (list existing))
-                           (list face)))))
-      (put-text-property start end 'face (delq nil faces))))
-
-  (defun mp/treemacs-apply-dotfile-face-h ()
-    "Dim dotfiles in the current Treemacs buffer without hiding git status."
-    (when (derived-mode-p 'treemacs-mode)
-      (let ((inhibit-read-only t)
-            (btn (next-button (point-min) t)))
-        (while btn
-          (let ((path (ignore-errors (treemacs-button-get btn :path))))
-            (when (and (stringp path)
-                       (mp/treemacs--dotfile-p path))
-              (mp/treemacs--append-face
-               (button-start btn)
-               (button-end btn)
-               'mp/treemacs-dotfile-face)))
-          (setq btn (next-button (button-end btn) t))))))
-
-  (add-hook 'treemacs-post-buffer-init-hook #'mp/treemacs-apply-dotfile-face-h)
-  (add-hook 'treemacs-post-refresh-hook #'mp/treemacs-apply-dotfile-face-h))
-#+end_src
-
-*** Magit
-Magit can refine diff hunks to show the exact changed characters inside a line instead of only marking the entire line as added or removed. That also makes indentation-only edits much easier to see.
-
-#+begin_src emacs-lisp
-(after! magit
-  (setq magit-diff-refine-hunk 'all
-        magit-diff-fontify-hunk 'all
-        ;; Keep whitespace visible inside refined hunks so indentation-only
-        ;; changes are highlighted instead of being treated as irrelevant.
-        magit-diff-refine-ignore-whitespace nil
-        ;; Paint actual whitespace problems in both added and removed lines.
-        magit-diff-paint-whitespace t
-        magit-diff-paint-whitespace-lines 'both
-        magit-diff-highlight-trailing t))
-#+end_src
-
-*** Databases
-**** Clutch
-***** Configuration
-#+begin_src emacs-lisp
-(use-package! clutch
-  :defer t
-  :config
-  (setq clutch-connect-timeout-seconds 10
-        clutch-read-idle-timeout-seconds 30
-        clutch-query-timeout-seconds 20
-        clutch-jdbc-rpc-timeout-seconds 15))
-#+end_src
-
-***** Connections JSON
-#+begin_src emacs-lisp
-(require 'json)
-(require 'subr-x)
-
-(defvar mp/clutch-connections-file
-  (expand-file-name "connections.json" doom-user-dir))
-
-(defun mp/clutch--json-key-to-keyword (key)
-  (intern (concat ":" key)))
-
-(defun mp/clutch--json-object-to-plist (obj)
-  (let (plist)
-    (dolist (pair obj (nreverse plist))
-      (let ((key (car pair))
-            (value (cdr pair)))
-        (setq plist
-              (cons value
-                    (cons (mp/clutch--json-key-to-keyword key)
-                          plist)))))))
-
-(defun mp/clutch--uri-to-plist (uri)
-  (cond
-   ;; PostgreSQL:
-   ;; postgresql://user:pass@host:5432/database
-   ((string-match
-     "\\`\\(postgresql\\|postgres\\)://\\(?:\\([^:/@]+\\)\\(?::\\([^@/]*\\)\\)?@\\)?\\([^:/]+\\)\\(?::\\([0-9]+\\)\\)?/\\(.+\\)\\'"
-     uri)
-    (let ((user (match-string 2 uri))
-          (password (match-string 3 uri))
-          (host (match-string 4 uri))
-          (port (match-string 5 uri))
-          (database (match-string 6 uri)))
-      (append
-       (list :backend 'pg
-             :host host
-             :database (url-unhex-string database))
-       (when port
-         (list :port (string-to-number port)))
-       (when user
-         (list :user (url-unhex-string user)))
-       (when password
-         (list :password (url-unhex-string password))))))
-
-   ;; MySQL:
-   ;; mysql://user:pass@host:3306/database
-   ((string-match
-     "\\`mysql://\\(?:\\([^:/@]+\\)\\(?::\\([^@/]*\\)\\)?@\\)?\\([^:/]+\\)\\(?::\\([0-9]+\\)\\)?/\\(.+\\)\\'"
-     uri)
-    (let ((user (match-string 1 uri))
-          (password (match-string 2 uri))
-          (host (match-string 3 uri))
-          (port (match-string 4 uri))
-          (database (match-string 5 uri)))
-      (append
-       (list :backend 'mysql
-             :host host
-             :database (url-unhex-string database))
-       (when port
-         (list :port (string-to-number port)))
-       (when user
-         (list :user (url-unhex-string user)))
-       (when password
-         (list :password (url-unhex-string password))))))
-
-   ;; SQLite:
-   ;; sqlite:///home/mahdi/sqlite.db
-   ((string-match "\\`sqlite://\\(.+\\)\\'" uri)
-    (list :backend 'sqlite
-          :database (url-unhex-string (match-string 1 uri))))
-
-   (t
-    (user-error "Unsupported connection URI: %s" uri))))
-
-(defun mp/clutch--normalize-backend (plist)
-  (let ((backend (plist-get plist :backend)))
-    (plist-put plist :backend
-               (cond
-                ((symbolp backend) backend)
-                ((string= backend "postgres") 'pg)
-                ((string= backend "postgresql") 'pg)
-                ((string= backend "pg") 'pg)
-                ((string= backend "mysql") 'mysql)
-                ((string= backend "sqlite") 'sqlite)
-                (t (intern backend))))))
-
-(defun mp/clutch--normalize-connection (value)
-  (cond
-   ((stringp value)
-    (mp/clutch--uri-to-plist value))
-   ((listp value)
-    (mp/clutch--normalize-backend
-     (mp/clutch--json-object-to-plist value)))
-   (t
-    (user-error "Invalid connection value: %S" value))))
-
-(defun mp/clutch-load-connections ()
-  (when (file-exists-p mp/clutch-connections-file)
-    (let ((json-object-type 'alist)
-          (json-array-type 'list)
-          (json-key-type 'string))
-      (mapcar
-       (lambda (entry)
-         (cons (car entry)
-               (mp/clutch--normalize-connection (cdr entry))))
-       (json-read-file mp/clutch-connections-file)))))
-
-(defun mp/clutch-apply-connections ()
-  (interactive)
-  (setq clutch-connection-alist
-        (mp/clutch-load-connections))
-  (message "Loaded %d Clutch connections from %s"
-           (length clutch-connection-alist)
-           mp/clutch-connections-file))
-
-(with-eval-after-load 'clutch
-  (mp/clutch-apply-connections))
-#+end_src
-
-***** Keybindings
-#+begin_src emacs-lisp
-(map! :leader
-      :desc "Clutch query console"
-      "o s" #'clutch-query-console)
-#+end_src
-
-*** AI Agents and Completion
-**** Agent Shell
-Agent shell is a core part of this setup, so related integrations live together here.
-
-***** Desktop Notifications
-Enable desktop notifications for agent-shell buffers so turns that need attention can surface even when the shell is out of focus.
-
-#+begin_src emacs-lisp
-(use-package! agent-shell-notifications
-  :hook (agent-shell-mode . agent-shell-notifications-mode))
-#+end_src
-
-**** AI Suggestions
-Minuet is installed as a Doom package and kept manual-only.  Use =SPC d s= to request a suggestion and =SPC d m= to configure the provider; the remaining keys apply while a Minuet suggestion is visible.
-
-#+begin_src emacs-lisp
-(use-package! minuet
-  :commands (minuet-show-suggestion
-             minuet-configure-provider
-             minuet-previous-suggestion
-             minuet-next-suggestion
-             minuet-accept-suggestion
-             minuet-dismiss-suggestion
-             minuet-accept-suggestion-line)
-  :init
-  (map! :leader
-        (:prefix ("d" . "agent")
-         :desc "Show Minuet suggestion" "s" #'minuet-show-suggestion
-         :desc "Configure Minuet provider" "m" #'minuet-configure-provider))
-  :config
-  (setq minuet-provider 'codestral)
-  (plist-put minuet-codestral-options :api-key "CODESTRAL_API_KEY")
-  (minuet-set-optional-options minuet-codestral-options :stop `("\n\n"))
-  (minuet-set-optional-options minuet-codestral-options :max_tokens 1024)
-  (setq minuet-show-error-message-on-minibuffer t
-        minuet-request-timeout 10))
-#+end_src
-
-*** Session Behavior
-**** Emacs
-
-Quit confirmation is disabled for faster exits.
-
-#+begin_src emacs-lisp
-(setq confirm-kill-emacs nil)
-#+end_src
-
-*** Editing
-**** Multi Cursor
-#+begin_src emacs-lisp
-(use-package! evil-mc
-  :after evil
-  :config
-  (global-evil-mc-mode 1)
-
-  (map! :n "C-M-<down>"  #'evil-mc-make-cursor-move-next-line
-        :n "C-M-<up>"    #'evil-mc-make-cursor-move-prev-line
-        :n "C-M-<right>" #'evil-mc-make-all-cursors)
-
-  (defun my/evil-mc-escape ()
-    (interactive)
-    (if (and (bound-and-true-p evil-mc-mode)
-             evil-mc-cursor-list)
-        (evil-mc-undo-all-cursors)
-      (evil-force-normal-state)))
-
-  (map! :i "<escape>" #'my/evil-mc-escape
-        :n "<escape>" #'my/evil-mc-escape))
-
-(map! :nv "C-d" #'evil-multiedit-match-and-next
-      :i  "C-d" #'evil-multiedit-toggle-marker-here)
-#+end_src
-
-**** Find in project
-[[https://github.com/manateelazycat/color-rg][color-rg]] provides a ripgrep
-results buffer you can navigate, filter, and—most usefully—edit in place to
-refactor matches across a project. =SPC s r f= searches the current file and
-=SPC s r p= searches the project. These live under a dedicated =r= prefix so
-Doom's stock =SPC s f= (locate file) and =SPC s p= (live project search) stay
-available.
-
-Inside a result buffer: =j=/=k= move between matches, =h=/=l= jump between
-files, =e= switches to edit mode (=C-c C-c= applies, =C-c C-v= cancels), =r=
-replaces all matches, =I= toggles whether ignore files are respected, and =q=
-quits.
-
-#+begin_src emacs-lisp
-(use-package! color-rg
-  :commands (color-rg-search-input
-             color-rg-search-symbol
-             color-rg-search-input-in-project
-             color-rg-search-symbol-in-project
-             color-rg-search-input-in-current-file
-             color-rg-search-symbol-in-current-file)
-  :init
-  ;; `color-rg-mac-load-path-from-shell' only matters on macOS; Doom already
-  ;; manages PATH (see the NVM Path section), so the shell import is unneeded.
-  (setq color-rg-mac-load-path-from-shell nil)
-  (map! :leader
-        (:prefix ("s" . "search")
-         (:prefix ("r" . "color-rg")
-          :desc "Search in file"    "f" #'color-rg-search-input-in-current-file
-          :desc "Search in project" "p" #'color-rg-search-input-in-project)))
-  :config
-  ;; Respect .gitignore so project searches stay focused like an IDE.
-  ;; Toggle per-search inside the results buffer with `I'.
-  (setq color-rg-search-no-ignore-file nil)
-  ;; `color-rg-mode' derives from `text-mode' and ships its own single-key view
-  ;; bindings (j/k navigate, e edit, r replace, q quit). Hand the buffer to
-  ;; Evil's Emacs state so those keys aren't shadowed.
-  (after! evil
-    (evil-set-initial-state 'color-rg-mode 'emacs)))
-#+end_src
-
-**** Tree-sitter Grammars
-Without a grammar, a =*-ts-mode= silently falls back to its non-tree-sitter
-counterpart, which is what makes JSX folding collapse the whole function body
-and breaks tree-sitter-aware editing. Install grammars on demand instead of
-asking each time (needs a C compiler and network access on first use).
-
-After tangling, install the ones you use right away with =M-x
-treesit-install-language-grammar= (e.g. =tsx=, =typescript=, =javascript=,
-=html=, =css=, =json=); otherwise they install automatically the next time you
-open such a file.
-
-#+begin_src emacs-lisp
-(setq treesit-auto-install-grammar 'always)
-#+end_src
-
-**** Code Folding
-With grammars installed, folding routes through =treesit-fold= and operates on
-the syntax tree, so the stock Evil keys do what an IDE does:
-
-- =zc= folds the innermost element/block at point (the direct parent of the
-  current line).
-- =zo= opens the fold on the current line (where the =…= ellipsis shows).
-- =za= toggles, =zr= opens every fold, =zm= folds everything.
-
-=tsx-ts-mode= (used for =.jsx= and =.tsx=) already folds JSX elements. The block
-below extends the plain JS modes so JSX embedded in a =.js= file folds at the
-element level too, instead of only collapsing the enclosing function.
-
-#+begin_src emacs-lisp
-(after! treesit-fold
-  (dolist (mode '(js-mode js-ts-mode javascript-mode))
-    (when-let ((cell (assq mode treesit-fold-range-alist)))
-      (dolist (rule '((jsx_element  . treesit-fold-range-html)
-                      (jsx_fragment . treesit-fold-range-html)))
-        (unless (assq (car rule) (cdr cell))
-          (setcdr cell (append (cdr cell) (list rule))))))))
-#+end_src
-
-**** Fold By Level
-VSCode-style "fold everything to level N", bound to =z 1= … =z 9= (=z= then a
-digit). Level 1 is the outermost construct, higher numbers reveal more nesting,
-and the level is clamped to the deepest fold the buffer actually has (so =z9= in
-a shallow file folds the innermost level). Shallower levels stay open, anything
-deeper is hidden inside the folded level—exactly the VSCode behaviour.
-
-It toggles: pressing the same level again, while that level is folded, reveals
-everything. In tree-sitter buffers this walks the syntax tree to compute true
-nesting depth; elsewhere it falls back to Doom's hideshow/outline level folding.
-
-#+begin_src emacs-lisp
-(defun mp/treesit-fold-active-p ()
-  "Return non-nil when `treesit-fold' can operate on the current buffer."
-  (and (fboundp 'treesit-fold-ready-p)
-       (treesit-fold-ready-p)
-       (treesit-fold-usable-mode-p)))
-
-(defun mp/treesit-fold--node-foldable-p (node)
-  "Return non-nil when NODE defines a multi-line fold."
-  (when-let ((range (treesit-fold--get-fold-range node)))
-    (not (treesit-fold--range-on-same-line range))))
-
-(defun mp/treesit-fold--depth (node)
-  "Return the fold-nesting depth of NODE (1 = outermost foldable)."
-  (let ((depth 0)
-        (current node))
-    (while current
-      (when (mp/treesit-fold--node-foldable-p current)
-        (cl-incf depth))
-      (setq current (treesit-node-parent current)))
-    depth))
-
-(defun mp/treesit-fold--foldable-nodes ()
-  "Return every multi-line foldable node in the buffer."
-  (let* ((root (treesit-buffer-root-node))
-         (ranges (alist-get major-mode treesit-fold-range-alist))
-         (patterns (seq-mapcat (lambda (range) `((,(car range)) @name)) ranges))
-         (query (treesit-query-compile (treesit-node-language root) patterns)))
-    (cl-remove-if-not #'mp/treesit-fold--node-foldable-p
-                      (mapcar #'cdr (treesit-query-capture root query)))))
-
-(defun mp/treesit-fold-to-level (level)
-  "Fold every node at LEVEL, keeping shallower levels open (VSCode-style).
-If LEVEL is already folded, reveal everything instead."
-  (let* ((nodes (mp/treesit-fold--foldable-nodes))
-         (depths (mapcar #'mp/treesit-fold--depth nodes))
-         (max-depth (if depths (apply #'max depths) 0)))
-    (when (zerop max-depth)
-      (user-error "Nothing foldable in this buffer"))
-    (let* ((level (min level max-depth))
-           (at-level (cl-loop for node in nodes
-                              for depth in depths
-                              when (= depth level) collect node))
-           (folded (cl-some #'treesit-fold-overlay-at at-level)))
-      (treesit-fold-open-all)
-      (if folded
-          (message "Fold level %d revealed" level)
-        (dolist (node at-level)
-          (treesit-fold-close node))
-        (message "Folded to level %d" level)))))
-
-(defvar-local mp/fold--last-level nil
-  "Last fold level applied in a non-tree-sitter buffer, for toggling.")
-
-(defun mp/fold--fallback-to-level (level)
-  "Fold to LEVEL with hideshow/outline, toggling open on repeat."
-  (if (eq mp/fold--last-level level)
-      (progn (+fold/open-all)
-             (setq mp/fold--last-level nil)
-             (message "Fold level %d revealed" level))
-    (+fold/open-all)
-    (+fold/close-all level)
-    (setq mp/fold--last-level level)
-    (message "Folded to level %d" level)))
-
-(defun mp/fold-to-level (&optional level)
-  "Fold all regions down to LEVEL (1 = outermost), VSCode-style.
-Re-invoking the same level reveals everything again.  When called from the
-z1..z9 keys, LEVEL is read from the triggering digit."
-  (interactive)
-  (let ((level (or level
-                   (let ((event last-command-event))
-                     (and (characterp event)
-                          (<= ?1 event ?9)
-                          (- event ?0))))))
-    (unless (and (integerp level) (<= 1 level 9))
-      (user-error "Fold level must be between 1 and 9"))
-    (if (mp/treesit-fold-active-p)
-        (mp/treesit-fold-to-level level)
-      (mp/fold--fallback-to-level level))))
-
-(after! evil
-  (dolist (level (number-sequence 1 9))
-    (let ((key (vector ?z (+ ?0 level))))
-      (define-key evil-normal-state-map key #'mp/fold-to-level)
-      (define-key evil-motion-state-map key #'mp/fold-to-level))))
-#+end_src
-
-*** Scripts
+*** Should be plugins (My own code (with llm help))
 **** Project Scripts runner
 #+begin_src emacs-lisp
 (defvar my/project-running-scripts (make-hash-table :test 'equal))
@@ -2450,154 +2554,6 @@ z1..z9 keys, LEVEL is read from the triggering digit."
       "p S" #'my/run-project-script)
 #+end_src
 
-*** Org Mode
-#+begin_src emacs-lisp
-;;; org-basic.el --- sane Org defaults for Doom
-
-;; Main Org directory.
-(setq org-directory "~/org/")
-
-;; Files scanned by org-agenda.
-;; Only put actionable/date-based files here.
-(setq org-agenda-files
-      '("~/org/inbox.org"
-        "~/org/tasks.org"
-        "~/org/projects.org"
-        "~/org/calendar.org"))
-
-;; Basic TODO workflow.
-;; TODO      = not started
-;; NEXT      = next concrete action
-;; WAIT      = blocked by someone/something
-;; SOMEDAY   = intentionally inactive
-;; DONE      = completed
-;; CANCELLED = no longer relevant
-(setq org-todo-keywords
-      '((sequence "TODO(t)" "NEXT(n)" "WAIT(w)" "SOMEDAY(s)" "|"
-                  "DONE(d)" "CANCELLED(c)")))
-
-;; Save timestamp when marking DONE.
-(setq org-log-done 'time)
-
-;; Save note when moving into WAIT or CANCELLED.
-(setq org-todo-keyword-faces
-      '(("TODO" . warning)
-        ("NEXT" . success)
-        ("WAIT" . font-lock-constant-face)
-        ("SOMEDAY" . font-lock-doc-face)
-        ("DONE" . shadow)
-        ("CANCELLED" . shadow)))
-
-(setq org-todo-keywords
-      '((sequence "TODO" "|" "DONE")))
-
-;; Use fast todo selection.
-(setq org-use-fast-todo-selection t)
-
-;; Hide completed scheduled/deadline tasks from agenda after done.
-(setq org-agenda-skip-scheduled-if-done t)
-(setq org-agenda-skip-deadline-if-done t)
-
-;; Show agenda starting today.
-;; (setq org-agenda-start-on-weekday nil)
-
-;; Show 14 days by default.
-(setq org-agenda-span 14)
-
-;; Warn about deadlines 7 days in advance.
-(setq org-deadline-warning-days 7)
-
-;; Make indentation readable.
-(setq org-startup-indented t)
-
-;; Hide leading stars visually.
-(setq org-hide-leading-stars t)
-
-;; Open folded files cleanly.
-(setq org-startup-folded 'content)
-
-;; Log state changes into a drawer to avoid visual noise.
-(setq org-log-into-drawer t)
-
-;; Refile targets.
-;; This lets you move captured items from inbox.org into real files.
-(setq org-refile-targets
-      '(("~/org/tasks.org" :maxlevel . 3)
-        ("~/org/projects.org" :maxlevel . 4)
-        ("~/org/calendar.org" :maxlevel . 2)
-        ("~/org/someday.org" :maxlevel . 2)))
-
-;; Make refile completion use full paths.
-(setq org-refile-use-outline-path 'file)
-(setq org-outline-path-complete-in-steps nil)
-
-;; Archive completed old tasks here.
-(setq org-archive-location "~/org/archive.org::* From %s")
-
-;; Capture templates.
-(setq org-capture-templates
-      '(("t" "Todo" entry
-         (file "~/org/inbox.org")
-         "* TODO %?\nCREATED: %U\n")
-
-        ("d" "Todo with deadline" entry
-         (file "~/org/inbox.org")
-         "* TODO %?\nDEADLINE: %^t\nCREATED: %U\n")
-
-        ("s" "Scheduled todo" entry
-         (file "~/org/inbox.org")
-         "* TODO %?\nSCHEDULED: %^t\nCREATED: %U\n")
-
-        ("e" "Event / calendar date" entry
-         (file "~/org/calendar.org")
-         "* %?\n%^T\n")
-
-        ("r" "Repeating event" entry
-         (file "~/org/calendar.org")
-         "* %?\n%^T\n")
-
-        ("p" "Project task" entry
-         (file "~/org/projects.org")
-         "* TODO %?\nCREATED: %U\n")
-
-        ("n" "Note" entry
-         (file "~/org/notes.org")
-         "* %?\nCREATED: %U\n")))
-
-;; Custom agenda views.
-(setq org-agenda-custom-commands
-      '(("d" "Dashboard"
-         ((agenda "" ((org-agenda-span 14)))
-          (todo "NEXT"
-                ((org-agenda-overriding-header "Next actions")))
-          (todo "WAIT"
-                ((org-agenda-overriding-header "Waiting")))
-          (todo "TODO"
-                ((org-agenda-overriding-header "Unprocessed todos")))))
-
-        ("i" "Inbox"
-         ((tags "REFILE|TODO"
-                ((org-agenda-files '("~/org/inbox.org"))
-                 (org-agenda-overriding-header "Inbox")))))
-
-        ("p" "Projects"
-         ((tags "project"
-                ((org-agenda-overriding-header "Projects")))))))
-#+end_src
-*** Future Configuration
-Reserved sections for later additions so new config does not need to be bolted onto the end of the file.
-
-**** Local Machine Or OS-Specific Settings
-Use this section for machine-specific behavior, platform-specific shell paths, or display quirks.
-
-**** Language-Specific Overrides
-Use this section for per-language helpers that do not belong in the shared project-root or tooling sections.
-
-**** Workflow Automation
-Use this section for commands, macros, transient menus, and integrations that automate recurring tasks.
-
-**** Temporary Experiments
-Use this section for short-lived experiments before they are promoted into a stable section above or removed.
 ** Packages
 :PROPERTIES:
 :header-args:emacs-lisp: :tangle packages.el
@@ -2616,6 +2572,7 @@ Use this section for short-lived experiments before they are promoted into a sta
 - https://github.com/tumashu/vertico-posframe
 - https://github.com/karthink/consult-dir
 - https://github.com/manateelazycat/color-rg
+- https://github.com/Reagankm/renpy-mode
 
 #+begin_src emacs-lisp
 ;; multi cursor
@@ -2626,6 +2583,7 @@ Use this section for short-lived experiments before they are promoted into a sta
 (package! vertico-posframe)
 (package! consult-dir)
 (package! color-rg :recipe (:host github :repo "manateelazycat/color-rg"))
+(package! renpy-mode :recipe (:host github :repo "Reagankm/renpy-mode"))
 #+end_src
 
 *** AI

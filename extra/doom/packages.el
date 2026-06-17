@@ -8,6 +8,7 @@
 (package! vertico-posframe)
 (package! consult-dir)
 (package! color-rg :recipe (:host github :repo "manateelazycat/color-rg"))
+(package! renpy-mode :recipe (:host github :repo "Reagankm/renpy-mode"))
 
 (package! acp)
 (package! agent-shell)
