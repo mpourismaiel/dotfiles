@@ -439,11 +439,37 @@
 ;;  (python-ts-mode . ((+format-with . ("ruff" "format" "-")))))
 
 (after! orderless
+  ;; Make every component match as a fuzzy subsequence in addition to the
+  ;; literal/regexp styles. This is the "VSCode fuzzy" half.
+  (setq orderless-matching-styles
+        '(orderless-literal orderless-regexp orderless-flex))
+
   (setq completion-styles '(orderless basic)
         completion-category-defaults nil
         completion-category-overrides
         '((file (styles orderless partial-completion))
           (lsp-capf (styles orderless basic)))))
+
+(use-package! prescient
+  :config
+  (setq prescient-sort-full-matches-first t)
+  (prescient-persist-mode 1))
+
+(use-package! corfu-prescient
+  :after corfu
+  :config
+  (setq corfu-prescient-enable-filtering nil   ; keep orderless for filtering
+        corfu-prescient-enable-sorting t        ; let prescient sort
+        corfu-prescient-override-sorting nil)
+  (corfu-prescient-mode 1))
+
+(use-package! vertico-prescient
+  :after vertico
+  :config
+  (setq vertico-prescient-enable-filtering nil
+        vertico-prescient-enable-sorting t
+        vertico-prescient-override-sorting nil)
+  (vertico-prescient-mode 1))
 
 (after! projectile
   ;; Doom's Python helpers still consult Projectile in a few places.

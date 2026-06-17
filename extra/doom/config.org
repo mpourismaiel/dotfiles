@@ -725,16 +725,62 @@ To change formatter to Ruff for python files in a certain project use this
 #+end_src
 
 **** Completion Styles
-Use Orderless as the primary matcher for Vertico and Corfu, with the standard
-fallbacks kept for file paths and completion-at-point providers.
+The goal here is "completion that behaves like VSCode": loose fuzzy matching to
+decide /what/ shows up, and a smart score-based sort to decide the /order/.
+
+Emacs splits those two jobs apart, which is why this used to feel off. Orderless
+is the matcher (filtering), but on its own it does no sorting — it hands matches
+back in the backend's order, and then Corfu re-sorts them by length, so the best
+match rarely lands on top. Two changes fix it:
+
+- Add =orderless-flex= to the matching styles so typing =prnt= still finds
+  =print= (real subsequence fuzzy, not just substring).
+- Layer [[https://github.com/radian-software/prescient.el][prescient.el]] on top
+  purely as a /sorter/ for Corfu and Vertico (see the Prescient section below).
+  Orderless keeps doing the filtering; prescient only reorders.
 
 #+begin_src emacs-lisp
 (after! orderless
+  ;; Make every component match as a fuzzy subsequence in addition to the
+  ;; literal/regexp styles. This is the "VSCode fuzzy" half.
+  (setq orderless-matching-styles
+        '(orderless-literal orderless-regexp orderless-flex))
+
   (setq completion-styles '(orderless basic)
         completion-category-defaults nil
         completion-category-overrides
         '((file (styles orderless partial-completion))
           (lsp-capf (styles orderless basic)))))
+#+end_src
+
+***** Prescient sorting
+Prescient supplies the sorting half: it ranks by recency, frequency, and match
+tightness (full/prefix matches first), and it /learns/ from what you pick — so
+the things you choose most float to the top, just like VSCode. Filtering is left
+to Orderless (=enable-filtering nil=); prescient only reorders. =persist-mode=
+keeps that learned history across sessions.
+
+#+begin_src emacs-lisp
+(use-package! prescient
+  :config
+  (setq prescient-sort-full-matches-first t)
+  (prescient-persist-mode 1))
+
+(use-package! corfu-prescient
+  :after corfu
+  :config
+  (setq corfu-prescient-enable-filtering nil   ; keep orderless for filtering
+        corfu-prescient-enable-sorting t        ; let prescient sort
+        corfu-prescient-override-sorting nil)
+  (corfu-prescient-mode 1))
+
+(use-package! vertico-prescient
+  :after vertico
+  :config
+  (setq vertico-prescient-enable-filtering nil
+        vertico-prescient-enable-sorting t
+        vertico-prescient-override-sorting nil)
+  (vertico-prescient-mode 1))
 #+end_src
 
 **** Project Root Behavior
@@ -2572,18 +2618,26 @@ Some Doom prefix maps are still present but may show up as generic =+prefix= ent
 - https://github.com/tumashu/vertico-posframe
 - https://github.com/karthink/consult-dir
 - https://github.com/manateelazycat/color-rg
-- https://github.com/Reagankm/renpy-mode
+- https://github.com/radian-software/prescient.el
 
 #+begin_src emacs-lisp
 ;; multi cursor
 (package! evil-mc)
+;; code position breadcrump
 (package! breadcrumb)
+;; expand selection
 (package! expand-region)
+;; org
 (package! org-modern)
+;; some minibuffer help
 (package! vertico-posframe)
 (package! consult-dir)
+;; much better search and replace
 (package! color-rg :recipe (:host github :repo "manateelazycat/color-rg"))
-(package! renpy-mode :recipe (:host github :repo "Reagankm/renpy-mode"))
+;; VSCode-like sorting for corfu/vertico (orderless still does the filtering)
+(package! prescient)
+(package! corfu-prescient)
+(package! vertico-prescient)
 #+end_src
 
 *** AI
@@ -2604,12 +2658,14 @@ Some Doom prefix maps are still present but may show up as generic =+prefix= ent
 **** General
 - https://github.com/casouri/eldoc-box
 - https://github.com/pwalsh/pipenv.el
+- https://github.com/Reagankm/renpy-mode
 
 #+begin_src emacs-lisp
 (package! eldoc-box)
 ;; Keep `pipenv` disabled, but leave the declaration so Doom won't re-enable it
 ;; if package state changes during future experiments.
 (package! pipenv :disable t)
+(package! renpy-mode :recipe (:host github :repo "Reagankm/renpy-mode"))
 #+end_src
 
 *** Visuals
