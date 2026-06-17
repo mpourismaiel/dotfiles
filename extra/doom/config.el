@@ -39,22 +39,6 @@
 ;; Let Treemacs use richer git-state highlighting when Python is available.
 (setq +treemacs-git-mode 'deferred)
 
-(after! doom-themes
-  (custom-set-faces!
-    ;; JSX / HTML tags: <div>
-    '(web-mode-html-tag-face :foreground "#ffcc66" :weight bold)
-    '(web-mode-html-tag-bracket-face :foreground "#ffcc66")
-    '(web-mode-html-attr-name-face :foreground "#82aaff")
-
-    ;; React component / constructor-like names: BaseMaterialContainer
-    '(font-lock-type-face :foreground "#c792ea" :weight bold)
-
-    ;; Variables / props
-    '(font-lock-variable-name-face :foreground "#89ddff")
-
-    ;; Function names
-    '(font-lock-function-name-face :foreground "#82aaff" :weight bold)))
-
 (defvar mp/editor-line-spacing 0.6
   "Preferred extra line spacing for editing buffers.")
 
