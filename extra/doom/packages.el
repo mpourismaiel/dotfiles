@@ -22,7 +22,8 @@
 (package! agent-shell)
 (package! agent-shell-notifications
   :recipe (:host github :repo "zackattackz/agent-shell-notifications"))
-(package! minuet)
+(package! copilot
+  :recipe (:host github :repo "copilot-emacs/copilot.el" :files ("*.el")))
 
 (package! eldoc-box)
 ;; Keep `pipenv` disabled, but leave the declaration so Doom won't re-enable it

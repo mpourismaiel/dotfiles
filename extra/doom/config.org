@@ -2172,30 +2172,20 @@ Enable desktop notifications for agent-shell buffers so turns that need attentio
   :hook (agent-shell-mode . agent-shell-notifications-mode))
 #+end_src
 
-**** AI Suggestions
-Minuet is installed as a Doom package and kept manual-only.  Use =SPC d s= to request a suggestion and =SPC d m= to configure the provider; the remaining keys apply while a Minuet suggestion is visible.
-
+**** Copilot Auto suggestions
 #+begin_src emacs-lisp
-(use-package! minuet
-  :commands (minuet-show-suggestion
-             minuet-configure-provider
-             minuet-previous-suggestion
-             minuet-next-suggestion
-             minuet-accept-suggestion
-             minuet-dismiss-suggestion
-             minuet-accept-suggestion-line)
+(use-package! copilot
+  :ensure t
+  :bind (:map copilot-completion-map
+              ("<tab>" . copilot-accept-completion)
+              ("TAB" . copilot-accept-completion)
+              ("C-<tab>" . copilot-accept-completion-by-word)
+              ("C-TAB" . copilot-accept-completion-by-word)
+              ("C-n" . copilot-next-completion)
+              ("C-p" . copilot-previous-completion))
   :init
-  (map! :leader
-        (:prefix ("d" . "agent")
-         :desc "Show Minuet suggestion" "s" #'minuet-show-suggestion
-         :desc "Configure Minuet provider" "m" #'minuet-configure-provider))
-  :config
-  (setq minuet-provider 'codestral)
-  (plist-put minuet-codestral-options :api-key "CODESTRAL_API_KEY")
-  (minuet-set-optional-options minuet-codestral-options :stop `("\n\n"))
-  (minuet-set-optional-options minuet-codestral-options :max_tokens 1024)
-  (setq minuet-show-error-message-on-minibuffer t
-        minuet-request-timeout 10))
+  (setq copilot-indent-offset-warning-disable t)
+  :hook (prog-mode . copilot-mode))
 #+end_src
 
 *** Languages
@@ -2644,14 +2634,15 @@ Some Doom prefix maps are still present but may show up as generic =+prefix= ent
 - https://github.com/xenodium/acp.el
 - https://github.com/xenodium/agent-shell
 - https://github.com/zackattackz/agent-shell-notifications
-- https://github.com/milanglacier/minuet-ai.el
+- https://github.com/copilot-emacs/copilot.el
 
 #+begin_src emacs-lisp
 (package! acp)
 (package! agent-shell)
 (package! agent-shell-notifications
   :recipe (:host github :repo "zackattackz/agent-shell-notifications"))
-(package! minuet)
+(package! copilot
+  :recipe (:host github :repo "copilot-emacs/copilot.el" :files ("*.el")))
 #+end_src
 
 *** Programming

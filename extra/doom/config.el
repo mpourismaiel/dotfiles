@@ -1710,26 +1710,18 @@ z1..z9 keys, LEVEL is read from the triggering digit."
 (use-package! agent-shell-notifications
   :hook (agent-shell-mode . agent-shell-notifications-mode))
 
-(use-package! minuet
-  :commands (minuet-show-suggestion
-             minuet-configure-provider
-             minuet-previous-suggestion
-             minuet-next-suggestion
-             minuet-accept-suggestion
-             minuet-dismiss-suggestion
-             minuet-accept-suggestion-line)
+(use-package! copilot
+  :ensure t
+  :bind (:map copilot-completion-map
+              ("<tab>" . copilot-accept-completion)
+              ("TAB" . copilot-accept-completion)
+              ("C-<tab>" . copilot-accept-completion-by-word)
+              ("C-TAB" . copilot-accept-completion-by-word)
+              ("C-n" . copilot-next-completion)
+              ("C-p" . copilot-previous-completion))
   :init
-  (map! :leader
-        (:prefix ("d" . "agent")
-         :desc "Show Minuet suggestion" "s" #'minuet-show-suggestion
-         :desc "Configure Minuet provider" "m" #'minuet-configure-provider))
-  :config
-  (setq minuet-provider 'codestral)
-  (plist-put minuet-codestral-options :api-key "CODESTRAL_API_KEY")
-  (minuet-set-optional-options minuet-codestral-options :stop `("\n\n"))
-  (minuet-set-optional-options minuet-codestral-options :max_tokens 1024)
-  (setq minuet-show-error-message-on-minibuffer t
-        minuet-request-timeout 10))
+  (setq copilot-indent-offset-warning-disable t)
+  :hook (prog-mode . copilot-mode))
 
 ;; Never let Doom infer or create a Pipenv project at a monorepo root.
 ;; Only an already-existing ancestor Pipfile counts as a valid Pipenv root.
