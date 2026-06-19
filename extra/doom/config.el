@@ -874,12 +874,188 @@ z1..z9 keys, LEVEL is read from the triggering digit."
 
   (spacious-padding-mode 1))
 
-(after! demap
-  (setq demap-minimap-window-side 'right
-        demap-minimap-window-width 18))
-
 (use-package! rainbow-delimiters
   :hook ((prog-mode . rainbow-delimiters-mode)))
+
+(require 'svg)
+
+(declare-function diff-hl-changes "diff-hl")
+(declare-function diff-hl-changes-from-buffer "diff-hl")
+
+(defvar mp/overview-ruler-width 3
+  "Width of the overview ruler window, in columns.")
+
+(defvar mp/overview-ruler-idle 0.3
+  "Idle seconds before the overview ruler refreshes.")
+
+(defconst mp/overview-ruler--buffer-name "*overview-ruler*")
+(defvar mp/overview-ruler--timer nil)
+
+;; Per-source-buffer git cache so we don't run a vc diff on every refresh.
+(defvar-local mp/overview-ruler--git-cache nil)
+(defvar-local mp/overview-ruler--git-tick nil)
+
+(defun mp/overview-ruler--face-color (face attr fallback)
+  "FACE's ATTR as a color string, or FALLBACK."
+  (or (and (facep face)
+           (let ((c (face-attribute face attr nil t)))
+             (and (stringp c) c)))
+      fallback))
+
+(defun mp/overview-ruler--git-color (type)
+  "Color string for a git change of TYPE."
+  (pcase type
+    ('insert (mp/overview-ruler--face-color 'diff-hl-insert :foreground "#3fb950"))
+    ('delete (mp/overview-ruler--face-color 'diff-hl-delete :foreground "#f85149"))
+    (_       (mp/overview-ruler--face-color 'diff-hl-change :foreground "#58a6ff"))))
+
+(defun mp/overview-ruler--diag-color (sev)
+  "Color string for a diagnostic of severity SEV."
+  (pcase sev
+    ('error   (mp/overview-ruler--face-color 'flycheck-fringe-error   :foreground "#f85149"))
+    ('warning (mp/overview-ruler--face-color 'flycheck-fringe-warning :foreground "#d29922"))
+    (_        (mp/overview-ruler--face-color 'flycheck-fringe-info    :foreground "#58a6ff"))))
+
+(defun mp/overview-ruler--git-changes ()
+  "List of (START-LINE NLINES TYPE) for the current buffer, or nil.
+Reflects the last SAVED state unless `diff-hl-flydiff-mode' is on."
+  (when (and (fboundp 'diff-hl-changes) buffer-file-name)
+    (ignore-errors
+      (let* ((alist (diff-hl-changes))
+             (working (cdr (assq :working alist)))
+             (changes (if (bufferp working)
+                          (diff-hl-changes-from-buffer working)
+                        working))
+             res)
+        (dolist (c changes)
+          (pcase-let ((`(,line ,inserts ,_deletes ,type) c))
+            (push (list line (if (eq type 'delete) 1 (max 1 inserts)) type) res)))
+        (nreverse res)))))
+
+(defun mp/overview-ruler--git ()
+  "Cached `mp/overview-ruler--git-changes', recomputed only after edits."
+  (let ((tick (buffer-modified-tick)))
+    (unless (eql tick mp/overview-ruler--git-tick)
+      (setq mp/overview-ruler--git-tick tick
+            mp/overview-ruler--git-cache (mp/overview-ruler--git-changes)))
+    mp/overview-ruler--git-cache))
+
+(defun mp/overview-ruler--diagnostics ()
+  "List of (LINE . SEVERITY) where SEVERITY is `error', `warning' or `info'."
+  (cond
+   ((bound-and-true-p flycheck-mode)
+    (mapcar (lambda (e)
+              (cons (flycheck-error-line e)
+                    (pcase (flycheck-error-level e)
+                      ('error 'error) ('warning 'warning) (_ 'info))))
+            flycheck-current-errors))
+   ((bound-and-true-p flymake-mode)
+    (let (res)
+      (dolist (d (flymake-diagnostics))
+        (let ((name (format "%s" (flymake-diagnostic-type d))))
+          (push (cons (line-number-at-pos (flymake-diagnostic-beg d))
+                      (cond ((string-match-p "error" name) 'error)
+                            ((string-match-p "warn"  name) 'warning)
+                            (t 'info)))
+                res)))
+      res))))
+
+(defun mp/overview-ruler--render (src-buf src-win ruler-win)
+  "Draw the SVG ruler for SRC-BUF / SRC-WIN into RULER-WIN."
+  (let ((w (max 8 (window-body-width ruler-win t)))
+        (h (max 1 (window-body-height ruler-win t)))
+        git diags n top-line bot-line)
+    (with-current-buffer src-buf
+      (setq n (max 1 (line-number-at-pos (point-max)))
+            git (mp/overview-ruler--git)
+            diags (mp/overview-ruler--diagnostics))
+      (when (window-live-p src-win)
+        (setq top-line (line-number-at-pos (window-start src-win))
+              bot-line (line-number-at-pos (window-end src-win t)))))
+    (let* ((svg (svg-create w h))
+           (y-of (lambda (line) (floor (* (/ (float (1- (max 1 line))) n) h)))))
+      (svg-rectangle svg 0 0 w h
+                     :fill (mp/overview-ruler--face-color 'default :background "#0d1117"))
+      (dolist (c git)
+        (pcase-let ((`(,line ,nlines ,type) c))
+          (svg-rectangle svg 0 (funcall y-of line)
+                         w (max 3 (floor (* (/ (float nlines) n) h)))
+                         :fill (mp/overview-ruler--git-color type))))
+      (dolist (d diags)
+        (svg-rectangle svg 0 (funcall y-of (car d))
+                       w (max 3 (floor (/ (float h) n)))
+                       :fill (mp/overview-ruler--diag-color (cdr d))))
+      (when (and top-line bot-line)
+        (let ((top (funcall y-of top-line))
+              (bot (funcall y-of bot-line)))
+          (svg-rectangle svg 0 top (1- w) (max 2 (- bot top))
+                         :fill "none"
+                         :stroke (mp/overview-ruler--face-color 'region :background "#6e7681")
+                         :stroke-width 1)))
+      (with-current-buffer (get-buffer-create mp/overview-ruler--buffer-name)
+        (let ((inhibit-read-only t))
+          (erase-buffer)
+          (insert-image (svg-image svg)))))))
+
+(defun mp/overview-ruler--setup-buffer (buf)
+  "Initialize the ruler BUF: read-only, no chrome."
+  (with-current-buffer buf
+    (setq mode-line-format nil header-line-format nil cursor-type nil
+          truncate-lines t buffer-read-only t)
+    (buffer-disable-undo)))
+
+(defun mp/overview-ruler--window ()
+  "Return the ruler window, creating the buffer + side window if needed."
+  (let ((buf (get-buffer-create mp/overview-ruler--buffer-name)))
+    (mp/overview-ruler--setup-buffer buf)
+    (or (get-buffer-window buf t)
+        (let ((win (display-buffer-in-side-window
+                    buf `((side . right) (slot . 1)
+                          (window-width . ,mp/overview-ruler-width)
+                          (window-parameters . ((no-other-window . t)
+                                                (no-delete-other-windows . t)))))))
+          (when win (set-window-fringes win 0 0))
+          win))))
+
+(defun mp/overview-ruler--refresh ()
+  "Refresh the ruler for the currently selected file window."
+  (when (bound-and-true-p mp/overview-ruler-mode)
+    (let* ((win (selected-window))
+           (buf (window-buffer win)))
+      (unless (or (window-minibuffer-p win)
+                  (string= (buffer-name buf) mp/overview-ruler--buffer-name)
+                  (not (buffer-file-name (or (buffer-base-buffer buf) buf))))
+        (let ((ruler (mp/overview-ruler--window)))
+          (when (window-live-p ruler)
+            (mp/overview-ruler--render buf win ruler)))))))
+
+(define-minor-mode mp/overview-ruler-mode
+  "Global VSCode-style overview ruler with git and diagnostic lanes."
+  :global t
+  (if mp/overview-ruler-mode
+      (progn
+        (unless (image-type-available-p 'svg)
+          (setq mp/overview-ruler-mode nil)
+          (user-error "overview-ruler needs an Emacs built with SVG (librsvg)"))
+        (setq mp/overview-ruler--timer
+              (run-with-idle-timer mp/overview-ruler-idle t #'mp/overview-ruler--refresh))
+        (add-hook 'window-configuration-change-hook #'mp/overview-ruler--refresh))
+    (when mp/overview-ruler--timer (cancel-timer mp/overview-ruler--timer))
+    (setq mp/overview-ruler--timer nil)
+    (remove-hook 'window-configuration-change-hook #'mp/overview-ruler--refresh)
+    (let ((win (get-buffer-window mp/overview-ruler--buffer-name t)))
+      (when (window-live-p win) (delete-window win)))
+    (when (get-buffer mp/overview-ruler--buffer-name)
+      (kill-buffer mp/overview-ruler--buffer-name))))
+
+(map! :leader :desc "Overview ruler" "t o" #'mp/overview-ruler-mode)
+
+;; On by default once Emacs has settled, but only when SVG is available so a
+;; non-SVG build doesn't trip the mode's `user-error' during startup.
+(add-hook 'doom-after-init-hook
+          (lambda ()
+            (when (image-type-available-p 'svg)
+              (mp/overview-ruler-mode 1))))
 
 (after! corfu
   (setq corfu-auto t
