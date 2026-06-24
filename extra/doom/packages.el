@@ -6,6 +6,8 @@
 (package! breadcrumb)
 ;; expand selection
 (package! expand-region)
+;; syntax-aware Evil text objects: vif/vac/viv (function/class/variable)
+(package! evil-textobj-tree-sitter)
 ;; org
 (package! org-modern)
 ;; some minibuffer help

@@ -283,12 +283,19 @@ This adds a small amount of extra vertical space in buffers intended for writing
 (defvar mp/editor-line-spacing 0.6
   "Preferred extra line spacing for editing buffers.")
 
+(defvar mp/prog-line-spacing 0.9
+  "Preferred extra line spacing for code buffers (taller than prose).")
+
 (defun mp/apply-editor-line-spacing-h ()
   "Apply comfortable line spacing to editable buffers."
   (setq-local line-spacing mp/editor-line-spacing))
 
+(defun mp/apply-prog-line-spacing-h ()
+  "Apply a taller line spacing to code buffers."
+  (setq-local line-spacing mp/prog-line-spacing))
+
 (add-hook 'text-mode-hook #'mp/apply-editor-line-spacing-h)
-(add-hook 'prog-mode-hook #'mp/apply-editor-line-spacing-h)
+(add-hook 'prog-mode-hook #'mp/apply-prog-line-spacing-h)
 (add-hook 'conf-mode-hook #'mp/apply-editor-line-spacing-h)
 #+end_src
 
@@ -401,10 +408,7 @@ This adds a small amount of extra vertical space in buffers intended for writing
 
 (defun mp/header-line-buffer-name ()
   "Return the file name or buffer name for the header line."
-  (or (when buffer-file-name
-        (file-name-nondirectory buffer-file-name))
-      (buffer-name)
-      ""))
+  (or (buffer-name) ""))
 
 (defun mp/header-line-mode-name ()
   "Return the current major mode name for the header line."
@@ -540,6 +544,9 @@ Quit confirmation is disabled for faster exits.
 
 (after! evil
   (setq evil-want-C-u-scroll t))
+
+(map! :n "C-j" `View-scroll-page-forward
+      :n "C-k" `View-scroll-page-backward)
 #+end_src
 
 ***** Region Expansion
@@ -897,6 +904,44 @@ open such a file.
 (setq treesit-auto-install-grammar 'always)
 #+end_src
 
+**** Tree-sitter Text Objects
+Evil text objects that select by *syntax* rather than by delimiter, powered by
+the tree-sitter parser you already run. (LSP can't do this — it has no concept
+of "the function around point"; tree-sitter is the right tool.) They fire in any
+=*-ts-mode= buffer (your =+tree-sitter= langs); elsewhere they no-op.
+
+- =vif= / =vaf= — inside / around the *function* at point. Works with every
+  operator, so =daf=, =yaf=, =cif= … all do what you'd expect.
+- =vic= / =vac= — inside / around the *class*.
+- =viv= / =vav= — the *variable*: the whole assignment statement, falling back
+  to the function parameter under point.
+
+The exact span depends on the language grammar — =function= is universal,
+=class= and =assignment= queries exist for most but not every grammar.
+
+#+begin_src emacs-lisp
+(use-package! evil-textobj-tree-sitter
+  :when (modulep! :tools tree-sitter)
+  :after evil
+  :config
+  ;; f = function, c = class, v = variable (assignment, falling back to a
+  ;; function parameter). Bound under the i/a text-object maps so they compose
+  ;; with every operator: vif, daf, yac, civ, …
+  (define-key evil-outer-text-objects-map "f"
+    (evil-textobj-tree-sitter-get-textobj "function.outer"))
+  (define-key evil-inner-text-objects-map "f"
+    (evil-textobj-tree-sitter-get-textobj "function.inner"))
+  (define-key evil-outer-text-objects-map "c"
+    (evil-textobj-tree-sitter-get-textobj "class.outer"))
+  (define-key evil-inner-text-objects-map "c"
+    (evil-textobj-tree-sitter-get-textobj "class.inner"))
+  ;; NB: this is a *macro* — pass multiple groups as an unquoted literal list.
+  (define-key evil-outer-text-objects-map "v"
+    (evil-textobj-tree-sitter-get-textobj ("assignment.outer" "parameter.outer")))
+  (define-key evil-inner-text-objects-map "v"
+    (evil-textobj-tree-sitter-get-textobj ("assignment.inner" "parameter.inner"))))
+#+end_src
+
 **** Code Folding
 With grammars installed, folding routes through =treesit-fold= and operates on
 the syntax tree, so the stock Evil keys do what an IDE does:
@@ -1191,6 +1236,27 @@ When this exact file is saved, Emacs immediately regenerates =config.el=. That k
 (add-hook 'evil-insert-state-exit-hook
           (lambda () (when (derived-mode-p 'org-mode) (display-line-numbers-mode -1))))
 
+;; Reopening a large Org file with point restored deep inside (save-place) can
+;; leave the src block at point un-fontified and Olivetti margins unapplied
+;; until you scroll back to the top — the text was folded/invisible when it was
+;; first fontified, so the glitch sticks. Once folding, save-place and the
+;; window have settled, re-fontify the visible region and re-apply Olivetti.
+(defun mp/org-settle-display ()
+  "Fix deep-restore redisplay glitches in Org buffers."
+  (when (derived-mode-p 'org-mode)
+    (let ((buf (current-buffer)))
+      (run-with-idle-timer
+       0.1 nil
+       (lambda ()
+         (when (buffer-live-p buf)
+           (dolist (win (get-buffer-window-list buf nil t))
+             (with-selected-window win
+               (font-lock-flush (window-start) (window-end nil t))
+               (font-lock-ensure (window-start) (window-end nil t))
+               (when (bound-and-true-p olivetti-mode)
+                 (olivetti-mode 1))))))))))
+(add-hook 'org-mode-hook #'mp/org-settle-display)
+
 (after! org
   ;; Prevent alphabetical list markers from conflicting with checkbox parsing.
   (setq org-list-allow-alphabetical nil)
@@ -1277,8 +1343,14 @@ When this exact file is saved, Emacs immediately regenerates =config.el=. That k
 **** Overview Ruler
 A VSCode "overview ruler": a narrow right-side window that draws an SVG of the
 *whole file* compressed to the window height. No buffer text is rendered — only
-colored rectangles, drawn full-width: git changes (from =diff-hl=) with
-flycheck/flymake diagnostics layered on top. A box marks the visible region.
+colored rectangles. Git changes (from =diff-hl=) fill the *left* lane and
+flycheck/flymake diagnostics the *right* lane, so a line that is both changed
+*and* flagged shows both colors side by side. Git merge conflicts override both
+lanes across the full width. A box marks the visible region.
+
+Lane colors live in =mp/overview-ruler-colors= — git add =#aaa=, git remove
+=#333=, git change =#777=; error red, warning blue, info gray; conflict cyan.
+Edit that alist to recolor.
 
 Needs an Emacs built with SVG (=librsvg=); verify with =(image-type-available-p
 'svg)=. Sources git state from =diff-hl-changes= (reflects the last *saved*
@@ -1313,19 +1385,29 @@ state unless =diff-hl-flydiff-mode= is on) and diagnostics from
              (and (stringp c) c)))
       fallback))
 
+(defvar mp/overview-ruler-colors
+  '((git-add    . "#aaaaaa")   ; added lines    (left lane)
+    (git-remove . "#333333")   ; deleted lines  (left lane)
+    (git-change . "#777777")   ; modified lines (left lane)
+    (error      . "#f85149")   ; red            (right lane)
+    (warning    . "#58a6ff")   ; blue           (right lane)
+    (info       . "#6e7681")   ; gray           (right lane)
+    (conflict   . "#19d3e0"))  ; cyan           (full width)
+  "Color palette for the overview ruler's lanes.")
+
+(defun mp/overview-ruler--color (key)
+  "Palette color string for KEY, from `mp/overview-ruler-colors'."
+  (alist-get key mp/overview-ruler-colors "#888888"))
+
 (defun mp/overview-ruler--git-color (type)
   "Color string for a git change of TYPE."
-  (pcase type
-    ('insert (mp/overview-ruler--face-color 'diff-hl-insert :foreground "#3fb950"))
-    ('delete (mp/overview-ruler--face-color 'diff-hl-delete :foreground "#f85149"))
-    (_       (mp/overview-ruler--face-color 'diff-hl-change :foreground "#58a6ff"))))
+  (mp/overview-ruler--color
+   (pcase type ('insert 'git-add) ('delete 'git-remove) (_ 'git-change))))
 
 (defun mp/overview-ruler--diag-color (sev)
   "Color string for a diagnostic of severity SEV."
-  (pcase sev
-    ('error   (mp/overview-ruler--face-color 'flycheck-fringe-error   :foreground "#f85149"))
-    ('warning (mp/overview-ruler--face-color 'flycheck-fringe-warning :foreground "#d29922"))
-    (_        (mp/overview-ruler--face-color 'flycheck-fringe-info    :foreground "#58a6ff"))))
+  (mp/overview-ruler--color
+   (pcase sev ('error 'error) ('warning 'warning) (_ 'info))))
 
 (defun mp/overview-ruler--git-changes ()
   "List of (START-LINE NLINES TYPE) for the current buffer, or nil.
@@ -1371,31 +1453,86 @@ Reflects the last SAVED state unless `diff-hl-flydiff-mode' is on."
                 res)))
       res))))
 
+(defvar-local mp/overview-ruler--conflict-cache nil)
+(defvar-local mp/overview-ruler--conflict-tick nil)
+
+(defun mp/overview-ruler--conflicts ()
+  "List of (START-LINE NLINES) covering git merge-conflict regions, or nil.
+Each region runs from a `<<<<<<<' marker to its matching `>>>>>>>'."
+  (save-excursion
+    (save-restriction
+      (widen)
+      (goto-char (point-min))
+      (let (res)
+        (while (re-search-forward "^<<<<<<< " nil t)
+          (let ((start (line-number-at-pos (match-beginning 0))))
+            (if (re-search-forward "^>>>>>>> " nil t)
+                (let ((end (line-number-at-pos (match-beginning 0))))
+                  (push (list start (max 1 (1+ (- end start)))) res))
+              (push (list start 1) res))))
+        (nreverse res)))))
+
+(defun mp/overview-ruler--conflicts-cached ()
+  "Cached `mp/overview-ruler--conflicts', recomputed only after edits."
+  (let ((tick (buffer-modified-tick)))
+    (unless (eql tick mp/overview-ruler--conflict-tick)
+      (setq mp/overview-ruler--conflict-tick tick
+            mp/overview-ruler--conflict-cache (mp/overview-ruler--conflicts)))
+    mp/overview-ruler--conflict-cache))
+
+(defun mp/overview-ruler--diag-merge (diags)
+  "Collapse DIAGS to one (LINE . SEVERITY) per line; worst severity wins.
+So a line carrying both a warning and an error draws as an error."
+  (let ((rank '((info . 0) (warning . 1) (error . 2)))
+        (tbl (make-hash-table :test 'eql))
+        res)
+    (dolist (d diags)
+      (let ((cur (gethash (car d) tbl)))
+        (when (or (null cur)
+                  (> (alist-get (cdr d) rank 0) (alist-get cur rank 0)))
+          (puthash (car d) (cdr d) tbl))))
+    (maphash (lambda (line sev) (push (cons line sev) res)) tbl)
+    res))
+
 (defun mp/overview-ruler--render (src-buf src-win ruler-win)
-  "Draw the SVG ruler for SRC-BUF / SRC-WIN into RULER-WIN."
+  "Draw the SVG ruler for SRC-BUF / SRC-WIN into RULER-WIN.
+Git changes take the left lane and diagnostics the right lane, so a line
+that is both changed and flagged shows both colors. Merge conflicts span
+the full width on top of both lanes."
   (let ((w (max 8 (window-body-width ruler-win t)))
         (h (max 1 (window-body-height ruler-win t)))
-        git diags n top-line bot-line)
+        git diags conflicts n top-line bot-line)
     (with-current-buffer src-buf
       (setq n (max 1 (line-number-at-pos (point-max)))
             git (mp/overview-ruler--git)
-            diags (mp/overview-ruler--diagnostics))
+            diags (mp/overview-ruler--diag-merge (mp/overview-ruler--diagnostics))
+            conflicts (mp/overview-ruler--conflicts-cached))
       (when (window-live-p src-win)
         (setq top-line (line-number-at-pos (window-start src-win))
               bot-line (line-number-at-pos (window-end src-win t)))))
     (let* ((svg (svg-create w h))
-           (y-of (lambda (line) (floor (* (/ (float (1- (max 1 line))) n) h)))))
+           (half (max 1 (floor w 2)))
+           (y-of (lambda (line) (floor (* (/ (float (1- (max 1 line))) n) h))))
+           (bar  (lambda (nlines) (max 3 (floor (* (/ (float (max 1 nlines)) n) h))))))
       (svg-rectangle svg 0 0 w h
                      :fill (mp/overview-ruler--face-color 'default :background "#0d1117"))
+      ;; Git changes: left lane.
       (dolist (c git)
         (pcase-let ((`(,line ,nlines ,type) c))
           (svg-rectangle svg 0 (funcall y-of line)
-                         w (max 3 (floor (* (/ (float nlines) n) h)))
+                         half (funcall bar nlines)
                          :fill (mp/overview-ruler--git-color type))))
+      ;; Diagnostics: right lane.
       (dolist (d diags)
-        (svg-rectangle svg 0 (funcall y-of (car d))
-                       w (max 3 (floor (/ (float h) n)))
+        (svg-rectangle svg half (funcall y-of (car d))
+                       (- w half) (funcall bar 1)
                        :fill (mp/overview-ruler--diag-color (cdr d))))
+      ;; Merge conflicts: full width, on top of both lanes.
+      (dolist (c conflicts)
+        (pcase-let ((`(,line ,nlines) c))
+          (svg-rectangle svg 0 (funcall y-of line)
+                         w (funcall bar nlines)
+                         :fill (mp/overview-ruler--color 'conflict))))
       (when (and top-line bot-line)
         (let ((top (funcall y-of top-line))
               (bot (funcall y-of bot-line)))
@@ -1487,6 +1624,18 @@ for every single letter.
 
 (after! corfu-popupinfo
   (setq corfu-popupinfo-delay '(0.35 . 0.2)))
+
+;; VSCode muscle memory: C-SPC triggers completion. Reclaim it from
+;; `set-mark-command' globally (you select with Evil visual state, not the mark)
+;; and bind it in Insert state, where completion actually happens — so nothing
+;; else owns C-SPC.
+(global-set-key (kbd "C-SPC") #'completion-at-point)
+(map! :i "C-SPC" #'completion-at-point)
+
+;; NOTE: if C-SPC still does nothing in the GUI, your Linux input method
+;; (IBus / fcitx) is almost certainly swallowing Ctrl+Space to switch input
+;; sources before Emacs ever sees it. That has to be disabled/remapped in the
+;; input-method settings, not here.
 #+end_src
 **** Consult
 ***** Super menu
@@ -3037,6 +3186,7 @@ Some Doom prefix maps are still present but may show up as generic =+prefix= ent
 - https://github.com/gabesoft/evil-mc
 - https://github.com/joaotavora/breadcrumb
 - https://github.com/magnars/expand-region.el
+- https://github.com/meain/evil-textobj-tree-sitter
 - https://github.com/minad/org-modern
 - https://github.com/tumashu/vertico-posframe
 - https://github.com/karthink/consult-dir
@@ -3050,6 +3200,8 @@ Some Doom prefix maps are still present but may show up as generic =+prefix= ent
 (package! breadcrumb)
 ;; expand selection
 (package! expand-region)
+;; syntax-aware Evil text objects: vif/vac/viv (function/class/variable)
+(package! evil-textobj-tree-sitter)
 ;; org
 (package! org-modern)
 ;; some minibuffer help
