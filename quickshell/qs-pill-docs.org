@@ -1,0 +1,405 @@
+#+TITLE: Quickshell Pill — Design, Capabilities & Source
+#+AUTHOR: Mahdi
+#+PROPERTY: header-args:qml :tangle pill.qml :mkdirp yes :comments no
+#+STARTUP: showeverything
+
+This is the *single source of truth* for the Quickshell "pill". The QML in
+[[*Source (tangles to =pill.qml=)][§ Source]] is literate: editing it here and tangling regenerates
+=pill.qml=. Read [[*How the pill works][§ How the pill works]] before touching the code, and keep
+this file in sync with the running pill — they are a pair.
+
+* The brief (what I was asked to build)
+
+Replace KDE's default panels with a Quickshell "pill":
+
+- A *pill* sits at the *top-center* of the screen, *always on top* of
+  everything — *not* a panel that reserves/blocks screen space — hidden only
+  when a fullscreen window is focused.
+- *Collapsed* it shows only very important info: if a notification arrives the
+  pill transforms to show it; otherwise it shows the system tray and the icons
+  of open apps that have a notification (if possible, else just the time).
+- *Hovered* the original info hides and the pill transforms:
+  - top-left: *virtual-desktop indicators* — empty circles per KDE virtual
+    desktop, filled circle = focused desktop, click a circle to switch desktop.
+  - opposite side, same row: *active apps* (ideally with the ability to pin apps).
+  - below the apps: the *system tray*.
+  - below the desktops: the *time*.
+- *Clicked* (once transformed) it expands further to show *notification history*.
+  The tray side always shows network, volume, bluetooth, battery and
+  notification icons; clicking an icon swaps the notification history for that
+  icon's menu.
+- Clicking *outside* the pill only collapses it to its original state and is
+  *not* passed through to whatever is underneath.
+
+Constraints I was given: prefer KDE APIs/apps over writing our own (virtual
+desktops, windows, notifications, volume/network/bluetooth must use KDE/system
+services since this is KWin); review docs instead of guessing; if something
+can't be backed by a source, say so rather than guess. Reference rice:
+[[https://github.com/Gakuseei/Ricelin][Gakuseei/Ricelin]] (note: Hyprland-only — its workspace/taskbar code does *not*
+port to KWin).
+
+* Environment (verified, not assumed)
+
+| Thing                | Value                                             |
+|----------------------+---------------------------------------------------|
+| Quickshell           | 0.3.0 (Arch), binary =qs= / =quickshell=          |
+| Qt                   | 6.11                                              |
+| Desktop              | KDE Plasma 6.7.1, KWin, Wayland                    |
+| Audio / Power        | Pipewire, UPower — both active                    |
+| Network / Bluetooth  | NetworkManager 1.56, BlueZ — both active          |
+
+*Critical compositor fact* (checked with =wayland-info=): KWin here advertises
+=zwlr_layer_shell_v1= and =org_kde_plasma_virtual_desktop_management=, but does
+*NOT* advertise =ext_workspace_v1=, =zwlr_foreign_toplevel_manager_v1=, or
+=org_kde_plasma_window_management=. So Quickshell's =WindowManager= and
+=Wayland.ToplevelManager= modules exist but *do not function* on this machine —
+most Quickshell tutorials assume Hyprland/wlroots and are wrong here. This is
+why virtual desktops go through KWin's DBus interface, and why the taskbar /
+fullscreen-hide are hard (no client-visible window-list protocol).
+
+* What's possible (per feature)
+
+| Feature                                            | Status        | How / why                                                                                       |
+|----------------------------------------------------+---------------+-------------------------------------------------------------------------------------------------|
+| Pill: top-center, always-on-top, reserves no space | ✅ built       | layer-shell =Overlay= + input =mask= so surrounding clicks pass through                          |
+| Morph / transform animations                       | ✅ built       | plain QtQuick (=Behavior= / =NumberAnimation=)                                                   |
+| Virtual desktops (list, active, click-to-switch)   | ✅ built       | KWin DBus =org.kde.KWin /VirtualDesktopManager= via =gdbus= (no native Quickshell binding)       |
+| System tray (icons + menus)                        | ✅ built       | native =Services.SystemTray= (coexists with Plasma's tray)                                       |
+| Volume / Battery                                   | ✅ built       | native =Services.Pipewire= / =Services.UPower=                                                   |
+| Network / Bluetooth menus                          | ✅ possible    | native =Quickshell.Networking= / =Quickshell.Bluetooth= (both backends active)                   |
+| App-icon resolution for any app                    | ✅ possible    | =DesktopEntries= + =Quickshell.iconPath=                                                         |
+| Click-outside-to-close, swallowing the click       | ✅ possible    | layer-shell exclusive keyboard focus + mask toggle (no Hyprland focus-grab needed)              |
+| Taskbar of open windows / pinned apps              | ⚠️ hard, TODO | *no window-list protocol on this KWin*; only path is a KWin-script bridge via =/Scripting=        |
+| Hide pill when a fullscreen window is focused       | ⚠️ hard, TODO | same gap — needs the KWin-script bridge to know window state                                     |
+| App icons "that have a notification" when collapsed | ⚠️ hard, TODO | depends on the taskbar above + matching notifications to windows                                 |
+| Notifications shown in the pill                     | ⚠️ intrusive  | =plasmashell= owns =org.freedesktop.Notifications=; Quickshell must take it over (disable Plasma) |
+
+The two genuinely-unsolved items are the *taskbar / open-apps* and
+*fullscreen-hide*: there is no documented protocol path on this KWin. The only
+known approach is injecting a KWin JS script (loaded via =org.kde.KWin
+/Scripting=, =loadScript=) that reports =workspace.windowList()= back over DBus.
+Real but involved; not yet built, and not to be faked.
+
+* How the pill works
+
+The current =pill.qml= (v1) is one file, structured top-to-bottom as:
+
+1. *Root state* — =ShellRoot { id: root }= holds =desktops= (array of ={id,
+   name}=) and =currentDesktop= (the active desktop's id), populated over DBus.
+
+2. *Virtual desktops over DBus* — three =Process= blocks talking to
+   =org.kde.KWin /VirtualDesktopManager= via =gdbus=:
+   - =fetchDesktops= reads the =desktops= property once at startup; a regex
+     parses gdbus's =(uint32 N, 'id', 'Name')= tuples into =root.desktops=.
+   - =fetchCurrent= reads the =current= property (active desktop id).
+   - a long-lived =gdbus monitor= watches the =currentChanged= signal (so dots
+     stay live without polling) and re-fetches the list on
+     =desktopCreated=/=desktopRemoved=.
+   - =switchDesktop(id)= sets the writable =current= property to change desktop.
+
+3. *Audio binding* — =PwObjectTracker { objects: [Pipewire.defaultAudioSink] }=
+   keeps the default sink "bound" so its =volume=/=muted= stay live.
+
+4. *The window(s)* — =Variants { model: Quickshell.screens }= makes one
+   =PanelWindow= per monitor. Each window is:
+   - =WlrLayershell.layer: WlrLayer.Overlay= → above everything.
+   - =exclusionMode: ExclusionMode.Ignore= + transparent → reserves no space.
+   - anchored top/left/right (a full-width invisible strip) but with
+     =mask: Region { item: pill }= so *only the pill rectangle catches clicks* —
+     the rest of the strip is click-through.
+   - =expanded= is driven by a =HoverHandler= on the pill.
+
+5. *The pill itself* — an =Item= whose =width=/=height= animate between collapsed
+   (150×34) and expanded (360×120) via =Behavior on width/height=. A rounded
+   =Rectangle= is the body. Two content layers cross-fade on =expanded=:
+   - collapsed: the *clock* (centered).
+   - expanded: virtual-desktop *dots* (top-left, click to switch), *volume +
+     battery* (top-right), and the *system tray* (second row, left-click
+     activates, right-click opens the item's menu via =display()=).
+
+6. *Clock* — a =SystemClock= (1s precision) feeding a formatted string.
+
+The collapsed↔expanded morph is the proof-of-concept for the full vision; the
+remaining transforms (apps row, time-under-dots, click-to-expand notification
+history, icon menus) slot into the same expanded =Item=.
+
+* Source (tangles to =pill.qml=)
+
+Edit the block below; tangle to regenerate =pill.qml=. Keep it identical to the
+running file or re-validate with =qs -p quickshell/pill.qml=.
+
+#+begin_src qml :tangle pill.qml
+pragma ComponentBehavior: Bound
+// ----------------------------------------------------------------------------
+// pill.qml — GENERATED by tangling qs-pill-docs.org. Edit the .org, not this.
+// A morphing "pill" overlay for KDE Plasma 6 / KWin / Wayland.
+//
+// v1 scope (all proven to work on this machine):
+//   * a layer-shell window pinned top-center, ALWAYS on top, reserving NO space
+//   * collapsed: shows the clock
+//   * hovered:   morphs wider/taller and reveals:
+//       - virtual-desktop dots on the top-left (real KWin desktops, click to switch)
+//       - volume + battery on the top-right (native Quickshell services)
+//       - the system tray on a second row
+//   * clicks pass THROUGH the transparent area around the pill (input mask)
+//
+// Deferred (need a KWin-script bridge — see the .org capability table):
+//   * taskbar of open windows / pinned apps
+//   * hide-when-a-fullscreen-window-is-focused
+//   * notification takeover (would require disabling Plasma's notifier)
+//
+// Run with:   qs -p quickshell/pill.qml      (from the repo root)
+// ----------------------------------------------------------------------------
+import QtQuick
+import Quickshell
+import Quickshell.Wayland
+import Quickshell.Io
+import Quickshell.Services.SystemTray
+import Quickshell.Services.Pipewire
+import Quickshell.Services.UPower
+
+ShellRoot {
+    id: root
+    // -- Shared state for the KWin virtual desktops, filled in over DBus below.
+    // desktops: array of { id: string, name: string }   current: string (id)
+    property var desktops: []
+    property string currentDesktop: ""
+
+    // ---- KWin virtual desktops via DBus (org.kde.KWin /VirtualDesktopManager) ----
+    // Quickshell has no native KWin-desktop binding and KWin does not expose the
+    // ext-workspace protocol, so we talk to KWin's documented DBus interface
+    // through `gdbus`. This is the supported path for KWin, not guesswork.
+
+    // 1) Fetch the desktop list once at startup (and whenever it changes).
+    Process {
+        id: fetchDesktops
+        command: ["gdbus", "call", "--session", "--dest", "org.kde.KWin",
+            "--object-path", "/VirtualDesktopManager", "--method",
+            "org.freedesktop.DBus.Properties.Get",
+            "org.kde.KWin.VirtualDesktopManager", "desktops"]
+        running: true
+        stdout: StdioCollector {
+            onStreamFinished: {
+                // text looks like: (<[(uint32 0, 'id', 'Desktop 1'), ...]>,)
+                const out = [];
+                const re = /\(\s*uint32\s+\d+\s*,\s*'([^']*)'\s*,\s*'([^']*)'\s*\)/g;
+                let m;
+                while ((m = re.exec(this.text)) !== null)
+                    out.push({ id: m[1], name: m[2] });
+                root.desktops = out;
+            }
+        }
+    }
+
+    // 2) Fetch which desktop is current (and refresh on the signal below).
+    Process {
+        id: fetchCurrent
+        command: ["gdbus", "call", "--session", "--dest", "org.kde.KWin",
+            "--object-path", "/VirtualDesktopManager", "--method",
+            "org.freedesktop.DBus.Properties.Get",
+            "org.kde.KWin.VirtualDesktopManager", "current"]
+        running: true
+        stdout: StdioCollector {
+            onStreamFinished: {
+                const m = this.text.match(/'([^']*)'/);
+                if (m) root.currentDesktop = m[1];
+            }
+        }
+    }
+
+    // 3) Listen for KWin's currentChanged signal so the dots stay live without polling.
+    Process {
+        running: true
+        command: ["gdbus", "monitor", "--session", "--dest", "org.kde.KWin",
+            "--object-path", "/VirtualDesktopManager"]
+        stdout: SplitParser {
+            onRead: line => {
+                if (line.indexOf("currentChanged") !== -1) {
+                    const m = line.match(/'([^']*)'/);
+                    if (m) root.currentDesktop = m[1];
+                } else if (line.indexOf("desktopCreated") !== -1
+                        || line.indexOf("desktopRemoved") !== -1) {
+                    fetchDesktops.running = true;
+                }
+            }
+        }
+    }
+
+    // Switch desktop by id (sets the writable `current` property over DBus).
+    function switchDesktop(id) {
+        switchProc.command = ["gdbus", "call", "--session", "--dest", "org.kde.KWin",
+            "--object-path", "/VirtualDesktopManager", "--method",
+            "org.freedesktop.DBus.Properties.Set",
+            "org.kde.KWin.VirtualDesktopManager", "current",
+            "<'" + id + "'>"];
+        switchProc.running = true;
+    }
+    Process { id: switchProc }
+
+    // Keep the default audio sink "bound" so its volume/mute stay live.
+    PwObjectTracker { objects: [Pipewire.defaultAudioSink] }
+
+    // ---- One pill per monitor ----
+    Variants {
+        model: Quickshell.screens
+
+        PanelWindow {
+            id: win
+            required property var modelData
+            screen: modelData
+
+            // Float on top of everything, reserve no space, full-width invisible strip.
+            WlrLayershell.layer: WlrLayer.Overlay
+            exclusionMode: ExclusionMode.Ignore
+            color: "transparent"
+            anchors { top: true; left: true; right: true }
+            implicitHeight: 220          // tall enough to host the expanded pill
+            // Only the pill itself should catch clicks; the rest passes through.
+            mask: Region { item: pill }
+
+            property bool expanded: hover.hovered
+
+            Item {
+                id: pill
+                anchors.horizontalCenter: parent.horizontalCenter
+                y: 6
+                width: win.expanded ? 360 : 150
+                height: win.expanded ? 120 : 34
+                Behavior on width  { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
+                Behavior on height { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
+
+                HoverHandler { id: hover }
+
+                Rectangle {
+                    anchors.fill: parent
+                    radius: height / 2 > 24 ? 24 : height / 2
+                    color: "#0f1115"
+                    border.color: "#2a2f3a"
+                    border.width: 1
+                    Behavior on radius { NumberAnimation { duration: 220 } }
+                }
+
+                // ---- Collapsed content: the clock ----
+                Text {
+                    anchors.centerIn: parent
+                    visible: !win.expanded
+                    color: "#e6e6e6"
+                    font.pixelSize: 15
+                    font.family: "monospace"
+                    text: clock.text
+                }
+
+                // ---- Expanded content ----
+                Item {
+                    anchors.fill: parent
+                    anchors.margins: 12
+                    opacity: win.expanded ? 1 : 0
+                    visible: opacity > 0
+                    Behavior on opacity { NumberAnimation { duration: 160 } }
+
+                    // Top-left: virtual desktop dots (real KWin desktops).
+                    Row {
+                        id: vdRow
+                        anchors.top: parent.top
+                        anchors.left: parent.left
+                        spacing: 8
+                        Repeater {
+                            model: root.desktops
+                            delegate: Rectangle {
+                                required property var modelData
+                                width: 14; height: 14; radius: 7
+                                color: modelData.id === root.currentDesktop ? "#7aa2f7" : "transparent"
+                                border.color: "#7aa2f7"; border.width: 2
+                                MouseArea {
+                                    anchors.fill: parent
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: root.switchDesktop(modelData.id)
+                                }
+                            }
+                        }
+                    }
+
+                    // Top-right: volume + battery (native services).
+                    Row {
+                        anchors.top: parent.top
+                        anchors.right: parent.right
+                        spacing: 14
+                        Text {
+                            color: "#e6e6e6"; font.pixelSize: 13
+                            text: {
+                                const s = Pipewire.defaultAudioSink;
+                                if (!s || !s.audio) return "🔊 --";
+                                if (s.audio.muted) return "🔇";
+                                return "🔊 " + Math.round(s.audio.volume * 100) + "%";
+                            }
+                        }
+                        Text {
+                            color: "#e6e6e6"; font.pixelSize: 13
+                            text: {
+                                const d = UPower.displayDevice;
+                                if (!d || !d.isLaptopBattery) return "";
+                                return "🔋 " + Math.round(d.percentage) + "%";
+                            }
+                        }
+                    }
+
+                    // Second row: the system tray.
+                    Row {
+                        anchors.left: parent.left
+                        anchors.bottom: parent.bottom
+                        spacing: 10
+                        Repeater {
+                            model: SystemTray.items
+                            delegate: Item {
+                                required property SystemTrayItem modelData
+                                width: 20; height: 20
+                                Image {
+                                    anchors.fill: parent
+                                    source: modelData.icon
+                                    fillMode: Image.PreserveAspectFit
+                                }
+                                MouseArea {
+                                    anchors.fill: parent
+                                    acceptedButtons: Qt.LeftButton | Qt.RightButton
+                                    onClicked: mouse => {
+                                        if (mouse.button === Qt.LeftButton)
+                                            modelData.activate();
+                                        else
+                                            modelData.display(win, width / 2, height);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Clock source, ticking every second.
+    SystemClock { id: sysclock; precision: SystemClock.Seconds }
+    QtObject {
+        id: clock
+        property string text: Qt.formatDateTime(sysclock.date, "ddd  hh:mm:ss")
+    }
+}
+#+end_src
+
+* Tangling (how to regenerate =pill.qml=)
+
+This file owns the code; =pill.qml= is *generated*. After editing the source
+block:
+
+- In Emacs, with this file open: =C-c C-v t= (=org-babel-tangle=) — tangles all
+  blocks here to =pill.qml= in this directory.
+- Or from anywhere: =M-x org-babel-tangle-file RET .../quickshell/qs-pill-docs.org RET=.
+- Or batch / shell:
+  =emacs --batch -l org -eval '(org-babel-tangle-file "quickshell/qs-pill-docs.org")'=
+
+Then validate the result actually loads:
+=qs -p quickshell/pill.qml= (Ctrl-C to stop).
+
+Tangling is *manual on purpose* (matches how I tangle the rest of my config). If
+I ever want auto-tangle on save, add to the very top of this file:
+=# -*- eval: (add-hook 'after-save-hook #'org-babel-tangle nil t) -*-= and accept
+the local-variable prompt — but the default here is manual.
