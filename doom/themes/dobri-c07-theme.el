@@ -1,4 +1,4 @@
-;;; dobri-next-c07.el -*- lexical-binding: t; -*-
+;;; dobri-c07-theme.el -*- lexical-binding: t; -*-
 ;;
 ;; Dobri Next "C07" port for Emacs / Doom.
 ;;
@@ -417,4 +417,4 @@
 
 (provide-theme 'dobri-c07)
 
-;;; dobri-next-c07.el ends here
+;;; dobri-c07-theme.el ends here

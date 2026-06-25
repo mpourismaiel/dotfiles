@@ -1,3 +1,228 @@
+#+title: Doom Emacs Configuration
+#+author: Mahdi Pourismaiel
+#+startup: overview
+#+options: toc:5 num:nil
+#+TOC: headlines 5
+
+* Doom
+** Init
+:PROPERTIES:
+:header-args:emacs-lisp: :tangle init.el
+:END:
+
+*** init.el
+#+begin_src emacs-lisp
+;;; init.el -*- lexical-binding: t; -*-
+
+;; This file controls what Doom modules are enabled and what order they load
+;; in. Remember to run 'doom sync' after modifying it!
+
+;; NOTE: Press 'SPC h d h' (or 'C-h d h' for non-vim users) to access Doom's
+;;   documentation. There you'll find a link to Doom's Module Index where all of
+;;   our modules are listed, including what flags they support.
+
+;; NOTE: Move your cursor over a module's name (or its flags) and press 'K' (or
+;;   'C-c c k' for non-vim users) to view its documentation. This works on flags
+;;   as well (those symbols that start with a plus).
+;;
+;;   Alternatively, press 'gd' (or 'C-c c d') on a module to browse its
+;;   directory (for easy access to its source code).
+
+(doom! :input
+       ;;bidi              ; (tfel ot) thgir etirw uoy gnipleh
+       ;;chinese
+       ;;japanese
+       ;;layout            ; auie,ctsrnm is the superior home row
+
+       :completion
+       ;;company           ; the ultimate code completion backend
+       (corfu +icons +orderless +dabbrev) ; complete with icons, capf, cape and a flying feather!
+       ;;helm              ; the *other* search engine for love and life
+       ;;ido               ; the other *other* search engine...
+       ;;ivy               ; a search engine for love and life
+       (vertico +icons)            ; the search engine of the future
+
+       :ui
+       ;;deft              ; notational velocity for Emacs
+       doom              ; what makes DOOM look the way it does
+       dashboard         ; a nifty splash screen for Emacs
+       ;;doom-quit         ; DOOM quit-message prompts when you quit Emacs
+       (emoji +unicode)  ; 🙂
+       hl-todo           ; highlight TODO/FIXME/NOTE/DEPRECATED/HACK/REVIEW
+       indent-guides     ; highlighted indent columns
+       ligatures         ; ligatures and symbols to make your code pretty again
+       minimap           ; show a map of the code on the side
+       modeline          ; snazzy, Atom-inspired modeline, plus API
+       ;;nav-flash         ; blink cursor line after big motions
+       ;;neotree           ; a project drawer, like NERDTree for vim
+       ophints           ; highlight the region an operation acts on
+       (popup +defaults) ; tame sudden yet inevitable temporary windows
+       smooth-scroll     ; pixel-smooth scrolling via ultra-scroll
+       ;;tabs              ; a tab bar for Emacs
+       ;;treemacs          ; a project drawer, like neotree but cooler
+       ;;unicode           ; extended unicode support for various languages
+       (vc-gutter +pretty) ; vcs diff in the fringe
+       vi-tilde-fringe   ; fringe tildes to mark beyond EOB
+       ;;window-select     ; visually switch windows
+       workspaces        ; tab emulation, persistence & separate workspaces
+       ;;zen               ; distraction-free coding or writing
+
+       :editor
+       (evil +everywhere); come to the dark side, we have cookies
+       file-templates    ; auto-snippets for empty files
+       fold              ; (nigh) universal code folding
+       (format +onsave)  ; automated prettiness
+       ;;god               ; run Emacs commands without modifier keys
+       ;;lispy             ; vim for lisp, for people who don't like vim
+       multiple-cursors  ; editing in many places at once
+       ;;objed             ; text object editing for the innocent
+       ;;parinfer          ; turn lisp into python, sort of
+       ;;rotate-text       ; cycle region at point between text candidates
+       snippets          ; my elves. They type so I don't have to
+       (whitespace +guess +trim)  ; a butler for your whitespace
+       word-wrap         ; soft wrapping with language-aware indent
+
+       :emacs
+       (dired +dirvish +icons)             ; making dired pretty [functional]
+       electric          ; smarter, keyword-based electric-indent
+       ;;eww               ; the internet is gross
+       ;;ibuffer           ; interactive buffer management
+       tramp             ; remote files at your arthritic fingertips
+       undo              ; persistent, smarter undo for your inevitable mistakes
+       vc                ; version-control and Emacs, sitting in a tree
+
+       :term
+       eshell            ; the elisp shell that works everywhere
+       ;;shell             ; simple shell REPL for Emacs
+       ;;term              ; basic terminal emulator for Emacs
+       vterm             ; the best terminal emulation in Emacs
+
+       :checkers
+       syntax              ; tasing you for every semicolon you forget
+       ;;(spell +flyspell) ; tasing you for misspelling mispelling
+       ;;grammar           ; tasing grammar mistake every you make
+
+       :tools
+       ;;ansible
+       ;;biblio            ; Writes a PhD for you (citation needed)
+       ;;collab            ; buffers with friends
+       ;;debugger          ; stepping through code, to help you add bugs
+       direnv
+       docker
+       editorconfig      ; let someone else argue about tabs vs spaces
+       ;;ein               ; tame Jupyter notebooks with emacs
+       (eval +overlay)     ; run code, run (also, repls)
+       lookup              ; navigate your code and its documentation
+       ;;llm               ; when I said you needed friends, I didn't mean...
+       (lsp +peek)       ; M-x vscode (lsp-mode + lsp-ui-peek)
+       magit             ; a git porcelain for Emacs
+       ;;make              ; run make tasks from Emacs
+       ;;pass              ; password manager for nerds
+       ;;pdf               ; pdf enhancements
+       ;;terraform         ; infrastructure as code
+       ;;tmux              ; an API for interacting with tmux
+       tree-sitter       ; syntax and parsing, sitting in a tree...
+       ;;upload            ; map local to remote projects via ssh/ftp
+
+       :os
+       (:if (featurep :system 'macos) macos)  ; improve compatibility with macOS
+       ;;tty               ; improve the terminal Emacs experience
+
+       :lang
+       ;;ada               ; In strong typing we (blindly) trust
+       ;;(agda +local)     ; types of types of types of types...
+       ;;beancount         ; mind the GAAP
+       ;;(cc +lsp)         ; C > C++ == 1
+       ;;clojure           ; java with a lisp
+       ;;common-lisp       ; if you've seen one lisp, you've seen them all
+       ;;coq               ; proofs-as-programs
+       ;;crystal           ; ruby at the speed of c
+       ;;csharp            ; unity, .NET, and mono shenanigans
+       (data +lsp +tree-sitter)              ; config/data formats
+       ;;(dart +flutter)   ; paint ui and not much else
+       ;;dhall
+       ;;elixir            ; erlang done right
+       ;;elm               ; care for a cup of TEA?
+       (emacs-lisp +lsp +tree-sitter)        ; drown in parentheses
+       ;;erlang            ; an elegant language for a more civilized age
+       ;;ess               ; emacs speaks statistics
+       ;;factor
+       ;;faust             ; dsp, but you get to keep your soul
+       ;;fortran           ; in FORTRAN, GOD is REAL (unless declared INTEGER)
+       ;;fsharp            ; ML stands for Microsoft's Language
+       ;;fstar             ; (dependent) types and (monadic) effects and Z3
+       ;;gdscript          ; the language you waited for
+       (go +lsp +tree-sitter) ; the hipster dialect
+       (graphql +lsp)    ; Give queries a REST
+       ;;(haskell +lsp)    ; a language that's lazier than I am
+       ;;hy                ; readability of scheme w/ speed of python
+       ;;idris             ; a language you can depend on
+       (json +tree-sitter) ; At least it ain't XML
+       ;;janet             ; Fun fact: Janet is me!
+       ;;(java +lsp)       ; the poster child for carpal tunnel syndrome
+       (javascript +lsp +tree-sitter) ; all(hope(abandon(ye(who(enter(here))))))
+       ;;julia             ; a better, faster MATLAB
+       ;;kotlin            ; a better, slicker Java(Script)
+       ;;latex             ; writing papers in Emacs has never been so fun
+       ;;lean              ; for folks with too much to prove
+       ;;ledger            ; be audit you can be
+       (lua +lsp +tree-sitter)               ; one-based indices? one-based indices
+       markdown          ; writing docs for people to ignore
+       ;;nim               ; python + lisp at the speed of c
+       ;;nix               ; I hereby declare "nix geht mehr!"
+       ;;ocaml             ; an objective camel
+       ;;odin              ; C, minus its footguns
+       (org +pretty)     ; organize your plain life in plain text
+       (php +lsp +tree-sitter)               ; perl's insecure younger brother
+       ;;plantuml          ; diagrams for confusing people more
+       ;;graphviz          ; diagrams for confusing yourself even more
+       ;;purescript        ; javascript, but functional
+       (python +lsp +pyright +tree-sitter) ; beautiful is better than ugly
+       qt                ; the 'cutest' gui framework ever
+       ;;racket            ; a DSL for DSLs
+       ;;raku              ; the artist formerly known as perl6
+       rest              ; Emacs as a REST client
+       ;;rst               ; ReST in peace
+       ;;(ruby +rails)     ; 1.step {|i| p "Ruby is #{i.even? ? 'love' : 'life'}"}
+       ;;(rust +lsp)       ; Fe2O3.unwrap().unwrap().unwrap().unwrap()
+       ;;scala             ; java, but good
+       ;;(scheme +guile)   ; a fully conniving family of lisps
+       (sh +tree-sitter) ; she sells {ba,z,fi}sh shells on the C xor
+       ;;sml
+       ;;solidity          ; do you need a blockchain? No.
+       ;;swift             ; who asked for emoji variables?
+       ;;terra             ; Earth and Moon in alignment for performance.
+       (web +lsp +tree-sitter)               ; the tubes
+       (yaml +tree-sitter) ; JSON, but readable
+       ;;zig               ; C, but simpler
+
+       :email
+       ;;(mu4e +org +gmail)
+       ;;notmuch
+       ;;(wanderlust +gmail)
+
+       :app
+       ;;calendar
+       ;;emms
+       ;;everywhere        ; *leave* Emacs!? You must be joking
+       ;;irc               ; how neckbeards socialize
+       ;;(rss +org)        ; emacs as an RSS reader
+
+       :config
+       literate
+       (default +bindings +smartparens))
+#+end_src
+
+** Config
+:PROPERTIES:
+:header-args:emacs-lisp: :tangle config.el
+:END:
+
+*** Overview
+**** Core Identity
+Basic user identity and early package requirements that other sections rely on.
+
+#+begin_src emacs-lisp
 ;;; $DOOMDIR/config.el -*- lexical-binding: t; -*-
 
 (require 'acp)
@@ -5,7 +230,14 @@
 
 (setq user-full-name "Mahdi Pourismaiel"
       user-mail-address "mpourismaiel@gmail.com")
+#+end_src
 
+**** NVM Path
+nvm is sourced in =.bashrc= which Emacs never reads. Add the active nvm node
+bin to =exec-path= and =PATH= early so =executable-find= resolves node tools
+like =tailwindcss-language-server= correctly.
+
+#+begin_src emacs-lisp
 (defun mp/nvm-add-to-path ()
   "Add the nvm default node bin directory to `exec-path' and PATH."
   (let* ((nvm-dir (expand-file-name "~/.nvm"))
@@ -26,7 +258,11 @@
           (setenv "PATH" (concat bin path-separator (getenv "PATH"))))))))
 
 (mp/nvm-add-to-path)
+#+end_src
 
+*** Appearance
+**** Theme And Fonts
+#+begin_src emacs-lisp
 (setq doom-theme nil)
 
 (load-theme 'doom-one t)
@@ -35,10 +271,12 @@
 (load-theme 'dobri-c07 t)
 
 (setq doom-font (font-spec :family "CaskaydiaCove Nerd Font Mono" :size 16))
+#+end_src
 
-;; Let Treemacs use richer git-state highlighting when Python is available.
-(setq +treemacs-git-mode 'deferred)
+**** Comfortable Editing Spacing
+This adds a small amount of extra vertical space in buffers intended for writing or editing code and config.
 
+#+begin_src emacs-lisp
 (defvar mp/editor-line-spacing 0.6
   "Preferred extra line spacing for editing buffers.")
 
@@ -56,9 +294,15 @@
 (add-hook 'text-mode-hook #'mp/apply-editor-line-spacing-h)
 (add-hook 'prog-mode-hook #'mp/apply-prog-line-spacing-h)
 (add-hook 'conf-mode-hook #'mp/apply-editor-line-spacing-h)
+#+end_src
 
+**** Line Numbers
+#+begin_src emacs-lisp
 (setq display-line-numbers-type t)
+#+end_src
 
+**** Header Line
+#+begin_src emacs-lisp
 (require 'subr-x)
 (require 'seq)
 
@@ -253,7 +497,12 @@
              (mp/header-line-diagnostics))))))
 
 (setq-default header-line-format '(:eval (mp/header-line-format)))
+#+end_src
 
+**** Whitespace And Indentation
+Make tabs and spaces visible in code-like buffers so indentation issues are easy to spot.
+
+#+begin_src emacs-lisp
 (defun mp/show-indent-style-h ()
   "Show tabs and spaces visibly in code-like buffers."
   (setq-local whitespace-style
@@ -265,7 +514,11 @@
 
 (add-hook 'prog-mode-hook #'mp/show-indent-style-h)
 (add-hook 'conf-mode-hook #'mp/show-indent-style-h)
-
+#+end_src
+*** Configuration
+**** Emacs
+Quit confirmation is disabled for faster exits.
+#+begin_src emacs-lisp
 ;; Disable annoying emacs exit confirmation message
 (setq confirm-kill-emacs nil)
 
@@ -274,7 +527,11 @@
 
 ;; Save automatically.
 (setq auto-save-default t)
+#+end_src
 
+**** Editor Experience
+***** Scrolling
+#+begin_src emacs-lisp
 (setq scroll-preserve-screen-position t
       scroll-conservatively 101
       scroll-margin 0
@@ -287,13 +544,19 @@
 
 (map! :n "C-j" `View-scroll-page-forward
       :n "C-k" `View-scroll-page-backward)
+#+end_src
 
+***** Region Expansion
+#+begin_src emacs-lisp
 (use-package! expand-region
   :commands (er/expand-region er/contract-region)
   :init
   (map! :g "M-d" #'er/expand-region
         :g "M-D" #'er/contract-region))
+#+end_src
 
+***** Project management
+#+begin_src emacs-lisp
 (defvar mp/project-bundles nil
   "Private project bundles loaded from private.el.")
 
@@ -371,7 +634,12 @@
 (map! :leader
       :desc "Project menu"
       "p p" #'mp/project-menu)
+#+end_src
 
+***** Splits
+Use Doom Dashboard as buffer for the new split.
+Also focus the new split immediately.
+#+begin_src emacs-lisp
 (defun mp/split-target-buffer ()
   "Populate a newly-created split."
   (if (derived-mode-p 'vterm-mode)
@@ -408,13 +676,18 @@
       (:prefix ("w" . "window")
        :desc "Split right (fresh)" "v" #'mp/split-window-right-fresh
        :desc "Split below (fresh)" "s" #'mp/split-window-below-fresh))
+#+end_src
 
+***** Popups
+#+begin_src emacs-lisp
 (after! popup
   (set-popup-rule! "^\\*Flycheck errors" :side 'bottom :size 0.25 :select t :quit t)
   (set-popup-rule! "^\\*xref\\*"          :side 'bottom :size 0.3  :select t :quit t)
   (set-popup-rule! "^\\*Warnings\\*"      :side 'bottom :size 0.25 :select t :quit t)
   (set-popup-rule! "^\\*Backtrace\\*"     :side 'bottom :size 0.35 :select t :quit nil))
-
+#+end_src
+**** Formatting
+#+begin_src emacs-lisp
 (defun mp/save-without-format ()
   "Save current buffer without running format-on-save hooks."
   (interactive)
@@ -439,12 +712,38 @@
                 css-ts-mode-hook
                 scss-mode-hook)
     +format-with 'prettier))
+#+end_src
 
+***** Special formatting
+To disable formatting create .dir-locals.el
+
+#+begin_src emacs-lisp
 ;; ((nil . ((eval . (format-all-mode -1)))))
+#+end_src
 
+To change formatter to Ruff for python files in a certain project use this
+
+#+begin_src emacs-lisp
 ;; ((python-mode . ((+format-with . ("ruff" "format" "-"))))
 ;;  (python-ts-mode . ((+format-with . ("ruff" "format" "-")))))
+#+end_src
 
+**** Completion Styles
+The goal here is "completion that behaves like VSCode": loose fuzzy matching to
+decide /what/ shows up, and a smart score-based sort to decide the /order/.
+
+Emacs splits those two jobs apart, which is why this used to feel off. Orderless
+is the matcher (filtering), but on its own it does no sorting — it hands matches
+back in the backend's order, and then Corfu re-sorts them by length, so the best
+match rarely lands on top. Two changes fix it:
+
+- Add =orderless-flex= to the matching styles so typing =prnt= still finds
+  =print= (real subsequence fuzzy, not just substring).
+- Layer [[https://github.com/radian-software/prescient.el][prescient.el]] on top
+  purely as a /sorter/ for Corfu and Vertico (see the Prescient section below).
+  Orderless keeps doing the filtering; prescient only reorders.
+
+#+begin_src emacs-lisp
 (after! orderless
   ;; Make every component match as a fuzzy subsequence in addition to the
   ;; literal/regexp styles. This is the "VSCode fuzzy" half.
@@ -456,7 +755,16 @@
         completion-category-overrides
         '((file (styles orderless partial-completion))
           (lsp-capf (styles orderless basic)))))
+#+end_src
 
+***** Prescient sorting
+Prescient supplies the sorting half: it ranks by recency, frequency, and match
+tightness (full/prefix matches first), and it /learns/ from what you pick — so
+the things you choose most float to the top, just like VSCode. Filtering is left
+to Orderless (=enable-filtering nil=); prescient only reorders. =persist-mode=
+keeps that learned history across sessions.
+
+#+begin_src emacs-lisp
 (use-package! prescient
   :config
   (setq prescient-sort-full-matches-first t)
@@ -477,7 +785,12 @@
         vertico-prescient-enable-sorting t
         vertico-prescient-override-sorting nil)
   (vertico-prescient-mode 1))
+#+end_src
 
+**** Project Root Behavior
+Prefer language-specific project markers over the repository root when working in monorepos.
+
+#+begin_src emacs-lisp
 (after! projectile
   ;; Doom's Python helpers still consult Projectile in a few places.
   ;; Make sure `server/Pipfile` counts as a project root before `.git` does.
@@ -503,7 +816,9 @@
                    dir
                    '("Pipfile" "pyproject.toml" "setup.py" "requirements.txt"))
                   (mp/project-root-from-markers dir '(".git"))))))
-
+#+end_src
+**** Multi Cursor
+#+begin_src emacs-lisp
 (use-package! evil-mc
   :after evil
   :config
@@ -525,7 +840,22 @@
 
 (map! :nv "C-d" #'evil-multiedit-match-and-next
       :i  "C-d" #'evil-multiedit-toggle-marker-here)
+#+end_src
 
+**** Find in project
+[[https://github.com/manateelazycat/color-rg][color-rg]] provides a ripgrep
+results buffer you can navigate, filter, and—most usefully—edit in place to
+refactor matches across a project. =SPC s r f= searches the current file and
+=SPC s r p= searches the project. These live under a dedicated =r= prefix so
+Doom's stock =SPC s f= (locate file) and =SPC s p= (live project search) stay
+available.
+
+Inside a result buffer: =j=/=k= move between matches, =h=/=l= jump between
+files, =e= switches to edit mode (=C-c C-c= applies, =C-c C-v= cancels), =r=
+replaces all matches, =I= toggles whether ignore files are respected, and =q=
+quits.
+
+#+begin_src emacs-lisp
 (use-package! color-rg
   :commands (color-rg-search-input
              color-rg-search-symbol
@@ -554,9 +884,39 @@
   ;; Evil's Emacs state so those keys aren't shadowed.
   (after! evil
     (evil-set-initial-state 'color-rg-mode 'emacs)))
+#+end_src
 
+**** Tree-sitter Grammars
+Without a grammar, a =*-ts-mode= silently falls back to its non-tree-sitter
+counterpart, which is what makes JSX folding collapse the whole function body
+and breaks tree-sitter-aware editing. Install grammars on demand instead of
+asking each time (needs a C compiler and network access on first use).
+
+After tangling, install the ones you use right away with =M-x
+treesit-install-language-grammar= (e.g. =tsx=, =typescript=, =javascript=,
+=html=, =css=, =json=); otherwise they install automatically the next time you
+open such a file.
+
+#+begin_src emacs-lisp
 (setq treesit-auto-install-grammar 'always)
+#+end_src
 
+**** Tree-sitter Text Objects
+Evil text objects that select by *syntax* rather than by delimiter, powered by
+the tree-sitter parser you already run. (LSP can't do this — it has no concept
+of "the function around point"; tree-sitter is the right tool.) They fire in any
+=*-ts-mode= buffer (your =+tree-sitter= langs); elsewhere they no-op.
+
+- =vif= / =vaf= — inside / around the *function* at point. Works with every
+  operator, so =daf=, =yaf=, =cif= … all do what you'd expect.
+- =vic= / =vac= — inside / around the *class*.
+- =viv= / =vav= — the *variable*: the whole assignment statement, falling back
+  to the function parameter under point.
+
+The exact span depends on the language grammar — =function= is universal,
+=class= and =assignment= queries exist for most but not every grammar.
+
+#+begin_src emacs-lisp
 (use-package! evil-textobj-tree-sitter
   :when (modulep! :tools tree-sitter)
   :after evil
@@ -577,7 +937,22 @@
     (evil-textobj-tree-sitter-get-textobj ("assignment.outer" "parameter.outer")))
   (define-key evil-inner-text-objects-map "v"
     (evil-textobj-tree-sitter-get-textobj ("assignment.inner" "parameter.inner"))))
+#+end_src
 
+**** Code Folding
+With grammars installed, folding routes through =treesit-fold= and operates on
+the syntax tree, so the stock Evil keys do what an IDE does:
+
+- =zc= folds the innermost element/block at point (the direct parent of the
+  current line).
+- =zo= opens the fold on the current line (where the =…= ellipsis shows).
+- =za= toggles, =zr= opens every fold, =zm= folds everything.
+
+=tsx-ts-mode= (used for =.jsx= and =.tsx=) already folds JSX elements. The block
+below extends the plain JS modes so JSX embedded in a =.js= file folds at the
+element level too, instead of only collapsing the enclosing function.
+
+#+begin_src emacs-lisp
 (after! treesit-fold
   (dolist (mode '(js-mode js-ts-mode javascript-mode))
     (when-let ((cell (assq mode treesit-fold-range-alist)))
@@ -585,7 +960,20 @@
                       (jsx_fragment . treesit-fold-range-html)))
         (unless (assq (car rule) (cdr cell))
           (setcdr cell (append (cdr cell) (list rule))))))))
+#+end_src
 
+**** Fold By Level
+VSCode-style "fold everything to level N", bound to =z 1= … =z 9= (=z= then a
+digit). Level 1 is the outermost construct, higher numbers reveal more nesting,
+and the level is clamped to the deepest fold the buffer actually has (so =z9= in
+a shallow file folds the innermost level). Shallower levels stay open, anything
+deeper is hidden inside the folded level—exactly the VSCode behaviour.
+
+It toggles: pressing the same level again, while that level is folded, reveals
+everything. In tree-sitter buffers this walks the syntax tree to compute true
+nesting depth; elsewhere it falls back to Doom's hideshow/outline level folding.
+
+#+begin_src emacs-lisp
 (defun mp/treesit-fold-active-p ()
   "Return non-nil when `treesit-fold' can operate on the current buffer."
   (and (fboundp 'treesit-fold-ready-p)
@@ -671,7 +1059,12 @@ z1..z9 keys, LEVEL is read from the triggering digit."
     (let ((key (vector ?z (+ ?0 level))))
       (define-key evil-normal-state-map key #'mp/fold-to-level)
       (define-key evil-motion-state-map key #'mp/fold-to-level))))
+#+end_src
 
+*** Plugins
+**** Org Mode
+***** Org defaults
+#+begin_src emacs-lisp
 ;;; org-basic.el --- sane Org defaults for Doom
 (setq org-directory "~/org/")
 
@@ -801,7 +1194,11 @@ z1..z9 keys, LEVEL is read from the triggering digit."
         ("p" "Projects"
          ((tags "project"
                 ((org-agenda-overriding-header "Projects")))))))
+#+end_src
+***** Auto-Tangle On Save
+When this exact file is saved, Emacs immediately regenerates =config.el=. That keeps the literate source and the generated file synchronized without manual copying.
 
+#+begin_src emacs-lisp
 (after! org
   (defun mp/doom-config-org-file-p (&optional file)
     "Return non-nil when FILE is the Doom literate config."
@@ -822,7 +1219,10 @@ z1..z9 keys, LEVEL is read from the triggering digit."
       (add-hook 'after-save-hook #'mp/org-babel-tangle-doom-config-h nil t)))
 
   (add-hook 'org-mode-hook #'mp/enable-doom-config-auto-tangle-h))
+#+end_src
 
+***** Org mode specifics
+#+begin_src  emacs-lisp
 (add-hook 'org-mode-hook 'visual-line-mode)
 (add-hook 'org-mode-hook 'olivetti-mode)
 (add-hook 'org-mode-hook (lambda () (display-line-numbers-mode -1)))
@@ -877,7 +1277,10 @@ z1..z9 keys, LEVEL is read from the triggering digit."
   ;; (set-face-background 'fringe (face-attribute 'default :background))
   (setq org-modern-block-fringe t)
   (global-org-modern-mode))
+#+end_src
 
+**** Mode Line
+#+begin_src emacs-lisp
 (use-package doom-modeline
   :ensure t
   :hook (emacs-startup . doom-modeline-mode)
@@ -894,7 +1297,12 @@ z1..z9 keys, LEVEL is read from the triggering digit."
   (doom-modeline-buffer-state-icon t)
 
   (doom-modeline-indent-info t))
+#+end_src
 
+**** Minibuffer
+
+***** Vertico posframe
+#+begin_src emacs-lisp
 (use-package! vertico-posframe
   :after vertico
   :config
@@ -910,7 +1318,10 @@ z1..z9 keys, LEVEL is read from the triggering digit."
           (undecorated . t)))
 
   (vertico-posframe-mode 1))
+#+end_src
 
+**** Visuals
+#+begin_src emacs-lisp
 (use-package! spacious-padding
   :custom
   (spacious-padding-widths
@@ -925,7 +1336,27 @@ z1..z9 keys, LEVEL is read from the triggering digit."
 
 (use-package! rainbow-delimiters
   :hook ((prog-mode . rainbow-delimiters-mode)))
+#+end_src
+**** Overview Ruler
+A VSCode "overview ruler": a narrow right-side window that draws an SVG of the
+*whole file* compressed to the window height. No buffer text is rendered — only
+colored rectangles. Git changes (from =diff-hl=) fill the *left* lane and
+flycheck/flymake diagnostics the *right* lane, so a line that is both changed
+*and* flagged shows both colors side by side. Git merge conflicts override both
+lanes across the full width. A box marks the visible region.
 
+Lane colors live in =mp/overview-ruler-colors= — git add =#aaa=, git remove
+=#333=, git change =#777=; error red, warning blue, info gray; conflict cyan.
+Edit that alist to recolor.
+
+Needs an Emacs built with SVG (=librsvg=); verify with =(image-type-available-p
+'svg)=. Sources git state from =diff-hl-changes= (reflects the last *saved*
+state unless =diff-hl-flydiff-mode= is on) and diagnostics from
+=flycheck-current-errors=, falling back to =flymake-diagnostics= (e.g. in
+=renpy-mode=). On by default; toggle with =SPC t o=. Remove =minimap= from
+=init.el= first, or it and this ruler will both claim the right edge.
+
+#+begin_src emacs-lisp
 (require 'svg)
 
 (declare-function diff-hl-changes "diff-hl")
@@ -1170,7 +1601,13 @@ the full width on top of both lanes."
           (lambda ()
             (when (image-type-available-p 'svg)
               (mp/overview-ruler-mode 1))))
+#+end_src
+**** Corfu
+Enable automatic popup with a short delay while requiring two characters before
+auto-completion appears. This keeps the IDE feel without opening the child frame
+for every single letter.
 
+#+begin_src emacs-lisp
 (after! corfu
   (setq corfu-auto t
         corfu-preview-current nil
@@ -1196,7 +1633,42 @@ the full width on top of both lanes."
 ;; (IBus / fcitx) is almost certainly swallowing Ctrl+Space to switch input
 ;; sources before Emacs ever sees it. That has to be disabled/remapped in the
 ;; input-method settings, not here.
+#+end_src
+**** Consult
+***** Super menu
+~SPC SPC~ opens a single ~consult-buffer~ menu that rolls several features into
+one narrowable list. Every section has a narrow key, shown in brackets in its
+heading (e.g. press ~b SPC~ to narrow to buffers).
 
+*Always shown:*
+- ~[B]uffer~ :: open buffers, most-recent first, excluding terminals, agents and
+  special ~*buffers*~. Workspace-scoped when inside a Projectile project,
+  global otherwise.
+- ~[A]gent Shell~ :: agent-shell / Codex agent buffers.
+- ~[V]Term~ :: vterm terminal buffers.
+
+*When the active buffer visits a file:*
+- ~[D]irectory~ :: the files and sub-directories of that file's directory.
+  Selecting a directory (or the ~../~ entry) browses into it and re-opens the
+  menu rooted there, so the tree is navigable up and down; selecting a file
+  opens it. File names are colour-coded by git status.
+- ~[X] Actions~ :: rename the current file, delete it, or open a terminal in the
+  directory currently being browsed. The path each action affects is shown on
+  the right.
+
+*When in a projectile project:*
+- ~[F]ile~ :: every file in the project (listed via ~fd~), colour-coded by git
+  status.
+
+*When not in a projectile project:*
+- ~[P]roject~ :: known Projectile projects; selecting one switches to it.
+
+File and buffer rows carry icons (from the vertico ~+icons~ module flag) and
+marginalia metadata — size, modification time and path — aligned on the right.
+Git colour-coding: untracked is green, modified/renamed is yellow, deleted or
+unmerged is red. A dim status letter follows the name — ~U~ created/untracked,
+~M~ modified, ~A~ added, ~D~ deleted, ~R~ renamed, ~C~ copied, ~!~ conflict.
+#+begin_src emacs-lisp
 ;;; consult-buffer with history-sorted custom sources.
 
 (defun mp/project-workspace-p ()
@@ -1629,12 +2101,23 @@ sources have something to anchor to."
           consult-source-project-recent-file-hidden)))
 
 (map! :leader "SPC" #'mp/super-menu)
+#+end_src
 
+#+RESULTS:
+: consult-buffer
+***** Consult menus
+#+begin_src emacs-lisp
 (map! :leader :desc "File symbols" "m g f s" #'consult-lsp-file-symbols)
+#+end_src
 
+**** Olivetti
+#+begin_src emacs-lisp
 (after! olivetti
   (setq olivetti-body-width 100))
+#+end_src
 
+**** WhichKey
+#+begin_src emacs-lisp
 (setq which-key-idle-delay 0.2)
 
 ;; Give hover/help text enough room to be readable.
@@ -1651,7 +2134,12 @@ sources have something to anchor to."
         eldoc-box-max-pixel-height 520
         eldoc-box-cleanup-interval 0.35
         eldoc-box-only-multi-line nil))
+#+end_src
+**** Dashboard
+The stock Doom dashboard is replaced with a project-aware workspace card that surfaces common actions, recent files, and lightweight git status.
 
+***** Layout And Faces
+#+begin_src emacs-lisp
 (when (modulep! :ui dashboard)
   (require 'cl-lib)
   (require 'project)
@@ -1733,356 +2221,307 @@ sources have something to anchor to."
     (set-face-attribute 'mp/dashboard-card-border-face nil :inherit 'fixed-pitch))
 
   (add-hook '+dashboard-mode-hook #'mp/dashboard-buffer-setup-h)
+#+end_src
 
-(defun mp/dashboard-project-root ()
-  "Return the current dashboard project root, if any."
-  (or (when (fboundp 'doom-project-root)
-        (ignore-errors (doom-project-root default-directory)))
-      (let ((default-directory default-directory))
-        (when-let ((project (project-current nil)))
-          (expand-file-name (project-root project))))))
+***** Project Helpers
+#+begin_src emacs-lisp
+  (defun mp/dashboard-project-root ()
+    "Return the current dashboard project root, if any."
+    (or (when (fboundp 'doom-project-root)
+          (ignore-errors (doom-project-root default-directory)))
+        (let ((default-directory default-directory))
+          (when-let ((project (project-current nil)))
+            (expand-file-name (project-root project))))))
 
-(defun mp/dashboard-project-name ()
-  "Return a readable name for the current dashboard project."
-  (when-let ((root (mp/dashboard-project-root)))
-    (file-name-nondirectory (directory-file-name root))))
+  (defun mp/dashboard-project-name ()
+    "Return a readable name for the current dashboard project."
+    (when-let ((root (mp/dashboard-project-root)))
+      (file-name-nondirectory (directory-file-name root))))
 
-(defun mp/dashboard-open-project ()
-  "Jump to a file in the current project."
-  (interactive)
-  (if-let ((root (mp/dashboard-project-root)))
-      (doom-project-find-file root)
-    (call-interactively #'projectile-switch-project)))
+  (defun mp/dashboard-open-project ()
+    "Jump to a file in the current project."
+    (interactive)
+    (if-let ((root (mp/dashboard-project-root)))
+        (doom-project-find-file root)
+      (call-interactively #'projectile-switch-project)))
 
-(defun mp/dashboard-open-project-scratch ()
-  "Open a scratch buffer scoped to the current project when possible."
-  (interactive)
-  (if (mp/dashboard-project-root)
-      (doom/open-project-scratch-buffer)
-    (doom/open-scratch-buffer)))
+  (defun mp/dashboard-open-project-scratch ()
+    "Open a scratch buffer scoped to the current project when possible."
+    (interactive)
+    (if (mp/dashboard-project-root)
+        (doom/open-project-scratch-buffer)
+      (doom/open-scratch-buffer)))
 
-(defun mp/dashboard-magit-status ()
-  "Open Magit status for the current dashboard directory."
-  (interactive)
-  (let ((default-directory default-directory))
-    (call-interactively #'magit-status)))
+  (defun mp/dashboard-magit-status ()
+    "Open Magit status for the current dashboard directory."
+    (interactive)
+    (let ((default-directory default-directory))
+      (call-interactively #'magit-status)))
 
-(defun mp/dashboard-recent-files (&optional limit)
-  "Return up to LIMIT recent files, preferring the current project."
-  (let* ((root (mp/dashboard-project-root))
-         (files (cl-remove-if-not #'file-exists-p recentf-list))
-         (files (if root
-                    (cl-remove-if-not
-                     (lambda (file) (file-in-directory-p file root))
-                     files)
-                  files)))
-    (cl-subseq files 0 (min (or limit 5) (length files)))))
+  (defun mp/dashboard-recent-files (&optional limit)
+    "Return up to LIMIT recent files, preferring the current project."
+    (let* ((root (mp/dashboard-project-root))
+           (files (cl-remove-if-not #'file-exists-p recentf-list))
+           (files (if root
+                      (cl-remove-if-not
+                       (lambda (file) (file-in-directory-p file root))
+                       files)
+                    files)))
+      (cl-subseq files 0 (min (or limit 5) (length files)))))
+#+end_src
 
-(defun mp/dashboard-insert-block-title (title &optional subtitle)
-  "Insert a centered TITLE and optional SUBTITLE."
-  (+dashboard-insert
-   (propertize title 'face '+dashboard-menu-title))
-  (when subtitle
+***** Rendering Helpers
+#+begin_src emacs-lisp
+  (defun mp/dashboard-insert-block-title (title &optional subtitle)
+    "Insert a centered TITLE and optional SUBTITLE."
     (+dashboard-insert
-     (propertize subtitle 'face '+dashboard-menu-desc))))
-
-(defun mp/dashboard-open-recent-file (file)
-  "Open FILE from the dashboard."
-  (interactive)
-  (find-file file))
-
-(defun mp/dashboard--card-inner-width ()
-  "Return the inner text width of the dashboard card."
-  (- mp/dashboard-card-width 4))
-
-(defun mp/dashboard--pad-string (text width)
-  "Pad or truncate TEXT to WIDTH display columns."
-  (let* ((text (truncate-string-to-width text width 0 nil "…"))
-         (padding (max 0 (- width (string-width text)))))
-    (concat text (make-string padding ? ))))
-
-(defun mp/dashboard--card-text (text &optional face)
-  "Return TEXT styled for use inside the card."
-  (let ((text (copy-sequence (or text ""))))
-    (add-face-text-property 0 (length text) (or face 'mp/dashboard-card-face) 'append text)
-    text))
-
-(defun mp/dashboard-card-line (&optional text)
-  "Return a single centered card line for TEXT."
-  (let* ((inner-width (mp/dashboard--card-inner-width))
-         (body (mp/dashboard--pad-string (or text "") inner-width))
-         (body (mp/dashboard--card-text body 'mp/dashboard-card-face)))
-    (concat
-     (propertize "│ " 'face 'mp/dashboard-card-border-face)
-     body
-     (propertize " │" 'face 'mp/dashboard-card-border-face))))
-
-(defun mp/dashboard-card-rule ()
-  "Return the top or bottom border for the dashboard card."
-  (concat
-   (propertize "╭" 'face 'mp/dashboard-card-border-face)
-   (propertize (make-string (- mp/dashboard-card-width 2) ?─)
-               'face 'mp/dashboard-card-border-face)
-   (propertize "╮" 'face 'mp/dashboard-card-border-face)))
-
-(defun mp/dashboard-card-rule-bottom ()
-  "Return the bottom border for the dashboard card."
-  (concat
-   (propertize "╰" 'face 'mp/dashboard-card-border-face)
-   (propertize (make-string (- mp/dashboard-card-width 2) ?─)
-               'face 'mp/dashboard-card-border-face)
-   (propertize "╯" 'face 'mp/dashboard-card-border-face)))
-
-(defun mp/dashboard-insert-card-line (&optional text)
-  "Insert TEXT as a centered line inside the dashboard card."
-  (+dashboard-insert (mp/dashboard-card-line text)))
-
-(defun mp/dashboard-insert-heading (title)
-  "Insert TITLE as a dashboard section heading."
-  (mp/dashboard-insert-card-line
-   (propertize title 'face 'mp/dashboard-heading-face)))
-
-(defun mp/dashboard-insert-button-line (label action &optional help-echo face)
-  "Insert a clickable dashboard line."
-  (let ((line
-         (with-temp-buffer
-           (insert-text-button label
-                               'action action
-                               'follow-link t
-                               'help-echo help-echo
-                               'face (or face 'mp/dashboard-action-face))
-           (buffer-string))))
-    (mp/dashboard-insert-card-line line)))
-
-(defun mp/dashboard-insert-text-line (text &optional face)
-  "Insert TEXT as a styled card line."
-  (mp/dashboard-insert-card-line
-   (propertize text 'face (or face 'mp/dashboard-meta-face))))
-
-(defun mp/dashboard-widget-recent-files ()
-  "Show the five most recent files for the active project."
-  (let* ((root (mp/dashboard-project-root))
-         (files (mp/dashboard-recent-files 5))
-         (title (if root
-                    (format "Recent files in %s" (mp/dashboard-project-name))
-                  "Recent files")))
-    (mp/dashboard-insert-block-title title)
-    (if files
-        (dolist (file files)
-          (mp/dashboard-insert-centered-button
-           (if root
-               (file-relative-name file root)
-             (abbreviate-file-name file))
-           `(lambda (_) (mp/dashboard-open-recent-file ,file))
-           file
-           '+dashboard-menu-desc))
+     (propertize title 'face '+dashboard-menu-title))
+    (when subtitle
       (+dashboard-insert
-       (propertize "No recent files available yet." 'face '+dashboard-menu-desc)))))
+       (propertize subtitle 'face '+dashboard-menu-desc))))
 
-(defun mp/dashboard-git-summary ()
-  "Return a summary plist for the git repo at `default-directory'."
-  (when-let ((root (ignore-errors (magit-toplevel default-directory))))
-    (let ((default-directory root)
-          (staged 0)
-          (unstaged 0)
-          (untracked 0))
-      (dolist (line (magit-git-lines "status" "--short"))
-        (cond
-         ((string-prefix-p "??" line)
-          (cl-incf untracked))
-         (t
-          (let ((x (aref line 0))
-                (y (aref line 1)))
-            (unless (eq x ?\s)
-              (cl-incf staged))
-            (unless (eq y ?\s)
-              (cl-incf unstaged))))))
-      (list :root root
-            :branch (or (magit-get-current-branch) "detached")
-            :staged staged
-            :unstaged unstaged
-            :untracked untracked))))
+  (defun mp/dashboard-open-recent-file (file)
+    "Open FILE from the dashboard."
+    (interactive)
+    (find-file file))
 
-(defun mp/dashboard-widget-git ()
-  "Show lightweight git information for the active project."
-  (when-let* ((summary (mp/dashboard-git-summary))
-              (branch (plist-get summary :branch)))
-    (mp/dashboard-insert-block-title
-     (format "Git: %s" branch)
-     (format "Staged %d  Unstaged %d  Untracked %d"
-             (plist-get summary :staged)
-             (plist-get summary :unstaged)
-             (plist-get summary :untracked)))
-    (mp/dashboard-insert-centered-button
-     "Open Magit status"
-     (lambda (_) (mp/dashboard-magit-status))
-     "Inspect the current repository with Magit"
-     '+dashboard-menu-desc)))
+  (defun mp/dashboard--card-inner-width ()
+    "Return the inner text width of the dashboard card."
+    (- mp/dashboard-card-width 4))
 
-(defun mp/dashboard-widget-main ()
-  "Render a plain, robust dashboard body."
-  (let ((root (mp/dashboard-project-root))
-        (recent-files (mp/dashboard-recent-files 5))
-        (git (mp/dashboard-git-summary)))
-    (+dashboard-insert "")
-    (+dashboard-insert (mp/dashboard-card-rule))
+  (defun mp/dashboard--pad-string (text width)
+    "Pad or truncate TEXT to WIDTH display columns."
+    (let* ((text (truncate-string-to-width text width 0 nil "…"))
+           (padding (max 0 (- width (string-width text)))))
+      (concat text (make-string padding ? ))))
+
+  (defun mp/dashboard--card-text (text &optional face)
+    "Return TEXT styled for use inside the card."
+    (let ((text (copy-sequence (or text ""))))
+      (add-face-text-property 0 (length text) (or face 'mp/dashboard-card-face) 'append text)
+      text))
+
+  (defun mp/dashboard-card-line (&optional text)
+    "Return a single centered card line for TEXT."
+    (let* ((inner-width (mp/dashboard--card-inner-width))
+           (body (mp/dashboard--pad-string (or text "") inner-width))
+           (body (mp/dashboard--card-text body 'mp/dashboard-card-face)))
+      (concat
+       (propertize "│ " 'face 'mp/dashboard-card-border-face)
+       body
+       (propertize " │" 'face 'mp/dashboard-card-border-face))))
+
+  (defun mp/dashboard-card-rule ()
+    "Return the top or bottom border for the dashboard card."
+    (concat
+     (propertize "╭" 'face 'mp/dashboard-card-border-face)
+     (propertize (make-string (- mp/dashboard-card-width 2) ?─)
+                 'face 'mp/dashboard-card-border-face)
+     (propertize "╮" 'face 'mp/dashboard-card-border-face)))
+
+  (defun mp/dashboard-card-rule-bottom ()
+    "Return the bottom border for the dashboard card."
+    (concat
+     (propertize "╰" 'face 'mp/dashboard-card-border-face)
+     (propertize (make-string (- mp/dashboard-card-width 2) ?─)
+                 'face 'mp/dashboard-card-border-face)
+     (propertize "╯" 'face 'mp/dashboard-card-border-face)))
+
+  (defun mp/dashboard-insert-card-line (&optional text)
+    "Insert TEXT as a centered line inside the dashboard card."
+    (+dashboard-insert (mp/dashboard-card-line text)))
+
+  (defun mp/dashboard-insert-heading (title)
+    "Insert TITLE as a dashboard section heading."
     (mp/dashboard-insert-card-line
-     (propertize "Workspace" 'face 'mp/dashboard-meta-face))
-    (mp/dashboard-insert-heading "Actions")
-    (mp/dashboard-insert-button-line
-     "Find file in project"
-     (lambda (_) (mp/dashboard-open-project))
-     "Jump to a file in the current project")
-    (mp/dashboard-insert-button-line
-     "Open project scratch"
-     (lambda (_) (mp/dashboard-open-project-scratch))
-     "Open a project scratch buffer")
-    (when git
-      (mp/dashboard-insert-button-line
+     (propertize title 'face 'mp/dashboard-heading-face)))
+
+  (defun mp/dashboard-insert-button-line (label action &optional help-echo face)
+    "Insert a clickable dashboard line."
+    (let ((line
+           (with-temp-buffer
+             (insert-text-button label
+                                 'action action
+                                 'follow-link t
+                                 'help-echo help-echo
+                                 'face (or face 'mp/dashboard-action-face))
+             (buffer-string))))
+      (mp/dashboard-insert-card-line line)))
+
+  (defun mp/dashboard-insert-text-line (text &optional face)
+    "Insert TEXT as a styled card line."
+    (mp/dashboard-insert-card-line
+     (propertize text 'face (or face 'mp/dashboard-meta-face))))
+#+end_src
+
+***** Dashboard Widgets
+#+begin_src emacs-lisp
+  (defun mp/dashboard-widget-recent-files ()
+    "Show the five most recent files for the active project."
+    (let* ((root (mp/dashboard-project-root))
+           (files (mp/dashboard-recent-files 5))
+           (title (if root
+                      (format "Recent files in %s" (mp/dashboard-project-name))
+                    "Recent files")))
+      (mp/dashboard-insert-block-title title)
+      (if files
+          (dolist (file files)
+            (mp/dashboard-insert-centered-button
+             (if root
+                 (file-relative-name file root)
+               (abbreviate-file-name file))
+             `(lambda (_) (mp/dashboard-open-recent-file ,file))
+             file
+             '+dashboard-menu-desc))
+        (+dashboard-insert
+         (propertize "No recent files available yet." 'face '+dashboard-menu-desc)))))
+
+  (defun mp/dashboard-git-summary ()
+    "Return a summary plist for the git repo at `default-directory'."
+    (when-let ((root (ignore-errors (magit-toplevel default-directory))))
+      (let ((default-directory root)
+            (staged 0)
+            (unstaged 0)
+            (untracked 0))
+        (dolist (line (magit-git-lines "status" "--short"))
+          (cond
+           ((string-prefix-p "??" line)
+            (cl-incf untracked))
+           (t
+            (let ((x (aref line 0))
+                  (y (aref line 1)))
+              (unless (eq x ?\s)
+                (cl-incf staged))
+              (unless (eq y ?\s)
+                (cl-incf unstaged))))))
+        (list :root root
+              :branch (or (magit-get-current-branch) "detached")
+              :staged staged
+              :unstaged unstaged
+              :untracked untracked))))
+
+  (defun mp/dashboard-widget-git ()
+    "Show lightweight git information for the active project."
+    (when-let* ((summary (mp/dashboard-git-summary))
+                (branch (plist-get summary :branch)))
+      (mp/dashboard-insert-block-title
+       (format "Git: %s" branch)
+       (format "Staged %d  Unstaged %d  Untracked %d"
+               (plist-get summary :staged)
+               (plist-get summary :unstaged)
+               (plist-get summary :untracked)))
+      (mp/dashboard-insert-centered-button
        "Open Magit status"
        (lambda (_) (mp/dashboard-magit-status))
-       "Inspect the current repository with Magit"))
-    (mp/dashboard-insert-button-line
-     "Recent files picker"
-     (lambda (_) (call-interactively #'recentf-open-files))
-     "Open the global recent files picker")
-    (when (fboundp 'org-agenda)
-      (mp/dashboard-insert-button-line
-       "Open org-agenda"
-       (lambda (_) (call-interactively #'org-agenda))
-       "Open org-agenda"))
-    (when (file-directory-p doom-user-dir)
-      (mp/dashboard-insert-button-line
-       "Open private configuration"
-       (lambda (_) (call-interactively #'doom/open-private-config))
-       "Open your Doom private config"))
-    (mp/dashboard-insert-button-line
-     "Open documentation"
-     (lambda (_) (call-interactively #'doom/help))
-     "Open Doom documentation")
+       "Inspect the current repository with Magit"
+       '+dashboard-menu-desc)))
 
-    (mp/dashboard-insert-card-line)
-    (mp/dashboard-insert-heading
-     (if root
-         (format "Recent Files in %s" (mp/dashboard-project-name))
-       "Recent Files"))
-    (if recent-files
-        (dolist (file recent-files)
-          (mp/dashboard-insert-button-line
-           (if root
-               (file-relative-name file root)
-             (abbreviate-file-name file))
-           `(lambda (_) (mp/dashboard-open-recent-file ,file))
-           file
-           'mp/dashboard-meta-face))
-      (mp/dashboard-insert-text-line "No recent files available yet."))
+  (defun mp/dashboard-widget-main ()
+    "Render a plain, robust dashboard body."
+    (let ((root (mp/dashboard-project-root))
+          (recent-files (mp/dashboard-recent-files 5))
+          (git (mp/dashboard-git-summary)))
+      (+dashboard-insert "")
+      (+dashboard-insert (mp/dashboard-card-rule))
+      (mp/dashboard-insert-card-line
+       (propertize "Workspace" 'face 'mp/dashboard-meta-face))
+      (mp/dashboard-insert-heading "Actions")
+      (mp/dashboard-insert-button-line
+       "Find file in project"
+       (lambda (_) (mp/dashboard-open-project))
+       "Jump to a file in the current project")
+      (mp/dashboard-insert-button-line
+       "Open project scratch"
+       (lambda (_) (mp/dashboard-open-project-scratch))
+       "Open a project scratch buffer")
+      (when git
+        (mp/dashboard-insert-button-line
+         "Open Magit status"
+         (lambda (_) (mp/dashboard-magit-status))
+         "Inspect the current repository with Magit"))
+      (mp/dashboard-insert-button-line
+       "Recent files picker"
+       (lambda (_) (call-interactively #'recentf-open-files))
+       "Open the global recent files picker")
+      (when (fboundp 'org-agenda)
+        (mp/dashboard-insert-button-line
+         "Open org-agenda"
+         (lambda (_) (call-interactively #'org-agenda))
+         "Open org-agenda"))
+      (when (file-directory-p doom-user-dir)
+        (mp/dashboard-insert-button-line
+         "Open private configuration"
+         (lambda (_) (call-interactively #'doom/open-private-config))
+         "Open your Doom private config"))
+      (mp/dashboard-insert-button-line
+       "Open documentation"
+       (lambda (_) (call-interactively #'doom/help))
+       "Open Doom documentation")
 
-    (when git
       (mp/dashboard-insert-card-line)
       (mp/dashboard-insert-heading
-       (format "Git: %s" (plist-get git :branch)))
-      (mp/dashboard-insert-text-line
-       (format "Staged: %d   Unstaged: %d   Untracked: %d"
-               (plist-get git :staged)
-               (plist-get git :unstaged)
-               (plist-get git :untracked))))
-    (+dashboard-insert (mp/dashboard-card-rule-bottom))))
+       (if root
+           (format "Recent Files in %s" (mp/dashboard-project-name))
+         "Recent Files"))
+      (if recent-files
+          (dolist (file recent-files)
+            (mp/dashboard-insert-button-line
+             (if root
+                 (file-relative-name file root)
+               (abbreviate-file-name file))
+             `(lambda (_) (mp/dashboard-open-recent-file ,file))
+             file
+             'mp/dashboard-meta-face))
+        (mp/dashboard-insert-text-line "No recent files available yet."))
 
-(setq +dashboard-menu-sections
-      '(("Find file in project"
-         :icon (nerd-icons-octicon "nf-oct-file_directory_open" :face '+dashboard-menu-title)
-         :action mp/dashboard-open-project)
-        ("Open project scratch"
-         :icon (nerd-icons-octicon "nf-oct-pencil" :face '+dashboard-menu-title)
-         :action mp/dashboard-open-project-scratch)
-        ("Open Magit status"
-         :icon (nerd-icons-octicon "nf-oct-git_branch" :face '+dashboard-menu-title)
-         :when (ignore-errors (magit-toplevel default-directory))
-         :action mp/dashboard-magit-status)
-        ("Recent files picker"
-         :icon (nerd-icons-octicon "nf-oct-history" :face '+dashboard-menu-title)
-         :action recentf-open-files)
-        ("Open org-agenda"
-         :icon (nerd-icons-octicon "nf-oct-calendar" :face '+dashboard-menu-title)
-         :when (fboundp 'org-agenda)
-         :action org-agenda)
-        ("Open private configuration"
-         :icon (nerd-icons-octicon "nf-oct-tools" :face '+dashboard-menu-title)
-         :when (file-directory-p doom-user-dir)
-         :action doom/open-private-config)
-        ("Open documentation"
-         :icon (nerd-icons-octicon "nf-oct-book" :face '+dashboard-menu-title)
-         :action doom/help)))
+      (when git
+        (mp/dashboard-insert-card-line)
+        (mp/dashboard-insert-heading
+         (format "Git: %s" (plist-get git :branch)))
+        (mp/dashboard-insert-text-line
+         (format "Staged: %d   Unstaged: %d   Untracked: %d"
+                 (plist-get git :staged)
+                 (plist-get git :unstaged)
+                 (plist-get git :untracked))))
+      (+dashboard-insert (mp/dashboard-card-rule-bottom))))
 
-(setq +dashboard-functions
-      '(+dashboard-widget-banner
-        mp/dashboard-widget-main
-        +dashboard-widget-loaded
-        +dashboard-widget-footer)))
+  (setq +dashboard-menu-sections
+        '(("Find file in project"
+           :icon (nerd-icons-octicon "nf-oct-file_directory_open" :face '+dashboard-menu-title)
+           :action mp/dashboard-open-project)
+          ("Open project scratch"
+           :icon (nerd-icons-octicon "nf-oct-pencil" :face '+dashboard-menu-title)
+           :action mp/dashboard-open-project-scratch)
+          ("Open Magit status"
+           :icon (nerd-icons-octicon "nf-oct-git_branch" :face '+dashboard-menu-title)
+           :when (ignore-errors (magit-toplevel default-directory))
+           :action mp/dashboard-magit-status)
+          ("Recent files picker"
+           :icon (nerd-icons-octicon "nf-oct-history" :face '+dashboard-menu-title)
+           :action recentf-open-files)
+          ("Open org-agenda"
+           :icon (nerd-icons-octicon "nf-oct-calendar" :face '+dashboard-menu-title)
+           :when (fboundp 'org-agenda)
+           :action org-agenda)
+          ("Open private configuration"
+           :icon (nerd-icons-octicon "nf-oct-tools" :face '+dashboard-menu-title)
+           :when (file-directory-p doom-user-dir)
+           :action doom/open-private-config)
+          ("Open documentation"
+           :icon (nerd-icons-octicon "nf-oct-book" :face '+dashboard-menu-title)
+           :action doom/help)))
 
-(after! treemacs
-  (setq treemacs-show-hidden-files t)
+  (setq +dashboard-functions
+        '(+dashboard-widget-banner
+          mp/dashboard-widget-main
+          +dashboard-widget-loaded
+          +dashboard-widget-footer)))
+#+end_src
 
-  (defun mp/treemacs-toggle-current-project ()
-    "Toggle Treemacs, always scoped to the current project."
-    (interactive)
-    (pcase (treemacs-current-visibility)
-      ('visible (delete-window (treemacs-get-local-window)))
-      (_ (treemacs-display-current-project-exclusively))))
+**** Magit
+Magit can refine diff hunks to show the exact changed characters inside a line instead of only marking the entire line as added or removed. That also makes indentation-only edits much easier to see.
 
-  (defface mp/treemacs-dotfile-face
-    '((t :inherit shadow :slant italic))
-    "Face used to de-emphasize visible dotfiles in Treemacs.")
-
-  (set-face-attribute 'treemacs-git-ignored-face nil
-                      :inherit 'shadow
-                      :slant 'italic)
-  (set-face-attribute 'treemacs-git-untracked-face nil
-                      :foreground "#98c379")
-  (set-face-attribute 'treemacs-git-modified-face nil
-                      :foreground "#e5c07b"
-                      :weight 'semi-bold)
-  (set-face-attribute 'treemacs-git-added-face nil
-                      :foreground "#61afef"
-                      :weight 'semi-bold)
-  (set-face-attribute 'treemacs-git-renamed-face nil
-                      :foreground "#c678dd")
-  (set-face-attribute 'treemacs-git-conflict-face nil
-                      :foreground "#e06c75"
-                      :weight 'bold)
-
-  (defun mp/treemacs--dotfile-p (path)
-    "Return non-nil when PATH points to a visible dotfile or dotdir."
-    (let ((name (file-name-nondirectory (directory-file-name path))))
-      (and (string-prefix-p "." name)
-           (not (member name '("." ".."))))))
-
-  (defun mp/treemacs--append-face (start end face)
-    "Append FACE to the existing face property between START and END."
-    (let* ((existing (get-text-property start 'face))
-           (faces (delete-dups
-                   (append (if (listp existing) existing (list existing))
-                           (list face)))))
-      (put-text-property start end 'face (delq nil faces))))
-
-  (defun mp/treemacs-apply-dotfile-face-h ()
-    "Dim dotfiles in the current Treemacs buffer without hiding git status."
-    (when (derived-mode-p 'treemacs-mode)
-      (let ((inhibit-read-only t)
-            (btn (next-button (point-min) t)))
-        (while btn
-          (let ((path (ignore-errors (treemacs-button-get btn :path))))
-            (when (and (stringp path)
-                       (mp/treemacs--dotfile-p path))
-              (mp/treemacs--append-face
-               (button-start btn)
-               (button-end btn)
-               'mp/treemacs-dotfile-face)))
-          (setq btn (next-button (button-end btn) t))))))
-
-  (add-hook 'treemacs-post-buffer-init-hook #'mp/treemacs-apply-dotfile-face-h)
-  (add-hook 'treemacs-post-refresh-hook #'mp/treemacs-apply-dotfile-face-h))
-
+#+begin_src emacs-lisp
 (after! magit
   (setq magit-diff-refine-hunk 'all
         magit-diff-fontify-hunk 'all
@@ -2093,7 +2532,11 @@ sources have something to anchor to."
         magit-diff-paint-whitespace t
         magit-diff-paint-whitespace-lines 'both
         magit-diff-highlight-trailing t))
+#+end_src
 
+**** Clutch
+***** Configuration
+#+begin_src emacs-lisp
 (use-package! clutch
   :defer t
   :config
@@ -2101,7 +2544,10 @@ sources have something to anchor to."
         clutch-read-idle-timeout-seconds 30
         clutch-query-timeout-seconds 20
         clutch-jdbc-rpc-timeout-seconds 15))
+#+end_src
 
+***** Connections JSON
+#+begin_src emacs-lisp
 (require 'json)
 (require 'subr-x)
 
@@ -2217,14 +2663,28 @@ sources have something to anchor to."
 
 (with-eval-after-load 'clutch
   (mp/clutch-apply-connections))
+#+end_src
 
+***** Keybindings
+#+begin_src emacs-lisp
 (map! :leader
       :desc "Clutch query console"
       "o s" #'clutch-query-console)
+#+end_src
 
+**** Agent Shell
+Agent shell is a core part of this setup, so related integrations live together here.
+
+***** Desktop Notifications
+Enable desktop notifications for agent-shell buffers so turns that need attention can surface even when the shell is out of focus.
+
+#+begin_src emacs-lisp
 (use-package! agent-shell-notifications
   :hook (agent-shell-mode . agent-shell-notifications-mode))
+#+end_src
 
+**** Copilot Auto suggestions
+#+begin_src emacs-lisp
 (use-package! copilot
   :ensure t
   :bind (:map copilot-completion-map
@@ -2237,7 +2697,14 @@ sources have something to anchor to."
   :init
   (setq copilot-indent-offset-warning-disable t)
   :hook (prog-mode . copilot-mode))
+#+end_src
 
+*** Languages
+**** Python And Pipenv Safeguards
+This section exists to stop Pipenv from being inferred, created, or invoked in the wrong directory, especially inside monorepos where a repository root is not the correct Python project root.
+
+***** Project Detection And Process Guards
+#+begin_src emacs-lisp
 ;; Never let Doom infer or create a Pipenv project at a monorepo root.
 ;; Only an already-existing ancestor Pipfile counts as a valid Pipenv root.
 (defun mp/pipenv-project-p (&optional dir)
@@ -2288,7 +2755,10 @@ sources have something to anchor to."
 (advice-add 'process-file :around #'mp/process-file-guard-a)
 (advice-add 'start-file-process :around #'mp/start-file-process-guard-a)
 (advice-add 'make-process :around #'mp/make-process-guard-a)
+#+end_src
 
+***** Doom Python Integration Overrides
+#+begin_src emacs-lisp
 (after! python
   ;; Stop Doom/python-mode from auto-enabling pipenv.
   (remove-hook 'python-mode-local-vars-hook #'pipenv-mode)
@@ -2324,7 +2794,13 @@ sources have something to anchor to."
   ;; The Python env segment can shell out to `pipenv run ...` on Python buffers.
   ;; Disable it so merely visiting files can't hit pipenv.
   (setq doom-modeline-env-enable-python nil))
+#+end_src
 
+**** Ren'Py
+=renpy-mode= derives from =python-mode= and already autoloads itself for =.rpy=
+files; this block just makes the association explicit so it survives any future
+=auto-mode-alist= shuffling.
+#+begin_src emacs-lisp
 (use-package! renpy-mode
   :ensure t
   :custom
@@ -2337,20 +2813,37 @@ sources have something to anchor to."
   :hook
   ((renpy-mode . flymake-mode)
    (renpy-mode . outline-minor-mode)))
+#+end_src
 
+*** Org Defaults
+*** Keybindings
+This section documents the custom bindings defined in this configuration.
+**** General Shortcuts
+***** Tests
+#+begin_src emacs-lisp
 (map! :leader
       :desc "Run nearest test" "t t" #'+eval/test
       :desc "Run all project tests" "t a" #'+eval/test-all
       (:prefix ("d" . "agent")
        :desc "Agent shell" "a" #'agent-shell))
+#+end_src
 
+***** Code Navigation
+With keyboard:
+#+begin_src emacs-lisp
 (map! :n "gr" #'xref-find-references
       :n "g[" #'xref-go-back
       :n "g]" #'xref-go-forward)
+#+end_src
 
+With mouse:
+#+begin_src emacs-lisp
 (global-set-key [mouse-8] #'xref-go-back)
 (global-set-key [mouse-9] #'xref-go-forward)
+#+end_src
 
+**** Custom Shortcuts
+#+begin_src emacs-lisp
 (defun mp/project-root-default-directory (&optional dir)
   "Return the preferred project root for DIR, preferring explicit workspace roots."
   (or (mp/current-workspace-project-root)
@@ -2445,7 +2938,10 @@ sources have something to anchor to."
       :g "C-/" #'comment-line
       :g "M-<up>" #'mp/move-lines-up
       :g "M-<down>" #'mp/move-lines-down)
+#+end_src
 
+**** Evil State Overrides
+#+begin_src emacs-lisp
 (defun mp/clipboard-copy ()
   (interactive)
   (clipboard-kill-ring-save (region-beginning) (region-end))
@@ -2457,8 +2953,6 @@ sources have something to anchor to."
                            evil-insert-state-map
                            evil-emacs-state-map
                            evil-visual-state-map))
-    (define-key state-map (kbd "C-b") #'mp/treemacs-toggle-current-project)
-    (define-key state-map (kbd "C-S-e") #'treemacs-find-file)
     (define-key state-map (kbd "C-S-c") #'mp/clipboard-copy)
     (define-key state-map (kbd "C-S-v") #'clipboard-yank)
     (define-key state-map (kbd "C-\\") #'mp/vterm-new)
@@ -2501,7 +2995,10 @@ sources have something to anchor to."
   (map! :map evil-window-map
         "d" #'mp/close-window-preserve-buffer
         "D" #'+workspace/close-window-or-workspace))
+#+end_src
 
+**** Directory Navigation In Completion
+#+begin_src emacs-lisp
 (use-package! consult-dir
   :defer t
   :config
@@ -2511,7 +3008,12 @@ sources have something to anchor to."
   (map! :map minibuffer-local-completion-map
         "C-x C-d" #'consult-dir
         "C-x C-j" #'consult-dir-jump-file))
+#+end_src
 
+**** Which-Key Group Labels
+Some Doom prefix maps are still present but may show up as generic =+prefix= entries in which-key. These replacements restore readable group names for the menus behind =SPC= and local leader prefixes.
+
+#+begin_src emacs-lisp
 (after! which-key
   (when (boundp 'doom-leader-map)
     (which-key-add-keymap-based-replacements doom-leader-map
@@ -2533,7 +3035,10 @@ sources have something to anchor to."
       "v" "visual"
       "w" "windows"
       "x" "text")))
+#+end_src
 
+**** Error related keys
+#+begin_src emacs-lisp
 (after! flycheck
   (map! :leader
         (:prefix ("e" . "errors")
@@ -2541,7 +3046,10 @@ sources have something to anchor to."
          :desc "Next error" "n" #'flycheck-next-error
          :desc "Previous error" "p" #'flycheck-previous-error
          :desc "Verify checker" "v" #'flycheck-verify-setup)))
-
+#+end_src
+*** Should be plugins (My own code (with llm help))
+**** Project Scripts runner
+#+begin_src emacs-lisp
 (defvar my/project-running-scripts (make-hash-table :test 'equal))
 
 (defun my/project-scripts-dir ()
@@ -2589,3 +3097,100 @@ sources have something to anchor to."
 (map! :leader
       :desc "Run project script"
       "p S" #'my/run-project-script)
+#+end_src
+
+** Packages
+:PROPERTIES:
+:header-args:emacs-lisp: :tangle packages.el
+:END:
+
+*** Lexical binding
+#+begin_src emacs-lisp
+;;; packages.el -*- lexical-binding: t; -*-
+#+end_src
+
+*** General
+- https://github.com/gabesoft/evil-mc
+- https://github.com/joaotavora/breadcrumb
+- https://github.com/magnars/expand-region.el
+- https://github.com/meain/evil-textobj-tree-sitter
+- https://github.com/minad/org-modern
+- https://github.com/tumashu/vertico-posframe
+- https://github.com/karthink/consult-dir
+- https://github.com/manateelazycat/color-rg
+- https://github.com/radian-software/prescient.el
+
+#+begin_src emacs-lisp
+;; multi cursor
+(package! evil-mc)
+;; code position breadcrump
+(package! breadcrumb)
+;; expand selection
+(package! expand-region)
+;; syntax-aware Evil text objects: vif/vac/viv (function/class/variable)
+(package! evil-textobj-tree-sitter)
+;; org
+(package! org-modern)
+;; some minibuffer help
+(package! vertico-posframe)
+(package! consult-dir)
+;; much better search and replace
+(package! color-rg :recipe (:host github :repo "manateelazycat/color-rg"))
+;; VSCode-like sorting for corfu/vertico (orderless still does the filtering)
+(package! prescient)
+(package! corfu-prescient)
+(package! vertico-prescient)
+#+end_src
+
+*** AI
+- https://github.com/xenodium/acp.el
+- https://github.com/xenodium/agent-shell
+- https://github.com/zackattackz/agent-shell-notifications
+- https://github.com/copilot-emacs/copilot.el
+
+#+begin_src emacs-lisp
+(package! acp)
+(package! agent-shell)
+(package! agent-shell-notifications
+  :recipe (:host github :repo "zackattackz/agent-shell-notifications"))
+(package! copilot
+  :recipe (:host github :repo "copilot-emacs/copilot.el" :files ("*.el")))
+#+end_src
+
+*** Programming
+**** General
+- https://github.com/casouri/eldoc-box
+- https://github.com/pwalsh/pipenv.el
+- https://github.com/Reagankm/renpy-mode
+
+#+begin_src emacs-lisp
+(package! eldoc-box)
+;; Keep `pipenv` disabled, but leave the declaration so Doom won't re-enable it
+;; if package state changes during future experiments.
+(package! pipenv :disable t)
+(package! renpy-mode :recipe (:host github :repo "Reagankm/renpy-mode"))
+#+end_src
+
+*** Visuals
+- https://github.com/xenodium/shell-maker
+- https://github.com/rnkn/olivetti
+- https://github.com/protesilaos/spacious-padding
+- https://github.com/Fanael/rainbow-delimiters
+
+#+begin_src emacs-lisp
+(package! shell-maker)
+(package! olivetti)
+(package! spacious-padding)
+(package! rainbow-delimiters)
+#+end_src
+
+*** Database
+- https://github.com/LuciusChen/clutch
+- https://github.com/emarsden/pg-el
+- https://github.com/LuciusChen/mysql.el
+
+#+begin_src emacs-lisp
+(package! clutch)
+(package! pg)
+(package! mysql)
+#+end_src
