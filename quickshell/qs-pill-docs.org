@@ -1,188 +1,997 @@
 #+TITLE: Quickshell Pill — Design, Capabilities & Source
 #+AUTHOR: Mahdi
-#+PROPERTY: header-args:qml :tangle pill.qml :mkdirp yes :comments no
+#+PROPERTY: header-args:qml :mkdirp yes :comments no
 #+STARTUP: showeverything
 
-This is the *single source of truth* for the Quickshell "pill". The QML in
-[[*Source (tangles to =pill.qml=)][§ Source]] is literate: editing it here and tangling regenerates
-=pill.qml=. Read [[*How the pill works][§ How the pill works]] before touching the code, and keep
-this file in sync with the running pill — they are a pair.
+This is the *single source of truth* for the Quickshell "pill". The QML lives in
+[[*Source][§ Source]] as literate tangle blocks; editing them here and tangling
+regenerates the =.qml= files. Read [[*How the pill works][§ How the pill works]]
+before touching code, and keep this file in sync with the running pill — they are
+a pair.
 
 * The brief (what I was asked to build)
 
 Replace KDE's default panels with a Quickshell "pill":
 
-- A *pill* sits at the *top-center* of the screen, *always on top* of
-  everything — *not* a panel that reserves/blocks screen space — hidden only
-  when a fullscreen window is focused.
-- *Collapsed* it shows only very important info: if a notification arrives the
-  pill transforms to show it; otherwise it shows the system tray and the icons
-  of open apps that have a notification (if possible, else just the time).
-- *Hovered* the original info hides and the pill transforms:
-  - top-left: *virtual-desktop indicators* — empty circles per KDE virtual
-    desktop, filled circle = focused desktop, click a circle to switch desktop.
-  - opposite side, same row: *active apps* (ideally with the ability to pin apps).
-  - below the apps: the *system tray*.
-  - below the desktops: the *time*.
-- *Clicked* (once transformed) it expands further to show *notification history*.
-  The tray side always shows network, volume, bluetooth, battery and
-  notification icons; clicking an icon swaps the notification history for that
-  icon's menu.
-- Clicking *outside* the pill only collapses it to its original state and is
-  *not* passed through to whatever is underneath.
+- A *pill* at the *top-center*, *always on top*, *not* reserving screen space;
+  hidden only when a fullscreen window is focused.
+- *Collapsed*: only essential info — a notification transforms the pill;
+  otherwise system tray + icons of open apps that have a notification, else time.
+- *Hovered*: original info hides, pill transforms — *virtual-desktop dots*
+  top-left (filled = focused, click to switch), *active apps* top-right (pin-able
+  ideally), *system tray* below the apps, *time* below the desktops.
+- *Clicked*: expands further into a *control panel*. The tray side always shows
+  network/volume/bluetooth/battery/notification icons; clicking one swaps the
+  pane below (default = notification history) for that icon's menu:
+  - *network*: pick Wi-Fi + VPN like KDE's applet.
+  - *volume*: Devices tab (mic + speaker) and Applications tab; pick the active
+    device, change any volume.
+  - *bluetooth*: connected on top, divider, paired, then discovered.
+  - *battery*: battery of all supported devices.
+- Clicking *outside* only collapses the pill; the click is *not* passed through.
 
-Constraints I was given: prefer KDE APIs/apps over writing our own (virtual
-desktops, windows, notifications, volume/network/bluetooth must use KDE/system
-services since this is KWin); review docs instead of guessing; if something
-can't be backed by a source, say so rather than guess. Reference rice:
-[[https://github.com/Gakuseei/Ricelin][Gakuseei/Ricelin]] (note: Hyprland-only — its workspace/taskbar code does *not*
-port to KWin).
+Constraints: prefer KDE/system APIs over writing our own; review docs, don't
+guess; if a thing can't be backed by a source, say so. Reference rice:
+[[https://github.com/Gakuseei/Ricelin][Gakuseei/Ricelin]] (Hyprland-only — its
+workspace/taskbar code does not port to KWin; design/animation ideas do).
 
 * Environment (verified, not assumed)
 
-| Thing                | Value                                             |
-|----------------------+---------------------------------------------------|
-| Quickshell           | 0.3.0 (Arch), binary =qs= / =quickshell=          |
-| Qt                   | 6.11                                              |
-| Desktop              | KDE Plasma 6.7.1, KWin, Wayland                    |
-| Audio / Power        | Pipewire, UPower — both active                    |
-| Network / Bluetooth  | NetworkManager 1.56, BlueZ — both active          |
+| Thing               | Value                                            |
+|---------------------+--------------------------------------------------|
+| Quickshell          | 0.3.0 (Arch), binary =qs= / =quickshell=         |
+| Qt                  | 6.11                                             |
+| Desktop             | KDE Plasma 6.7.1, KWin, Wayland                   |
+| Audio / Power       | Pipewire, UPower — active                         |
+| Network / Bluetooth | NetworkManager 1.56, BlueZ — active               |
 
-*Critical compositor fact* (checked with =wayland-info=): KWin here advertises
-=zwlr_layer_shell_v1= and =org_kde_plasma_virtual_desktop_management=, but does
-*NOT* advertise =ext_workspace_v1=, =zwlr_foreign_toplevel_manager_v1=, or
-=org_kde_plasma_window_management=. So Quickshell's =WindowManager= and
-=Wayland.ToplevelManager= modules exist but *do not function* on this machine —
-most Quickshell tutorials assume Hyprland/wlroots and are wrong here. This is
-why virtual desktops go through KWin's DBus interface, and why the taskbar /
-fullscreen-hide are hard (no client-visible window-list protocol).
+*Critical compositor fact* (=wayland-info=): KWin advertises =zwlr_layer_shell_v1=
+and =org_kde_plasma_virtual_desktop_management=, but NOT =ext_workspace_v1=,
+=zwlr_foreign_toplevel_manager_v1=, or =org_kde_plasma_window_management=. So
+Quickshell's =WindowManager= and =Wayland.ToplevelManager= exist but *don't
+function* here — virtual desktops go through KWin DBus, and the taskbar /
+fullscreen-hide are blocked on there being no client-visible window-list protocol.
 
 * What's possible (per feature)
 
-| Feature                                            | Status        | How / why                                                                                       |
-|----------------------------------------------------+---------------+-------------------------------------------------------------------------------------------------|
-| Pill: top-center, always-on-top, reserves no space | ✅ built       | layer-shell =Overlay= + input =mask= so surrounding clicks pass through                          |
-| Morph / transform animations                       | ✅ built       | plain QtQuick (=Behavior= / =NumberAnimation=)                                                   |
-| Virtual desktops (list, active, click-to-switch)   | ✅ built       | KWin DBus =org.kde.KWin /VirtualDesktopManager= via =gdbus= (no native Quickshell binding)       |
-| System tray (icons + menus)                        | ✅ built       | native =Services.SystemTray= (coexists with Plasma's tray)                                       |
-| Volume / Battery                                   | ✅ built       | native =Services.Pipewire= / =Services.UPower=                                                   |
-| Network / Bluetooth menus                          | ✅ possible    | native =Quickshell.Networking= / =Quickshell.Bluetooth= (both backends active)                   |
-| App-icon resolution for any app                    | ✅ possible    | =DesktopEntries= + =Quickshell.iconPath=                                                         |
-| Click-outside-to-close, swallowing the click       | ✅ possible    | layer-shell exclusive keyboard focus + mask toggle (no Hyprland focus-grab needed)              |
-| Taskbar of open windows / pinned apps              | ⚠️ hard, TODO | *no window-list protocol on this KWin*; only path is a KWin-script bridge via =/Scripting=        |
-| Hide pill when a fullscreen window is focused       | ⚠️ hard, TODO | same gap — needs the KWin-script bridge to know window state                                     |
-| App icons "that have a notification" when collapsed | ⚠️ hard, TODO | depends on the taskbar above + matching notifications to windows                                 |
-| Notifications shown in the pill                     | ⚠️ intrusive  | =plasmashell= owns =org.freedesktop.Notifications=; Quickshell must take it over (disable Plasma) |
+| Feature                                            | Status        | How / why                                                                                  |
+|----------------------------------------------------+---------------+--------------------------------------------------------------------------------------------|
+| Pill: top-center, always-on-top, reserves no space | ✅ built       | full-screen layer-shell =Overlay= + input =mask= toggled per state                          |
+| Morph / transform animations                       | ✅ built       | plain QtQuick (=Behavior= / =NumberAnimation=)                                              |
+| Virtual desktops (list, active, click-to-switch)   | ✅ built       | KWin DBus =org.kde.KWin /VirtualDesktopManager= via =gdbus= (regex now matches all desktops) |
+| System tray (icons + menus)                        | ✅ built       | native =Services.SystemTray=                                                                |
+| Volume control panel (devices + apps)              | ✅ built       | native =Services.Pipewire=; classify nodes by =media.class=; per-node volume/mute/default   |
+| Network control panel (Wi-Fi list/connect/toggle)  | ✅ built       | native =Quickshell.Networking=; =connectWithPsk()= for secured nets                          |
+| Bluetooth control panel (connected/paired/found)   | ✅ built       | native =Quickshell.Bluetooth=; connect/disconnect/pair, battery %                           |
+| Battery control panel (all power devices)          | ✅ built       | native =Services.UPower=; =UPower.devices= + =iconPath(iconName)=                            |
+| Coherent theming                                   | ✅ built       | =Theme.qml= object passed to every component                                                |
+| Taskbar: grouped apps + active indicator + focus   | ✅ built       | =winbridge.py= = KRunner =/WindowsRunner= (list+icons, =Run= to focus) + a 3-line KWin script for the active window |
+| App right-click: window list + launcher actions    | ◐ partial      | window list works (bridge data); launcher actions need =DesktopEntries=, which read 0 apps in my sandbox — verify in a real session |
+| Pinned apps                                         | ⚠️ TODO       | app-side: store pinned ids in a file (=FileView=/=JsonAdapter=), launch via =DesktopEntry=     |
+| VPN selection in network menu                      | ⚠️ TODO       | not in the native =Networking= binding — needs =nmcli= via =Process=                          |
+| Hide pill when a fullscreen window is focused       | ⚠️ TODO       | now feasible: =getWindowInfo(activeUuid).fullscreen= (we already track the active uuid) — not wired |
+| Notification history in the panel                  | ⚠️ intrusive  | =plasmashell= owns =org.freedesktop.Notifications=; taking it over means disabling Plasma's  |
 
-The two genuinely-unsolved items are the *taskbar / open-apps* and
-*fullscreen-hide*: there is no documented protocol path on this KWin. The only
-known approach is injecting a KWin JS script (loaded via =org.kde.KWin
-/Scripting=, =loadScript=) that reports =workspace.windowList()= back over DBus.
-Real but involved; not yet built, and not to be faked.
+The taskbar needs no Wayland window protocol: KWin's KRunner "windows" runner lists
+and activates windows over DBus, and a tiny KWin script reports the active window
+(see =winbridge.py=). Remaining: *launcher actions* (blocked on =DesktopEntries=
+returning entries), *pinned apps* (app-side state), *VPN* (needs nmcli),
+*fullscreen-hide* (wireable now via =getWindowInfo=), and *notifications* (would
+require taking the DBus name from Plasma).
 
 * How the pill works
 
-The current =pill.qml= (v1) is one file, structured top-to-bottom as:
+The shell is split into small files (see [[*File map][§ File map]]). Sibling
+=.qml= files are usable as component types via QML's implicit directory import.
+=Theme= is instantiated once in =pill.qml= and passed to each menu as a =theme=
+property (no singletons, so nothing magic to set up).
 
-1. *Root state* — =ShellRoot { id: root }= holds =desktops= (array of ={id,
-   name}=) and =currentDesktop= (the active desktop's id), populated over DBus.
+** Window & input model (pill.qml)
+=Variants { model: Quickshell.screens }= makes one =PanelWindow= per monitor. Each
+window is a *full-screen* layer-shell =Overlay= surface that reserves no space.
+Input is governed by the window =mask=:
+- *collapsed / hovered*: =mask= = a =Region { item: pill }= → only the pill
+  rectangle catches clicks; the rest of the screen passes through.
+- *open*: =mask= = a =Region { item: backdrop }= (the whole window) → outside
+  clicks are caught by a backdrop =MouseArea= that closes the panel, so the click
+  is swallowed, never passed through.
 
-2. *Virtual desktops over DBus* — three =Process= blocks talking to
-   =org.kde.KWin /VirtualDesktopManager= via =gdbus=:
-   - =fetchDesktops= reads the =desktops= property once at startup; a regex
-     parses gdbus's =(uint32 N, 'id', 'Name')= tuples into =root.desktops=.
-   - =fetchCurrent= reads the =current= property (active desktop id).
-   - a long-lived =gdbus monitor= watches the =currentChanged= signal (so dots
-     stay live without polling) and re-fetches the list on
-     =desktopCreated=/=desktopRemoved=.
-   - =switchDesktop(id)= sets the writable =current= property to change desktop.
+** Three stages
+A single =pill= =Item= animates =width=/=height= between the stages via
+=Behavior=; cross-fading content layers (=opacity= + =visible=) show/hide per
+stage:
+1. *collapsed* (96×28): just =hh:mm=.
+2. *hovered* (=dash=, 384×104): dashboard — *two balanced rows*. Row 1: desktop
+   dots (left) | grouped app icons (right). Row 2: date/time (left) | status icons
+   (network/volume/bluetooth/battery, icon-only, click → open that menu) + system
+   tray (right). =dash= is true when hovered, open, or a right-click menu is up.
+3. *open* (470 tall): control panel — Row 1 stays on top, then a divider, a left
+   icon rail, and a menu pane. Clicking the pill body sets =open=; a second
+   =MouseArea= swallows clicks on empty pill area so they don't reach the
+   close-backdrop. The rail's selected index drives =win.menu=; a =Loader= shows
+   the matching menu component (=active= only while open).
 
-3. *Audio binding* — =PwObjectTracker { objects: [Pipewire.defaultAudioSink] }=
-   keeps the default sink "bound" so its =volume=/=muted= stay live.
+The window =mask= also expands to full-screen when an app *right-click menu* is
+open (=win.ctxGroup=), so that menu (a =Loader= floating below the pill) is
+clickable and an outside click dismisses it.
 
-4. *The window(s)* — =Variants { model: Quickshell.screens }= makes one
-   =PanelWindow= per monitor. Each window is:
-   - =WlrLayershell.layer: WlrLayer.Overlay= → above everything.
-   - =exclusionMode: ExclusionMode.Ignore= + transparent → reserves no space.
-   - anchored top/left/right (a full-width invisible strip) but with
-     =mask: Region { item: pill }= so *only the pill rectangle catches clicks* —
-     the rest of the strip is click-through.
-   - =expanded= is driven by a =HoverHandler= on the pill.
+** Open windows / taskbar (winbridge.py)
+KWin advertises no window-list protocol and no active-window over DBus, so
+=winbridge.py= (run as =python <shellDir>/winbridge.py=) glues two KDE APIs and
+prints one JSON line =\{active, windows\}= per update on stdout, which a =Process= +
+=SplitParser= parses into =root.windows= / =root.activeWindow=:
+- *window list*: the KRunner "windows" runner =org.kde.KWin /WindowsRunner=,
+  =org.kde.krunner1.Match("")= returns every window =(id, title, icon, …)= (icon is
+  already an app-icon name like =org.kde.dolphin=); polled ~1 s, deduped by id
+  (the runner returns each window twice). =Run(id, "")= focuses one.
+- *active window*: the helper owns DBus name =org.kde.pill= and loads a 3-line KWin
+  script (via =/Scripting=) that calls us on =workspace.windowActivated= with
+  =String(window.internalId)= (=\{uuid\}=, matching the krunner ids). Unloaded on exit.
 
-5. *The pill itself* — an =Item= whose =width=/=height= animate between collapsed
-   (150×34) and expanded (360×120) via =Behavior on width/height=. A rounded
-   =Rectangle= is the body. Two content layers cross-fade on =expanded=:
-   - collapsed: the *clock* (centered).
-   - expanded: virtual-desktop *dots* (top-left, click to switch), *volume +
-     battery* (top-right), and the *system tray* (second row, left-click
-     activates, right-click opens the item's menu via =display()=).
+In the UI, =root.appGroups= groups windows by =icon= (one tile per app, with a
+count badge for ≥2 windows and an underline that turns accent when any of the
+app's windows is active). Left-click =cycleGroup= focuses the app's next window;
+right-click opens a floating menu (this app's windows to focus + launcher actions
+from =DesktopEntries.heuristicLookup(icon).actions= when available).
 
-6. *Clock* — a =SystemClock= (1s precision) feeding a formatted string.
+** Virtual desktops (pill.qml, DBus)
+Three =Process= blocks drive =gdbus= against =org.kde.KWin /VirtualDesktopManager=:
+fetch the =desktops= list (a regex parses =(uint32 N, 'id', 'name')= tuples — the
+=uint32= tag is optional because gdbus only prints it on the first tuple), fetch
+=current=, and =gdbus monitor= the =currentChanged= signal so the dots stay live.
+=switchDesktop(id)= sets the writable =current= property.
 
-The collapsed↔expanded morph is the proof-of-concept for the full vision; the
-remaining transforms (apps row, time-under-dots, click-to-expand notification
-history, icon menus) slot into the same expanded =Item=.
+** Menus (one file each)
+- =NetworkMenu=: finds the Wi-Fi =NetworkDevice= (=type === DeviceType.Wifi=),
+  lists =device.networks= sorted active-first then by =signalStrength=, shows
+  signal bars + a lock for secured nets, connect/disconnect, and a password
+  overlay calling =connectWithPsk()= for secured unknown nets. Toggles
+  =Networking.wifiEnabled=. Turns the scanner on while visible.
+- =VolumeMenu=: a =PwObjectTracker= over every node keeps audio live. Nodes are
+  classified by =properties["media.class"]=: =Audio/Sink= (speakers),
+  =Audio/Source= (mics), =Stream/Output/Audio= (apps). Per row: name, set-default
+  marker (=preferredDefaultAudioSink/Source=), mute, and a =PillSlider= bound to
+  =node.audio.volume=.
+- =BluetoothMenu=: adapter power + scan toggles (=defaultAdapter.enabled= /
+  =.discovering=), then three filtered sections — Connected, Paired, Available —
+  each row connect/disconnect/pair via the device methods, with battery % when
+  =batteryAvailable=.
+- =BatteryMenu=: =UPower.devices= filtered to present, non-line-power devices,
+  each with =IconImage { source: Quickshell.iconPath(iconName) }=, name/type,
+  state and percentage.
 
-* Source (tangles to =pill.qml=)
+** Reusable widgets
+=PillToggle= (themed switch) and =PillSlider= (themed 0..1 slider) keep the menus
+small and the look coherent.
 
-Edit the block below; tangle to regenerate =pill.qml=. Keep it identical to the
-running file or re-validate with =qs -p quickshell/pill.qml=.
+* File map
 
+| File              | Role                                                            |
+|-------------------+-----------------------------------------------------------------|
+| =Theme.qml=       | all colours / metrics / timings (restyle here)                  |
+| =PillToggle.qml=  | reusable themed on/off switch                                   |
+| =PillSlider.qml=  | reusable themed horizontal slider [0,1]                          |
+| =NetworkMenu.qml= | Wi-Fi list / connect / password / toggle                        |
+| =VolumeMenu.qml=  | devices + applications volume                                   |
+| =BluetoothMenu.qml= | connected / paired / discovered devices                       |
+| =BatteryMenu.qml= | all power devices                                              |
+| =winbridge.py=    | open-window list (KRunner) + active window (KWin script) → JSON  |
+| =pill.qml=        | windows, stages, virtual desktops, taskbar, tray, rail, menu host (entry) |
+
+* Source
+
+Edit these blocks; tangle to regenerate the files (see [[*Tangling][§ Tangling]]).
+After tangling, validate with =qs -p quickshell/pill.qml=.
+
+** Theme.qml
+#+begin_src qml :tangle Theme.qml
+pragma ComponentBehavior: Bound
+// Theme.qml — one place for all colours, metrics and timings. Change here to
+// restyle the whole pill. Instantiated once in pill.qml as `Theme { id: theme }`
+// and passed into every menu component as `theme`.
+import QtQuick
+
+QtObject {
+    // ---- palette (dark, Tokyo-night-ish accent over near-black) ----
+    readonly property color bg:         "#0d0f14"
+    readonly property color bgElevated:  "#161a22"
+    readonly property color bgHover:     "#1f2530"
+    readonly property color border:      "#2a2f3a"
+    readonly property color divider:     "#242a35"
+    readonly property color text:        "#e6e6e6"
+    readonly property color textDim:     "#9aa3b2"
+    readonly property color accent:      "#7aa2f7"
+    readonly property color accentDim:   "#2b3654"
+    readonly property color danger:      "#f7768e"
+    readonly property color good:        "#9ece6a"
+
+    // ---- metrics ----
+    readonly property int radius:        18
+    readonly property int radiusSmall:   10
+    readonly property int pad:           14
+    readonly property int gap:           10
+    readonly property int railWidth:     44
+    readonly property int rowHeight:     38
+
+    // ---- fonts ----
+    readonly property string mono:       "monospace"
+    readonly property int fsSmall:       11
+    readonly property int fsNormal:      13
+    readonly property int fsLarge:       15
+
+    // ---- animation ----
+    readonly property int anim:          210
+    readonly property int animFast:      130
+}
+#+end_src
+
+** PillToggle.qml
+#+begin_src qml :tangle PillToggle.qml
+pragma ComponentBehavior: Bound
+// PillToggle.qml — a small themed on/off switch. Reusable across menus.
+import QtQuick
+
+Item {
+    id: root
+    required property var theme
+    property bool checked: false
+    signal toggled(bool value)
+
+    implicitWidth: 12
+    implicitHeight: 20
+
+    Rectangle {
+        anchors.fill: parent
+        radius: height / 2
+        color: root.checked ? root.theme.accent : root.theme.bgHover
+        border.color: root.checked ? root.theme.accent : root.theme.border
+        border.width: 1
+        Behavior on color { ColorAnimation { duration: root.theme.animFast } }
+
+        Rectangle {
+            width: parent.height - 4
+            height: parent.height - 4
+            radius: height / 2
+            y: 2
+            x: root.checked ? parent.width - width - 2 : 2
+            color: "white"
+            Behavior on x { NumberAnimation { duration: root.theme.animFast; easing.type: Easing.OutCubic } }
+        }
+    }
+
+    MouseArea {
+        anchors.fill: parent
+        cursorShape: Qt.PointingHandCursor
+        onClicked: {
+            root.checked = !root.checked;
+            root.toggled(root.checked);
+        }
+    }
+}
+#+end_src
+
+** PillSlider.qml
+#+begin_src qml :tangle PillSlider.qml
+pragma ComponentBehavior: Bound
+// PillSlider.qml — a themed horizontal slider over [0,1]. Reused for volume.
+import QtQuick
+
+Item {
+    id: root
+    required property var theme
+    property real value: 0            // 0..1
+    signal moved(real value)
+
+    implicitHeight: 16
+    implicitWidth: 120
+
+    readonly property real clamped: Math.max(0, Math.min(1, value))
+
+    Rectangle {                       // track
+        id: track
+        anchors.verticalCenter: parent.verticalCenter
+        width: parent.width
+        height: 5
+        radius: 2.5
+        color: root.theme.bgHover
+
+        Rectangle {                   // fill
+            width: root.clamped * parent.width
+            height: parent.height
+            radius: parent.radius
+            color: root.theme.accent
+        }
+    }
+
+    Rectangle {                       // handle
+        width: 12
+        height: 12
+        radius: 6
+        color: "white"
+        anchors.verticalCenter: parent.verticalCenter
+        x: root.clamped * (root.width - width)
+    }
+
+    MouseArea {
+        anchors.fill: parent
+        cursorShape: Qt.PointingHandCursor
+        function apply(mx) {
+            const v = Math.max(0, Math.min(1, mx / width));
+            root.value = v;
+            root.moved(v);
+        }
+        onPressed: mouse => apply(mouse.x)
+        onPositionChanged: mouse => { if (pressed) apply(mouse.x); }
+    }
+}
+#+end_src
+
+** NetworkMenu.qml
+#+begin_src qml :tangle NetworkMenu.qml
+pragma ComponentBehavior: Bound
+// NetworkMenu.qml — Wi-Fi list (signal + lock + active), connect/disconnect,
+// password prompt for secured networks, Wi-Fi on/off. Uses Quickshell.Networking
+// (NetworkManager). VPN is NOT in the native binding — would need nmcli (TODO).
+import QtQuick
+import Quickshell.Networking
+
+Item {
+    id: root
+    required property var theme
+
+    readonly property var wifiDev: {
+        const ds = Networking.devices ? Networking.devices.values : [];
+        for (let i = 0; i < ds.length; i++)
+            if (ds[i].type === DeviceType.Wifi) return ds[i];
+        return null;
+    }
+    readonly property var nets: {
+        if (!wifiDev || !wifiDev.networks) return [];
+        const a = wifiDev.networks.values.slice();
+        a.sort((x, y) => (y.connected - x.connected) || (y.signalStrength - x.signalStrength));
+        return a;
+    }
+    property var pskTarget: null
+
+    Component.onCompleted: if (wifiDev) wifiDev.scannerEnabled = true
+    Component.onDestruction: if (wifiDev) wifiDev.scannerEnabled = false
+
+    Column {
+        anchors.fill: parent
+        spacing: root.theme.gap
+
+        Row {                                   // header + toggle
+            width: parent.width
+            Text {
+                text: "Wi-Fi"
+                color: root.theme.text
+                font.pixelSize: root.theme.fsNormal
+                font.bold: true
+                anchors.verticalCenter: parent.verticalCenter
+            }
+            Item { width: parent.width - 38 - 36; height: 1 }
+            PillToggle {
+                theme: root.theme
+                anchors.verticalCenter: parent.verticalCenter
+                checked: Networking.wifiEnabled
+                onToggled: v => Networking.wifiEnabled = v
+            }
+        }
+
+        Flickable {                             // network list
+            width: parent.width
+            height: parent.height - 36
+            contentHeight: netCol.height
+            clip: true
+            Column {
+                id: netCol
+                width: parent.width
+                spacing: 4
+                Repeater {
+                    model: root.nets
+                    delegate: Rectangle {
+                        id: netRow
+                        required property var modelData
+                        width: netCol.width
+                        height: root.theme.rowHeight
+                        radius: root.theme.radiusSmall
+                        color: modelData.connected ? root.theme.accentDim : root.theme.bgHover
+
+                        Row {
+                            anchors.left: parent.left
+                            anchors.leftMargin: 10
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing: 8
+                            Text {
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: {
+                                    const s = netRow.modelData.signalStrength;
+                                    return s > 0.75 ? "▰▰▰▰" : s > 0.5 ? "▰▰▰▱" : s > 0.25 ? "▰▰▱▱" : "▰▱▱▱";
+                                }
+                                color: root.theme.accent
+                                font.pixelSize: root.theme.fsSmall
+                            }
+                            Text {
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: netRow.width - 190
+                                elide: Text.ElideRight
+                                text: netRow.modelData.name
+                                color: root.theme.text
+                                font.pixelSize: root.theme.fsNormal
+                            }
+                            Text {
+                                anchors.verticalCenter: parent.verticalCenter
+                                visible: netRow.modelData.security !== WifiSecurityType.Open
+                                text: "🔒"
+                                font.pixelSize: root.theme.fsSmall
+                            }
+                        }
+                        Text {
+                            anchors.right: parent.right
+                            anchors.rightMargin: 10
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: netRow.modelData.connected ? "Disconnect" : "Connect"
+                            color: root.theme.textDim
+                            font.pixelSize: root.theme.fsSmall
+                        }
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                const n = netRow.modelData;
+                                if (n.connected) { n.disconnect(); return; }
+                                if (n.known || n.security === WifiSecurityType.Open) n.connect();
+                                else root.pskTarget = n;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // password prompt overlay (secured + unknown networks)
+    Rectangle {
+        anchors.fill: parent
+        visible: root.pskTarget !== null
+        color: root.theme.bg
+        radius: root.theme.radiusSmall
+        Column {
+            anchors.centerIn: parent
+            width: parent.width - 24
+            spacing: root.theme.gap
+            Text {
+                width: parent.width
+                elide: Text.ElideRight
+                text: root.pskTarget ? ("Password for " + root.pskTarget.name) : ""
+                color: root.theme.text
+                font.pixelSize: root.theme.fsNormal
+            }
+            Rectangle {
+                width: parent.width
+                height: 34
+                radius: root.theme.radiusSmall
+                color: root.theme.bgHover
+                border.color: root.theme.border
+                TextInput {
+                    id: pskInput
+                    anchors.fill: parent
+                    anchors.leftMargin: 10
+                    anchors.rightMargin: 10
+                    verticalAlignment: TextInput.AlignVCenter
+                    echoMode: TextInput.Password
+                    color: root.theme.text
+                    font.pixelSize: root.theme.fsNormal
+                    clip: true
+                    focus: root.pskTarget !== null
+                    onAccepted: {
+                        if (root.pskTarget) root.pskTarget.connectWithPsk(text);
+                        root.pskTarget = null; text = "";
+                    }
+                }
+            }
+            Row {
+                anchors.right: parent.right
+                spacing: root.theme.gap
+                Text {
+                    text: "Cancel"
+                    color: root.theme.textDim
+                    font.pixelSize: root.theme.fsNormal
+                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                        onClicked: { root.pskTarget = null; pskInput.text = ""; } }
+                }
+                Text {
+                    text: "Connect"
+                    color: root.theme.accent
+                    font.pixelSize: root.theme.fsNormal
+                    font.bold: true
+                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            if (root.pskTarget) root.pskTarget.connectWithPsk(pskInput.text);
+                            root.pskTarget = null; pskInput.text = "";
+                        } }
+                }
+            }
+        }
+    }
+}
+#+end_src
+
+** VolumeMenu.qml
+#+begin_src qml :tangle VolumeMenu.qml
+pragma ComponentBehavior: Bound
+// VolumeMenu.qml — Devices tab (speakers = Audio/Sink, mics = Audio/Source) with
+// per-device volume/mute/set-default, and Applications tab (Stream/Output/Audio)
+// with per-stream volume/mute. Uses Quickshell.Services.Pipewire. Node audio is
+// kept live by the PwObjectTracker over every node.
+import QtQuick
+import Quickshell.Services.Pipewire
+
+Item {
+    id: root
+    required property var theme
+    property int tab: 0               // 0 = Devices, 1 = Applications
+
+    PwObjectTracker { objects: Pipewire.nodes ? Pipewire.nodes.values : [] }
+
+    function cls(n) { return (n && n.properties) ? (n.properties["media.class"] || "") : ""; }
+    readonly property var allNodes: Pipewire.nodes ? Pipewire.nodes.values : []
+    readonly property var sinks:    allNodes.filter(n => root.cls(n) === "Audio/Sink")
+    readonly property var sources:  allNodes.filter(n => root.cls(n) === "Audio/Source")
+    readonly property var streams:  allNodes.filter(n => root.cls(n) === "Stream/Output/Audio")
+
+    Column {
+        anchors.fill: parent
+        spacing: root.theme.gap
+
+        Row {                                   // tabs
+            spacing: 16
+            Repeater {
+                model: ["Devices", "Applications"]
+                delegate: Text {
+                    required property int index
+                    required property string modelData
+                    text: modelData
+                    color: root.tab === index ? root.theme.accent : root.theme.textDim
+                    font.pixelSize: root.theme.fsNormal
+                    font.bold: root.tab === index
+                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                        onClicked: root.tab = index }
+                }
+            }
+        }
+
+        Flickable {
+            width: parent.width
+            height: parent.height - 34
+            contentHeight: col.height
+            clip: true
+            Column {
+                id: col
+                width: parent.width
+                spacing: 12
+
+                Repeater {
+                    model: root.tab === 0 ? root.sinks.concat(root.sources) : root.streams
+                    delegate: Column {
+                        id: devCol
+                        required property var modelData
+                        width: col.width
+                        spacing: 4
+
+                        Row {
+                            width: parent.width
+                            spacing: 6
+                            Text {
+                                width: parent.width - 46
+                                elide: Text.ElideRight
+                                text: {
+                                    const n = devCol.modelData;
+                                    if (root.tab === 1)
+                                        return (n.properties && (n.properties["application.name"] || n.properties["media.name"])) || n.name;
+                                    return n.description || n.nickname || n.name;
+                                }
+                                color: root.theme.text
+                                font.pixelSize: root.theme.fsNormal
+                            }
+                            Text {                       // default device marker (devices tab)
+                                visible: root.tab === 0
+                                text: (devCol.modelData === Pipewire.defaultAudioSink
+                                       || devCol.modelData === Pipewire.defaultAudioSource) ? "●" : "○"
+                                color: root.theme.accent
+                                font.pixelSize: root.theme.fsSmall
+                                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        if (root.cls(devCol.modelData) === "Audio/Sink")
+                                            Pipewire.preferredDefaultAudioSink = devCol.modelData;
+                                        else
+                                            Pipewire.preferredDefaultAudioSource = devCol.modelData;
+                                    } }
+                            }
+                            Text {                       // mute toggle
+                                text: (devCol.modelData.audio && devCol.modelData.audio.muted) ? "🔇" : "🔊"
+                                font.pixelSize: root.theme.fsSmall
+                                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                                    onClicked: if (devCol.modelData.audio) devCol.modelData.audio.muted = !devCol.modelData.audio.muted }
+                            }
+                        }
+                        PillSlider {
+                            theme: root.theme
+                            width: parent.width
+                            value: devCol.modelData.audio ? devCol.modelData.audio.volume : 0
+                            onMoved: v => { if (devCol.modelData.audio) devCol.modelData.audio.volume = v; }
+                        }
+                    }
+                }
+                Text {
+                    visible: (root.tab === 0 ? (root.sinks.length + root.sources.length) : root.streams.length) === 0
+                    text: root.tab === 0 ? "No audio devices" : "No apps playing audio"
+                    color: root.theme.textDim
+                    font.pixelSize: root.theme.fsNormal
+                }
+            }
+        }
+    }
+}
+#+end_src
+
+** BluetoothMenu.qml
+#+begin_src qml :tangle BluetoothMenu.qml
+pragma ComponentBehavior: Bound
+// BluetoothMenu.qml — adapter power + scan toggles, then three sections:
+// Connected, Paired (known, not connected), Available (discovered). Connect /
+// disconnect / pair per row, battery % if reported. Uses Quickshell.Bluetooth.
+import QtQuick
+
+import Quickshell.Bluetooth
+
+Item {
+    id: root
+    required property var theme
+    readonly property var adapter: Bluetooth.defaultAdapter
+    readonly property var devices: Bluetooth.devices ? Bluetooth.devices.values : []
+
+    readonly property var connected: devices.filter(d => d.connected)
+    readonly property var paired:    devices.filter(d => d.paired && !d.connected)
+    readonly property var found:     devices.filter(d => !d.paired && !d.connected)
+
+    // a single device row, reused by all three sections
+    component DevRow: Rectangle {
+        required property var device
+        property var theme: root.theme
+        width: parent ? parent.width : 0
+        height: root.theme.rowHeight
+        radius: root.theme.radiusSmall
+        color: device.connected ? root.theme.accentDim : root.theme.bgHover
+        Row {
+            anchors.left: parent.left
+            anchors.leftMargin: 10
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: 8
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                text: device.name || device.deviceName || device.address
+                color: root.theme.text
+                font.pixelSize: root.theme.fsNormal
+            }
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                visible: device.batteryAvailable
+                text: Math.round(device.battery) + "%"
+                color: root.theme.textDim
+                font.pixelSize: root.theme.fsSmall
+            }
+        }
+        Text {
+            anchors.right: parent.right
+            anchors.rightMargin: 10
+            anchors.verticalCenter: parent.verticalCenter
+            text: device.connected ? "Disconnect" : (device.paired ? "Connect" : "Pair")
+            color: root.theme.textDim
+            font.pixelSize: root.theme.fsSmall
+        }
+        MouseArea {
+            anchors.fill: parent
+            cursorShape: Qt.PointingHandCursor
+            onClicked: {
+                if (device.connected) device.disconnect();
+                else if (device.paired) device.connect();
+                else device.pair();
+            }
+        }
+    }
+
+    component SectionLabel: Text {
+        color: root.theme.textDim
+        font.pixelSize: root.theme.fsSmall
+        font.bold: true
+    }
+
+    Column {
+        anchors.fill: parent
+        spacing: root.theme.gap
+
+        Row {                                   // header: power + scan
+            width: parent.width
+            spacing: root.theme.gap
+            Text {
+                text: "Bluetooth"
+                color: root.theme.text
+                font.pixelSize: root.theme.fsNormal
+                font.bold: true
+                anchors.verticalCenter: parent.verticalCenter
+            }
+            Item { width: parent.width - 160; height: 1 }
+            Text {
+                text: "Scan"
+                color: root.theme.textDim
+                font.pixelSize: root.theme.fsSmall
+                anchors.verticalCenter: parent.verticalCenter
+            }
+            PillToggle {
+                theme: root.theme
+                anchors.verticalCenter: parent.verticalCenter
+                checked: root.adapter ? root.adapter.discovering : false
+                onToggled: v => { if (root.adapter) root.adapter.discovering = v; }
+            }
+            PillToggle {
+                theme: root.theme
+                anchors.verticalCenter: parent.verticalCenter
+                checked: root.adapter ? root.adapter.enabled : false
+                onToggled: v => { if (root.adapter) root.adapter.enabled = v; }
+            }
+        }
+
+        Flickable {
+            width: parent.width
+            height: parent.height - 36
+            contentHeight: col.height
+            clip: true
+            Column {
+                id: col
+                width: parent.width
+                spacing: 4
+
+                SectionLabel { text: "Connected"; visible: root.connected.length > 0 }
+                Repeater { model: root.connected; delegate: DevRow { required property var modelData; device: modelData } }
+
+                Rectangle { width: parent.width; height: 1; color: root.theme.divider
+                    visible: root.connected.length > 0 && root.paired.length > 0 }
+
+                SectionLabel { text: "Paired"; visible: root.paired.length > 0 }
+                Repeater { model: root.paired; delegate: DevRow { required property var modelData; device: modelData } }
+
+                Rectangle { width: parent.width; height: 1; color: root.theme.divider
+                    visible: root.found.length > 0 && (root.connected.length + root.paired.length) > 0 }
+
+                SectionLabel { text: "Available"; visible: root.found.length > 0 }
+                Repeater { model: root.found; delegate: DevRow { required property var modelData; device: modelData } }
+            }
+        }
+    }
+}
+#+end_src
+
+** BatteryMenu.qml
+#+begin_src qml :tangle BatteryMenu.qml
+pragma ComponentBehavior: Bound
+// BatteryMenu.qml — every present power device (laptop battery, mouse, keyboard,
+// headphones, …) with themed icon, name, state and percentage. Uses
+// Quickshell.Services.UPower + Quickshell.iconPath for icons.
+import QtQuick
+import Quickshell
+import Quickshell.Widgets
+import Quickshell.Services.UPower
+
+Item {
+    id: root
+    required property var theme
+
+    readonly property var devs: {
+        const a = UPower.devices ? UPower.devices.values : [];
+        return a.filter(d => d.isPresent && d.type !== UPowerDeviceType.LinePower);
+    }
+
+    Flickable {
+        anchors.fill: parent
+        contentHeight: col.height
+        clip: true
+        Column {
+            id: col
+            width: parent.width
+            spacing: 12
+
+            Repeater {
+                model: root.devs
+                delegate: Row {
+                    id: devRow
+                    required property var modelData
+                    width: col.width
+                    spacing: 10
+
+                    IconImage {
+                        anchors.verticalCenter: parent.verticalCenter
+                        implicitSize: 28
+                        source: Quickshell.iconPath(devRow.modelData.iconName, "battery")
+                    }
+                    Column {
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: parent.width - 28 - 10 - 60
+                        Text {
+                            width: parent.width
+                            elide: Text.ElideRight
+                            text: (devRow.modelData.model && devRow.modelData.model.length)
+                                  ? devRow.modelData.model
+                                  : UPowerDeviceType.toString(devRow.modelData.type)
+                            color: root.theme.text
+                            font.pixelSize: root.theme.fsNormal
+                        }
+                        Text {
+                            text: UPowerDeviceState.toString(devRow.modelData.state)
+                            color: root.theme.textDim
+                            font.pixelSize: root.theme.fsSmall
+                        }
+                    }
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: Math.round(devRow.modelData.percentage) + "%"
+                        color: root.theme.text
+                        font.pixelSize: root.theme.fsLarge
+                        font.bold: true
+                    }
+                }
+            }
+            Text {
+                visible: root.devs.length === 0
+                text: "No battery devices"
+                color: root.theme.textDim
+                font.pixelSize: root.theme.fsNormal
+            }
+        }
+    }
+}
+#+end_src
+
+** winbridge.py
+Self-contained python glue (see [[*Open windows / taskbar][taskbar notes]]).
+#+begin_src python :tangle winbridge.py
+#!/usr/bin/env python
+# winbridge.py — feeds the pill its open-window list + the active window.
+#
+# Why this exists: KWin (Wayland) exposes NO window-list protocol to clients and
+# NO active-window over DBus. So we use two KDE APIs and glue them:
+#   * the KRunner "windows" runner (org.kde.KWin /WindowsRunner) lists windows
+#     (id, title, app-icon name) and is polled here;
+#   * a 3-line KWin script (loaded below via /Scripting) reports the active
+#     window's id whenever it changes, by calling our own org.kde.pill service.
+# We print one JSON line {"active": "{uuid}", "windows": [...]} per update; the
+# pill reads it on stdout. Launched by pill.qml as `python <shellDir>/winbridge.py`.
+import sys, os, json, atexit, tempfile
+from gi.repository import Gio, GLib
+
+bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+state = {"active": ""}
+PLUGIN = "quickshell-pill-active"
+
+# --- our DBus service: the KWin script calls Set(uuid) on active-window change ---
+NODE = ('<node><interface name="org.kde.pill">'
+        '<method name="Set"><arg type="s" direction="in"/></method>'
+        '</interface></node>')
+IFACE = Gio.DBusNodeInfo.new_for_xml(NODE).interfaces[0]
+
+def on_call(conn, sender, path, ifc, method, params, inv):
+    if method == "Set":
+        (u,) = params.unpack()
+        state["active"] = u
+        emit()
+    inv.return_value(None)
+
+def on_bus_acquired(conn, name):
+    conn.register_object("/Active", IFACE, on_call, None, None)
+    load_kwin_script()
+
+# --- the KWin script that reports workspace.activeWindow to us ---
+KWIN_JS = (
+    'function r(w){ callDBus("org.kde.pill","/Active","org.kde.pill","Set",'
+    ' w ? String(w.internalId) : ""); }\n'
+    'workspace.windowActivated.connect(r);\n'
+    'r(workspace.activeWindow);\n'
+)
+
+def kwin(method, variant):
+    try:
+        bus.call_sync("org.kde.KWin", "/Scripting", "org.kde.kwin.Scripting",
+                      method, variant, None, Gio.DBusCallFlags.NONE, 2000, None)
+    except Exception as e:
+        sys.stderr.write("winbridge: %s failed: %s\n" % (method, e))
+
+def load_kwin_script():
+    path = os.path.join(tempfile.gettempdir(), "quickshell_pill_active.js")
+    with open(path, "w") as f:
+        f.write(KWIN_JS)
+    kwin("unloadScript", GLib.Variant("(s)", (PLUGIN,)))   # clear a stale copy
+    kwin("loadScript", GLib.Variant("(ss)", (path, PLUGIN)))
+    kwin("start", None)
+
+@atexit.register
+def _cleanup():
+    kwin("unloadScript", GLib.Variant("(s)", (PLUGIN,)))
+
+# --- poll the KRunner windows runner for the window list ---
+def windows():
+    try:
+        res = bus.call_sync("org.kde.KWin", "/WindowsRunner", "org.kde.krunner1",
+                            "Match", GLib.Variant("(s)", ("",)),
+                            GLib.VariantType("(a(sssida{sv}))"),
+                            Gio.DBusCallFlags.NONE, 3000, None)
+    except Exception:
+        return []
+    seen = {}
+    for m in res.unpack()[0]:
+        mid, text, icon = m[0], m[1], m[2]      # id, title, icon name
+        if mid.startswith("0_") and mid not in seen:
+            seen[mid] = {"id": mid, "uuid": mid[2:], "title": text, "icon": icon}
+    return sorted(seen.values(), key=lambda d: d["id"])
+
+def emit():
+    line = json.dumps({"active": state["active"], "windows": windows()}, ensure_ascii=False)
+    sys.stdout.write(line + "\n")
+    sys.stdout.flush()
+
+def tick():
+    emit()
+    return True
+
+Gio.bus_own_name(Gio.BusType.SESSION, "org.kde.pill",
+                 Gio.BusNameOwnerFlags.ALLOW_REPLACEMENT | Gio.BusNameOwnerFlags.REPLACE,
+                 on_bus_acquired, None, None)
+GLib.timeout_add_seconds(1, tick)
+GLib.MainLoop().run()
+#+end_src
+
+** pill.qml
 #+begin_src qml :tangle pill.qml
 pragma ComponentBehavior: Bound
 // ----------------------------------------------------------------------------
-// pill.qml — GENERATED by tangling qs-pill-docs.org. Edit the .org, not this.
-// A morphing "pill" overlay for KDE Plasma 6 / KWin / Wayland.
+// pill.qml — morphing "pill" overlay for KDE Plasma 6 / KWin / Wayland.
 //
-// v1 scope (all proven to work on this machine):
-//   * a layer-shell window pinned top-center, ALWAYS on top, reserving NO space
-//   * collapsed: shows the clock
-//   * hovered:   morphs wider/taller and reveals:
-//       - virtual-desktop dots on the top-left (real KWin desktops, click to switch)
-//       - volume + battery on the top-right (native Quickshell services)
-//       - the system tray on a second row
-//   * clicks pass THROUGH the transparent area around the pill (input mask)
+// Stages: collapsed (hh:mm) -> hovered (dashboard, two balanced rows) -> clicked
+// (control panel). See qs-pill-docs.org "How the pill works" for the full notes.
 //
-// Deferred (need a KWin-script bridge — see the .org capability table):
-//   * taskbar of open windows / pinned apps
-//   * hide-when-a-fullscreen-window-is-focused
-//   * notification takeover (would require disabling Plasma's notifier)
-//
-// Run with:   qs -p quickshell/pill.qml      (from the repo root)
+// Run with:  qs -p quickshell/pill.qml
 // ----------------------------------------------------------------------------
 import QtQuick
 import Quickshell
 import Quickshell.Wayland
 import Quickshell.Io
+import Quickshell.Widgets
 import Quickshell.Services.SystemTray
 import Quickshell.Services.Pipewire
 import Quickshell.Services.UPower
 
 ShellRoot {
     id: root
-    // -- Shared state for the KWin virtual desktops, filled in over DBus below.
-    // desktops: array of { id: string, name: string }   current: string (id)
     property var desktops: []
     property string currentDesktop: ""
+    property var windows: []          // [{id, uuid, title, icon}]
+    property string activeWindow: ""  // active window uuid "{...}"
 
-    // ---- KWin virtual desktops via DBus (org.kde.KWin /VirtualDesktopManager) ----
-    // Quickshell has no native KWin-desktop binding and KWin does not expose the
-    // ext-workspace protocol, so we talk to KWin's documented DBus interface
-    // through `gdbus`. This is the supported path for KWin, not guesswork.
+    Theme { id: theme }
+    // keep the default sink bound so the dashboard volume icon reflects mute live
+    PwObjectTracker { objects: Pipewire.defaultAudioSink ? [Pipewire.defaultAudioSink] : [] }
 
-    // 1) Fetch the desktop list once at startup (and whenever it changes).
+    // ---- KWin virtual desktops over DBus (org.kde.KWin /VirtualDesktopManager) ----
     Process {
         id: fetchDesktops
+        running: true
         command: ["gdbus", "call", "--session", "--dest", "org.kde.KWin",
             "--object-path", "/VirtualDesktopManager", "--method",
             "org.freedesktop.DBus.Properties.Get",
             "org.kde.KWin.VirtualDesktopManager", "desktops"]
-        running: true
         stdout: StdioCollector {
             onStreamFinished: {
-                // text looks like: (<[(uint32 0, 'id', 'Desktop 1'), ...]>,)
                 const out = [];
-                const re = /\(\s*uint32\s+\d+\s*,\s*'([^']*)'\s*,\s*'([^']*)'\s*\)/g;
+                const re = /\(\s*(?:uint32\s+)?\d+\s*,\s*'([^']*)'\s*,\s*'([^']*)'\s*\)/g;
                 let m;
                 while ((m = re.exec(this.text)) !== null)
                     out.push({ id: m[1], name: m[2] });
@@ -190,24 +999,16 @@ ShellRoot {
             }
         }
     }
-
-    // 2) Fetch which desktop is current (and refresh on the signal below).
     Process {
-        id: fetchCurrent
+        running: true
         command: ["gdbus", "call", "--session", "--dest", "org.kde.KWin",
             "--object-path", "/VirtualDesktopManager", "--method",
             "org.freedesktop.DBus.Properties.Get",
             "org.kde.KWin.VirtualDesktopManager", "current"]
-        running: true
         stdout: StdioCollector {
-            onStreamFinished: {
-                const m = this.text.match(/'([^']*)'/);
-                if (m) root.currentDesktop = m[1];
-            }
+            onStreamFinished: { const m = this.text.match(/'([^']*)'/); if (m) root.currentDesktop = m[1]; }
         }
     }
-
-    // 3) Listen for KWin's currentChanged signal so the dots stay live without polling.
     Process {
         running: true
         command: ["gdbus", "monitor", "--session", "--dest", "org.kde.KWin",
@@ -215,31 +1016,63 @@ ShellRoot {
         stdout: SplitParser {
             onRead: line => {
                 if (line.indexOf("currentChanged") !== -1) {
-                    const m = line.match(/'([^']*)'/);
-                    if (m) root.currentDesktop = m[1];
-                } else if (line.indexOf("desktopCreated") !== -1
-                        || line.indexOf("desktopRemoved") !== -1) {
+                    const m = line.match(/'([^']*)'/); if (m) root.currentDesktop = m[1];
+                } else if (line.indexOf("desktopCreated") !== -1 || line.indexOf("desktopRemoved") !== -1) {
                     fetchDesktops.running = true;
                 }
             }
         }
     }
-
-    // Switch desktop by id (sets the writable `current` property over DBus).
     function switchDesktop(id) {
         switchProc.command = ["gdbus", "call", "--session", "--dest", "org.kde.KWin",
             "--object-path", "/VirtualDesktopManager", "--method",
             "org.freedesktop.DBus.Properties.Set",
-            "org.kde.KWin.VirtualDesktopManager", "current",
-            "<'" + id + "'>"];
+            "org.kde.KWin.VirtualDesktopManager", "current", "<'" + id + "'>"];
         switchProc.running = true;
     }
     Process { id: switchProc }
 
-    // Keep the default audio sink "bound" so its volume/mute stay live.
-    PwObjectTracker { objects: [Pipewire.defaultAudioSink] }
+    // ---- open windows (taskbar) + active window via winbridge.py ----
+    // (KRunner windows runner for the list + a tiny KWin script for the active
+    //  window — see winbridge.py. Emits one JSON line per update.)
+    Process {
+        running: true
+        command: ["python", Quickshell.shellPath("winbridge.py")]
+        stdout: SplitParser {
+            onRead: line => {
+                try {
+                    const d = JSON.parse(line);
+                    root.windows = d.windows;
+                    root.activeWindow = d.active;
+                } catch (e) {}
+            }
+        }
+    }
+    function activateWindow(id) {
+        runProc.command = ["gdbus", "call", "--session", "--dest", "org.kde.KWin",
+            "--object-path", "/WindowsRunner", "--method", "org.kde.krunner1.Run", id, ""];
+        runProc.running = true;
+    }
+    Process { id: runProc }
+    Process { id: launchProc }
+    function launch(execString) { launchProc.command = ["sh", "-c", execString]; launchProc.startDetached(); }
 
-    // ---- One pill per monitor ----
+    // group windows by app (icon name); preserve first-seen order
+    readonly property var appGroups: {
+        const g = {}, order = [];
+        for (const w of windows) {
+            if (!g[w.icon]) { g[w.icon] = { icon: w.icon, wins: [] }; order.push(w.icon); }
+            g[w.icon].wins.push(w);
+        }
+        return order.map(k => g[k]);
+    }
+    function groupActive(grp) { return grp.wins.some(w => w.uuid === root.activeWindow); }
+    function cycleGroup(grp) {
+        const i = grp.wins.findIndex(w => w.uuid === root.activeWindow);
+        root.activateWindow(grp.wins[i >= 0 ? (i + 1) % grp.wins.length : 0].id);
+    }
+
+    // ---- one full-screen overlay window per monitor ----
     Variants {
         model: Quickshell.screens
 
@@ -248,126 +1081,295 @@ ShellRoot {
             required property var modelData
             screen: modelData
 
-            // Float on top of everything, reserve no space, full-width invisible strip.
             WlrLayershell.layer: WlrLayer.Overlay
             exclusionMode: ExclusionMode.Ignore
             color: "transparent"
-            anchors { top: true; left: true; right: true }
-            implicitHeight: 220          // tall enough to host the expanded pill
-            // Only the pill itself should catch clicks; the rest passes through.
-            mask: Region { item: pill }
+            anchors { top: true; bottom: true; left: true; right: true }
+            mask: (win.open || win.ctxGroup !== null) ? fullRegion : pillRegion
 
-            property bool expanded: hover.hovered
+            property bool open: false
+            property var ctxGroup: null   // app group whose right-click menu is shown
+            property bool dash: open || hover.hovered || ctxGroup !== null
+            property int menu: 0          // 0 net, 1 vol, 2 bt, 3 batt, 4 notif
+
+            Region { id: pillRegion; item: pill }
+            Region { id: fullRegion; item: backdrop }
+
+            MouseArea {
+                id: backdrop
+                anchors.fill: parent
+                enabled: win.open || win.ctxGroup !== null
+                onClicked: { win.open = false; win.ctxGroup = null; }
+            }
 
             Item {
                 id: pill
                 anchors.horizontalCenter: parent.horizontalCenter
                 y: 6
-                width: win.expanded ? 360 : 150
-                height: win.expanded ? 120 : 34
-                Behavior on width  { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
-                Behavior on height { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
+                width: win.dash ? 384 : 96
+                height: win.open ? 470 : (win.dash ? 104 : 28)
+                Behavior on width  { NumberAnimation { duration: theme.anim; easing.type: Easing.OutCubic } }
+                Behavior on height { NumberAnimation { duration: theme.anim; easing.type: Easing.OutCubic } }
 
                 HoverHandler { id: hover }
 
                 Rectangle {
                     anchors.fill: parent
-                    radius: height / 2 > 24 ? 24 : height / 2
-                    color: "#0f1115"
-                    border.color: "#2a2f3a"
+                    radius: Math.min(theme.radius, height / 2)
+                    color: theme.bg
+                    border.color: theme.border
                     border.width: 1
-                    Behavior on radius { NumberAnimation { duration: 220 } }
+                    Behavior on radius { NumberAnimation { duration: theme.anim } }
                 }
 
-                // ---- Collapsed content: the clock ----
+                MouseArea { anchors.fill: parent; enabled: win.dash && !win.open; onClicked: win.open = true }
+                MouseArea { anchors.fill: parent; enabled: win.open; onClicked: {} }
+
+                // ---- collapsed: clock (hh:mm) ----
                 Text {
                     anchors.centerIn: parent
-                    visible: !win.expanded
-                    color: "#e6e6e6"
-                    font.pixelSize: 15
-                    font.family: "monospace"
-                    text: clock.text
+                    visible: !win.dash
+                    text: root.clockShort
+                    color: theme.text
+                    font.family: theme.mono
+                    font.pixelSize: theme.fsNormal
                 }
 
-                // ---- Expanded content ----
+                // ================= Row 1: desktops (left) | apps (right) =================
                 Item {
-                    anchors.fill: parent
-                    anchors.margins: 12
-                    opacity: win.expanded ? 1 : 0
+                    x: theme.pad; y: 12
+                    width: pill.width - theme.pad * 2
+                    height: 26
+                    opacity: win.dash ? 1 : 0
                     visible: opacity > 0
-                    Behavior on opacity { NumberAnimation { duration: 160 } }
+                    Behavior on opacity { NumberAnimation { duration: theme.animFast } }
 
-                    // Top-left: virtual desktop dots (real KWin desktops).
-                    Row {
-                        id: vdRow
-                        anchors.top: parent.top
+                    Row {                                   // virtual desktops
                         anchors.left: parent.left
+                        anchors.verticalCenter: parent.verticalCenter
                         spacing: 8
                         Repeater {
                             model: root.desktops
                             delegate: Rectangle {
                                 required property var modelData
-                                width: 14; height: 14; radius: 7
-                                color: modelData.id === root.currentDesktop ? "#7aa2f7" : "transparent"
-                                border.color: "#7aa2f7"; border.width: 2
+                                width: 13; height: 13; radius: 7
+                                color: modelData.id === root.currentDesktop ? theme.accent : "transparent"
+                                border.color: theme.accent; border.width: 2
+                                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                                    onClicked: root.switchDesktop(modelData.id) }
+                            }
+                        }
+                    }
+
+                    Row {                                   // grouped app icons (taskbar)
+                        anchors.right: parent.right
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: 6
+                        Repeater {
+                            model: root.appGroups
+                            delegate: Item {
+                                id: appItem
+                                required property var modelData
+                                width: 26; height: 26
+                                IconImage {
+                                    anchors.top: parent.top
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                    implicitSize: 22
+                                    source: Quickshell.iconPath(appItem.modelData.icon, "application-x-executable")
+                                }
+                                Text {                       // window-count badge (2+ windows)
+                                    visible: appItem.modelData.wins.length > 1
+                                    anchors.top: parent.top; anchors.right: parent.right
+                                    text: appItem.modelData.wins.length
+                                    color: theme.text; font.pixelSize: 9; font.bold: true
+                                }
+                                Rectangle {                  // active / running indicator
+                                    anchors.bottom: parent.bottom
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                    height: 2; radius: 1
+                                    width: root.groupActive(appItem.modelData) ? 16 : 6
+                                    color: root.groupActive(appItem.modelData) ? theme.accent : theme.textDim
+                                    Behavior on width { NumberAnimation { duration: theme.animFast } }
+                                }
                                 MouseArea {
                                     anchors.fill: parent
                                     cursorShape: Qt.PointingHandCursor
-                                    onClicked: root.switchDesktop(modelData.id)
+                                    acceptedButtons: Qt.LeftButton | Qt.RightButton
+                                    onClicked: mouse => {
+                                        if (mouse.button === Qt.LeftButton) root.cycleGroup(appItem.modelData);
+                                        else win.ctxGroup = appItem.modelData;
+                                    }
                                 }
                             }
                         }
                     }
+                }
 
-                    // Top-right: volume + battery (native services).
-                    Row {
-                        anchors.top: parent.top
-                        anchors.right: parent.right
-                        spacing: 14
-                        Text {
-                            color: "#e6e6e6"; font.pixelSize: 13
-                            text: {
-                                const s = Pipewire.defaultAudioSink;
-                                if (!s || !s.audio) return "🔊 --";
-                                if (s.audio.muted) return "🔇";
-                                return "🔊 " + Math.round(s.audio.volume * 100) + "%";
-                            }
-                        }
-                        Text {
-                            color: "#e6e6e6"; font.pixelSize: 13
-                            text: {
-                                const d = UPower.displayDevice;
-                                if (!d || !d.isLaptopBattery) return "";
-                                return "🔋 " + Math.round(d.percentage) + "%";
-                            }
-                        }
+                // ============ Row 2: date/time (left) | status + tray (right) ============
+                Item {
+                    x: theme.pad; y: 62
+                    width: pill.width - theme.pad * 2
+                    height: 24
+                    opacity: (win.dash && !win.open) ? 1 : 0
+                    visible: opacity > 0
+                    Behavior on opacity { NumberAnimation { duration: theme.animFast } }
+
+                    Text {                                   // date/time (left)
+                        anchors.left: parent.left
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: root.clockText
+                        color: theme.textDim; font.family: theme.mono; font.pixelSize: theme.fsSmall
                     }
 
-                    // Second row: the system tray.
-                    Row {
-                        anchors.left: parent.left
-                        anchors.bottom: parent.bottom
-                        spacing: 10
-                        Repeater {
+                    Row {                                    // status icons + system tray (right)
+                        anchors.right: parent.right
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: 12
+
+                        Repeater {                           // status icons -> open panel to that menu
+                            model: [
+                                { ic: "network-wireless", menu: 0 },
+                                { ic: (Pipewire.defaultAudioSink && Pipewire.defaultAudioSink.audio && Pipewire.defaultAudioSink.audio.muted)
+                                       ? "audio-volume-muted" : "audio-volume-high", menu: 1 },
+                                { ic: "bluetooth", menu: 2 },
+                                { ic: (UPower.displayDevice && UPower.displayDevice.iconName) ? UPower.displayDevice.iconName : "battery", menu: 3 }
+                            ]
+                            delegate: IconImage {
+                                required property var modelData
+                                implicitSize: 18
+                                source: Quickshell.iconPath(modelData.ic, "application-x-executable")
+                                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                                    onClicked: { win.menu = modelData.menu; win.open = true; } }
+                            }
+                        }
+                        Repeater {                           // system tray
                             model: SystemTray.items
                             delegate: Item {
                                 required property SystemTrayItem modelData
-                                width: 20; height: 20
-                                Image {
-                                    anchors.fill: parent
-                                    source: modelData.icon
-                                    fillMode: Image.PreserveAspectFit
-                                }
+                                width: 18; height: 18
+                                Image { anchors.fill: parent; source: modelData.icon; fillMode: Image.PreserveAspectFit }
                                 MouseArea {
                                     anchors.fill: parent
                                     acceptedButtons: Qt.LeftButton | Qt.RightButton
                                     onClicked: mouse => {
-                                        if (mouse.button === Qt.LeftButton)
-                                            modelData.activate();
-                                        else
-                                            modelData.display(win, width / 2, height);
+                                        if (mouse.button === Qt.LeftButton) modelData.activate();
+                                        else modelData.display(win, width / 2, height);
                                     }
                                 }
+                            }
+                        }
+                    }
+                }
+
+                // ===================== control panel (open) =====================
+                Item {
+                    x: theme.pad; y: 46
+                    width: pill.width - theme.pad * 2
+                    height: pill.height - 46 - theme.pad
+                    opacity: win.open ? 1 : 0
+                    visible: opacity > 0
+                    Behavior on opacity { NumberAnimation { duration: theme.anim } }
+
+                    Rectangle { width: parent.width; height: 1; color: theme.divider }
+
+                    Column {                          // left icon rail
+                        id: rail
+                        y: 12
+                        spacing: 8
+                        Repeater {
+                            model: [
+                                { ic: "network-wireless",                 i: 0 },
+                                { ic: "audio-volume-high",                i: 1 },
+                                { ic: "bluetooth",                        i: 2 },
+                                { ic: "battery",                          i: 3 },
+                                { ic: "preferences-desktop-notification", i: 4 }
+                            ]
+                            delegate: Rectangle {
+                                required property var modelData
+                                width: theme.railWidth - 8; height: theme.railWidth - 8
+                                radius: theme.radiusSmall
+                                color: win.menu === modelData.i ? theme.accentDim : "transparent"
+                                IconImage {
+                                    anchors.centerIn: parent; implicitSize: 22
+                                    source: Quickshell.iconPath(modelData.ic, "application-x-executable")
+                                }
+                                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                                    onClicked: win.menu = modelData.i }
+                            }
+                        }
+                    }
+
+                    Item {                            // menu pane
+                        x: theme.railWidth + 12; y: 14
+                        width: parent.width - theme.railWidth - 12
+                        height: parent.height - 26
+                        Loader {
+                            anchors.fill: parent
+                            active: win.open
+                            sourceComponent: win.menu === 0 ? cNet
+                                           : win.menu === 1 ? cVol
+                                           : win.menu === 2 ? cBt
+                                           : win.menu === 3 ? cBatt : cNotif
+                        }
+                    }
+                }
+            }
+
+            // ===================== app right-click menu =====================
+            Loader {
+                active: win.ctxGroup !== null
+                anchors.horizontalCenter: parent.horizontalCenter
+                y: pill.y + pill.height + 6
+                sourceComponent: Rectangle {
+                    id: ctxCard
+                    width: 240
+                    height: ctxCol.height + 16
+                    radius: theme.radiusSmall
+                    color: theme.bgElevated
+                    border.color: theme.border; border.width: 1
+                    readonly property var entry: win.ctxGroup ? DesktopEntries.heuristicLookup(win.ctxGroup.icon) : null
+
+                    Column {
+                        id: ctxCol
+                        x: 8; y: 8
+                        width: parent.width - 16
+                        spacing: 2
+
+                        Text {
+                            width: parent.width; elide: Text.ElideRight
+                            text: ctxCard.entry ? ctxCard.entry.name : (win.ctxGroup ? win.ctxGroup.icon : "")
+                            color: theme.textDim; font.pixelSize: theme.fsSmall; font.bold: true
+                            bottomPadding: 4
+                        }
+                        Repeater {                        // launcher actions (New Window, …)
+                            model: ctxCard.entry ? ctxCard.entry.actions : []
+                            delegate: Rectangle {
+                                required property var modelData
+                                width: ctxCol.width; height: 28; radius: theme.radiusSmall
+                                color: ma.containsMouse ? theme.bgHover : "transparent"
+                                Text {
+                                    anchors.verticalCenter: parent.verticalCenter; x: 8
+                                    text: modelData.name; color: theme.text; font.pixelSize: theme.fsNormal
+                                }
+                                MouseArea { id: ma; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                                    onClicked: { root.launch(modelData.execString); win.ctxGroup = null; } }
+                            }
+                        }
+                        Rectangle { width: parent.width; height: 1; color: theme.divider
+                            visible: win.ctxGroup !== null && win.ctxGroup.wins.length > 0 }
+                        Repeater {                        // this app's windows (click to focus)
+                            model: win.ctxGroup ? win.ctxGroup.wins : []
+                            delegate: Rectangle {
+                                required property var modelData
+                                width: ctxCol.width; height: 28; radius: theme.radiusSmall
+                                color: wma.containsMouse ? theme.bgHover : "transparent"
+                                Text {
+                                    anchors.verticalCenter: parent.verticalCenter; x: 8
+                                    width: parent.width - 16; elide: Text.ElideRight
+                                    text: modelData.title; color: theme.text; font.pixelSize: theme.fsSmall
+                                }
+                                MouseArea { id: wma; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                                    onClicked: { root.activateWindow(modelData.id); win.ctxGroup = null; } }
                             }
                         }
                     }
@@ -376,30 +1378,44 @@ ShellRoot {
         }
     }
 
-    // Clock source, ticking every second.
+    // ---- menu components ----
+    Component { id: cNet;  NetworkMenu   { theme: theme } }
+    Component { id: cVol;  VolumeMenu    { theme: theme } }
+    Component { id: cBt;   BluetoothMenu { theme: theme } }
+    Component { id: cBatt; BatteryMenu   { theme: theme } }
+    Component { id: cNotif; Item {
+        Text {
+            anchors.centerIn: parent
+            horizontalAlignment: Text.AlignHCenter
+            text: "Notification history\n(coming soon)"
+            color: theme.textDim; font.pixelSize: theme.fsNormal
+        }
+    } }
+
+    // ---- clock ----
     SystemClock { id: sysclock; precision: SystemClock.Seconds }
-    QtObject {
-        id: clock
-        property string text: Qt.formatDateTime(sysclock.date, "ddd  hh:mm:ss")
-    }
+    readonly property string clockText: Qt.formatDateTime(sysclock.date, "ddd  hh:mm:ss")
+    readonly property string clockShort: Qt.formatDateTime(sysclock.date, "hh:mm")
 }
 #+end_src
 
-* Tangling (how to regenerate =pill.qml=)
+* Tangling (how to regenerate the =.qml= files)
 
-This file owns the code; =pill.qml= is *generated*. After editing the source
-block:
+This file owns the code; the =.qml= files *and* =winbridge.py= are *generated*.
+=C-c C-v t= (=org-babel-tangle=) tangles *all* blocks at once to their =:tangle=
+targets in this directory. (Editing a generated file directly is lost on the next
+tangle — change it here instead.) Note: launching the pill makes =winbridge.py=
+load a small KWin script (=quickshell-pill-active=); it is unloaded when the
+bridge exits. After editing any block:
 
-- In Emacs, with this file open: =C-c C-v t= (=org-babel-tangle=) — tangles all
-  blocks here to =pill.qml= in this directory.
-- Or from anywhere: =M-x org-babel-tangle-file RET .../quickshell/qs-pill-docs.org RET=.
+- In Emacs with this file open: =C-c C-v t=.
 - Or batch / shell:
   =emacs --batch -l org -eval '(org-babel-tangle-file "quickshell/qs-pill-docs.org")'=
 
-Then validate the result actually loads:
-=qs -p quickshell/pill.qml= (Ctrl-C to stop).
+Then validate:  =qs -p quickshell/pill.qml=  (Ctrl-C to stop). A clean load prints
+"Configuration Loaded" with no WARN lines.
 
-Tangling is *manual on purpose* (matches how I tangle the rest of my config). If
-I ever want auto-tangle on save, add to the very top of this file:
+Tangling is *manual on purpose* (matches how I tangle the rest of my config). For
+auto-tangle on save, add to the very top of this file:
 =# -*- eval: (add-hook 'after-save-hook #'org-babel-tangle nil t) -*-= and accept
 the local-variable prompt — but the default here is manual.
