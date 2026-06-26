@@ -244,8 +244,9 @@ QtObject {
     readonly property int railWidth:     44
     readonly property int rowHeight:     38
 
-    // ---- fonts ----
-    readonly property string mono:       "monospace"
+    // ---- fonts ----  (swap `family` to test fonts; `mono` is for figures/clock)
+    readonly property string family:     "Inter"
+    readonly property string mono:       "Inter"
     readonly property int fsSmall:       11
     readonly property int fsNormal:      13
     readonly property int fsLarge:       15
@@ -387,6 +388,7 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
             text: "‹"
             color: chevMa.containsMouse ? root.theme.text : root.theme.textDim
+            font.family: root.theme.family
             font.pixelSize: root.theme.fsLarge + 6
             font.bold: true
             MouseArea {
@@ -402,6 +404,7 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
             text: root.title
             color: root.theme.text
+            font.family: root.theme.family
             font.pixelSize: root.theme.fsNormal
             font.bold: true
         }
@@ -494,6 +497,7 @@ Item {
                                     return s > 0.75 ? "▰▰▰▰" : s > 0.5 ? "▰▰▰▱" : s > 0.25 ? "▰▰▱▱" : "▰▱▱▱";
                                 }
                                 color: root.theme.accent
+                                font.family: root.theme.family
                                 font.pixelSize: root.theme.fsSmall
                             }
                             Text {
@@ -502,12 +506,14 @@ Item {
                                 elide: Text.ElideRight
                                 text: netRow.modelData.name
                                 color: root.theme.text
+                                font.family: root.theme.family
                                 font.pixelSize: root.theme.fsNormal
                             }
                             Text {
                                 anchors.verticalCenter: parent.verticalCenter
                                 visible: netRow.modelData.security !== WifiSecurityType.Open
                                 text: "🔒"
+                                font.family: root.theme.family
                                 font.pixelSize: root.theme.fsSmall
                             }
                         }
@@ -517,6 +523,7 @@ Item {
                             anchors.verticalCenter: parent.verticalCenter
                             text: netRow.modelData.connected ? "Disconnect" : "Connect"
                             color: root.theme.textDim
+                            font.family: root.theme.family
                             font.pixelSize: root.theme.fsSmall
                         }
                         MouseArea {
@@ -550,6 +557,7 @@ Item {
                 elide: Text.ElideRight
                 text: root.pskTarget ? ("Password for " + root.pskTarget.name) : ""
                 color: root.theme.text
+                font.family: root.theme.family
                 font.pixelSize: root.theme.fsNormal
             }
             Rectangle {
@@ -566,6 +574,7 @@ Item {
                     verticalAlignment: TextInput.AlignVCenter
                     echoMode: TextInput.Password
                     color: root.theme.text
+                    font.family: root.theme.family
                     font.pixelSize: root.theme.fsNormal
                     clip: true
                     focus: root.pskTarget !== null
@@ -581,6 +590,7 @@ Item {
                 Text {
                     text: "Cancel"
                     color: root.theme.textDim
+                    font.family: root.theme.family
                     font.pixelSize: root.theme.fsNormal
                     MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor
                         onClicked: { root.pskTarget = null; pskInput.text = ""; } }
@@ -588,6 +598,7 @@ Item {
                 Text {
                     text: "Connect"
                     color: root.theme.accent
+                    font.family: root.theme.family
                     font.pixelSize: root.theme.fsNormal
                     font.bold: true
                     MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor
@@ -645,6 +656,7 @@ Item {
                     required property string modelData
                     text: modelData
                     color: root.tab === index ? root.theme.accent : root.theme.textDim
+                    font.family: root.theme.family
                     font.pixelSize: root.theme.fsNormal
                     font.bold: root.tab === index
                     MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor
@@ -684,6 +696,7 @@ Item {
                                     return n.description || n.nickname || n.name;
                                 }
                                 color: root.theme.text
+                                font.family: root.theme.family
                                 font.pixelSize: root.theme.fsNormal
                             }
                             Text {                       // default device marker (devices tab)
@@ -691,6 +704,7 @@ Item {
                                 text: (devCol.modelData === Pipewire.defaultAudioSink
                                        || devCol.modelData === Pipewire.defaultAudioSource) ? "●" : "○"
                                 color: root.theme.accent
+                                font.family: root.theme.family
                                 font.pixelSize: root.theme.fsSmall
                                 MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor
                                     onClicked: {
@@ -702,6 +716,7 @@ Item {
                             }
                             Text {                       // mute toggle
                                 text: (devCol.modelData.audio && devCol.modelData.audio.muted) ? "🔇" : "🔊"
+                                font.family: root.theme.family
                                 font.pixelSize: root.theme.fsSmall
                                 MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor
                                     onClicked: if (devCol.modelData.audio) devCol.modelData.audio.muted = !devCol.modelData.audio.muted }
@@ -719,6 +734,7 @@ Item {
                     visible: (root.tab === 0 ? (root.sinks.length + root.sources.length) : root.streams.length) === 0
                     text: root.tab === 0 ? "No audio devices" : "No apps playing audio"
                     color: root.theme.textDim
+                    font.family: root.theme.family
                     font.pixelSize: root.theme.fsNormal
                 }
             }
@@ -765,6 +781,7 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 text: device.name || device.deviceName || device.address
                 color: root.theme.text
+                font.family: root.theme.family
                 font.pixelSize: root.theme.fsNormal
             }
             Text {
@@ -772,6 +789,7 @@ Item {
                 visible: device.batteryAvailable
                 text: Math.round(device.battery) + "%"
                 color: root.theme.textDim
+                font.family: root.theme.family
                 font.pixelSize: root.theme.fsSmall
             }
         }
@@ -781,6 +799,7 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
             text: device.connected ? "Disconnect" : (device.paired ? "Connect" : "Pair")
             color: root.theme.textDim
+            font.family: root.theme.family
             font.pixelSize: root.theme.fsSmall
         }
         MouseArea {
@@ -796,6 +815,7 @@ Item {
 
     component SectionLabel: Text {
         color: root.theme.textDim
+        font.family: root.theme.family
         font.pixelSize: root.theme.fsSmall
         font.bold: true
     }
@@ -812,6 +832,7 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 text: "Scan"
                 color: root.theme.textDim
+                font.family: root.theme.family
                 font.pixelSize: root.theme.fsSmall
             }
             PillToggle {
@@ -922,11 +943,13 @@ Item {
                                   ? devRow.modelData.model
                                   : UPowerDeviceType.toString(devRow.modelData.type)
                             color: root.theme.text
+                            font.family: root.theme.family
                             font.pixelSize: root.theme.fsNormal
                         }
                         Text {
                             text: UPowerDeviceState.toString(devRow.modelData.state)
                             color: root.theme.textDim
+                            font.family: root.theme.family
                             font.pixelSize: root.theme.fsSmall
                         }
                     }
@@ -934,6 +957,7 @@ Item {
                         anchors.verticalCenter: parent.verticalCenter
                         text: Math.round(devRow.modelData.percentage) + "%"
                         color: root.theme.text
+                        font.family: root.theme.family
                         font.pixelSize: root.theme.fsLarge
                         font.bold: true
                     }
@@ -943,6 +967,7 @@ Item {
                 visible: root.devs.length === 0
                 text: "No battery devices"
                 color: root.theme.textDim
+                font.family: root.theme.family
                 font.pixelSize: root.theme.fsNormal
             }
         }
@@ -1076,6 +1101,7 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
             verticalAlignment: TextInput.AlignVCenter
             color: root.theme.text
+            font.family: root.theme.family
             font.pixelSize: root.theme.fsNormal
             clip: true
             selectByMouse: true
@@ -1090,6 +1116,7 @@ Item {
                 visible: search.text.length === 0
                 text: "Search apps  ·  type a sum to calculate"
                 color: root.theme.textDim
+                font.family: root.theme.family
                 font.pixelSize: root.theme.fsNormal
                 elide: Text.ElideRight
             }
@@ -1142,6 +1169,7 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 text: "= " + root.calcResult
                 color: root.theme.accent
+                font.family: root.theme.family
                 font.pixelSize: root.theme.fsLarge
                 font.bold: true
             }
@@ -1150,6 +1178,7 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 text: "copy"
                 color: root.theme.textDim
+                font.family: root.theme.family
                 font.pixelSize: root.theme.fsSmall
             }
             MouseArea {
@@ -1205,6 +1234,7 @@ Item {
                             elide: Text.ElideRight
                             text: appRow.modelData.name
                             color: root.theme.text
+                            font.family: root.theme.family
                             font.pixelSize: root.theme.fsNormal
                         }
                     }
@@ -1215,6 +1245,7 @@ Item {
                         visible: root.isFav(appRow.modelData) || rowMa.containsMouse
                         text: root.isFav(appRow.modelData) ? "★" : "☆"
                         color: root.isFav(appRow.modelData) ? root.theme.accent : root.theme.textDim
+                        font.family: root.theme.family
                         font.pixelSize: root.theme.fsNormal
                         MouseArea {
                             anchors.fill: parent; anchors.margins: -6
@@ -1284,6 +1315,7 @@ Item {
                                 wrapMode: Text.Wrap
                                 text: appTile.modelData.name
                                 color: root.theme.text
+                                font.family: root.theme.family
                                 font.pixelSize: root.theme.fsSmall
                             }
                         }
@@ -1293,6 +1325,7 @@ Item {
                             visible: root.isFav(appTile.modelData) || tileMa.containsMouse
                             text: root.isFav(appTile.modelData) ? "★" : "☆"
                             color: root.isFav(appTile.modelData) ? root.theme.accent : root.theme.textDim
+                            font.family: root.theme.family
                             font.pixelSize: root.theme.fsNormal
                             MouseArea {
                                 anchors.fill: parent; anchors.margins: -6
@@ -1327,6 +1360,7 @@ Item {
                 text: root.apps.length === 0 ? "Loading applications…"
                     : root.searching ? "No results" : "No applications"
                 color: root.theme.textDim
+                font.family: root.theme.family
                 font.pixelSize: root.theme.fsNormal
             }
         }
@@ -1369,6 +1403,7 @@ Item {
                 leftPadding: 6; bottomPadding: 4; topPadding: 2
                 text: ctx.app ? ctx.app.name : ""
                 color: root.theme.textDim
+                font.family: root.theme.family
                 font.pixelSize: root.theme.fsSmall; font.bold: true
             }
             Repeater {                            // desktop actions (New Window, …)
@@ -1379,6 +1414,7 @@ Item {
                     color: actMa.containsMouse ? root.theme.bgHover : "transparent"
                     Text {
                         anchors.verticalCenter: parent.verticalCenter; x: 8
+                        font.family: root.theme.family
                         text: modelData.name; color: root.theme.text; font.pixelSize: root.theme.fsNormal
                     }
                     MouseArea {
@@ -1393,6 +1429,7 @@ Item {
                 Text {
                     anchors.verticalCenter: parent.verticalCenter; x: 8
                     text: (ctx.app && root.isFav(ctx.app)) ? "★  Remove favourite" : "☆  Add favourite"
+                    font.family: root.theme.family
                     color: root.theme.text; font.pixelSize: root.theme.fsNormal
                 }
                 MouseArea {
@@ -1431,11 +1468,14 @@ PLUGIN = "quickshell-pill-active"
 # --- our DBus service ---
 #   Set(uuid)   — KWin script reports the active window on change
 #   List(json)  — KWin script reports the taskbar-eligible window ids (JSON array)
-NODE = ('<node><interface name="org.kde.pill">'
-        '<method name="Set"><arg type="s" direction="in"/></method>'
-        '<method name="List"><arg type="s" direction="in"/></method>'
-        '</interface></node>')
+NODE = (
+    '<node><interface name="org.kde.pill">'
+    '<method name="Set"><arg type="s" direction="in"/></method>'
+    '<method name="List"><arg type="s" direction="in"/></method>'
+    "</interface></node>"
+)
 IFACE = Gio.DBusNodeInfo.new_for_xml(NODE).interfaces[0]
+
 
 def on_call(conn, sender, path, ifc, method, params, inv):
     if method == "Set":
@@ -1451,64 +1491,86 @@ def on_call(conn, sender, path, ifc, method, params, inv):
         emit()
     inv.return_value(None)
 
+
 def on_bus_acquired(conn, name):
     conn.register_object("/Active", IFACE, on_call, None, None)
     load_kwin_script()
+
 
 # --- the KWin script: reports the active window AND the taskbar-eligible
 #     window ids (normal windows that don't ask to skip the taskbar). KWin is
 #     the only place skipTaskbar is exposed; KRunner (used for icon names) is
 #     not. We re-push the list on add/remove and on skipTaskbar changes. ---
 KWIN_JS = (
-    'function ids(){ var ws=workspace.windowList(), o=[];\n'
-    '  for (var i=0;i<ws.length;i++){ var w=ws[i];\n'
-    '    if (w.normalWindow && !w.skipTaskbar) o.push(String(w.internalId)); }\n'
-    '  return o; }\n'
+    "function ids(){ var ws=workspace.windowList(), o=[];\n"
+    "  for (var i=0;i<ws.length;i++){ var w=ws[i];\n"
+    "    if (w.normalWindow && !w.skipTaskbar) o.push(String(w.internalId)); }\n"
+    "  return o; }\n"
     'function pushList(){ callDBus("org.kde.pill","/Active","org.kde.pill","List",'
-    ' JSON.stringify(ids())); }\n'
-    'function watch(w){ if (w && w.skipTaskbarChanged) w.skipTaskbarChanged.connect(pushList); }\n'
+    " JSON.stringify(ids())); }\n"
+    "function watch(w){ if (w && w.skipTaskbarChanged) w.skipTaskbarChanged.connect(pushList); }\n"
     'function setActive(w){ callDBus("org.kde.pill","/Active","org.kde.pill","Set",'
     ' w ? String(w.internalId) : ""); }\n'
-    'workspace.windowActivated.connect(setActive);\n'
-    'workspace.windowAdded.connect(function(w){ watch(w); pushList(); });\n'
-    'workspace.windowRemoved.connect(pushList);\n'
-    'var all=workspace.windowList(); for (var i=0;i<all.length;i++) watch(all[i]);\n'
-    'setActive(workspace.activeWindow);\n'
-    'pushList();\n'
+    "workspace.windowActivated.connect(setActive);\n"
+    "workspace.windowAdded.connect(function(w){ watch(w); pushList(); });\n"
+    "workspace.windowRemoved.connect(pushList);\n"
+    "var all=workspace.windowList(); for (var i=0;i<all.length;i++) watch(all[i]);\n"
+    "setActive(workspace.activeWindow);\n"
+    "pushList();\n"
 )
+
 
 def kwin(method, variant):
     try:
-        bus.call_sync("org.kde.KWin", "/Scripting", "org.kde.kwin.Scripting",
-                      method, variant, None, Gio.DBusCallFlags.NONE, 2000, None)
+        bus.call_sync(
+            "org.kde.KWin",
+            "/Scripting",
+            "org.kde.kwin.Scripting",
+            method,
+            variant,
+            None,
+            Gio.DBusCallFlags.NONE,
+            2000,
+            None,
+        )
     except Exception as e:
         sys.stderr.write("winbridge: %s failed: %s\n" % (method, e))
+
 
 def load_kwin_script():
     path = os.path.join(tempfile.gettempdir(), "quickshell_pill_active.js")
     with open(path, "w") as f:
         f.write(KWIN_JS)
-    kwin("unloadScript", GLib.Variant("(s)", (PLUGIN,)))   # clear a stale copy
+    kwin("unloadScript", GLib.Variant("(s)", (PLUGIN,)))  # clear a stale copy
     kwin("loadScript", GLib.Variant("(ss)", (path, PLUGIN)))
     kwin("start", None)
+
 
 @atexit.register
 def _cleanup():
     kwin("unloadScript", GLib.Variant("(s)", (PLUGIN,)))
 
+
 # --- poll the KRunner windows runner for the window list ---
 def windows():
     try:
-        res = bus.call_sync("org.kde.KWin", "/WindowsRunner", "org.kde.krunner1",
-                            "Match", GLib.Variant("(s)", ("",)),
-                            GLib.VariantType("(a(sssida{sv}))"),
-                            Gio.DBusCallFlags.NONE, 3000, None)
+        res = bus.call_sync(
+            "org.kde.KWin",
+            "/WindowsRunner",
+            "org.kde.krunner1",
+            "Match",
+            GLib.Variant("(s)", ("",)),
+            GLib.VariantType("(a(sssida{sv}))"),
+            Gio.DBusCallFlags.NONE,
+            3000,
+            None,
+        )
     except Exception:
         return []
     tb = state["taskbar"]
     seen = {}
     for m in res.unpack()[0]:
-        mid, text, icon = m[0], m[1], m[2]      # id, title, icon name
+        mid, text, icon = m[0], m[1], m[2]  # id, title, icon name
         if not mid.startswith("0_") or mid in seen:
             continue
         uuid = mid[2:]
@@ -1519,18 +1581,28 @@ def windows():
         seen[mid] = {"id": mid, "uuid": uuid, "title": text, "icon": icon}
     return sorted(seen.values(), key=lambda d: d["id"])
 
+
 def emit():
-    line = json.dumps({"active": state["active"], "windows": windows()}, ensure_ascii=False)
+    line = json.dumps(
+        {"active": state["active"], "windows": windows()}, ensure_ascii=False
+    )
     sys.stdout.write(line + "\n")
     sys.stdout.flush()
+
 
 def tick():
     emit()
     return True
 
-Gio.bus_own_name(Gio.BusType.SESSION, "org.kde.pill",
-                 Gio.BusNameOwnerFlags.ALLOW_REPLACEMENT | Gio.BusNameOwnerFlags.REPLACE,
-                 on_bus_acquired, None, None)
+
+Gio.bus_own_name(
+    Gio.BusType.SESSION,
+    "org.kde.pill",
+    Gio.BusNameOwnerFlags.ALLOW_REPLACEMENT | Gio.BusNameOwnerFlags.REPLACE,
+    on_bus_acquired,
+    None,
+    None,
+)
 GLib.timeout_add_seconds(1, tick)
 GLib.MainLoop().run()
 #+end_src
@@ -1579,8 +1651,9 @@ ShellRoot {
                 const out = [];
                 const re = /\(\s*(?:uint32\s+)?\d+\s*,\s*'([^']*)'\s*,\s*'([^']*)'\s*\)/g;
                 let m;
-                while ((m = re.exec(this.text)) !== null)
+                while ((m = re.exec(this.text)) !== null) {
                     out.push({ id: m[1], name: m[2] });
+                }
                 root.desktops = out;
             }
         }
@@ -1592,7 +1665,12 @@ ShellRoot {
             "org.freedesktop.DBus.Properties.Get",
             "org.kde.KWin.VirtualDesktopManager", "current"]
         stdout: StdioCollector {
-            onStreamFinished: { const m = this.text.match(/'([^']*)'/); if (m) root.currentDesktop = m[1]; }
+            onStreamFinished: {
+                const m = this.text.match(/'([^']*)'/);
+                if (m) {
+                    root.currentDesktop = m[1];
+                }
+            }
         }
     }
     Process {
@@ -1726,7 +1804,7 @@ ShellRoot {
                 id: pill
                 anchors.horizontalCenter: parent.horizontalCenter
                 y: 6
-                width: win.launcher ? 520 : (win.dash ? 384 : 96)
+                width: win.launcher ? 520 : (win.dash ? 420 : 56)
                 height: (win.open || win.launcher) ? 470 : (win.dash ? 104 : 28)
                 Behavior on width  { NumberAnimation { duration: theme.anim; easing.type: Easing.OutCubic } }
                 Behavior on height { NumberAnimation { duration: theme.anim; easing.type: Easing.OutCubic } }
@@ -1735,7 +1813,7 @@ ShellRoot {
 
                 Rectangle {
                     anchors.fill: parent
-                    radius: Math.min(theme.radius, height / 2)
+                    radius: (win.open || win.launcher) ? Math.min(theme.radius, height / 2) : 12
                     color: theme.bg
                     border.color: theme.border
                     border.width: 1
@@ -1755,7 +1833,7 @@ ShellRoot {
                     font.pixelSize: theme.fsNormal
                 }
 
-                // ================= Row 1: desktops (left) | apps (right) =================
+                // ================= Row 1: datetime (left) | apps (right) =================
                 Item {
                     x: theme.pad; y: 12
                     width: pill.width - theme.pad * 2
@@ -1767,16 +1845,24 @@ ShellRoot {
                     Row {                                   // virtual desktops
                         anchors.left: parent.left
                         anchors.verticalCenter: parent.verticalCenter
-                        spacing: 8
-                        Repeater {
-                            model: root.desktops
-                            delegate: Rectangle {
-                                required property var modelData
-                                width: 13; height: 13; radius: 7
-                                color: modelData.id === root.currentDesktop ? theme.accent : "transparent"
-                                border.color: theme.accent; border.width: 2
-                                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor
-                                    onClicked: root.switchDesktop(modelData.id) }
+                        spacing: 4
+                        Column {                             // time over date
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing: 0
+                            Text {                           // big time, prominent
+                                text: root.clockShort
+                                color: theme.text
+                                font.family: theme.mono
+                                font.pixelSize: theme.fsLarge
+                                font.bold: true
+                                lineHeight: 0.95
+                            }
+                            Text {                           // date, dim underneath
+                                text: root.clockDate
+                                color: theme.textDim
+                                font.family: theme.family
+                                font.pixelSize: theme.fsSmall
+                                lineHeight: 0.95
                             }
                         }
                     }
@@ -1799,14 +1885,17 @@ ShellRoot {
                                 }
                                 Text {                       // window-count badge (2+ windows)
                                     visible: appItem.modelData.wins.length > 1
-                                    anchors.top: parent.top; anchors.right: parent.right
+                                    anchors.top: parent.top
+                                    anchors.right: parent.right
                                     text: appItem.modelData.wins.length
+                                    font.family: theme.family
                                     color: theme.text; font.pixelSize: 9; font.bold: true
                                 }
                                 Rectangle {                  // active / running indicator
                                     anchors.bottom: parent.bottom
                                     anchors.horizontalCenter: parent.horizontalCenter
-                                    height: 2; radius: 1
+                                    height: 2
+                                    radius: 1
                                     width: root.groupActive(appItem.modelData) ? 16 : 6
                                     color: root.groupActive(appItem.modelData) ? theme.accent : theme.textDim
                                     Behavior on width { NumberAnimation { duration: theme.animFast } }
@@ -1825,21 +1914,23 @@ ShellRoot {
                     }
                 }
 
-                // ============ Row 2: date/time (left) | status + tray (right) ============
+                // ============ Row 2: launcher icon + virtual desktops (left) | status + tray (right) ============
                 Item {
                     x: theme.pad; y: 62
                     width: pill.width - theme.pad * 2
                     height: 24
-                    // stays visible when open now (it doubles as the menu switcher);
-                    // only the launcher hides it.
-                    opacity: (win.dash && !win.launcher) ? 1 : 0
+                    opacity: win.dash ? 1 : 0
                     visible: opacity > 0
-                    Behavior on opacity { NumberAnimation { duration: theme.animFast } }
+                    Behavior on opacity {
+                        NumberAnimation {
+                            duration: theme.animFast
+                        }
+                    }
 
                     Row {                                    // launcher button + date/time (left)
                         anchors.left: parent.left
                         anchors.verticalCenter: parent.verticalCenter
-                        spacing: 8
+                        spacing: 10
                         IconImage {                          // open the app launcher
                             anchors.verticalCenter: parent.verticalCenter
                             implicitSize: 18
@@ -1847,10 +1938,24 @@ ShellRoot {
                             MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor
                                 onClicked: { win.open = false; win.launcher = true; } }
                         }
-                        Text {                               // date/time
+
+                        Row {
                             anchors.verticalCenter: parent.verticalCenter
-                            text: root.clockText
-                            color: theme.textDim; font.family: theme.mono; font.pixelSize: theme.fsSmall
+                            spacing: 4
+                            Repeater {
+                                model: root.desktops
+                                delegate: Rectangle {
+                                    required property var modelData
+                                    width: 8
+                                    height: 8
+                                    radius: 4
+                                    color: modelData.id === root.currentDesktop ? theme.textDim : "transparent"
+                                    border.color: theme.textDim
+                                    border.width: 1
+                                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                                        onClicked: root.switchDesktop(modelData.id) }
+                                }
+                            }
                         }
                     }
 
@@ -1861,12 +1966,29 @@ ShellRoot {
 
                         Repeater {                           // status icons -> open panel to that menu (active one highlighted)
                             model: [
-                                { ic: "network-wireless", menu: 0 },
-                                { ic: (Pipewire.defaultAudioSink && Pipewire.defaultAudioSink.audio && Pipewire.defaultAudioSink.audio.muted)
-                                       ? "audio-volume-muted" : "audio-volume-high", menu: 1 },
-                                { ic: "bluetooth", menu: 2 },
-                                { ic: (UPower.displayDevice && UPower.displayDevice.iconName) ? UPower.displayDevice.iconName : "battery", menu: 3 },
-                                { ic: "preferences-desktop-notification", menu: 4 }
+                                {
+                                    ic: "network-wireless",
+                                    menu: 0
+                                },
+                                {
+                                    ic: (Pipewire.defaultAudioSink && Pipewire.defaultAudioSink.audio && Pipewire.defaultAudioSink.audio.muted)
+                                        ? "audio-volume-muted"
+                                        : "audio-volume-high",
+                                    menu: 1
+                                },
+                                {
+                                    ic: "bluetooth",
+                                    menu: 2
+                                },
+                                {
+                                    ic: (UPower.displayDevice && UPower.displayDevice.iconName)
+                                        ? UPower.displayDevice.iconName
+                                        : "battery",
+                                    menu: 3 },
+                                {
+                                    ic: "preferences-desktop-notification",
+                                    menu: 4
+                                }
                             ]
                             delegate: Rectangle {
                                 required property var modelData
@@ -1995,6 +2117,7 @@ ShellRoot {
                         Text {
                             width: parent.width; elide: Text.ElideRight
                             text: ctxCard.entry ? ctxCard.entry.name : (win.ctxGroup ? win.ctxGroup.icon : "")
+                            font.family: theme.family
                             color: theme.textDim; font.pixelSize: theme.fsSmall; font.bold: true
                             bottomPadding: 4
                         }
@@ -2006,6 +2129,7 @@ ShellRoot {
                                 color: ma.containsMouse ? theme.bgHover : "transparent"
                                 Text {
                                     anchors.verticalCenter: parent.verticalCenter; x: 8
+                                    font.family: theme.family
                                     text: modelData.name; color: theme.text; font.pixelSize: theme.fsNormal
                                 }
                                 MouseArea { id: ma; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
@@ -2023,6 +2147,7 @@ ShellRoot {
                                 Text {
                                     anchors.verticalCenter: parent.verticalCenter; x: 8
                                     width: parent.width - 16; elide: Text.ElideRight
+                                    font.family: theme.family
                                     text: modelData.title; color: theme.text; font.pixelSize: theme.fsSmall
                                 }
                                 MouseArea { id: wma; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
@@ -2052,14 +2177,15 @@ ShellRoot {
             anchors.centerIn: parent
             horizontalAlignment: Text.AlignHCenter
             text: "Notification history\n(coming soon)"
+            font.family: theme.family
             color: theme.textDim; font.pixelSize: theme.fsNormal
         }
     } }
 
     // ---- clock ----
-    SystemClock { id: sysclock; precision: SystemClock.Seconds }
-    readonly property string clockText: Qt.formatDateTime(sysclock.date, "ddd  hh:mm:ss")
+    SystemClock { id: sysclock; precision: SystemClock.Minutes }
     readonly property string clockShort: Qt.formatDateTime(sysclock.date, "hh:mm")
+    readonly property string clockDate:  Qt.formatDateTime(sysclock.date, "ddd, d MMM")
 }
 #+end_src
 
@@ -2132,3 +2258,7 @@ Tangling is *manual on purpose* (matches how I tangle the rest of my config). Fo
 auto-tangle on save, add to the very top of this file:
 =# -*- eval: (add-hook 'after-save-hook #'org-babel-tangle nil t) -*-= and accept
 the local-variable prompt — but the default here is manual.
+
+# Local Variables:
+# eval: (add-hook 'before-save-hook #'my/org-format-src-blocks nil t)
+# End:
