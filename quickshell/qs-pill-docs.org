@@ -67,7 +67,8 @@ fullscreen-hide are blocked on there being no client-visible window-list protoco
 | Coherent theming                                   | ✅ built       | =Theme.qml= object passed to every component                                                |
 | Taskbar: grouped apps + active indicator + focus   | ✅ built       | =winbridge.py= = KRunner =/WindowsRunner= (list+icons, =Run= to focus) + a 3-line KWin script for the active window |
 | App right-click: window list + launcher actions    | ◐ partial      | window list works (bridge data); launcher actions need =DesktopEntries=, which read 0 apps in my sandbox — verify in a real session |
-| Pinned apps                                         | ⚠️ TODO       | app-side: store pinned ids in a file (=FileView=/=JsonAdapter=), launch via =DesktopEntry=     |
+| App launcher (search, grid, favourites, calculator) | ✅ built       | =DesktopEntries.applications= in =ListView=/=GridView=; search over name/generic/keywords; grid + favourites persisted via =FileView=/=JsonAdapter=; =wl-copy= for calc results |
+| Pinned apps (taskbar)                               | ⚠️ TODO       | distinct from launcher favourites; would always-show an app tile even when not running |
 | VPN selection in network menu                      | ⚠️ TODO       | not in the native =Networking= binding — needs =nmcli= via =Process=                          |
 | Hide pill when a fullscreen window is focused       | ⚠️ TODO       | now feasible: =getWindowInfo(activeUuid).fullscreen= (we already track the active uuid) — not wired |
 | Notification history in the panel                  | ⚠️ intrusive  | =plasmashell= owns =org.freedesktop.Notifications=; taking it over means disabling Plasma's  |
@@ -92,24 +93,34 @@ window is a *full-screen* layer-shell =Overlay= surface that reserves no space.
 Input is governed by the window =mask=:
 - *collapsed / hovered*: =mask= = a =Region { item: pill }= → only the pill
   rectangle catches clicks; the rest of the screen passes through.
-- *open*: =mask= = a =Region { item: backdrop }= (the whole window) → outside
-  clicks are caught by a backdrop =MouseArea= that closes the panel, so the click
-  is swallowed, never passed through.
+- *open / launcher / right-click menu*: =mask= = a =Region { item: backdrop }=
+  (the whole window) → outside clicks are caught by a backdrop =MouseArea= that
+  closes the panel, so the click is swallowed, never passed through.
 
-** Three stages
+** Stages
 A single =pill= =Item= animates =width=/=height= between the stages via
 =Behavior=; cross-fading content layers (=opacity= + =visible=) show/hide per
 stage:
 1. *collapsed* (96×28): just =hh:mm=.
 2. *hovered* (=dash=, 384×104): dashboard — *two balanced rows*. Row 1: desktop
-   dots (left) | grouped app icons (right). Row 2: date/time (left) | status icons
-   (network/volume/bluetooth/battery, icon-only, click → open that menu) + system
-   tray (right). =dash= is true when hovered, open, or a right-click menu is up.
-3. *open* (470 tall): control panel — Row 1 stays on top, then a divider, a left
-   icon rail, and a menu pane. Clicking the pill body sets =open=; a second
-   =MouseArea= swallows clicks on empty pill area so they don't reach the
-   close-backdrop. The rail's selected index drives =win.menu=; a =Loader= shows
-   the matching menu component (=active= only while open).
+   dots (left) | grouped app icons (right). Row 2: an app-launcher button +
+   date/time (left) | status icons
+   (network/volume/bluetooth/battery/notifications, icon-only, click → open that
+   menu) + system tray (right). =dash= is true when hovered, open, or a
+   right-click menu is up.
+3. *open* (470 tall): control panel. Row 1 *and* Row 2 stay on top — Row 2 now
+   doubles as the *menu switcher* (the active menu's status icon is highlighted);
+   there is *no icon rail*. Below a divider sits a single full-width menu pane: a
+   =Loader= shows the menu component for =win.menu= (=active= only while open).
+   Each menu renders a shared =MenuHeader= — a back chevron that collapses the
+   panel via the menu's =closeRequested()= signal (wired through a =Connections=
+   on the loader), the title, and a trailing slot for the menu's own toggles.
+   Clicking the pill body sets =open=; a =MouseArea= swallows clicks on empty pill
+   area so they don't reach the close-backdrop.
+4. *launcher* (=launcher=, 520×470): the app launcher replaces the menu pane (see
+   [[*Launcher.qml][§ Launcher.qml]]). Opened from the Row-2 grid button; while
+   =open= or =launcher= the layer surface takes =WlrKeyboardFocus.OnDemand= so the
+   search field can receive keystrokes.
 
 The window =mask= also expands to full-screen when an app *right-click menu* is
 open (=win.ctxGroup=), so that menu (a =Loader= floating below the pill) is
@@ -160,9 +171,27 @@ fetch the =desktops= list (a regex parses =(uint32 N, 'id', 'name')= tuples — 
   each with =IconImage { source: Quickshell.iconPath(iconName) }=, name/type,
   state and percentage.
 
+Every menu declares a =signal closeRequested()= and opens with a =MenuHeader=
+(back chevron + title + trailing toggle slot); the chevron emits =closeRequested=,
+which =init.qml='s =Connections= on the menu loader turns into =win.open = false=.
+
+** Launcher (init.qml + Launcher.qml)
+=init.qml= builds =appList= once (=DesktopEntries.applications=, =noDisplay=
+filtered, name-sorted) at the long-lived root and shares it with every monitor's
+=Launcher=, so opening is instant and survives close. Grid mode + favourite app
+ids persist in =Quickshell.stateDir + "/launcher.json"= via a =FileView= +
+=JsonAdapter= (=settings=); the adapter auto-flushes on change and is created on
+first run (=onLoadFailed → writeAdapter()=). The =Launcher= itself: a focused
+search field (matches name/genericName/keywords), a grid/list toggle, ★ favourites
+(empty query shows favourites if any, else all apps; searching is always a flat
+list), a right-click menu (=DesktopEntry.actions= + favourite toggle), and a
+calculator (a safe arithmetic expression, or one prefixed with ===, shows a result
+row that =wl-copy='s on click/Enter). =init.qml= focuses + clears the field on each
+open via a =Connections= on =win.launcher=.
+
 ** Reusable widgets
-=PillToggle= (themed switch) and =PillSlider= (themed 0..1 slider) keep the menus
-small and the look coherent.
+=PillToggle= (themed switch), =PillSlider= (themed 0..1 slider) and =MenuHeader=
+(back chevron + title + trailing slot) keep the menus small and the look coherent.
 
 * File map
 
@@ -171,12 +200,14 @@ small and the look coherent.
 | =Theme.qml=       | all colours / metrics / timings (restyle here)                  |
 | =PillToggle.qml=  | reusable themed on/off switch                                   |
 | =PillSlider.qml=  | reusable themed horizontal slider [0,1]                          |
+| =MenuHeader.qml=  | reusable menu header: back chevron + title + trailing slot       |
 | =NetworkMenu.qml= | Wi-Fi list / connect / password / toggle                        |
 | =VolumeMenu.qml=  | devices + applications volume                                   |
 | =BluetoothMenu.qml= | connected / paired / discovered devices                       |
 | =BatteryMenu.qml= | all power devices                                              |
+| =Launcher.qml=    | app launcher: search, grid/list, favourites, right-click, calculator |
 | =winbridge.py=    | open-window list (KRunner) + active window (KWin script) → JSON  |
-| =init.qml=    | windows, stages, virtual desktops, taskbar, tray, rail, menu host (entry) |
+| =init.qml=    | windows, stages, virtual desktops, taskbar, tray, menu host + launcher (entry) |
 
 * Source
 
@@ -237,8 +268,8 @@ Item {
     property bool checked: false
     signal toggled(bool value)
 
-    implicitWidth: 12
-    implicitHeight: 20
+    implicitWidth: 34
+    implicitHeight: 18
 
     Rectangle {
         anchors.fill: parent
@@ -248,7 +279,7 @@ Item {
         border.width: 1
         Behavior on color { ColorAnimation { duration: root.theme.animFast } }
 
-        Rectangle {
+        Rectangle {                       // knob — fits inside the track
             width: parent.height - 4
             height: parent.height - 4
             radius: height / 2
@@ -326,6 +357,65 @@ Item {
 }
 #+end_src
 
+** MenuHeader.qml
+#+begin_src qml :tangle ~/.config/quickshell/pill/MenuHeader.qml :mkdirp yes
+pragma ComponentBehavior: Bound
+// MenuHeader.qml — shared header for every control-panel menu: a back chevron
+// (‹) that collapses the panel, the menu title, and an optional trailing slot
+// for menu-specific controls (toggles). Children declared inside a MenuHeader
+// land in the right-aligned trailing Row, e.g.
+//   MenuHeader { title: "Wi-Fi"; onBack: root.closeRequested(); PillToggle {} }
+import QtQuick
+
+Item {
+    id: root
+    required property var theme
+    property string title: ""
+    default property alias trailing: trailingRow.data
+    signal back()
+
+    width: parent ? parent.width : 0
+    implicitHeight: 22
+    height: 22
+
+    Row {                                   // back chevron + title (left)
+        anchors.left: parent.left
+        anchors.verticalCenter: parent.verticalCenter
+        spacing: 8
+        Text {
+            id: chevron
+            anchors.verticalCenter: parent.verticalCenter
+            text: "‹"
+            color: chevMa.containsMouse ? root.theme.text : root.theme.textDim
+            font.pixelSize: root.theme.fsLarge + 6
+            font.bold: true
+            MouseArea {
+                id: chevMa
+                anchors.fill: parent
+                anchors.margins: -6
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.back()
+            }
+        }
+        Text {
+            anchors.verticalCenter: parent.verticalCenter
+            text: root.title
+            color: root.theme.text
+            font.pixelSize: root.theme.fsNormal
+            font.bold: true
+        }
+    }
+
+    Row {                                   // trailing controls (right)
+        id: trailingRow
+        anchors.right: parent.right
+        anchors.verticalCenter: parent.verticalCenter
+        spacing: root.theme.gap
+    }
+}
+#+end_src
+
 ** NetworkMenu.qml
 #+begin_src qml :tangle ~/.config/quickshell/pill/NetworkMenu.qml :mkdirp yes
 pragma ComponentBehavior: Bound
@@ -338,6 +428,7 @@ import Quickshell.Networking
 Item {
     id: root
     required property var theme
+    signal closeRequested()
 
     readonly property var wifiDev: {
         const ds = Networking.devices ? Networking.devices.values : [];
@@ -360,16 +451,10 @@ Item {
         anchors.fill: parent
         spacing: root.theme.gap
 
-        Row {                                   // header + toggle
-            width: parent.width
-            Text {
-                text: "Wi-Fi"
-                color: root.theme.text
-                font.pixelSize: root.theme.fsNormal
-                font.bold: true
-                anchors.verticalCenter: parent.verticalCenter
-            }
-            Item { width: parent.width - 38 - 36; height: 1 }
+        MenuHeader {                            // back chevron + title + Wi-Fi toggle
+            theme: root.theme
+            title: "Wi-Fi"
+            onBack: root.closeRequested()
             PillToggle {
                 theme: root.theme
                 anchors.verticalCenter: parent.verticalCenter
@@ -530,6 +615,7 @@ import Quickshell.Services.Pipewire
 Item {
     id: root
     required property var theme
+    signal closeRequested()
     property int tab: 0               // 0 = Devices, 1 = Applications
 
     PwObjectTracker { objects: Pipewire.nodes ? Pipewire.nodes.values : [] }
@@ -543,6 +629,12 @@ Item {
     Column {
         anchors.fill: parent
         spacing: root.theme.gap
+
+        MenuHeader {                            // back chevron + title
+            theme: root.theme
+            title: "Volume"
+            onBack: root.closeRequested()
+        }
 
         Row {                                   // tabs
             spacing: 16
@@ -563,7 +655,7 @@ Item {
 
         Flickable {
             width: parent.width
-            height: parent.height - 34
+            height: parent.height - 34 - 22 - root.theme.gap
             contentHeight: col.height
             clip: true
             Column {
@@ -648,6 +740,7 @@ import Quickshell.Bluetooth
 Item {
     id: root
     required property var theme
+    signal closeRequested()
     readonly property var adapter: Bluetooth.defaultAdapter
     readonly property var devices: Bluetooth.devices ? Bluetooth.devices.values : []
 
@@ -711,22 +804,15 @@ Item {
         anchors.fill: parent
         spacing: root.theme.gap
 
-        Row {                                   // header: power + scan
-            width: parent.width
-            spacing: root.theme.gap
+        MenuHeader {                            // back chevron + title + scan/power toggles
+            theme: root.theme
+            title: "Bluetooth"
+            onBack: root.closeRequested()
             Text {
-                text: "Bluetooth"
-                color: root.theme.text
-                font.pixelSize: root.theme.fsNormal
-                font.bold: true
                 anchors.verticalCenter: parent.verticalCenter
-            }
-            Item { width: parent.width - 160; height: 1 }
-            Text {
                 text: "Scan"
                 color: root.theme.textDim
                 font.pixelSize: root.theme.fsSmall
-                anchors.verticalCenter: parent.verticalCenter
             }
             PillToggle {
                 theme: root.theme
@@ -786,14 +872,26 @@ import Quickshell.Services.UPower
 Item {
     id: root
     required property var theme
+    signal closeRequested()
 
     readonly property var devs: {
         const a = UPower.devices ? UPower.devices.values : [];
         return a.filter(d => d.isPresent && d.type !== UPowerDeviceType.LinePower);
     }
 
-    Flickable {
+    Column {
         anchors.fill: parent
+        spacing: root.theme.gap
+
+        MenuHeader {                            // back chevron + title
+            theme: root.theme
+            title: "Battery"
+            onBack: root.closeRequested()
+        }
+
+    Flickable {
+        width: parent.width
+        height: parent.height - 22 - root.theme.gap
         contentHeight: col.height
         clip: true
         Column {
@@ -849,6 +947,461 @@ Item {
             }
         }
     }
+    }
+}
+#+end_src
+
+** Launcher.qml
+#+begin_src qml :tangle ~/.config/quickshell/pill/Launcher.qml :mkdirp yes
+pragma ComponentBehavior: Bound
+// Launcher.qml — KDE-style application launcher.
+//
+// Layout: a search field (focused on open) + a grid/list toggle, then the app
+// list. Empty query shows favourites (if any) else all apps, in grid or list
+// per the persisted toggle; a non-empty query always shows a flat filtered
+// *list* (matching name / generic name / keywords). The search box doubles as a
+// calculator — type an arithmetic expression (or prefix with =) and the result
+// shows as the top row; click or press Enter to copy it. Right-click an app for
+// its desktop actions and a favourite toggle. Favourites + grid mode are
+// persisted by the parent (see init.qml `settings`).
+//
+// The app list is supplied by the parent (built once from DesktopEntries and
+// kept alive across opens), so opening is instant after the first build.
+import QtQuick
+import Quickshell
+import Quickshell.Widgets
+import Quickshell.Io
+
+Item {
+    id: root
+    required property var theme
+    required property var apps        // [DesktopEntry], pre-sorted by the parent
+    required property var settings    // JsonAdapter { bool grid; var favorites }
+    signal launched()
+    signal closeRequested()
+
+    // called by the parent when the launcher opens: clear + focus the search
+    function open() { search.text = ""; ctx.app = null; search.forceActiveFocus(); }
+
+    // ---- query / filtering ----
+    readonly property string q: search.text.trim().toLowerCase()
+    readonly property bool searching: q.length > 0
+
+    function norm(s) { return (s || "").toString().toLowerCase(); }
+    readonly property var filtered: {
+        if (!searching)
+            return [];
+        const out = [];
+        for (const a of apps) {
+            if (norm(a.name).indexOf(q) >= 0 || norm(a.genericName).indexOf(q) >= 0) { out.push(a); continue; }
+            const kw = a.keywords || [];
+            let hit = false;
+            for (const k of kw) if (norm(k).indexOf(q) >= 0) { hit = true; break; }
+            if (hit) out.push(a);
+        }
+        return out;
+    }
+    readonly property var favApps: {
+        const ids = settings.favorites || [];
+        if (ids.length === 0) return [];
+        const byId = {};
+        for (const a of apps) byId[a.id] = a;
+        return ids.map(id => byId[id]).filter(Boolean);
+    }
+    // searching -> filtered list; else favourites (if any) else everything
+    readonly property var model: searching ? filtered : (favApps.length > 0 ? favApps : apps)
+    // grid only on the resting view; searching is always a list
+    readonly property bool showGrid: !searching && settings.grid
+
+    function isFav(a) { return (settings.favorites || []).indexOf(a.id) >= 0; }
+    function toggleFav(a) {
+        const f = (settings.favorites || []).slice();
+        const i = f.indexOf(a.id);
+        if (i >= 0) f.splice(i, 1); else f.push(a.id);
+        settings.favorites = f;
+    }
+
+    // ---- calculator: evaluate a safe arithmetic expression ----
+    readonly property var calcResult: searching ? evalCalc(search.text.trim()) : null
+    function evalCalc(expr) {
+        let forced = false;
+        let e = expr.trim();
+        if (e.length > 0 && e[0] === "=") { forced = true; e = e.slice(1).trim(); }
+        if (e.length === 0) return null;
+        if (!/^[0-9.,+\-*/%()\s]+$/.test(e)) return null;     // digits + operators only
+        if (!forced && !/[-+*/%]/.test(e)) return null;       // plain numbers don't count
+        e = e.replace(/,/g, "");
+        try {
+            const r = Function('"use strict"; return (' + e + ');')();
+            if (typeof r === "number" && isFinite(r))
+                return Number.isInteger(r) ? r : parseFloat(r.toFixed(8));
+        } catch (err) {}
+        return null;
+    }
+
+    Process { id: copyProc }
+    function copy(s) { copyProc.command = ["wl-copy", "--", String(s)]; copyProc.startDetached(); }
+
+    function activateFirst() {
+        if (calcResult !== null) { copy(calcResult); root.launched(); return; }
+        if (model.length > 0) { model[0].execute(); root.launched(); }
+    }
+
+    // ================= search row =================
+    Rectangle {
+        id: searchBox
+        anchors.top: parent.top
+        anchors.left: parent.left
+        anchors.right: parent.right
+        height: 34
+        radius: root.theme.radiusSmall
+        color: root.theme.bgHover
+        border.color: search.activeFocus ? root.theme.accent : root.theme.border
+        border.width: 1
+
+        IconImage {
+            id: searchIcon
+            anchors.left: parent.left
+            anchors.leftMargin: 10
+            anchors.verticalCenter: parent.verticalCenter
+            implicitSize: 16
+            source: Quickshell.iconPath("search", "system-search")
+        }
+        TextInput {
+            id: search
+            anchors.left: searchIcon.right
+            anchors.leftMargin: 8
+            anchors.right: gridToggle.left
+            anchors.rightMargin: 8
+            anchors.verticalCenter: parent.verticalCenter
+            verticalAlignment: TextInput.AlignVCenter
+            color: root.theme.text
+            font.pixelSize: root.theme.fsNormal
+            clip: true
+            selectByMouse: true
+            selectionColor: root.theme.accentDim
+            Keys.onEscapePressed: root.closeRequested()
+            Keys.onReturnPressed: root.activateFirst()
+            Keys.onEnterPressed: root.activateFirst()
+
+            Text {                               // placeholder
+                anchors.fill: parent
+                verticalAlignment: Text.AlignVCenter
+                visible: search.text.length === 0
+                text: "Search apps  ·  type a sum to calculate"
+                color: root.theme.textDim
+                font.pixelSize: root.theme.fsNormal
+                elide: Text.ElideRight
+            }
+        }
+        Rectangle {                              // grid / list toggle
+            id: gridToggle
+            anchors.right: parent.right
+            anchors.rightMargin: 4
+            anchors.verticalCenter: parent.verticalCenter
+            width: 28; height: 28
+            radius: root.theme.radiusSmall
+            color: gridMa.containsMouse ? root.theme.bg : "transparent"
+            IconImage {
+                anchors.centerIn: parent
+                implicitSize: 18
+                source: Quickshell.iconPath(root.settings.grid ? "view-list-symbolic" : "view-grid-symbolic",
+                                            root.settings.grid ? "view-list" : "view-grid")
+            }
+            MouseArea {
+                id: gridMa
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.settings.grid = !root.settings.grid
+            }
+        }
+    }
+
+    // ================= body =================
+    Item {
+        id: body
+        anchors.top: searchBox.bottom
+        anchors.topMargin: root.theme.gap
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+
+        // calculator result (top, when the query evaluates)
+        Rectangle {
+            id: calcCard
+            anchors.top: parent.top
+            anchors.left: parent.left
+            anchors.right: parent.right
+            height: visible ? root.theme.rowHeight : 0
+            visible: root.calcResult !== null
+            radius: root.theme.radiusSmall
+            color: calcMa.containsMouse ? root.theme.bgHover : root.theme.bgElevated
+            Text {
+                anchors.left: parent.left; anchors.leftMargin: 12
+                anchors.verticalCenter: parent.verticalCenter
+                text: "= " + root.calcResult
+                color: root.theme.accent
+                font.pixelSize: root.theme.fsLarge
+                font.bold: true
+            }
+            Text {
+                anchors.right: parent.right; anchors.rightMargin: 12
+                anchors.verticalCenter: parent.verticalCenter
+                text: "copy"
+                color: root.theme.textDim
+                font.pixelSize: root.theme.fsSmall
+            }
+            MouseArea {
+                id: calcMa
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: { root.copy(root.calcResult); root.launched(); }
+            }
+        }
+
+        Item {
+            id: viewHost
+            anchors.top: calcCard.bottom
+            anchors.topMargin: calcCard.visible ? root.theme.gap : 0
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+
+            // ---- list view (default + always while searching) ----
+            ListView {
+                id: list
+                anchors.fill: parent
+                visible: !root.showGrid
+                model: root.model
+                clip: true
+                spacing: 2
+                cacheBuffer: 600
+                boundsBehavior: Flickable.StopAtBounds
+
+                delegate: Rectangle {
+                    id: appRow
+                    required property var modelData
+                    width: list.width
+                    height: root.theme.rowHeight
+                    radius: root.theme.radiusSmall
+                    color: rowMa.containsMouse ? root.theme.bgHover : "transparent"
+
+                    Row {
+                        anchors.left: parent.left; anchors.leftMargin: 8
+                        anchors.right: favStar.left; anchors.rightMargin: 8
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: 10
+                        IconImage {
+                            anchors.verticalCenter: parent.verticalCenter
+                            implicitSize: 24
+                            asynchronous: true
+                            source: Quickshell.iconPath(appRow.modelData.icon, "application-x-executable")
+                        }
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: parent.width - 24 - 10
+                            elide: Text.ElideRight
+                            text: appRow.modelData.name
+                            color: root.theme.text
+                            font.pixelSize: root.theme.fsNormal
+                        }
+                    }
+                    Text {                       // favourite marker (filled when favourite, on hover otherwise)
+                        id: favStar
+                        anchors.right: parent.right; anchors.rightMargin: 10
+                        anchors.verticalCenter: parent.verticalCenter
+                        visible: root.isFav(appRow.modelData) || rowMa.containsMouse
+                        text: root.isFav(appRow.modelData) ? "★" : "☆"
+                        color: root.isFav(appRow.modelData) ? root.theme.accent : root.theme.textDim
+                        font.pixelSize: root.theme.fsNormal
+                        MouseArea {
+                            anchors.fill: parent; anchors.margins: -6
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.toggleFav(appRow.modelData)
+                        }
+                    }
+                    MouseArea {
+                        id: rowMa
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        acceptedButtons: Qt.LeftButton | Qt.RightButton
+                        onClicked: mouse => {
+                            if (mouse.button === Qt.RightButton) {
+                                const p = mapToItem(root, mouse.x, mouse.y);
+                                ctx.openFor(appRow.modelData, p.x, p.y);
+                            } else {
+                                appRow.modelData.execute();
+                                root.launched();
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ---- grid view (resting view when grid mode is on) ----
+            GridView {
+                id: grid
+                anchors.fill: parent
+                visible: root.showGrid
+                model: root.model
+                clip: true
+                cacheBuffer: 800
+                boundsBehavior: Flickable.StopAtBounds
+                readonly property int cols: Math.max(3, Math.floor(width / 108))
+                cellWidth: Math.floor(width / cols)
+                cellHeight: 92
+
+                delegate: Item {
+                    id: appTile
+                    required property var modelData
+                    width: grid.cellWidth
+                    height: grid.cellHeight
+
+                    Rectangle {
+                        anchors.fill: parent
+                        anchors.margins: 4
+                        radius: root.theme.radiusSmall
+                        color: tileMa.containsMouse ? root.theme.bgHover : "transparent"
+
+                        Column {
+                            anchors.centerIn: parent
+                            width: parent.width - 8
+                            spacing: 6
+                            IconImage {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                implicitSize: 40
+                                asynchronous: true
+                                source: Quickshell.iconPath(appTile.modelData.icon, "application-x-executable")
+                            }
+                            Text {
+                                width: parent.width
+                                horizontalAlignment: Text.AlignHCenter
+                                elide: Text.ElideRight
+                                maximumLineCount: 2
+                                wrapMode: Text.Wrap
+                                text: appTile.modelData.name
+                                color: root.theme.text
+                                font.pixelSize: root.theme.fsSmall
+                            }
+                        }
+                        Text {                   // favourite marker
+                            anchors.top: parent.top; anchors.right: parent.right
+                            anchors.margins: 4
+                            visible: root.isFav(appTile.modelData) || tileMa.containsMouse
+                            text: root.isFav(appTile.modelData) ? "★" : "☆"
+                            color: root.isFav(appTile.modelData) ? root.theme.accent : root.theme.textDim
+                            font.pixelSize: root.theme.fsNormal
+                            MouseArea {
+                                anchors.fill: parent; anchors.margins: -6
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: root.toggleFav(appTile.modelData)
+                            }
+                        }
+                    }
+                    MouseArea {
+                        id: tileMa
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        acceptedButtons: Qt.LeftButton | Qt.RightButton
+                        onClicked: mouse => {
+                            if (mouse.button === Qt.RightButton) {
+                                const p = mapToItem(root, mouse.x, mouse.y);
+                                ctx.openFor(appTile.modelData, p.x, p.y);
+                            } else {
+                                appTile.modelData.execute();
+                                root.launched();
+                            }
+                        }
+                    }
+                }
+            }
+
+            // empty state
+            Text {
+                anchors.centerIn: parent
+                visible: root.apps.length === 0 || (root.model.length === 0 && root.calcResult === null)
+                text: root.apps.length === 0 ? "Loading applications…"
+                    : root.searching ? "No results" : "No applications"
+                color: root.theme.textDim
+                font.pixelSize: root.theme.fsNormal
+            }
+        }
+    }
+
+    // ================= right-click context menu =================
+    MouseArea {                                  // backdrop: outside click dismisses
+        anchors.fill: parent
+        visible: ctx.app !== null
+        acceptedButtons: Qt.LeftButton | Qt.RightButton
+        onClicked: ctx.app = null
+    }
+    Rectangle {
+        id: ctx
+        property var app: null
+        property real px: 0
+        property real py: 0
+        function openFor(a, x, y) {
+            app = a;
+            px = Math.max(0, Math.min(x, root.width - width));
+            py = Math.max(0, Math.min(y, root.height - height));
+        }
+        visible: app !== null
+        x: px; y: py
+        width: 200
+        height: ctxCol.height + 8
+        radius: root.theme.radiusSmall
+        color: root.theme.bgElevated
+        border.color: root.theme.border
+        border.width: 1
+
+        Column {
+            id: ctxCol
+            x: 4; y: 4
+            width: parent.width - 8
+            spacing: 1
+
+            Text {
+                width: parent.width; elide: Text.ElideRight
+                leftPadding: 6; bottomPadding: 4; topPadding: 2
+                text: ctx.app ? ctx.app.name : ""
+                color: root.theme.textDim
+                font.pixelSize: root.theme.fsSmall; font.bold: true
+            }
+            Repeater {                            // desktop actions (New Window, …)
+                model: ctx.app ? ctx.app.actions : []
+                delegate: Rectangle {
+                    required property var modelData
+                    width: ctxCol.width; height: 28; radius: root.theme.radiusSmall
+                    color: actMa.containsMouse ? root.theme.bgHover : "transparent"
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter; x: 8
+                        text: modelData.name; color: root.theme.text; font.pixelSize: root.theme.fsNormal
+                    }
+                    MouseArea {
+                        id: actMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                        onClicked: { modelData.execute(); ctx.app = null; root.launched(); }
+                    }
+                }
+            }
+            Rectangle {                           // favourite toggle
+                width: ctxCol.width; height: 28; radius: root.theme.radiusSmall
+                color: favMa.containsMouse ? root.theme.bgHover : "transparent"
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter; x: 8
+                    text: (ctx.app && root.isFav(ctx.app)) ? "★  Remove favourite" : "☆  Add favourite"
+                    color: root.theme.text; font.pixelSize: root.theme.fsNormal
+                }
+                MouseArea {
+                    id: favMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                    onClicked: { if (ctx.app) root.toggleFav(ctx.app); ctx.app = null; }
+                }
+            }
+        }
+    }
 }
 #+end_src
 
@@ -870,12 +1423,17 @@ import sys, os, json, atexit, tempfile
 from gi.repository import Gio, GLib
 
 bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
-state = {"active": ""}
+# "taskbar" is the set of window ids that belong in a taskbar (normal, not
+# skip-taskbar) as reported by KWin; None until the first report arrives.
+state = {"active": "", "taskbar": None}
 PLUGIN = "quickshell-pill-active"
 
-# --- our DBus service: the KWin script calls Set(uuid) on active-window change ---
+# --- our DBus service ---
+#   Set(uuid)   — KWin script reports the active window on change
+#   List(json)  — KWin script reports the taskbar-eligible window ids (JSON array)
 NODE = ('<node><interface name="org.kde.pill">'
         '<method name="Set"><arg type="s" direction="in"/></method>'
+        '<method name="List"><arg type="s" direction="in"/></method>'
         '</interface></node>')
 IFACE = Gio.DBusNodeInfo.new_for_xml(NODE).interfaces[0]
 
@@ -884,18 +1442,39 @@ def on_call(conn, sender, path, ifc, method, params, inv):
         (u,) = params.unpack()
         state["active"] = u
         emit()
+    elif method == "List":
+        (j,) = params.unpack()
+        try:
+            state["taskbar"] = set(json.loads(j))
+        except Exception:
+            state["taskbar"] = None
+        emit()
     inv.return_value(None)
 
 def on_bus_acquired(conn, name):
     conn.register_object("/Active", IFACE, on_call, None, None)
     load_kwin_script()
 
-# --- the KWin script that reports workspace.activeWindow to us ---
+# --- the KWin script: reports the active window AND the taskbar-eligible
+#     window ids (normal windows that don't ask to skip the taskbar). KWin is
+#     the only place skipTaskbar is exposed; KRunner (used for icon names) is
+#     not. We re-push the list on add/remove and on skipTaskbar changes. ---
 KWIN_JS = (
-    'function r(w){ callDBus("org.kde.pill","/Active","org.kde.pill","Set",'
+    'function ids(){ var ws=workspace.windowList(), o=[];\n'
+    '  for (var i=0;i<ws.length;i++){ var w=ws[i];\n'
+    '    if (w.normalWindow && !w.skipTaskbar) o.push(String(w.internalId)); }\n'
+    '  return o; }\n'
+    'function pushList(){ callDBus("org.kde.pill","/Active","org.kde.pill","List",'
+    ' JSON.stringify(ids())); }\n'
+    'function watch(w){ if (w && w.skipTaskbarChanged) w.skipTaskbarChanged.connect(pushList); }\n'
+    'function setActive(w){ callDBus("org.kde.pill","/Active","org.kde.pill","Set",'
     ' w ? String(w.internalId) : ""); }\n'
-    'workspace.windowActivated.connect(r);\n'
-    'r(workspace.activeWindow);\n'
+    'workspace.windowActivated.connect(setActive);\n'
+    'workspace.windowAdded.connect(function(w){ watch(w); pushList(); });\n'
+    'workspace.windowRemoved.connect(pushList);\n'
+    'var all=workspace.windowList(); for (var i=0;i<all.length;i++) watch(all[i]);\n'
+    'setActive(workspace.activeWindow);\n'
+    'pushList();\n'
 )
 
 def kwin(method, variant):
@@ -926,11 +1505,18 @@ def windows():
                             Gio.DBusCallFlags.NONE, 3000, None)
     except Exception:
         return []
+    tb = state["taskbar"]
     seen = {}
     for m in res.unpack()[0]:
         mid, text, icon = m[0], m[1], m[2]      # id, title, icon name
-        if mid.startswith("0_") and mid not in seen:
-            seen[mid] = {"id": mid, "uuid": mid[2:], "title": text, "icon": icon}
+        if not mid.startswith("0_") or mid in seen:
+            continue
+        uuid = mid[2:]
+        # once KWin has reported the eligible set, drop skip-taskbar windows;
+        # before the first report, show everything (previous behaviour)
+        if tb is not None and uuid not in tb:
+            continue
+        seen[mid] = {"id": mid, "uuid": uuid, "title": text, "icon": icon}
     return sorted(seen.values(), key=lambda d: d["id"])
 
 def emit():
@@ -1072,6 +1658,36 @@ ShellRoot {
         root.activateWindow(grp.wins[i >= 0 ? (i + 1) % grp.wins.length : 0].id);
     }
 
+    // ---- launcher app list ----
+    // Built once here (the long-lived root) and shared with every monitor's
+    // Launcher, so it survives open/close and is computed in the background at
+    // startup rather than on first open. Reactive to DesktopEntries, so it
+    // auto-updates when apps are installed or removed.
+    readonly property var appList: {
+        const src = DesktopEntries.applications ? DesktopEntries.applications.values : [];
+        const a = src.filter(e => e && !e.noDisplay);
+        a.sort((x, y) => x.name.localeCompare(y.name));
+        return a;
+    }
+
+    // ---- persisted launcher settings (grid mode + favourite app ids) ----
+    // Stored as JSON in the shell's state dir; survives restarts. The adapter is
+    // shared with every monitor's Launcher, which mutates it directly; writes are
+    // flushed automatically on any change (onAdapterUpdated -> writeAdapter).
+    FileView {
+        id: settingsFile
+        path: Quickshell.stateDir + "/launcher.json"
+        watchChanges: true
+        onFileChanged: reload()
+        onAdapterUpdated: writeAdapter()
+        onLoadFailed: err => { if (err === FileViewError.FileNotFound) writeAdapter(); }
+        JsonAdapter {
+            id: settings
+            property bool grid: false
+            property var favorites: []      // [DesktopEntry.id]
+        }
+    }
+
     // ---- one full-screen overlay window per monitor ----
     Variants {
         model: Quickshell.screens
@@ -1082,14 +1698,18 @@ ShellRoot {
             screen: modelData
 
             WlrLayershell.layer: WlrLayer.Overlay
+            // grab keyboard only while a panel is open, so the launcher search
+            // field can take text input; the collapsed/hovered pill never steals keys.
+            WlrLayershell.keyboardFocus: (win.open || win.launcher) ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
             exclusionMode: ExclusionMode.Ignore
             color: "transparent"
             anchors { top: true; bottom: true; left: true; right: true }
-            mask: (win.open || win.ctxGroup !== null) ? fullRegion : pillRegion
+            mask: (win.open || win.launcher || win.ctxGroup !== null) ? fullRegion : pillRegion
 
             property bool open: false
+            property bool launcher: false // app launcher (wider open state)
             property var ctxGroup: null   // app group whose right-click menu is shown
-            property bool dash: open || hover.hovered || ctxGroup !== null
+            property bool dash: open || launcher || hover.hovered || ctxGroup !== null
             property int menu: 0          // 0 net, 1 vol, 2 bt, 3 batt, 4 notif
 
             Region { id: pillRegion; item: pill }
@@ -1098,16 +1718,16 @@ ShellRoot {
             MouseArea {
                 id: backdrop
                 anchors.fill: parent
-                enabled: win.open || win.ctxGroup !== null
-                onClicked: { win.open = false; win.ctxGroup = null; }
+                enabled: win.open || win.launcher || win.ctxGroup !== null
+                onClicked: { win.open = false; win.launcher = false; win.ctxGroup = null; }
             }
 
             Item {
                 id: pill
                 anchors.horizontalCenter: parent.horizontalCenter
                 y: 6
-                width: win.dash ? 384 : 96
-                height: win.open ? 470 : (win.dash ? 104 : 28)
+                width: win.launcher ? 520 : (win.dash ? 384 : 96)
+                height: (win.open || win.launcher) ? 470 : (win.dash ? 104 : 28)
                 Behavior on width  { NumberAnimation { duration: theme.anim; easing.type: Easing.OutCubic } }
                 Behavior on height { NumberAnimation { duration: theme.anim; easing.type: Easing.OutCubic } }
 
@@ -1122,8 +1742,8 @@ ShellRoot {
                     Behavior on radius { NumberAnimation { duration: theme.anim } }
                 }
 
-                MouseArea { anchors.fill: parent; enabled: win.dash && !win.open; onClicked: win.open = true }
-                MouseArea { anchors.fill: parent; enabled: win.open; onClicked: {} }
+                MouseArea { anchors.fill: parent; enabled: win.dash && !win.open && !win.launcher; onClicked: win.open = true }
+                MouseArea { anchors.fill: parent; enabled: win.open || win.launcher; onClicked: {} }
 
                 // ---- collapsed: clock (hh:mm) ----
                 Text {
@@ -1210,34 +1830,54 @@ ShellRoot {
                     x: theme.pad; y: 62
                     width: pill.width - theme.pad * 2
                     height: 24
-                    opacity: (win.dash && !win.open) ? 1 : 0
+                    // stays visible when open now (it doubles as the menu switcher);
+                    // only the launcher hides it.
+                    opacity: (win.dash && !win.launcher) ? 1 : 0
                     visible: opacity > 0
                     Behavior on opacity { NumberAnimation { duration: theme.animFast } }
 
-                    Text {                                   // date/time (left)
+                    Row {                                    // launcher button + date/time (left)
                         anchors.left: parent.left
                         anchors.verticalCenter: parent.verticalCenter
-                        text: root.clockText
-                        color: theme.textDim; font.family: theme.mono; font.pixelSize: theme.fsSmall
+                        spacing: 8
+                        IconImage {                          // open the app launcher
+                            anchors.verticalCenter: parent.verticalCenter
+                            implicitSize: 18
+                            source: Quickshell.iconPath("view-app-grid", "application-x-executable")
+                            MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                                onClicked: { win.open = false; win.launcher = true; } }
+                        }
+                        Text {                               // date/time
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: root.clockText
+                            color: theme.textDim; font.family: theme.mono; font.pixelSize: theme.fsSmall
+                        }
                     }
 
                     Row {                                    // status icons + system tray (right)
                         anchors.right: parent.right
                         anchors.verticalCenter: parent.verticalCenter
-                        spacing: 12
+                        spacing: 8
 
-                        Repeater {                           // status icons -> open panel to that menu
+                        Repeater {                           // status icons -> open panel to that menu (active one highlighted)
                             model: [
                                 { ic: "network-wireless", menu: 0 },
                                 { ic: (Pipewire.defaultAudioSink && Pipewire.defaultAudioSink.audio && Pipewire.defaultAudioSink.audio.muted)
                                        ? "audio-volume-muted" : "audio-volume-high", menu: 1 },
                                 { ic: "bluetooth", menu: 2 },
-                                { ic: (UPower.displayDevice && UPower.displayDevice.iconName) ? UPower.displayDevice.iconName : "battery", menu: 3 }
+                                { ic: (UPower.displayDevice && UPower.displayDevice.iconName) ? UPower.displayDevice.iconName : "battery", menu: 3 },
+                                { ic: "preferences-desktop-notification", menu: 4 }
                             ]
-                            delegate: IconImage {
+                            delegate: Rectangle {
                                 required property var modelData
-                                implicitSize: 18
-                                source: Quickshell.iconPath(modelData.ic, "application-x-executable")
+                                width: 24; height: 22; radius: theme.radiusSmall
+                                color: (win.open && win.menu === modelData.menu) ? theme.accentDim : "transparent"
+                                Behavior on color { ColorAnimation { duration: theme.animFast } }
+                                IconImage {
+                                    anchors.centerIn: parent
+                                    implicitSize: 18
+                                    source: Quickshell.iconPath(modelData.ic, "application-x-executable")
+                                }
                                 MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor
                                     onClicked: { win.menu = modelData.menu; win.open = true; } }
                             }
@@ -1262,48 +1902,25 @@ ShellRoot {
                 }
 
                 // ===================== control panel (open) =====================
+                // Sits below row 2 (which stays visible and acts as the menu
+                // switcher); the menu itself is full-width — no icon rail. Each
+                // menu carries its own back chevron via MenuHeader.
                 Item {
-                    x: theme.pad; y: 46
+                    x: theme.pad; y: 92
                     width: pill.width - theme.pad * 2
-                    height: pill.height - 46 - theme.pad
+                    height: pill.height - 92 - theme.pad
                     opacity: win.open ? 1 : 0
                     visible: opacity > 0
                     Behavior on opacity { NumberAnimation { duration: theme.anim } }
 
                     Rectangle { width: parent.width; height: 1; color: theme.divider }
 
-                    Column {                          // left icon rail
-                        id: rail
-                        y: 12
-                        spacing: 8
-                        Repeater {
-                            model: [
-                                { ic: "network-wireless",                 i: 0 },
-                                { ic: "audio-volume-high",                i: 1 },
-                                { ic: "bluetooth",                        i: 2 },
-                                { ic: "battery",                          i: 3 },
-                                { ic: "preferences-desktop-notification", i: 4 }
-                            ]
-                            delegate: Rectangle {
-                                required property var modelData
-                                width: theme.railWidth - 8; height: theme.railWidth - 8
-                                radius: theme.radiusSmall
-                                color: win.menu === modelData.i ? theme.accentDim : "transparent"
-                                IconImage {
-                                    anchors.centerIn: parent; implicitSize: 22
-                                    source: Quickshell.iconPath(modelData.ic, "application-x-executable")
-                                }
-                                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor
-                                    onClicked: win.menu = modelData.i }
-                            }
-                        }
-                    }
-
-                    Item {                            // menu pane
-                        x: theme.railWidth + 12; y: 14
-                        width: parent.width - theme.railWidth - 12
-                        height: parent.height - 26
+                    Item {                            // menu pane (full width)
+                        y: 14
+                        width: parent.width
+                        height: parent.height - 14
                         Loader {
+                            id: menuLoader
                             anchors.fill: parent
                             active: win.open
                             sourceComponent: win.menu === 0 ? cNet
@@ -1311,6 +1928,46 @@ ShellRoot {
                                            : win.menu === 2 ? cBt
                                            : win.menu === 3 ? cBatt : cNotif
                         }
+                        Connections {                 // chevron back -> collapse panel
+                            target: menuLoader.item
+                            ignoreUnknownSignals: true
+                            function onCloseRequested() { win.open = false; }
+                        }
+                    }
+                }
+
+                // ===================== launcher (wider open state) =====================
+                Item {
+                    x: theme.pad; y: 46
+                    width: pill.width - theme.pad * 2
+                    height: pill.height - 46 - theme.pad
+                    clip: true
+                    opacity: win.launcher ? 1 : 0
+                    visible: opacity > 0
+                    Behavior on opacity { NumberAnimation { duration: theme.anim } }
+
+                    Rectangle { width: parent.width; height: 1; color: theme.divider }
+
+                    // Kept instantiated (not gated on win.launcher) so the list
+                    // virtualises and pre-warms its icons in the background at
+                    // startup; subsequent opens are instant. Sized to the open
+                    // dimensions regardless of the pill's current animation so
+                    // the ListView always has room to lay out; the panel clips.
+                    Launcher {
+                        id: launcherItem
+                        y: 14
+                        width: 520 - theme.pad * 2
+                        height: 470 - 46 - theme.pad - 14
+                        theme: theme
+                        apps: root.appList
+                        settings: settings
+                        onLaunched: win.launcher = false
+                        onCloseRequested: win.launcher = false
+                    }
+                    // focus the search field (and clear it) each time the launcher opens
+                    Connections {
+                        target: win
+                        function onLauncherChanged() { if (win.launcher) launcherItem.open(); }
                     }
                 }
             }
@@ -1384,6 +2041,13 @@ ShellRoot {
     Component { id: cBt;   BluetoothMenu { theme: theme } }
     Component { id: cBatt; BatteryMenu   { theme: theme } }
     Component { id: cNotif; Item {
+        id: notifRoot
+        signal closeRequested()
+        MenuHeader {
+            theme: theme
+            title: "Notifications"
+            onBack: notifRoot.closeRequested()
+        }
         Text {
             anchors.centerIn: parent
             horizontalAlignment: Text.AlignHCenter
@@ -1398,6 +2062,7 @@ ShellRoot {
     readonly property string clockShort: Qt.formatDateTime(sysclock.date, "hh:mm")
 }
 #+end_src
+
 ** run-pill.sh
 #+begin_src sh :tangle ~/.config/quickshell/pill/run-pill.sh :mkdirp yes :tangle-mode (identity #o755)
 #!/bin/sh
