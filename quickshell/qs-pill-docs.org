@@ -83,10 +83,10 @@ require taking the DBus name from Plasma).
 
 The shell is split into small files (see [[*File map][§ File map]]). Sibling
 =.qml= files are usable as component types via QML's implicit directory import.
-=Theme= is instantiated once in =pill.qml= and passed to each menu as a =theme=
+=Theme= is instantiated once in =init.qml= and passed to each menu as a =theme=
 property (no singletons, so nothing magic to set up).
 
-** Window & input model (pill.qml)
+** Window & input model (init.qml)
 =Variants { model: Quickshell.screens }= makes one =PanelWindow= per monitor. Each
 window is a *full-screen* layer-shell =Overlay= surface that reserves no space.
 Input is governed by the window =mask=:
@@ -134,7 +134,7 @@ app's windows is active). Left-click =cycleGroup= focuses the app's next window;
 right-click opens a floating menu (this app's windows to focus + launcher actions
 from =DesktopEntries.heuristicLookup(icon).actions= when available).
 
-** Virtual desktops (pill.qml, DBus)
+** Virtual desktops (init.qml, DBus)
 Three =Process= blocks drive =gdbus= against =org.kde.KWin /VirtualDesktopManager=:
 fetch the =desktops= list (a regex parses =(uint32 N, 'id', 'name')= tuples — the
 =uint32= tag is optional because gdbus only prints it on the first tuple), fetch
@@ -176,18 +176,18 @@ small and the look coherent.
 | =BluetoothMenu.qml= | connected / paired / discovered devices                       |
 | =BatteryMenu.qml= | all power devices                                              |
 | =winbridge.py=    | open-window list (KRunner) + active window (KWin script) → JSON  |
-| =pill.qml=        | windows, stages, virtual desktops, taskbar, tray, rail, menu host (entry) |
+| =init.qml=    | windows, stages, virtual desktops, taskbar, tray, rail, menu host (entry) |
 
 * Source
 
 Edit these blocks; tangle to regenerate the files (see [[*Tangling][§ Tangling]]).
-After tangling, validate with =qs -p quickshell/pill.qml=.
+After tangling, validate with =qs -p quickshell/init.qml=.
 
 ** Theme.qml
-#+begin_src qml :tangle Theme.qml
+#+begin_src qml :tangle ~/.config/quickshell/pill/Theme.qml :mkdirp yes
 pragma ComponentBehavior: Bound
 // Theme.qml — one place for all colours, metrics and timings. Change here to
-// restyle the whole pill. Instantiated once in pill.qml as `Theme { id: theme }`
+// restyle the whole pill. Instantiated once in init.qml as `Theme { id: theme }`
 // and passed into every menu component as `theme`.
 import QtQuick
 
@@ -226,7 +226,7 @@ QtObject {
 #+end_src
 
 ** PillToggle.qml
-#+begin_src qml :tangle PillToggle.qml
+#+begin_src qml :tangle ~/.config/quickshell/pill/PillToggle.qml :mkdirp yes
 pragma ComponentBehavior: Bound
 // PillToggle.qml — a small themed on/off switch. Reusable across menus.
 import QtQuick
@@ -271,7 +271,7 @@ Item {
 #+end_src
 
 ** PillSlider.qml
-#+begin_src qml :tangle PillSlider.qml
+#+begin_src qml :tangle ~/.config/quickshell/pill/PillSlider.qml :mkdirp yes
 pragma ComponentBehavior: Bound
 // PillSlider.qml — a themed horizontal slider over [0,1]. Reused for volume.
 import QtQuick
@@ -327,7 +327,7 @@ Item {
 #+end_src
 
 ** NetworkMenu.qml
-#+begin_src qml :tangle NetworkMenu.qml
+#+begin_src qml :tangle ~/.config/quickshell/pill/NetworkMenu.qml :mkdirp yes
 pragma ComponentBehavior: Bound
 // NetworkMenu.qml — Wi-Fi list (signal + lock + active), connect/disconnect,
 // password prompt for secured networks, Wi-Fi on/off. Uses Quickshell.Networking
@@ -518,7 +518,7 @@ Item {
 #+end_src
 
 ** VolumeMenu.qml
-#+begin_src qml :tangle VolumeMenu.qml
+#+begin_src qml :tangle ~/.config/quickshell/pill/VolumeMenu.qml :mkdirp yes
 pragma ComponentBehavior: Bound
 // VolumeMenu.qml — Devices tab (speakers = Audio/Sink, mics = Audio/Source) with
 // per-device volume/mute/set-default, and Applications tab (Stream/Output/Audio)
@@ -636,7 +636,7 @@ Item {
 #+end_src
 
 ** BluetoothMenu.qml
-#+begin_src qml :tangle BluetoothMenu.qml
+#+begin_src qml :tangle ~/.config/quickshell/pill/BluetoothMenu.qml :mkdirp yes
 pragma ComponentBehavior: Bound
 // BluetoothMenu.qml — adapter power + scan toggles, then three sections:
 // Connected, Paired (known, not connected), Available (discovered). Connect /
@@ -773,7 +773,7 @@ Item {
 #+end_src
 
 ** BatteryMenu.qml
-#+begin_src qml :tangle BatteryMenu.qml
+#+begin_src qml :tangle ~/.config/quickshell/pill/BatteryMenu.qml :mkdirp yes
 pragma ComponentBehavior: Bound
 // BatteryMenu.qml — every present power device (laptop battery, mouse, keyboard,
 // headphones, …) with themed icon, name, state and percentage. Uses
@@ -854,7 +854,7 @@ Item {
 
 ** winbridge.py
 Self-contained python glue (see [[*Open windows / taskbar][taskbar notes]]).
-#+begin_src python :tangle winbridge.py
+#+begin_src python :tangle ~/.config/quickshell/pill/winbridge.py :mkdirp yes
 #!/usr/bin/env python
 # winbridge.py — feeds the pill its open-window list + the active window.
 #
@@ -865,7 +865,7 @@ Self-contained python glue (see [[*Open windows / taskbar][taskbar notes]]).
 #   * a 3-line KWin script (loaded below via /Scripting) reports the active
 #     window's id whenever it changes, by calling our own org.kde.pill service.
 # We print one JSON line {"active": "{uuid}", "windows": [...]} per update; the
-# pill reads it on stdout. Launched by pill.qml as `python <shellDir>/winbridge.py`.
+# pill reads it on stdout. Launched by init.qml as `python <shellDir>/winbridge.py`.
 import sys, os, json, atexit, tempfile
 from gi.repository import Gio, GLib
 
@@ -949,16 +949,16 @@ GLib.timeout_add_seconds(1, tick)
 GLib.MainLoop().run()
 #+end_src
 
-** pill.qml
-#+begin_src qml :tangle pill.qml
+** init.qml
+#+begin_src qml :tangle ~/.config/quickshell/pill/init.qml :mkdirp yes
 pragma ComponentBehavior: Bound
 // ----------------------------------------------------------------------------
-// pill.qml — morphing "pill" overlay for KDE Plasma 6 / KWin / Wayland.
+// init.qml — morphing "pill" overlay for KDE Plasma 6 / KWin / Wayland.
 //
 // Stages: collapsed (hh:mm) -> hovered (dashboard, two balanced rows) -> clicked
 // (control panel). See qs-pill-docs.org "How the pill works" for the full notes.
 //
-// Run with:  qs -p quickshell/pill.qml
+// Run with:  qs -p quickshell/init.qml
 // ----------------------------------------------------------------------------
 import QtQuick
 import Quickshell
@@ -1398,6 +1398,54 @@ ShellRoot {
     readonly property string clockShort: Qt.formatDateTime(sysclock.date, "hh:mm")
 }
 #+end_src
+** run-pill.sh
+#+begin_src sh :tangle ~/.config/quickshell/pill/run-pill.sh :mkdirp yes :tangle-mode (identity #o755)
+#!/bin/sh
+# run-pill.sh — launch the pill with a Wayland environment resolved at runtime.
+#
+# After a reboot the login shell often has no WAYLAND_DISPLAY / QT_QPA_PLATFORM
+# exported, so Qt falls back to the xcb plugin, fails to connect, and crashes.
+# Qt selects its platform plugin before any QML is parsed, so this has to be
+# fixed in the launcher rather than in init.qml. We discover the compositor's
+# socket from XDG_RUNTIME_DIR and point Qt at it.
+#
+# Usage:  ./run-pill.sh            (runs quickshell/init.qml next to this script)
+#         ./run-pill.sh <args>     (extra args are forwarded to qs)
+
+set -eu
+
+dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+
+# XDG_RUNTIME_DIR is where the wayland socket lives; derive it if absent.
+: "${XDG_RUNTIME_DIR:=/run/user/$(id -u)}"
+export XDG_RUNTIME_DIR
+
+# If we weren't handed a display, find the compositor's socket.
+# Prefer wayland-0, else the first wayland-N socket present.
+if [ -z "${WAYLAND_DISPLAY:-}" ]; then
+    if [ -S "$XDG_RUNTIME_DIR/wayland-0" ]; then
+        WAYLAND_DISPLAY=wayland-0
+    else
+        for sock in "$XDG_RUNTIME_DIR"/wayland-*; do
+            case "$sock" in
+                *.lock) continue ;;
+            esac
+            [ -S "$sock" ] || continue
+            WAYLAND_DISPLAY=$(basename "$sock")
+            break
+        done
+    fi
+fi
+
+if [ -z "${WAYLAND_DISPLAY:-}" ]; then
+    echo "run-pill.sh: no wayland socket found in $XDG_RUNTIME_DIR" >&2
+    exit 1
+fi
+export WAYLAND_DISPLAY
+export QT_QPA_PLATFORM=wayland
+
+exec qs -p "$dir/init.qml" "$@"
+#+end_src
 
 * Tangling (how to regenerate the =.qml= files)
 
@@ -1412,7 +1460,7 @@ bridge exits. After editing any block:
 - Or batch / shell:
   =emacs --batch -l org -eval '(org-babel-tangle-file "quickshell/qs-pill-docs.org")'=
 
-Then validate:  =qs -p quickshell/pill.qml=  (Ctrl-C to stop). A clean load prints
+Then validate:  =qs -p quickshell/init.qml=  (Ctrl-C to stop). A clean load prints
 "Configuration Loaded" with no WARN lines.
 
 Tangling is *manual on purpose* (matches how I tangle the rest of my config). For
