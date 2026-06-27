@@ -69,16 +69,51 @@ fullscreen-hide are blocked on there being no client-visible window-list protoco
 | App right-click: window list + launcher actions    | ◐ partial      | window list works (bridge data); launcher actions need =DesktopEntries=, which read 0 apps in my sandbox — verify in a real session |
 | App launcher (search, grid, favourites, calculator) | ✅ built       | =DesktopEntries.applications= in =ListView=/=GridView=; search over name/generic/keywords; grid + favourites persisted via =FileView=/=JsonAdapter=; =wl-copy= for calc results |
 | Pinned apps (taskbar)                               | ⚠️ TODO       | distinct from launcher favourites; would always-show an app tile even when not running |
-| VPN selection in network menu                      | ⚠️ TODO       | not in the native =Networking= binding — needs =nmcli= via =Process=                          |
-| Hide pill when a fullscreen window is focused       | ⚠️ TODO       | now feasible: =getWindowInfo(activeUuid).fullscreen= (we already track the active uuid) — not wired |
-| Notification history in the panel                  | ⚠️ intrusive  | =plasmashell= owns =org.freedesktop.Notifications=; taking it over means disabling Plasma's  |
+| VPN selection in network menu                      | ✅ built       | not in the native =Networking= binding — listed + toggled via =nmcli= (=Process=) in =NetworkMenu.qml=         |
+| Hide pill when a fullscreen window is focused       | ✅ built       | =winbridge.py= KWin script reports the active window's =fullScreen= flag; the resting pill fades out + drops from the input mask while it's set (=win.fsHide=) — notifications still morph through |
+| Notifications (popup morph + history + reply)      | ✅ built       | native =Services.Notifications= =NotificationServer=; *requires disabling Plasma's notifications* (see below) — =plasmashell= owns =org.freedesktop.Notifications= without =ALLOW_REPLACEMENT=, verified |
 
 The taskbar needs no Wayland window protocol: KWin's KRunner "windows" runner lists
 and activates windows over DBus, and a tiny KWin script reports the active window
 (see =winbridge.py=). Remaining: *launcher actions* (blocked on =DesktopEntries=
-returning entries), *pinned apps* (app-side state), *VPN* (needs nmcli),
-*fullscreen-hide* (wireable now via =getWindowInfo=), and *notifications* (would
-require taking the DBus name from Plasma).
+returning entries), *pinned apps* (app-side state), and *VPN* (needs nmcli).
+
+* Taking over notifications from Plasma
+
+The pill is now a *real* freedesktop notification daemon (=Quickshell.Services.-
+Notifications.NotificationServer=, see [[*Notifications.qml][§ Notifications.qml]]).
+Only one process may own the bus name =org.freedesktop.Notifications=, and *that
+process must be chosen before the pill can receive anything*.
+
+*Verified facts on this machine* (=busctl --user=, June 2026):
+- =org.freedesktop.Notifications= is owned by *=plasmashell= itself* (the built-in
+  =org.kde.plasma.notifications= system-tray applet, backed by
+  =libnotificationmanager.so=) — there is no separate daemon to kill.
+- Plasma registered the name *without* =DBUS_NAME_FLAG_ALLOW_REPLACEMENT=:
+  requesting it with replace+allow-replacement returns =EXISTS= (code 3), so
+  Quickshell *cannot* take it at runtime. Plasma must be stopped from registering
+  it in the first place.
+
+*How to disable Plasma's notifications* (then the pill grabs the name on its next
+start):
+
+1. Right-click the system tray ▸ *Configure System Tray…* ▸ *Entries*.
+2. Set *Notifications* to *Disabled* (not "Shown"/"Hidden" — those still load the
+   applet and grab the bus name; only *Disabled* skips instantiating it).
+3. Restart the shell so the name is released, e.g.
+   =systemctl --user restart plasma-plasmashell= (or log out / back in).
+4. Start the pill (=./run-pill.sh=). Confirm it owns the daemon:
+   =busctl --user call org.freedesktop.Notifications /org/freedesktop/Notifications
+   org.freedesktop.Notifications GetServerInformation= should now report
+   ="quickshell"= as the server name, not ="Plasma"=.
+
+To hand notifications *back* to Plasma: re-enable the tray entry and restart
+=plasma-plasmashell= (and stop the pill, or stop its server).
+
+Caveat (unverified): if disabling the tray entry alone does not free the name on
+your Plasma build, the fallback is to ensure the pill's =NotificationServer=
+registers *before* plasmashell at login — but on this setup the tray-entry method
+is the supported route, and the name-ownership facts above are confirmed.
 
 * How the pill works
 
@@ -96,6 +131,11 @@ Input is governed by the window =mask=:
 - *open / launcher / right-click menu*: =mask= = a =Region { item: backdrop }=
   (the whole window) → outside clicks are caught by a backdrop =MouseArea= that
   closes the panel, so the click is swallowed, never passed through.
+- *fullscreen-hide* (=win.fsHide=): while a fullscreen window is focused and the
+  pill is at true rest (not hovered/open and no notification morphing), the pill
+  fades to =opacity 0= and =mask= = an *empty* =Region= → the whole window is
+  click-through, so a game/video underneath is unobstructed. A notification still
+  morphs the pill (=notifMorph= overrides =fsHide=), so alerts appear as usual.
 
 ** Stages
 A single =pill= =Item= animates =width=/=height= between the stages via
@@ -108,19 +148,21 @@ stage:
    (network/volume/bluetooth/battery/notifications, icon-only, click → open that
    menu) + system tray (right). =dash= is true when hovered, open, or a
    right-click menu is up.
-3. *open* (470 tall): control panel. Row 1 *and* Row 2 stay on top — Row 2 now
-   doubles as the *menu switcher* (the active menu's status icon is highlighted);
-   there is *no icon rail*. Below a divider sits a single full-width menu pane: a
-   =Loader= shows the menu component for =win.menu= (=active= only while open).
-   Each menu renders a shared =MenuHeader= — a back chevron that collapses the
-   panel via the menu's =closeRequested()= signal (wired through a =Connections=
-   on the loader), the title, and a trailing slot for the menu's own toggles.
-   Clicking the pill body sets =open=; a =MouseArea= swallows clicks on empty pill
-   area so they don't reach the close-backdrop.
-4. *launcher* (=launcher=, 520×470): the app launcher replaces the menu pane (see
-   [[*Launcher.qml][§ Launcher.qml]]). Opened from the Row-2 grid button; while
-   =open= or =launcher= the layer surface takes =WlrKeyboardFocus.OnDemand= so the
-   search field can receive keystrokes.
+3. *open* (470 tall): control panel. Both dashboard rows *stay visible* on top —
+   Row 2 doubles as the *menu switcher* (the active menu's status icon is
+   highlighted); there is *no icon rail*. Below a divider sits a single full-width
+   menu pane: a =Loader= shows the menu component for =win.menu= (=active= only
+   while open). Each menu renders a shared =MenuHeader= — a back chevron *and title*
+   (both clickable) that collapse the panel via the menu's =closeRequested()= signal
+   (wired through a =Connections= on the loader), plus a trailing slot for the
+   menu's own toggles. Clicking the pill body opens to the *notification-history*
+   pane (=win.menu = 4=, the default); a Row-2 status icon opens straight to its own
+   menu and switches it while open.
+4. *launcher* (=launcher=, 520×470): the app launcher takes the menu pane's place,
+   *also below the two rows* (same divider + offset), so it matches the menus (see
+   [[*Launcher.qml][§ Launcher.qml]]). Opened from the Row-2 grid button
+   (=view-grid-symbolic=); while =open= or =launcher= the layer surface takes
+   =WlrKeyboardFocus.OnDemand= so the search field can receive keystrokes.
 
 The window =mask= also expands to full-screen when an app *right-click menu* is
 open (=win.ctxGroup=), so that menu (a =Loader= floating below the pill) is
@@ -135,9 +177,12 @@ prints one JSON line =\{active, windows\}= per update on stdout, which a =Proces
   =org.kde.krunner1.Match("")= returns every window =(id, title, icon, …)= (icon is
   already an app-icon name like =org.kde.dolphin=); polled ~1 s, deduped by id
   (the runner returns each window twice). =Run(id, "")= focuses one.
-- *active window*: the helper owns DBus name =org.kde.pill= and loads a 3-line KWin
+- *active window*: the helper owns DBus name =org.kde.pill= and loads a small KWin
   script (via =/Scripting=) that calls us on =workspace.windowActivated= with
-  =String(window.internalId)= (=\{uuid\}=, matching the krunner ids). Unloaded on exit.
+  =String(window.internalId)= (=\{uuid\}=, matching the krunner ids) plus the
+  window's =fullScreen= flag; it also re-pushes when the active window's
+  =fullScreenChanged= fires (so going fullscreen in place hides the pill). The flag
+  rides the JSON line as =fullscreen= and drives =win.fsHide=. Unloaded on exit.
 
 In the UI, =root.appGroups= groups windows by =icon= (one tile per app, with a
 count badge for ≥2 windows and an underline that turns accent when any of the
@@ -181,13 +226,98 @@ filtered, name-sorted) at the long-lived root and shares it with every monitor's
 =Launcher=, so opening is instant and survives close. Grid mode + favourite app
 ids persist in =Quickshell.stateDir + "/launcher.json"= via a =FileView= +
 =JsonAdapter= (=settings=); the adapter auto-flushes on change and is created on
-first run (=onLoadFailed → writeAdapter()=). The =Launcher= itself: a focused
-search field (matches name/genericName/keywords), a grid/list toggle, ★ favourites
-(empty query shows favourites if any, else all apps; searching is always a flat
-list), a right-click menu (=DesktopEntry.actions= + favourite toggle), and a
-calculator (a safe arithmetic expression, or one prefixed with ===, shows a result
-row that =wl-copy='s on click/Enter). =init.qml= focuses + clears the field on each
-open via a =Connections= on =win.launcher=.
+first run (=onLoadFailed → writeAdapter()=). The =Launcher= itself: a *back chevron*
+(closes the launcher) left of a focused search field (matches
+name/genericName/keywords), a grid/list toggle, ★ favourites (empty query shows
+favourites if any, else all apps; searching is always a flat list), a right-click
+menu (=DesktopEntry.actions= + favourite toggle), and a calculator (a safe
+arithmetic expression, or one prefixed with ===, shows a result row that
+=wl-copy='s on click/Enter). A small *power row* sits bottom-right —
+lock/logout/reboot/shutdown (16px), wired to =loginctl lock-session= and
+=org.kde.Shutdown='s =logout=/=logoutAndReboot=/=logoutAndShutdown= over =gdbus=.
+=init.qml= focuses + clears the field on each open via a =Connections= on
+=win.launcher=.
+
+** Notifications (Notifications.qml + NotificationView.qml + NotificationStack.qml + NotificationHistory.qml)
+=init.qml= instantiates one =Notifications= object (=notifs=) at the long-lived
+root and shares it with every monitor. It owns a =NotificationServer= that
+advertises body/markup/images/actions/action-icons/inline-reply/persistence, so
+apps send the rich payload. Every notification is kept =tracked= so it survives as
+*history* in =server.trackedNotifications=; =notifs.grouped= buckets that by app
+(newest-first inside a group, group ordered by its newest item) for the history
+pane. A separate =active= stack (newest first) holds the *un-closed popups*. Each
+notification has its *own* countdown (so several popups expire independently),
+held centrally in =remaining= keyed by id (a single =Timer= steps them and a
+=tick= counter refreshes the bars) — *not* per-card, since the deck's Repeater
+recreates its delegates whenever =active= changes. *Timeout policy* (=timeoutFor=):
+every popup fades in *5s* (=defaultTimeoutMs=) — the app's requested timeout is
+*ignored* (apps tend to ask for ~60s) — *except* genuinely permanent ones
+(=expireTimeout === 0=) or =Critical=, which never auto-expire. =hold(true)= — set
+while the deck is hovered — pauses *and resets every* countdown at once. Closing a
+popup (the X) or letting it time out only removes it from =active= and *always
+keeps* it in history (even transient ones); we deliberately avoid
+=Notification.dismiss()/expire()= because in Quickshell those *destroy* the
+notification (so they'd wipe the history copy too) — the trade-off is the sender
+isn't told the popup closed. Only =forget()= (the X *in history*) / =clearAll()=
+remove from history (=tracked = false=). The spec carries no timestamp, so arrival
+time is stamped on receipt (re-stamped to "now" for =lastGeneration= notifications
+restored on reload).
+
+A =NotificationView= card is two columns: the notification *image* (200px wide,
+aspect kept) or the *app icon* on the left; on the right three rows — summary +
+close-X with a vertical countdown bar, body (=StyledText=, links open
+externally), and relative time + action buttons — plus an inline-reply field when
+the notification supports it (Telegram, KDE Connect: Enter → =sendInlineReply()=).
+The image is resolved robustly (=resolveImage()=): an =image-path= hint is loaded
+as a =file://= URL directly (Flameshot & co. send the screenshot that way, and
+Quickshell would otherwise route a bare path through its *icon* provider and drop
+it), otherwise Quickshell's =image= (the =image-data= provider URL) is used. The
+=Image= loads *synchronously* (=asynchronous: false=) — Quickshell's image-data
+provider serves nothing on the async path. The
+same card is reused three ways: in the deck (=autoExpire:true=), as *history* rows
+(=inHistory:true=, so the X forgets instead of dismissing), and elsewhere.
+
+=NotificationStack= lays the =active= cards out as a *deck*: at rest the newest is
+on top and the rest peek out below it (offset + scaled back, capped at
+=maxDeck=); hovering the stack drops them into a full vertical list and sets
+=notifs.held=. Its =implicitHeight= reports the laid-out height (deck vs expanded),
+recomputed reactively via a =relayout= bump on any card's height change. Once
+there's an actual stack (more than one active popup) a floating *"Dismiss all"*
+pill appears in a reserved =headroom= band at the deck's top-right; clicking it
+calls =notifs.dismissAll()=, which closes every popup at once but keeps them in
+history (exactly like dismissing each card's X).
+
+In =init.qml= the collapsed pill *morphs* into this deck whenever a notification is
+active and the pill isn't clicked-open / launcher / app-menu (=win.notifMorph=):
+the clock and dashboard rows hide, the pill's own background is dropped, and
+=pill.height= tracks the deck's =implicitHeight= (so hovering grows the pill as the
+deck expands) — you close every notification (or let them time out) to return to
+the clock. While the pill *is* clicked-open / launcher / showing an app menu, the
+same deck floats *below* the pill instead (both via a =Loader= over the shared
+=cStack= component, so only the visible one runs timers). A morphing notification
+*never* takes keyboard focus (the surface only grabs focus while =open=/=launcher=),
+so it can't steal focus from the active window — inline reply is typed from the
+floating cards under an *opened* pill. The Row-2 notification status icon opens
+=NotificationHistory= (menu 4).
+
+** Look, translucency & icons
+The palette in =Theme.qml= is the warm vermillion/cream scheme borrowed from
+Ricelin (=accent= vermillion over a cocoa-black =bg=). At rest (collapsed and
+un-hovered) the pill is a *borderless translucent gradient* (=theme.bgGradTop= →
+=theme.bgGradBottom=) and slightly *dimmed* (=theme.idleOpacity=), and its clock
+text is itself a touch translucent so a hint of the backdrop shows through; it
+animates to a solid, full-opacity bordered surface the moment it is hovered,
+opened, or a notification morphs it. This is alpha translucency only — true
+backdrop *blur* would need the KWin blur protocol, which Quickshell does not
+expose (no blur type in its qmltypes).
+
+Icons resolve through Qt's icon theme. =run-pill.sh= loads the *KDE* Qt platform
+theme (=QT_QPA_PLATFORMTHEME=kde=) so every icon — the launcher app list, status
+glyphs, tray — follows KDE's configured icon theme (System Settings ▸ Icons). To
+force a specific theme regardless of KDE, set =Theme.qml='s =iconTheme: "Name"=
+(e.g. ="Papirus"=); =run-pill.sh= reads it and applies it via the gtk3 platform
+theme (Qt has no env var for an icon-theme name, so we write a private
+=gtk-3.0/settings.ini= and prefix =XDG_CONFIG_HOME=). =""= follows KDE.
 
 ** Reusable widgets
 =PillToggle= (themed switch), =PillSlider= (themed 0..1 slider) and =MenuHeader=
@@ -201,11 +331,15 @@ open via a =Connections= on =win.launcher=.
 | =PillToggle.qml=  | reusable themed on/off switch                                   |
 | =PillSlider.qml=  | reusable themed horizontal slider [0,1]                          |
 | =MenuHeader.qml=  | reusable menu header: back chevron + title + trailing slot       |
-| =NetworkMenu.qml= | Wi-Fi list / connect / password / toggle                        |
-| =VolumeMenu.qml=  | devices + applications volume                                   |
+| =NetworkMenu.qml= | Wi-Fi list / connect / password / toggle; VPN (nmcli); open KDE network settings |
+| =VolumeMenu.qml=  | devices + applications volume; open KDE Audio/Multimedia settings |
 | =BluetoothMenu.qml= | connected / paired / discovered devices                       |
 | =BatteryMenu.qml= | all power devices                                              |
 | =Launcher.qml=    | app launcher: search, grid/list, favourites, right-click, calculator |
+| =Notifications.qml= | freedesktop notification server + popup/history state (one instance) |
+| =NotificationView.qml= | one notification card (own countdown; morph + floating + history) |
+| =NotificationStack.qml= | active-popup deck; stack at rest, drops to a list on hover     |
+| =NotificationHistory.qml= | grouped, newest-first history pane (menu 4)                |
 | =winbridge.py=    | open-window list (KRunner) + active window (KWin script) → JSON  |
 | =init.qml=    | windows, stages, virtual desktops, taskbar, tray, menu host + launcher (entry) |
 
@@ -223,18 +357,28 @@ pragma ComponentBehavior: Bound
 import QtQuick
 
 QtObject {
-    // ---- palette (dark, Tokyo-night-ish accent over near-black) ----
-    readonly property color bg:         "#0d0f14"
-    readonly property color bgElevated:  "#161a22"
-    readonly property color bgHover:     "#1f2530"
-    readonly property color border:      "#2a2f3a"
-    readonly property color divider:     "#242a35"
-    readonly property color text:        "#e6e6e6"
-    readonly property color textDim:     "#9aa3b2"
-    readonly property color accent:      "#7aa2f7"
-    readonly property color accentDim:   "#2b3654"
-    readonly property color danger:      "#f7768e"
-    readonly property color good:        "#9ece6a"
+    // ---- palette (Ricelin: warm vermillion accent over cocoa-black) ----
+    readonly property color bg:         "#251a12"   // panel / pill base
+    readonly property color bgElevated:  "#2c2118"   // cards / popups / menus
+    readonly property color bgHover:     "#34271f"   // hovered rows / tiles
+    readonly property color border:      "#3a2a22"
+    readonly property color divider:     "#33241d"
+    readonly property color text:        "#e6d6cb"   // cream
+    readonly property color textDim:     "#8a7d74"   // dim
+    readonly property color accent:      "#c0442b"   // vermillion
+    readonly property color accentDim:   "#46291d"   // selected / active background tint
+    readonly property color danger:      "#e0563b"   // vermillion-light
+    readonly property color good:        "#9ec06a"
+
+    // resting (collapsed, un-hovered) pill: translucent + dimmed (see init.qml).
+    // NOTE: this is alpha translucency only — true backdrop blur needs the KWin
+    // blur protocol, which Quickshell does not expose.
+    readonly property color bgTranslucent: Qt.rgba(0x25 / 255.0, 0x1a / 255.0, 0x12 / 255.0, 0.72)
+    // resting-pill gradient (translucent, no border): warmer/lighter top fading to
+    // a darker bottom, so the floating pill blends with whatever is behind it.
+    readonly property color bgGradTop:     Qt.rgba(0x34 / 255.0, 0x27 / 255.0, 0x1f / 255.0, 0.80)
+    readonly property color bgGradBottom:  Qt.rgba(0x1c / 255.0, 0x13 / 255.0, 0x0d / 255.0, 0.66)
+    readonly property real idleOpacity:    0.86
 
     // ---- metrics ----
     readonly property int radius:        18
@@ -247,6 +391,13 @@ QtObject {
     // ---- fonts ----  (swap `family` to test fonts; `mono` is for figures/clock)
     readonly property string family:     "Inter"
     readonly property string mono:       "Inter"
+
+    // ---- icons ----
+    // Icons resolve through Qt's icon theme. run-pill.sh makes that follow KDE's
+    // configured theme by default (QT_QPA_PLATFORMTHEME=kde). Set a name here to
+    // force a specific theme instead (e.g. "Papirus", "breeze") — run-pill.sh
+    // reads this value and applies it. "" = follow KDE.
+    readonly property string iconTheme:   ""
     readonly property int fsSmall:       11
     readonly property int fsNormal:      13
     readonly property int fsLarge:       15
@@ -379,34 +530,40 @@ Item {
     implicitHeight: 22
     height: 22
 
-    Row {                                   // back chevron + title (left)
+    Item {                                  // back chevron + title (left) — clickable together
+        id: backArea
         anchors.left: parent.left
         anchors.verticalCenter: parent.verticalCenter
-        spacing: 8
-        Text {
-            id: chevron
+        height: parent.height
+        width: backRow.width
+        Row {
+            id: backRow
             anchors.verticalCenter: parent.verticalCenter
-            text: "‹"
-            color: chevMa.containsMouse ? root.theme.text : root.theme.textDim
-            font.family: root.theme.family
-            font.pixelSize: root.theme.fsLarge + 6
-            font.bold: true
-            MouseArea {
-                id: chevMa
-                anchors.fill: parent
-                anchors.margins: -6
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                onClicked: root.back()
+            spacing: 8
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                text: "‹"
+                color: backMa.containsMouse ? root.theme.text : root.theme.textDim
+                font.family: root.theme.family
+                font.pixelSize: root.theme.fsLarge + 6
+                font.bold: true
+            }
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                text: root.title
+                color: root.theme.text
+                font.family: root.theme.family
+                font.pixelSize: root.theme.fsNormal
+                font.bold: true
             }
         }
-        Text {
-            anchors.verticalCenter: parent.verticalCenter
-            text: root.title
-            color: root.theme.text
-            font.family: root.theme.family
-            font.pixelSize: root.theme.fsNormal
-            font.bold: true
+        MouseArea {
+            id: backMa
+            anchors.fill: parent
+            anchors.margins: -4
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: root.back()
         }
     }
 
@@ -424,14 +581,55 @@ Item {
 pragma ComponentBehavior: Bound
 // NetworkMenu.qml — Wi-Fi list (signal + lock + active), connect/disconnect,
 // password prompt for secured networks, Wi-Fi on/off. Uses Quickshell.Networking
-// (NetworkManager). VPN is NOT in the native binding — would need nmcli (TODO).
+// (NetworkManager). VPN connections are NOT in the native binding, so they're
+// listed + toggled via `nmcli` (Process). A header gear opens KDE's network KCM.
 import QtQuick
+import Quickshell.Io
 import Quickshell.Networking
 
 Item {
     id: root
     required property var theme
     signal closeRequested()
+
+    // ---- VPN (nmcli, since the native binding has no VPN) ----
+    property var vpns: []
+    function refreshVpn() { if (!vpnList.running) vpnList.running = true; }
+    function setVpn(name, up) {
+        vpnToggle.command = ["nmcli", "connection", up ? "up" : "down", "id", name];
+        vpnToggle.running = true;
+    }
+    Process {
+        id: vpnList
+        command: ["nmcli", "-t", "-f", "NAME,TYPE,STATE", "connection", "show"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                const out = [];
+                for (const line of this.text.split("\n")) {
+                    if (!line) continue;
+                    // `-t` is colon-separated; TYPE/STATE never contain ':', so the
+                    // name is everything before the last two fields (handles ':' in names)
+                    const p = line.split(":");
+                    if (p.length < 3) continue;
+                    const state = p[p.length - 1], type = p[p.length - 2];
+                    if (type.indexOf("vpn") === -1 && type.indexOf("wireguard") === -1) continue;
+                    out.push({ name: p.slice(0, p.length - 2).join(":"), active: state === "activated" });
+                }
+                root.vpns = out;
+            }
+        }
+    }
+    Process { id: vpnToggle; onExited: root.refreshVpn() }
+    Timer { interval: 4000; running: true; repeat: true; onTriggered: root.refreshVpn() }
+
+    // open KDE's network settings — try Plasma 6 then older variants
+    Process { id: settingsProc }
+    function openNetworkSettings() {
+        settingsProc.command = ["sh", "-c",
+            "kcmshell6 kcm_networkmanagement || systemsettings kcm_networkmanagement || kcmshell5 kcm_networkmanagement"];
+        settingsProc.startDetached();
+        root.closeRequested();
+    }
 
     readonly property var wifiDev: {
         const ds = Networking.devices ? Networking.devices.values : [];
@@ -447,17 +645,30 @@ Item {
     }
     property var pskTarget: null
 
-    Component.onCompleted: if (wifiDev) wifiDev.scannerEnabled = true
+    Component.onCompleted: { if (wifiDev) wifiDev.scannerEnabled = true; root.refreshVpn(); }
     Component.onDestruction: if (wifiDev) wifiDev.scannerEnabled = false
 
     Column {
         anchors.fill: parent
         spacing: root.theme.gap
 
-        MenuHeader {                            // back chevron + title + Wi-Fi toggle
+        MenuHeader {                            // back chevron + title + settings gear + Wi-Fi toggle
             theme: root.theme
-            title: "Wi-Fi"
+            title: "Network"
             onBack: root.closeRequested()
+            Text {                              // open KDE network settings
+                anchors.verticalCenter: parent.verticalCenter
+                text: "⚙"
+                color: gearMa.containsMouse ? root.theme.text : root.theme.textDim
+                font.family: root.theme.family
+                font.pixelSize: root.theme.fsLarge
+                MouseArea {
+                    id: gearMa
+                    anchors.fill: parent; anchors.margins: -4
+                    hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                    onClicked: root.openNetworkSettings()
+                }
+            }
             PillToggle {
                 theme: root.theme
                 anchors.verticalCenter: parent.verticalCenter
@@ -475,6 +686,63 @@ Item {
                 id: netCol
                 width: parent.width
                 spacing: 4
+
+                // ---- VPN connections (nmcli) — only shown when some exist ----
+                Text {
+                    visible: root.vpns.length > 0
+                    text: "VPN"
+                    color: root.theme.textDim
+                    font.family: root.theme.family
+                    font.pixelSize: root.theme.fsSmall
+                    font.bold: true
+                }
+                Repeater {
+                    model: root.vpns
+                    delegate: Rectangle {
+                        id: vpnRow
+                        required property var modelData
+                        width: netCol.width
+                        height: root.theme.rowHeight
+                        radius: root.theme.radiusSmall
+                        color: vpnRow.modelData.active ? root.theme.accentDim : root.theme.bgHover
+                        Text {
+                            anchors.left: parent.left
+                            anchors.leftMargin: 10
+                            anchors.right: vpnState.left
+                            anchors.rightMargin: 8
+                            anchors.verticalCenter: parent.verticalCenter
+                            elide: Text.ElideRight
+                            text: vpnRow.modelData.name
+                            color: root.theme.text
+                            font.family: root.theme.family
+                            font.pixelSize: root.theme.fsNormal
+                        }
+                        Text {
+                            id: vpnState
+                            anchors.right: parent.right
+                            anchors.rightMargin: 10
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: vpnRow.modelData.active ? "Disconnect" : "Connect"
+                            color: root.theme.textDim
+                            font.family: root.theme.family
+                            font.pixelSize: root.theme.fsSmall
+                        }
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.setVpn(vpnRow.modelData.name, !vpnRow.modelData.active)
+                        }
+                    }
+                }
+                Text {                          // section label for the Wi-Fi list below
+                    visible: root.vpns.length > 0
+                    text: "Wi-Fi"
+                    color: root.theme.textDim
+                    font.family: root.theme.family
+                    font.pixelSize: root.theme.fsSmall
+                    font.bold: true
+                }
+
                 Repeater {
                     model: root.nets
                     delegate: Rectangle {
@@ -621,6 +889,7 @@ pragma ComponentBehavior: Bound
 // with per-stream volume/mute. Uses Quickshell.Services.Pipewire. Node audio is
 // kept live by the PwObjectTracker over every node.
 import QtQuick
+import Quickshell.Io
 import Quickshell.Services.Pipewire
 
 Item {
@@ -628,6 +897,17 @@ Item {
     required property var theme
     signal closeRequested()
     property int tab: 0               // 0 = Devices, 1 = Applications
+
+    // open KDE's audio settings. KDE ships two: "Audio" (kcm_pulseaudio, the
+    // volume/devices module) and "Multimedia" (kcm_phonon, backend/device order).
+    // Try Plasma 6's kcmshell6, then systemsettings, then the Plasma 5 variants.
+    Process { id: settingsProc }
+    function openAudioSettings(kcm) {
+        settingsProc.command = ["sh", "-c",
+            "kcmshell6 " + kcm + " || systemsettings " + kcm + " || kcmshell5 " + kcm];
+        settingsProc.startDetached();
+        root.closeRequested();
+    }
 
     PwObjectTracker { objects: Pipewire.nodes ? Pipewire.nodes.values : [] }
 
@@ -641,10 +921,32 @@ Item {
         anchors.fill: parent
         spacing: root.theme.gap
 
-        MenuHeader {                            // back chevron + title
+        MenuHeader {                            // back chevron + title + settings shortcuts
             theme: root.theme
             title: "Volume"
             onBack: root.closeRequested()
+            // "Audio" (kcm_pulseaudio) and "Multimedia" (kcm_phonon) — KDE's two
+            // audio settings panes.
+            Repeater {
+                model: [
+                    { label: "Audio",      kcm: "kcm_pulseaudio" },
+                    { label: "Multimedia", kcm: "kcm_phonon" }
+                ]
+                delegate: Text {
+                    required property var modelData
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: modelData.label
+                    color: setMa.containsMouse ? root.theme.text : root.theme.textDim
+                    font.family: root.theme.family
+                    font.pixelSize: root.theme.fsSmall
+                    MouseArea {
+                        id: setMa
+                        anchors.fill: parent; anchors.margins: -4
+                        hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                        onClicked: root.openAudioSettings(modelData.kcm)
+                    }
+                }
+            }
         }
 
         Row {                                   // tabs
@@ -1067,16 +1369,36 @@ Item {
     Process { id: copyProc }
     function copy(s) { copyProc.command = ["wl-copy", "--", String(s)]; copyProc.startDetached(); }
 
+    Process { id: powerProc }
+    function exec(cmd) { powerProc.command = cmd; powerProc.startDetached(); }
+
     function activateFirst() {
         if (calcResult !== null) { copy(calcResult); root.launched(); return; }
         if (model.length > 0) { model[0].execute(); root.launched(); }
     }
 
     // ================= search row =================
+    Text {                                       // back chevron — closes the launcher
+        id: backChevron
+        anchors.left: parent.left
+        anchors.verticalCenter: searchBox.verticalCenter
+        text: "‹"
+        color: backChevMa.containsMouse ? root.theme.text : root.theme.textDim
+        font.family: root.theme.family
+        font.pixelSize: root.theme.fsLarge + 6
+        font.bold: true
+        MouseArea {
+            id: backChevMa
+            anchors.fill: parent; anchors.margins: -6
+            hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+            onClicked: root.closeRequested()
+        }
+    }
     Rectangle {
         id: searchBox
         anchors.top: parent.top
-        anchors.left: parent.left
+        anchors.left: backChevron.right
+        anchors.leftMargin: 8
         anchors.right: parent.right
         height: 34
         radius: root.theme.radiusSmall
@@ -1145,6 +1467,38 @@ Item {
         }
     }
 
+    // ================= power buttons (bottom-right) =================
+    Row {
+        id: powerBar
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        spacing: 12
+        Repeater {
+            model: [
+                { ic: "system-lock-screen",  cmd: ["loginctl", "lock-session"] },
+                { ic: "system-log-out",      cmd: ["gdbus", "call", "--session", "--dest", "org.kde.Shutdown",
+                                                    "--object-path", "/Shutdown", "--method", "org.kde.Shutdown.logout"] },
+                { ic: "system-reboot",       cmd: ["gdbus", "call", "--session", "--dest", "org.kde.Shutdown",
+                                                    "--object-path", "/Shutdown", "--method", "org.kde.Shutdown.logoutAndReboot"] },
+                { ic: "system-shutdown",     cmd: ["gdbus", "call", "--session", "--dest", "org.kde.Shutdown",
+                                                    "--object-path", "/Shutdown", "--method", "org.kde.Shutdown.logoutAndShutdown"] }
+            ]
+            delegate: IconImage {
+                required property var modelData
+                implicitSize: 16
+                opacity: pma.containsMouse ? 1 : 0.65
+                source: Quickshell.iconPath(modelData.ic, "application-x-executable")
+                Behavior on opacity { NumberAnimation { duration: root.theme.animFast } }
+                MouseArea {
+                    id: pma
+                    anchors.fill: parent; anchors.margins: -4
+                    hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                    onClicked: root.exec(modelData.cmd)
+                }
+            }
+        }
+    }
+
     // ================= body =================
     Item {
         id: body
@@ -1152,7 +1506,8 @@ Item {
         anchors.topMargin: root.theme.gap
         anchors.left: parent.left
         anchors.right: parent.right
-        anchors.bottom: parent.bottom
+        anchors.bottom: powerBar.top
+        anchors.bottomMargin: root.theme.gap
 
         // calculator result (top, when the query evaluates)
         Rectangle {
@@ -1442,6 +1797,704 @@ Item {
 }
 #+end_src
 
+** Notifications.qml
+The freedesktop notification *server* + popup/history *state*. Instantiated once
+in =init.qml= and shared with every monitor (the morph card, the floating cards
+and the history menu). Requires Plasma's own notifications disabled first — see
+[[*Taking over notifications from Plasma][§ Taking over notifications from Plasma]].
+#+begin_src qml :tangle ~/.config/quickshell/pill/Notifications.qml :mkdirp yes
+pragma ComponentBehavior: Bound
+// Notifications.qml — the freedesktop notification server + popup/history state.
+// Instantiated once in init.qml as `Notifications { id: notifs; theme: theme }`
+// and shared with every monitor's views (no singletons). It:
+//   * owns a NotificationServer advertising body/markup/images/actions/action-
+//     icons/inline-reply/persistence, so apps send us the rich payload;
+//   * keeps every notification `tracked` so it survives as *history*
+//     (server.trackedNotifications), grouped by app in the history view;
+//   * maintains an `active` stack (newest first) of un-closed popups that drive
+//     the collapsed-pill morph; each notification has its own countdown (kept in
+//     `remaining`, keyed by id), and `held` (set while a deck is hovered) pauses
+//     and resets them all. Closing a popup or letting it time out only removes it
+//     from `active` and keeps the (tracked) history copy — we never call
+//     Notification.dismiss()/expire(), which would *destroy* it. Forget/clear set
+//     tracked=false to actually drop a notification from history.
+//
+// The spec carries no timestamp, so we stamp arrival time ourselves (`stamps`);
+// on a Quickshell reload restored notifications are re-stamped to "now".
+import QtQuick
+import QtQml
+import Quickshell
+import Quickshell.Services.Notifications
+
+QtObject {
+    id: root
+    required property var theme
+
+    // ---- the server: the capabilities we advertise to apps ----
+    readonly property NotificationServer server: NotificationServer {
+        keepOnReload: true
+        persistenceSupported: true
+        bodySupported: true
+        bodyMarkupSupported: true
+        bodyImagesSupported: true
+        imageSupported: true
+        actionsSupported: true
+        actionIconsSupported: true
+        inlineReplySupported: true
+        onNotification: n => root.onArrived(n)
+    }
+
+    // ---- arrival timestamps (id -> ms since epoch); the spec carries none ----
+    property var stamps: ({})
+
+    // ---- active popup stack (newest first) drives the pill morph ----
+    // Per-notification countdowns live HERE (keyed by id), not in the cards: the
+    // deck's Repeater recreates its delegates whenever `active` changes, which
+    // would otherwise reset every timer on each arrival. `held` (set while a deck
+    // is hovered) pauses every countdown and resets them all to full.
+    property var active: []
+    readonly property var current: active.length ? active[0] : null   // newest
+    property bool held: false
+    property var remaining: ({})              // id -> ms left
+    property int tick: 0                       // bumped each step to refresh progress bindings
+    readonly property bool anyReply: {
+        for (const n of active) if (n && n.hasInlineReply) return true;
+        return false;
+    }
+
+    function progressFor(n) {
+        root.tick;                            // dependency: re-eval each countdown step
+        if (!n) return 0;
+        const t = root.timeoutFor(n);
+        if (t <= 0) return 0;
+        const r = root.remaining[n.id];
+        return r === undefined ? 1 : Math.max(0, Math.min(1, r / t));
+    }
+
+    readonly property Timer ticker: Timer {
+        interval: 50; repeat: true
+        running: root.active.length > 0 && !root.held
+        onTriggered: {
+            const dead = [];
+            for (const n of root.active) {
+                const t = root.timeoutFor(n);
+                if (t <= 0) continue;          // never-expire (Critical / app asked 0)
+                let r = root.remaining[n.id];
+                r = (r === undefined ? t : r) - interval;
+                root.remaining[n.id] = r;
+                if (r <= 0) dead.push(n);
+            }
+            root.tick++;                       // refresh progress bars
+            for (const n of dead) root.expireOne(n);
+        }
+    }
+
+    // a 1-second clock so "x min ago" stays fresh in the cards / history
+    readonly property var clock: SystemClock { precision: SystemClock.Seconds }
+    readonly property double nowMs: clock.date.getTime()
+
+    function onArrived(n) {
+        if (!root.stamps[n.id])
+            root.stamps[n.id] = (new Date()).getTime();
+        n.tracked = true;                     // keep it for history
+        if (n.lastGeneration)                 // restored on reload: history only, don't re-pop
+            return;
+        // de-dupe (apps reuse ids to replace): drop any copy, push to the front
+        const a = root.active.filter(x => x.id !== n.id);
+        a.unshift(n);
+        root.active = a;
+        root.remaining[n.id] = root.timeoutFor(n);   // start (or restart) its countdown
+        root.tick++;
+    }
+
+    readonly property int defaultTimeoutMs: 5000   // every non-permanent notification fades in 5s
+    function timeoutFor(n) {
+        if (!n) return 0;
+        // permanent: the app explicitly asked never to expire (0), or it's Critical
+        if (n.expireTimeout === 0 || n.urgency === NotificationUrgency.Critical) return 0;
+        // everything else: ignore the app's value (often ~60s) and use 5s
+        return root.defaultTimeoutMs;
+    }
+
+    // remove from the active stack only (the history copy is untouched)
+    function drop(n) {
+        if (!n) return;
+        root.active = root.active.filter(x => x.id !== n.id);
+        delete root.remaining[n.id];
+    }
+    // close a popup: stop showing it but ALWAYS KEEP it in history (even the X and
+    // even transient notifications — only `forget`/`clearAll` remove from history).
+    // We deliberately do NOT call Notification.dismiss()/expire() here — in
+    // Quickshell those *destroy* the notification (untracking it), which would wipe
+    // the history copy too; the trade-off is the sending app isn't told it closed.
+    function closePopup(n) {
+        if (!n) return;
+        root.drop(n);   // remove from the popup stack; the tracked history copy stays
+    }
+    function dismiss(n)   { root.closePopup(n); }   // X on a popup
+    function expireOne(n) { root.closePopup(n); }   // a countdown elapsed
+    // dismiss the whole active popup deck at once (history is kept, like the X)
+    function dismissAll() { for (const n of root.active.slice()) root.closePopup(n); }
+    function hold(v) {                                // hover: pause + reset every countdown
+        root.held = v;
+        if (v) {
+            for (const n of root.active) root.remaining[n.id] = root.timeoutFor(n);
+            root.tick++;
+        }
+    }
+
+    // remove from history entirely (tracked=false == dismiss(): destroys it).
+    // Rebuild *now* rather than waiting for trackedNotificationsChanged: the dying
+    // notification can linger in `values` for a cycle with its content already
+    // cleared, which would flash an empty card in the history (rebuild filters it).
+    function forget(n) { if (n) { root.drop(n); n.tracked = false; root.rebuild(); } }
+    function clearAll() {
+        const all = root.server.trackedNotifications ? root.server.trackedNotifications.values.slice() : [];
+        for (const n of all) n.tracked = false;
+        root.active = [];
+        root.rebuild();
+    }
+
+    // ---- watch each tracked notification's `closed` (e.g. the sender closed or
+    //      replaced it) so it leaves the active stack too ----
+    readonly property Instantiator watcher: Instantiator {
+        model: root.server.trackedNotifications
+        delegate: Connections {
+            required property var modelData
+            target: modelData
+            function onClosed(reason) { root.drop(modelData); }
+        }
+    }
+
+    // ---- grouped history: by app, newest-first within a group, group ordered by
+    //      its newest item, so a fresh notification floats its app to the top ----
+    property var grouped: []
+    function rebuild() {
+        const list = root.server.trackedNotifications ? root.server.trackedNotifications.values : [];
+        const ts = id => root.stamps[id] || 0;
+        const by = {}, order = [];
+        for (const n of list) {
+            // a just-forgotten notification can still appear in `values` for one
+            // cycle (emptied of content) while it is being destroyed — skip it so
+            // history never shows a contentless card.
+            if (!n || !n.tracked) continue;
+            const k = n.appName || "Unknown";
+            if (!by[k]) { by[k] = { app: k, items: [] }; order.push(k); }
+            by[k].items.push(n);
+        }
+        for (const k of order) by[k].items.sort((x, y) => ts(y.id) - ts(x.id));
+        const gs = order.map(k => by[k]);
+        gs.sort((g1, g2) => ts(g2.items[0].id) - ts(g1.items[0].id));
+        root.grouped = gs;
+    }
+    readonly property Connections rebuilder: Connections {
+        target: root.server
+        function onTrackedNotificationsChanged() { root.rebuild(); }
+    }
+    Component.onCompleted: root.rebuild()
+
+    function relTime(id) {
+        const t = root.stamps[id]; if (!t) return "";
+        let s = Math.floor((root.nowMs - t) / 1000); if (s < 0) s = 0;
+        if (s < 60) return "now";
+        const m = Math.floor(s / 60); if (m < 60) return m + "m ago";
+        const h = Math.floor(m / 60); if (h < 24) return h + "h ago";
+        return Math.floor(h / 24) + "d ago";
+    }
+}
+#+end_src
+
+** NotificationView.qml
+One notification card, reused as the pill *morph*, as *floating* cards under an
+open pill, and as rows in the *history* menu.
+#+begin_src qml :tangle ~/.config/quickshell/pill/NotificationView.qml :mkdirp yes
+pragma ComponentBehavior: Bound
+// NotificationView.qml — one notification card. Two columns in a row:
+//   left  = the notification image (200px wide, aspect kept) or, if none, the
+//           app icon;
+//   right = three rows — [summary | close X + vertical countdown bar],
+//           [body], [relative time | actions] — plus an inline-reply field when
+//           the notification supports it (Telegram, KDE Connect).
+// Used as the collapsed-pill morph (surface:false, transparent — the pill draws
+// the background), as floating cards under an open pill, and as history rows.
+import QtQuick
+import Quickshell
+import Quickshell.Widgets
+
+Rectangle {
+    id: root
+    required property var theme
+    required property var notifs
+    required property var notification
+    property bool showProgress: false      // show the countdown bar
+    property bool inHistory: false          // X forgets instead of dismissing
+    property bool surface: true             // draw own bg/border
+
+    // Resolve the image robustly: prefer an explicit file-path hint loaded as a
+    // file:// URL (Flameshot & co. send the screenshot via `image-path`, which
+    // Quickshell would otherwise route through its *icon* provider and drop),
+    // else fall back to Quickshell's `image` (image-data provider URL / file://).
+    function resolveImage(n) {
+        if (!n) return "";
+        const h = n.hints || {};
+        const p = h["image-path"] || h["image_path"] || "";
+        if (typeof p === "string" && p.length > 0) {
+            if (p.indexOf("file:") === 0) return p;
+            if (p.indexOf("/") === 0) return "file://" + p;   // bare absolute path
+        }
+        return (n.image && n.image.length > 0) ? n.image : "";
+    }
+    readonly property string imageSource: resolveImage(notification)
+    readonly property bool hasImage: imageSource.length > 0
+    readonly property bool critical: !!(notification && notification.urgency === 2)  // NotificationUrgency.Critical
+    readonly property int imgMax: 100   // notification image fits within a 100px box
+
+    // countdown state lives in Notifications (keyed by id, so it survives the
+    // deck's delegate rebuilds); the card just reads it for the bar.
+    readonly property real timeoutMs: notifs ? notifs.timeoutFor(notification) : 0
+    readonly property real progress: notifs ? notifs.progressFor(notification) : 0
+
+    color: surface ? theme.bgElevated : "transparent"
+    radius: theme.radiusSmall
+    border.width: surface ? 1 : 0
+    border.color: critical ? theme.danger : theme.border
+    implicitWidth: 420
+    implicitHeight: Math.max(leftCol.height, rightCol.implicitHeight) + theme.pad * 2
+
+    // the "default" action fires on a body click (not shown as a button)
+    readonly property var defaultAction: {
+        const as = notification ? notification.actions : [];
+        for (const a of as) if (a.identifier === "default") return a;
+        return null;
+    }
+    MouseArea {
+        anchors.fill: parent
+        enabled: root.defaultAction !== null
+        cursorShape: root.defaultAction ? Qt.PointingHandCursor : Qt.ArrowCursor
+        onClicked: { if (root.defaultAction) { root.defaultAction.invoke(); root.notifs.drop(root.notification); } }
+    }
+
+    // ---- left column: image (≤100px box, aspect kept) or app icon ----
+    Item {
+        id: leftCol
+        x: root.theme.pad; y: root.theme.pad
+        width: root.hasImage ? img.width : 48
+        height: root.hasImage ? img.height : 48
+        Image {
+            id: img
+            visible: root.hasImage
+            source: root.imageSource
+            asynchronous: false            // Quickshell's image-data provider serves
+                                           // nothing on the async path (cf. Ricelin); a
+                                           // partial sourceSize can also blank it, so omit it
+            cache: true
+            fillMode: Image.PreserveAspectFit
+            // fit within a 100px box (keep aspect, never upscale a smaller image) —
+            // stops an app's square avatar (e.g. an email sender) ballooning to 200px
+            width: Math.min(root.imgMax, implicitWidth > 0 ? implicitWidth : root.imgMax)
+            height: (implicitWidth > 0 && implicitHeight > 0)
+                    ? Math.min(root.imgMax, width * implicitHeight / implicitWidth) : width
+        }
+        IconImage {
+            visible: !root.hasImage
+            anchors.top: parent.top
+            implicitSize: 48
+            source: Quickshell.iconPath(root.notification ? root.notification.appIcon : "", "dialog-information")
+        }
+    }
+
+    // ---- right column: three rows + optional reply ----
+    Column {
+        id: rightCol
+        x: leftCol.x + leftCol.width + root.theme.gap
+        y: root.theme.pad
+        width: root.width - leftCol.width - root.theme.gap - root.theme.pad * 2
+        spacing: 6
+
+        // row 1: summary (left) + close X & countdown (right)
+        Item {
+            width: parent.width
+            height: 20
+            Text {
+                anchors.left: parent.left
+                anchors.right: closeBox.left
+                anchors.rightMargin: 6
+                anchors.verticalCenter: parent.verticalCenter
+                text: (root.notification && root.notification.summary && root.notification.summary.length > 0)
+                      ? root.notification.summary
+                      : (root.notification ? root.notification.appName : "")
+                elide: Text.ElideRight
+                color: root.theme.text
+                font.family: root.theme.family
+                font.pixelSize: root.theme.fsNormal
+                font.bold: true
+            }
+            Row {
+                id: closeBox
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: 6
+                Rectangle {                          // vertical countdown: depletes downward
+                    visible: root.showProgress && root.timeoutMs > 0
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 3; height: 16; radius: 1.5
+                    color: root.theme.bgHover
+                    Rectangle {
+                        anchors.top: parent.top
+                        width: parent.width
+                        radius: parent.radius
+                        height: parent.height * root.progress
+                        color: root.critical ? root.theme.danger : root.theme.accent
+                    }
+                }
+                Text {
+                    text: "✕"
+                    color: closeMa.containsMouse ? root.theme.text : root.theme.textDim
+                    font.family: root.theme.family
+                    font.pixelSize: root.theme.fsNormal
+                    MouseArea {
+                        id: closeMa
+                        anchors.fill: parent; anchors.margins: -6
+                        hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                        onClicked: root.inHistory ? root.notifs.forget(root.notification)
+                                                  : root.notifs.dismiss(root.notification)
+                    }
+                }
+            }
+        }
+
+        // row 2: body
+        Text {
+            width: parent.width
+            visible: text.length > 0
+            text: (root.notification && root.notification.body) ? root.notification.body : ""
+            textFormat: Text.StyledText
+            wrapMode: Text.Wrap
+            maximumLineCount: 6
+            elide: Text.ElideRight
+            color: root.theme.textDim
+            font.family: root.theme.family
+            font.pixelSize: root.theme.fsNormal
+            onLinkActivated: link => Qt.openUrlExternally(link)
+        }
+
+        // row 3: relative time (left) + actions (right)
+        Item {
+            width: parent.width
+            height: Math.max(actionRow.height, 18)
+            Text {
+                anchors.left: parent.left
+                anchors.verticalCenter: parent.verticalCenter
+                text: root.notification ? root.notifs.relTime(root.notification.id) : ""
+                color: root.theme.textDim
+                font.family: root.theme.family
+                font.pixelSize: root.theme.fsSmall
+            }
+            Row {
+                id: actionRow
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: 6
+                Repeater {
+                    model: root.notification ? root.notification.actions : []
+                    delegate: Rectangle {
+                        required property var modelData
+                        visible: modelData.identifier !== "default"
+                        width: visible ? actLabel.implicitWidth + 16 : 0
+                        height: 24; radius: root.theme.radiusSmall
+                        color: actMa.containsMouse ? root.theme.bgHover : root.theme.bg
+                        border.color: root.theme.border; border.width: 1
+                        Text {
+                            id: actLabel
+                            anchors.centerIn: parent
+                            text: modelData.text
+                            color: root.theme.text
+                            font.family: root.theme.family
+                            font.pixelSize: root.theme.fsSmall
+                        }
+                        MouseArea {
+                            id: actMa
+                            anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                            onClicked: { modelData.invoke(); root.notifs.drop(root.notification); }
+                        }
+                    }
+                }
+            }
+        }
+
+        // inline reply (Telegram / KDE Connect) — Enter sends, then dismisses
+        Rectangle {
+            width: parent.width
+            visible: !!(root.notification && root.notification.hasInlineReply)
+            height: visible ? 30 : 0
+            radius: root.theme.radiusSmall
+            color: root.theme.bgHover
+            border.width: 1
+            border.color: reply.activeFocus ? root.theme.accent : root.theme.border
+            TextInput {
+                id: reply
+                anchors.fill: parent
+                anchors.leftMargin: 10; anchors.rightMargin: 10
+                verticalAlignment: TextInput.AlignVCenter
+                color: root.theme.text
+                font.family: root.theme.family
+                font.pixelSize: root.theme.fsNormal
+                clip: true
+                onAccepted: {
+                    if (text.length > 0) {
+                        root.notification.sendInlineReply(text);
+                        text = "";
+                        root.notifs.drop(root.notification);
+                    }
+                }
+                Text {
+                    anchors.fill: parent
+                    verticalAlignment: Text.AlignVCenter
+                    visible: reply.text.length === 0
+                    text: (root.notification && root.notification.inlineReplyPlaceholder
+                           && root.notification.inlineReplyPlaceholder.length > 0)
+                          ? root.notification.inlineReplyPlaceholder : "Reply…"
+                    color: root.theme.textDim
+                    font.family: root.theme.family
+                    font.pixelSize: root.theme.fsNormal
+                    elide: Text.ElideRight
+                }
+            }
+        }
+    }
+}
+#+end_src
+
+** NotificationStack.qml
+The deck of active popups: a stack effect at rest, dropping into a full list on
+hover (which also pauses + resets every card's countdown). Used for the pill
+*morph* and for the cards *below* an open pill.
+#+begin_src qml :tangle ~/.config/quickshell/pill/NotificationStack.qml :mkdirp yes
+pragma ComponentBehavior: Bound
+// NotificationStack.qml — the active notifications as a deck. At rest the newest
+// card is on top and the rest peek out below it (offset + scaled back); hovering
+// the stack drops them into a full vertical list and sets `notifs.held` so every
+// card pauses + resets its countdown. `implicitHeight` reports the laid-out
+// height (deck vs expanded) so the pill can size to it. Reused for the collapsed-
+// pill morph and the floating stack under an open pill.
+import QtQuick
+
+Item {
+    id: stack
+    required property var theme
+    required property var notifs
+
+    readonly property bool expanded: hover.hovered
+    readonly property int peek: 14            // px each resting card peeks below the top one
+    readonly property int gap: 8              // px between cards when expanded
+    readonly property int maxDeck: 4          // how many cards are visible at rest
+    // a band reserved above the deck for the floating "dismiss all" pill, shown
+    // only once there's an actual stack (more than one active popup)
+    readonly property int headroom: rep.count > 1 ? 26 : 0
+
+    width: 420
+    implicitWidth: 420
+    height: implicitHeight
+
+    // bumped whenever a card's height changes, to recompute the layout reactively
+    property int relayout: 0
+
+    readonly property real collapsedH: {
+        stack.relayout;
+        const it = rep.itemAt(0);
+        const base = it ? it.implicitHeight : 0;
+        return base + Math.max(0, Math.min(rep.count, stack.maxDeck) - 1) * stack.peek;
+    }
+    readonly property real expandedH: {
+        stack.relayout;
+        let yy = 0;
+        for (let j = 0; j < rep.count; j++) {
+            const it = rep.itemAt(j);
+            yy += (it ? it.implicitHeight : 0);
+        }
+        return yy + Math.max(0, rep.count - 1) * stack.gap;
+    }
+    implicitHeight: (expanded ? expandedH : collapsedH) + headroom
+    Behavior on implicitHeight { NumberAnimation { duration: stack.theme.anim; easing.type: Easing.OutCubic } }
+
+    HoverHandler { id: hover; onHoveredChanged: stack.notifs.hold(hover.hovered) }
+
+    Repeater {
+        id: rep
+        model: stack.notifs.active
+        delegate: NotificationView {
+            id: card
+            required property int index
+            required property var modelData
+            theme: stack.theme
+            notifs: stack.notifs
+            notification: modelData
+            showProgress: true
+            width: stack.width
+
+            onImplicitHeightChanged: stack.relayout++
+
+            readonly property real expandedY: {
+                stack.relayout;
+                let yy = 0;
+                for (let j = 0; j < index; j++) {
+                    const it = rep.itemAt(j);
+                    yy += (it ? it.implicitHeight : 0) + stack.gap;
+                }
+                return yy;
+            }
+            y: stack.headroom + (stack.expanded ? expandedY : index * stack.peek)
+            z: rep.count - index                 // newest (0) on top
+            transformOrigin: Item.Top
+            scale: stack.expanded ? 1 : Math.max(0.9, 1 - index * 0.04)
+            opacity: stack.expanded ? 1 : (index < stack.maxDeck ? Math.max(0, 1 - index * 0.22) : 0)
+            visible: stack.expanded || index < stack.maxDeck
+
+            Behavior on y       { NumberAnimation { duration: stack.theme.anim; easing.type: Easing.OutCubic } }
+            Behavior on scale   { NumberAnimation { duration: stack.theme.anim; easing.type: Easing.OutCubic } }
+            Behavior on opacity { NumberAnimation { duration: stack.theme.animFast } }
+        }
+    }
+
+    // floating "dismiss all" pill — sits in the headroom band at the top-right
+    // whenever there's a stack (>1 popup); clears the whole popup deck at once
+    // (history is kept, exactly like dismissing each card's X).
+    Rectangle {
+        id: dismissAll
+        visible: rep.count > 1
+        z: 10000
+        anchors.right: parent.right
+        anchors.top: parent.top
+        height: 22
+        width: dismissRow.implicitWidth + 16
+        radius: height / 2
+        color: dismissMa.containsMouse ? stack.theme.danger : stack.theme.bgElevated
+        border.color: stack.theme.border
+        border.width: 1
+        opacity: visible ? 1 : 0
+        Behavior on opacity { NumberAnimation { duration: stack.theme.animFast } }
+        Row {
+            id: dismissRow
+            anchors.centerIn: parent
+            spacing: 5
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                text: "Dismiss all"
+                color: stack.theme.text
+                font.family: stack.theme.family
+                font.pixelSize: stack.theme.fsSmall
+            }
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                text: "✕"
+                color: dismissMa.containsMouse ? stack.theme.text : stack.theme.textDim
+                font.family: stack.theme.family
+                font.pixelSize: stack.theme.fsSmall
+            }
+        }
+        MouseArea {
+            id: dismissMa
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: stack.notifs.dismissAll()
+        }
+    }
+}
+#+end_src
+
+** NotificationHistory.qml
+The control-panel pane (=win.menu === 4=) — grouped, newest-first history.
+#+begin_src qml :tangle ~/.config/quickshell/pill/NotificationHistory.qml :mkdirp yes
+pragma ComponentBehavior: Bound
+// NotificationHistory.qml — notification history pane. Notifications are grouped
+// by app (newest-first within each group; a group floats to the top when it gets
+// a fresh notification), each rendered as a NotificationView row. "Clear all"
+// empties the history. Opened from the Row-2 notification status icon.
+import QtQuick
+
+Item {
+    id: root
+    required property var theme
+    required property var notifs
+    signal closeRequested()
+
+    // the pane is (re)created each time it opens; refresh the grouping then
+    Component.onCompleted: if (root.notifs) root.notifs.rebuild()
+
+    Column {
+        anchors.fill: parent
+        spacing: root.theme.gap
+
+        MenuHeader {
+            theme: root.theme
+            title: "Notifications"
+            onBack: root.closeRequested()
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                visible: root.notifs.grouped.length > 0
+                text: "Clear all"
+                color: clearMa.containsMouse ? root.theme.danger : root.theme.textDim
+                font.family: root.theme.family
+                font.pixelSize: root.theme.fsSmall
+                MouseArea {
+                    id: clearMa
+                    anchors.fill: parent; anchors.margins: -4
+                    hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                    onClicked: root.notifs.clearAll()
+                }
+            }
+        }
+
+        Flickable {
+            width: parent.width
+            height: parent.height - 22 - root.theme.gap
+            contentHeight: groupsCol.height
+            clip: true
+            Column {
+                id: groupsCol
+                width: parent.width
+                spacing: root.theme.gap
+
+                Repeater {
+                    model: root.notifs.grouped
+                    delegate: Column {
+                        required property var modelData
+                        width: groupsCol.width
+                        spacing: 4
+                        Text {
+                            text: modelData.app + "  ·  " + modelData.items.length
+                            color: root.theme.textDim
+                            font.family: root.theme.family
+                            font.pixelSize: root.theme.fsSmall
+                            font.bold: true
+                        }
+                        Repeater {
+                            model: modelData.items
+                            delegate: NotificationView {
+                                required property var modelData
+                                width: groupsCol.width
+                                theme: root.theme
+                                notifs: root.notifs
+                                notification: modelData
+                                inHistory: true
+                            }
+                        }
+                    }
+                }
+                Text {
+                    visible: root.notifs.grouped.length === 0
+                    text: "No notifications"
+                    color: root.theme.textDim
+                    font.family: root.theme.family
+                    font.pixelSize: root.theme.fsNormal
+                }
+            }
+        }
+    }
+}
+#+end_src
+
 ** winbridge.py
 Self-contained python glue (see [[*Open windows / taskbar][taskbar notes]]).
 #+begin_src python :tangle ~/.config/quickshell/pill/winbridge.py :mkdirp yes
@@ -1462,15 +2515,15 @@ from gi.repository import Gio, GLib
 bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
 # "taskbar" is the set of window ids that belong in a taskbar (normal, not
 # skip-taskbar) as reported by KWin; None until the first report arrives.
-state = {"active": "", "taskbar": None}
+state = {"active": "", "taskbar": None, "fullscreen": False}
 PLUGIN = "quickshell-pill-active"
 
 # --- our DBus service ---
-#   Set(uuid)   — KWin script reports the active window on change
-#   List(json)  — KWin script reports the taskbar-eligible window ids (JSON array)
+#   Set(uuid, fs)  — KWin script reports the active window (+ "1"/"0" fullscreen)
+#   List(json)     — KWin script reports the taskbar-eligible window ids (JSON array)
 NODE = (
     '<node><interface name="org.kde.pill">'
-    '<method name="Set"><arg type="s" direction="in"/></method>'
+    '<method name="Set"><arg type="s" direction="in"/><arg type="s" direction="in"/></method>'
     '<method name="List"><arg type="s" direction="in"/></method>'
     "</interface></node>"
 )
@@ -1479,8 +2532,9 @@ IFACE = Gio.DBusNodeInfo.new_for_xml(NODE).interfaces[0]
 
 def on_call(conn, sender, path, ifc, method, params, inv):
     if method == "Set":
-        (u,) = params.unpack()
+        (u, fs) = params.unpack()
         state["active"] = u
+        state["fullscreen"] = fs == "1"
         emit()
     elif method == "List":
         (j,) = params.unpack()
@@ -1497,10 +2551,12 @@ def on_bus_acquired(conn, name):
     load_kwin_script()
 
 
-# --- the KWin script: reports the active window AND the taskbar-eligible
-#     window ids (normal windows that don't ask to skip the taskbar). KWin is
-#     the only place skipTaskbar is exposed; KRunner (used for icon names) is
-#     not. We re-push the list on add/remove and on skipTaskbar changes. ---
+# --- the KWin script: reports the active window (+ its fullscreen flag) AND the
+#     taskbar-eligible window ids (normal windows that don't ask to skip the
+#     taskbar). KWin is the only place skipTaskbar / fullScreen are exposed;
+#     KRunner (used for icon names) is not. We re-push the list on add/remove and
+#     on skipTaskbar changes, and re-push the active window when *its* fullScreen
+#     toggles (e.g. a video going fullscreen without re-activating the window). ---
 KWIN_JS = (
     "function ids(){ var ws=workspace.windowList(), o=[];\n"
     "  for (var i=0;i<ws.length;i++){ var w=ws[i];\n"
@@ -1508,9 +2564,12 @@ KWIN_JS = (
     "  return o; }\n"
     'function pushList(){ callDBus("org.kde.pill","/Active","org.kde.pill","List",'
     " JSON.stringify(ids())); }\n"
-    "function watch(w){ if (w && w.skipTaskbarChanged) w.skipTaskbarChanged.connect(pushList); }\n"
     'function setActive(w){ callDBus("org.kde.pill","/Active","org.kde.pill","Set",'
-    ' w ? String(w.internalId) : ""); }\n'
+    ' w ? String(w.internalId) : "", (w && w.fullScreen) ? "1" : "0"); }\n'
+    "function watch(w){ if (!w) return;\n"
+    "  if (w.skipTaskbarChanged) w.skipTaskbarChanged.connect(pushList);\n"
+    "  if (w.fullScreenChanged) w.fullScreenChanged.connect(function(){\n"
+    "    if (w === workspace.activeWindow) setActive(w); }); }\n"
     "workspace.windowActivated.connect(setActive);\n"
     "workspace.windowAdded.connect(function(w){ watch(w); pushList(); });\n"
     "workspace.windowRemoved.connect(pushList);\n"
@@ -1584,7 +2643,12 @@ def windows():
 
 def emit():
     line = json.dumps(
-        {"active": state["active"], "windows": windows()}, ensure_ascii=False
+        {
+            "active": state["active"],
+            "fullscreen": state["fullscreen"],
+            "windows": windows(),
+        },
+        ensure_ascii=False,
     )
     sys.stdout.write(line + "\n")
     sys.stdout.flush()
@@ -1633,10 +2697,18 @@ ShellRoot {
     property string currentDesktop: ""
     property var windows: []          // [{id, uuid, title, icon}]
     property string activeWindow: ""  // active window uuid "{...}"
+    property bool activeFullscreen: false  // is the focused window fullscreen?
 
     Theme { id: theme }
     // keep the default sink bound so the dashboard volume icon reflects mute live
     PwObjectTracker { objects: Pipewire.defaultAudioSink ? [Pipewire.defaultAudioSink] : [] }
+
+    // ---- notifications (freedesktop server + popup/history state) ----
+    // Owns org.freedesktop.Notifications; requires Plasma's own notifications to
+    // be disabled first (System Tray Settings -> Notifications -> Disabled), since
+    // plasmashell registers the name without ALLOW_REPLACEMENT. Shared with every
+    // monitor's pill (the morph + floating cards) and the history menu.
+    Notifications { id: notifs; theme: theme }
 
     // ---- KWin virtual desktops over DBus (org.kde.KWin /VirtualDesktopManager) ----
     Process {
@@ -1708,6 +2780,7 @@ ShellRoot {
                     const d = JSON.parse(line);
                     root.windows = d.windows;
                     root.activeWindow = d.active;
+                    root.activeFullscreen = !!d.fullscreen;
                 } catch (e) {}
             }
         }
@@ -1776,22 +2849,34 @@ ShellRoot {
             screen: modelData
 
             WlrLayershell.layer: WlrLayer.Overlay
-            // grab keyboard only while a panel is open, so the launcher search
-            // field can take text input; the collapsed/hovered pill never steals keys.
+            // grab keyboard only while a panel is explicitly open (launcher search /
+            // menus), so the collapsed/hovered pill — and an appearing notification —
+            // never steal focus from the active window. Inline reply works from the
+            // floating cards under an open pill (which has focus).
             WlrLayershell.keyboardFocus: (win.open || win.launcher) ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
             exclusionMode: ExclusionMode.Ignore
             color: "transparent"
             anchors { top: true; bottom: true; left: true; right: true }
-            mask: (win.open || win.launcher || win.ctxGroup !== null) ? fullRegion : pillRegion
+            mask: (win.open || win.launcher || win.ctxGroup !== null) ? fullRegion
+                : (win.fsHide ? emptyRegion : pillRegion)
 
             property bool open: false
             property bool launcher: false // app launcher (wider open state)
             property var ctxGroup: null   // app group whose right-click menu is shown
             property bool dash: open || launcher || hover.hovered || ctxGroup !== null
-            property int menu: 0          // 0 net, 1 vol, 2 bt, 3 batt, 4 notif
+            property int menu: 4          // 0 net, 1 vol, 2 bt, 3 batt, 4 notif (default pane)
+            // a notification is showing AND the pill isn't in a clicked/menu state:
+            // the collapsed pill morphs into the notification card (hover holds it).
+            // While clicked/launcher/ctx, notifications float *below* the pill instead.
+            property bool notifMorph: notifs.current !== null && !open && !launcher && ctxGroup === null
+            // hide the resting pill while a fullscreen window is focused (games,
+            // video, etc.) — only at true rest: hovering, opening, or a morphing
+            // notification all override it, so notifications still appear normally.
+            property bool fsHide: root.activeFullscreen && !dash && !notifMorph
 
             Region { id: pillRegion; item: pill }
             Region { id: fullRegion; item: backdrop }
+            Region { id: emptyRegion }    // no items -> whole window is click-through
 
             MouseArea {
                 id: backdrop
@@ -1804,33 +2889,72 @@ ShellRoot {
                 id: pill
                 anchors.horizontalCenter: parent.horizontalCenter
                 y: 6
-                width: win.launcher ? 520 : (win.dash ? 420 : 56)
-                height: (win.open || win.launcher) ? 470 : (win.dash ? 104 : 28)
+                width: win.launcher ? 520 : (win.notifMorph ? 420 : (win.dash ? 420 : 56))
+                height: (win.open || win.launcher) ? 470
+                      : (win.notifMorph ? morphStack.implicitHeight : (win.dash ? 104 : 28))
                 Behavior on width  { NumberAnimation { duration: theme.anim; easing.type: Easing.OutCubic } }
                 Behavior on height { NumberAnimation { duration: theme.anim; easing.type: Easing.OutCubic } }
+
+                // resting (collapsed, un-hovered) pill is dimmed; full opacity once
+                // hovered / open / a notification is morphing it; fully hidden while
+                // a fullscreen window is focused (fsHide)
+                opacity: win.fsHide ? 0 : ((win.dash || win.notifMorph) ? 1 : theme.idleOpacity)
+                Behavior on opacity { NumberAnimation { duration: theme.animFast } }
 
                 HoverHandler { id: hover }
 
                 Rectangle {
                     anchors.fill: parent
                     radius: (win.open || win.launcher) ? Math.min(theme.radius, height / 2) : 12
-                    color: theme.bg
+                    // hovered/open is a solid surface; at rest it's a borderless
+                    // translucent *gradient* so the floating pill blends with the
+                    // backdrop. The morph drops the background entirely (cards only).
+                    color: win.notifMorph ? "transparent" : (win.dash ? theme.bg : "transparent")
+                    gradient: (win.dash || win.notifMorph) ? null : restGrad
                     border.color: theme.border
-                    border.width: 1
+                    border.width: (win.dash && !win.notifMorph) ? 1 : 0
                     Behavior on radius { NumberAnimation { duration: theme.anim } }
+                    Behavior on color  { ColorAnimation { duration: theme.animFast } }
+                    Gradient {
+                        id: restGrad
+                        GradientStop { position: 0.0; color: theme.bgGradTop }
+                        GradientStop { position: 1.0; color: theme.bgGradBottom }
+                    }
                 }
 
-                MouseArea { anchors.fill: parent; enabled: win.dash && !win.open && !win.launcher; onClicked: win.open = true }
+                MouseArea { anchors.fill: parent; enabled: win.dash && !win.open && !win.launcher && !win.notifMorph; onClicked: { win.menu = 4; win.open = true; } }
                 MouseArea { anchors.fill: parent; enabled: win.open || win.launcher; onClicked: {} }
 
                 // ---- collapsed: clock (hh:mm) ----
                 Text {
                     anchors.centerIn: parent
-                    visible: !win.dash
+                    visible: !win.dash && !win.notifMorph
                     text: root.clockShort
-                    color: theme.text
+                    // slightly translucent so the floating pill reveals a hint of
+                    // what's behind it (easier to read against any backdrop)
+                    color: Qt.rgba(theme.text.r, theme.text.g, theme.text.b, 0.78)
                     font.family: theme.mono
                     font.pixelSize: theme.fsNormal
+                }
+
+                // ---- notification morph: the collapsed pill becomes a stack ----
+                // The active-notification deck (NotificationStack) is the pill
+                // body; pill.height tracks its implicit height, which grows when
+                // hovered and the deck drops into a full list. The pill's own
+                // background is hidden here so the cards are the only surface.
+                Item {
+                    anchors.fill: parent
+                    clip: true
+                    Loader {
+                        id: morphStack
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        y: 0
+                        active: win.notifMorph
+                        sourceComponent: cStack
+                        opacity: win.notifMorph ? 1 : 0
+                        visible: opacity > 0
+                        Behavior on opacity { NumberAnimation { duration: theme.animFast } }
+                    }
                 }
 
                 // ================= Row 1: datetime (left) | apps (right) =================
@@ -1838,7 +2962,7 @@ ShellRoot {
                     x: theme.pad; y: 12
                     width: pill.width - theme.pad * 2
                     height: 26
-                    opacity: win.dash ? 1 : 0
+                    opacity: (win.dash && !win.notifMorph) ? 1 : 0
                     visible: opacity > 0
                     Behavior on opacity { NumberAnimation { duration: theme.animFast } }
 
@@ -1919,7 +3043,7 @@ ShellRoot {
                     x: theme.pad; y: 62
                     width: pill.width - theme.pad * 2
                     height: 24
-                    opacity: win.dash ? 1 : 0
+                    opacity: (win.dash && !win.notifMorph) ? 1 : 0
                     visible: opacity > 0
                     Behavior on opacity {
                         NumberAnimation {
@@ -1934,7 +3058,7 @@ ShellRoot {
                         IconImage {                          // open the app launcher
                             anchors.verticalCenter: parent.verticalCenter
                             implicitSize: 18
-                            source: Quickshell.iconPath("view-app-grid", "application-x-executable")
+                            source: Quickshell.iconPath("view-grid-symbolic", "view-grid")
                             MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor
                                 onClicked: { win.open = false; win.launcher = true; } }
                         }
@@ -2001,7 +3125,8 @@ ShellRoot {
                                     source: Quickshell.iconPath(modelData.ic, "application-x-executable")
                                 }
                                 MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor
-                                    onClicked: { win.menu = modelData.menu; win.open = true; } }
+                                    // close the launcher too, else both panes stack on top of each other
+                                    onClicked: { win.launcher = false; win.menu = modelData.menu; win.open = true; } }
                             }
                         }
                         Repeater {                           // system tray
@@ -2024,9 +3149,9 @@ ShellRoot {
                 }
 
                 // ===================== control panel (open) =====================
-                // Sits below row 2 (which stays visible and acts as the menu
-                // switcher); the menu itself is full-width — no icon rail. Each
-                // menu carries its own back chevron via MenuHeader.
+                // Sits below the two dashboard rows (which stay visible; Row 2
+                // doubles as the menu switcher). Full-width — no icon rail; each
+                // menu carries its own back chevron + title via MenuHeader.
                 Item {
                     x: theme.pad; y: 92
                     width: pill.width - theme.pad * 2
@@ -2059,10 +3184,12 @@ ShellRoot {
                 }
 
                 // ===================== launcher (wider open state) =====================
+                // Like the control panel: sits below the two dashboard rows (which
+                // stay visible), with a divider on top.
                 Item {
-                    x: theme.pad; y: 46
+                    x: theme.pad; y: 92
                     width: pill.width - theme.pad * 2
-                    height: pill.height - 46 - theme.pad
+                    height: pill.height - 92 - theme.pad
                     clip: true
                     opacity: win.launcher ? 1 : 0
                     visible: opacity > 0
@@ -2079,7 +3206,7 @@ ShellRoot {
                         id: launcherItem
                         y: 14
                         width: 520 - theme.pad * 2
-                        height: 470 - 46 - theme.pad - 14
+                        height: 470 - 92 - theme.pad - 14
                         theme: theme
                         apps: root.appList
                         settings: settings
@@ -2157,6 +3284,16 @@ ShellRoot {
                     }
                 }
             }
+
+            // ===================== notifications below an open pill =====================
+            // When the pill is clicked-open / launcher / app-menu, active
+            // notifications don't morph it — the same deck floats below instead.
+            Loader {
+                anchors.horizontalCenter: parent.horizontalCenter
+                y: pill.y + pill.height + 8
+                active: (win.open || win.launcher || win.ctxGroup !== null) && notifs.active.length > 0
+                sourceComponent: cStack
+            }
         }
     }
 
@@ -2165,22 +3302,9 @@ ShellRoot {
     Component { id: cVol;  VolumeMenu    { theme: theme } }
     Component { id: cBt;   BluetoothMenu { theme: theme } }
     Component { id: cBatt; BatteryMenu   { theme: theme } }
-    Component { id: cNotif; Item {
-        id: notifRoot
-        signal closeRequested()
-        MenuHeader {
-            theme: theme
-            title: "Notifications"
-            onBack: notifRoot.closeRequested()
-        }
-        Text {
-            anchors.centerIn: parent
-            horizontalAlignment: Text.AlignHCenter
-            text: "Notification history\n(coming soon)"
-            font.family: theme.family
-            color: theme.textDim; font.pixelSize: theme.fsNormal
-        }
-    } }
+    Component { id: cNotif; NotificationHistory { theme: theme; notifs: notifs } }
+    // the active-notification deck, reused for the pill morph and the floating stack
+    Component { id: cStack; NotificationStack { theme: theme; notifs: notifs } }
 
     // ---- clock ----
     SystemClock { id: sysclock; precision: SystemClock.Minutes }
@@ -2234,6 +3358,23 @@ if [ -z "${WAYLAND_DISPLAY:-}" ]; then
 fi
 export WAYLAND_DISPLAY
 export QT_QPA_PLATFORM=wayland
+
+# Icon theme. Icons (launcher app list, status/tray glyphs) resolve through Qt's
+# icon theme. By default we load the KDE Qt platform theme so they follow KDE's
+# configured icon theme (System Settings -> Icons). If Theme.qml sets
+# `iconTheme: "Name"`, force that instead via the gtk3 platform theme, which reads
+# an icon-theme name from a settings.ini we own (Qt has no env var for it). This
+# keeps the override self-contained (XDG_CONFIG_HOME is prefixed, not replaced).
+icon_theme=$(sed -n 's/.*property[[:space:]][[:space:]]*string[[:space:]][[:space:]]*iconTheme:[[:space:]]*"\([^"]*\)".*/\1/p' "$dir/Theme.qml" 2>/dev/null | head -n1)
+if [ -n "${icon_theme:-}" ]; then
+    cfg="${XDG_STATE_HOME:-$HOME/.local/state}/quickshell-pill"
+    mkdir -p "$cfg/gtk-3.0"
+    printf '[Settings]\ngtk-icon-theme-name=%s\n' "$icon_theme" > "$cfg/gtk-3.0/settings.ini"
+    export XDG_CONFIG_HOME="$cfg:${XDG_CONFIG_HOME:-$HOME/.config}"
+    export QT_QPA_PLATFORMTHEME=gtk3
+else
+    export QT_QPA_PLATFORMTHEME=kde
+fi
 
 exec qs -p "$dir/init.qml" "$@"
 #+end_src
