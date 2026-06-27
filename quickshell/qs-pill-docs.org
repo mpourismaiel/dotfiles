@@ -72,6 +72,7 @@ fullscreen-hide are blocked on there being no client-visible window-list protoco
 | VPN selection in network menu                      | ✅ built       | not in the native =Networking= binding — listed + toggled via =nmcli= (=Process=) in =NetworkMenu.qml=         |
 | Hide pill when a fullscreen window is focused       | ✅ built       | =winbridge.py= KWin script reports the active window's =fullScreen= flag; the resting pill fades out + drops from the input mask while it's set (=win.fsHide=) — notifications still morph through |
 | Notifications (popup morph + history + reply)      | ✅ built       | native =Services.Notifications= =NotificationServer=; *requires disabling Plasma's notifications* (see below) — =plasmashell= owns =org.freedesktop.Notifications= without =ALLOW_REPLACEMENT=, verified |
+| Action bursts (desktop switch / layout change)     | ✅ built       | 1s transient takeover of the resting pill (=root.burstKind=): desktop dot slides old→new; layout shows =US → FA=. Layout via KWin DBus =org.kde.keyboard /Layouts=; coexists with notifications (deck floats below) |
 
 The taskbar needs no Wayland window protocol: KWin's KRunner "windows" runner lists
 and activates windows over DBus, and a tiny KWin script reports the active window
@@ -155,24 +156,49 @@ stage:
    while open). Each menu renders a shared =MenuHeader= — a back chevron *and title*
    (both clickable) that collapse the panel via the menu's =closeRequested()= signal
    (wired through a =Connections= on the loader), plus a trailing slot for the
-   menu's own toggles. Clicking the pill body opens to the *notification-history*
-   pane (=win.menu = 4=, the default); a Row-2 status icon opens straight to its own
-   menu and switches it while open.
+   menu's own toggles. Clicking the (hovered) pill body opens the *app launcher*;
+   a Row-2 status icon instead opens straight to its own menu (and switches it
+   while open). =win.menu= still defaults to =4= (notification history) for when a
+   menu is opened without first picking an icon.
 4. *launcher* (=launcher=, 520×470): the app launcher takes the menu pane's place,
    *also below the two rows* (same divider + offset), so it matches the menus (see
    [[*Launcher.qml][§ Launcher.qml]]). Opened from the Row-2 grid button
-   (=view-grid-symbolic=); while =open= or =launcher= the layer surface takes
-   =WlrKeyboardFocus.OnDemand= so the search field can receive keystrokes.
+   (=view-grid-symbolic=), by clicking the hovered pill body, or by the *Meta+H*
+   global shortcut.
+
+*Keyboard focus.* The layer surface only grabs the keyboard while a panel is open:
+=launcher= → =WlrKeyboardFocus.Exclusive= (so it focuses even when opened by the
+shortcut — there's no click to trigger on-demand focus — and arrow-key nav works);
+a =menu= (=open=) → =OnDemand= (a password field focuses when clicked); otherwise
+=None=. KWin does *not* restore focus to the previously-active window when a layer
+surface releases the keyboard, so the pill remembers the last real active window
+(=root.lastActiveWindow=, updated from =winbridge='s active-window reports, ignoring
+the transient empties an open grab causes) and =restoreFocus()= re-activates it via
+the KRunner =Run= whenever the pill is *dismissed without launching* (backdrop
+click, launcher/menu back-chevron, Escape, shortcut toggle-close). Launching an app
+skips the restore — the launched window takes focus itself.
 
 The window =mask= also expands to full-screen when an app *right-click menu* is
 open (=win.ctxGroup=), so that menu (a =Loader= floating below the pill) is
 clickable and an outside click dismisses it.
 
+** Global shortcut (Meta+H)
+Quickshell's =GlobalShortcut= is Hyprland-only, so the launcher shortcut rides the
+KWin script + DBus we already have (see =winbridge.py=): the script
+=registerShortcut("PillLauncher", …, "Meta+H", …)= calls our =org.kde.pill=
+=Launcher(screen)= method (passing the active window's =output.name=); =winbridge=
+prints a =\{event:"launcher", screen\}= line; =init.qml= turns it into the
+=launcherShortcut(screen)= signal, and each monitor's pill toggles its launcher if
+the screen matches (single-monitor setups ignore the hint). The shortcut is
+re-bindable in *System Settings ▸ Shortcuts ▸ KWin* once registered.
+
 ** Open windows / taskbar (winbridge.py)
 KWin advertises no window-list protocol and no active-window over DBus, so
 =winbridge.py= (run as =python <shellDir>/winbridge.py=) glues two KDE APIs and
-prints one JSON line =\{active, windows\}= per update on stdout, which a =Process= +
-=SplitParser= parses into =root.windows= / =root.activeWindow=:
+prints one JSON line =\{active, fullscreen, windows\}= per update on stdout (plus the
+occasional =\{event:"launcher", screen\}= line for the Meta+H shortcut), which a
+=Process= + =SplitParser= parses into =root.windows= / =root.activeWindow= /
+=root.activeFullscreen=:
 - *window list*: the KRunner "windows" runner =org.kde.KWin /WindowsRunner=,
   =org.kde.krunner1.Match("")= returns every window =(id, title, icon, …)= (icon is
   already an app-icon name like =org.kde.dolphin=); polled ~1 s, deduped by id
@@ -183,6 +209,9 @@ prints one JSON line =\{active, windows\}= per update on stdout, which a =Proces
   window's =fullScreen= flag; it also re-pushes when the active window's
   =fullScreenChanged= fires (so going fullscreen in place hides the pill). The flag
   rides the JSON line as =fullscreen= and drives =win.fsHide=. Unloaded on exit.
+- *launcher shortcut*: the same script =registerShortcut=s *Meta+H*, whose callback
+  calls =org.kde.pill Launcher(activeWindow.output.name)= → the =\{event:"launcher"\}=
+  line above (see [[*Global shortcut (Meta+H)][§ Global shortcut]]).
 
 In the UI, =root.appGroups= groups windows by =icon= (one tile per app, with a
 count badge for ≥2 windows and an underline that turns accent when any of the
@@ -232,10 +261,20 @@ name/genericName/keywords), a grid/list toggle, ★ favourites (empty query show
 favourites if any, else all apps; searching is always a flat list), a right-click
 menu (=DesktopEntry.actions= + favourite toggle), and a calculator (a safe
 arithmetic expression, or one prefixed with ===, shows a result row that
-=wl-copy='s on click/Enter). A small *power row* sits bottom-right —
-lock/logout/reboot/shutdown (16px), wired to =loginctl lock-session= and
-=org.kde.Shutdown='s =logout=/=logoutAndReboot=/=logoutAndShutdown= over =gdbus=.
-=init.qml= focuses + clears the field on each open via a =Connections= on
+=wl-copy='s on click/Enter). The visible list/grid is *arrow-key navigable* from
+the search field (=currentIndex= highlights a row/tile; =moveVert=/=moveHoriz= step
+it, =activateCurrent= launches on Enter): up/down always move the selection; in the
+grid left/right move a column too, while in a list left/right only navigate when the
+query is empty — otherwise they move the text cursor. In *grid mode* the favourites
+grid is
+*drag-to-reorder*: tiles wrap a =DelegateModel= whose =items= group is moved live
+as a tile is dragged over its neighbours (stable delegates + animated displace),
+and the new order is committed to =settings.favorites= on release (the all-apps
+grid, shown when there are no favourites, is not reorderable). A small *power row*
+sits bottom-right — lock/logout/reboot/shutdown (16px), wired to =loginctl
+lock-session= and =org.kde.Shutdown='s =logout=/=logoutAndReboot=/=logoutAndShutdown=
+over =gdbus=. =init.qml= focuses + clears the field on each open and *drops the
+field's focus on close* (so the pill releases the keyboard) via a =Connections= on
 =win.launcher=.
 
 ** Notifications (Notifications.qml + NotificationView.qml + NotificationStack.qml + NotificationHistory.qml)
@@ -298,7 +337,40 @@ same deck floats *below* the pill instead (both via a =Loader= over the shared
 *never* takes keyboard focus (the surface only grabs focus while =open=/=launcher=),
 so it can't steal focus from the active window — inline reply is typed from the
 floating cards under an *opened* pill. The Row-2 notification status icon opens
-=NotificationHistory= (menu 4).
+=NotificationHistory= (menu 4). A momentary *action burst* (next section) also
+suppresses the morph for its one second and floats the deck below, so the
+notifications visibly *slide down* to make room for the burst pill.
+
+** Action bursts (desktop switch, layout change)
+Some changes deserve a glance even when the pill is at rest, so a *transient
+burst* briefly takes over the collapsed pill for *1s* and then reverts to the
+clock. It is driven from =root= (so every monitor's pill shows it) via
+=burstKind= / =burstPhase=: =startBurst()= runs a single =Timer= through three
+phases — *settle → animate 400ms → settle 300ms* — clearing =burstKind= when done.
+The opening settle is *300ms* for the language burst but only *100ms* for the
+desktop one (so the dots snap in, then the active dot slides). A burst only takes over the *resting* pill (=showBurst=): it yields to
+hover / open / launcher / a right-click group (those already show richer UI), and
+it overrides =notifMorph= so an active notification deck *floats below* the burst
+pill instead of being replaced (the same below-pill =Loader= used for an opened
+pill) — that is how notifications slide down to reveal the change. Even under a
+focused fullscreen window the burst still *draws* (its input region stays empty,
+so it never intercepts clicks). Two events fire bursts today, each guarding
+against its *initial* value on startup (QML change handlers carry no old value, so
+=root= keeps the previous desktop id / layout index to animate *from*):
+- *Virtual-desktop switch* (=onCurrentDesktopChanged=) — renders the same dot row
+  as Row 2 in its unhovered styling, with a filled =textDim= dot that slides from
+  the previous desktop's slot to the new one across the 400ms animate phase
+  (=burstDotIdx= flips to the new index once animating; a =Behavior on x= does the
+  move). The *hovered* Row-2 dots use the same trick: hollow dots plus one filled
+  dot that slides to =deskActiveIdx= (=Behavior on x=, 400ms =OutCubic=), so
+  switching desktops while the pill is open animates instead of jumping.
+- *Keyboard-layout change* (=onKbIndexChanged=) — shows =from → to= (e.g. =US →
+  FA=) with the accent arrow *flashing and pulsing* during the animate phase.
+  Layouts come from KWin's =org.kde.keyboard /Layouts= (=getLayoutsList= →
+  =a(sss)= = code / custom-label / long-name; =getLayout= → current index;
+  =layoutChanged= / =layoutListChanged= keep them live). The label is the user's
+  *custom* layout label if set in System Settings, else the uppercased code (=us=
+  → =US=, =ir= → =IR=).
 
 ** Look, translucency & icons
 The palette in =Theme.qml= is the warm vermillion/cream scheme borrowed from
@@ -341,7 +413,7 @@ theme (Qt has no env var for an icon-theme name, so we write a private
 | =NotificationStack.qml= | active-popup deck; stack at rest, drops to a list on hover     |
 | =NotificationHistory.qml= | grouped, newest-first history pane (menu 4)                |
 | =winbridge.py=    | open-window list (KRunner) + active window (KWin script) → JSON  |
-| =init.qml=    | windows, stages, virtual desktops, taskbar, tray, menu host + launcher (entry) |
+| =init.qml=    | windows, stages, virtual desktops, taskbar, tray, action bursts, menu host + launcher (entry) |
 
 * Source
 
@@ -1295,6 +1367,7 @@ pragma ComponentBehavior: Bound
 // The app list is supplied by the parent (built once from DesktopEntries and
 // kept alive across opens), so opening is instant after the first build.
 import QtQuick
+import QtQml.Models
 import Quickshell
 import Quickshell.Widgets
 import Quickshell.Io
@@ -1308,7 +1381,12 @@ Item {
     signal closeRequested()
 
     // called by the parent when the launcher opens: clear + focus the search
-    function open() { search.text = ""; ctx.app = null; search.forceActiveFocus(); }
+    function open() { search.text = ""; ctx.app = null; currentIndex = 0; search.forceActiveFocus(); }
+    // called when the launcher closes: drop the search field's active focus so the
+    // (kept-instantiated) launcher stops holding the layer surface's keyboard grab,
+    // letting the focused window get the keyboard back. The parent sets the window's
+    // WlrKeyboardFocus to None in tandem.
+    function close() { search.focus = false; ctx.app = null; }
 
     // ---- query / filtering ----
     readonly property string q: search.text.trim().toLowerCase()
@@ -1339,6 +1417,32 @@ Item {
     readonly property var model: searching ? filtered : (favApps.length > 0 ? favApps : apps)
     // grid only on the resting view; searching is always a list
     readonly property bool showGrid: !searching && settings.grid
+
+    // ---- keyboard selection (arrow-key navigation) ----
+    // index into `model` of the highlighted item; reset whenever the visible set
+    // changes (a new query, or toggling grid/list).
+    property int currentIndex: 0
+    onQChanged: currentIndex = 0
+    onShowGridChanged: currentIndex = 0
+    function setSel(i) {
+        const n = model.length;
+        currentIndex = n === 0 ? 0 : Math.max(0, Math.min(n - 1, i));
+        if (n === 0) return;
+        if (showGrid) grid.positionViewAtIndex(currentIndex, GridView.Contain);
+        else list.positionViewAtIndex(currentIndex, ListView.Contain);
+    }
+    // up/down step one row (or one grid row); left/right step one column. In the
+    // grid every arrow navigates; in a list up/down navigate, and left/right only
+    // navigate when the search is empty (otherwise they move the text cursor).
+    function moveVert(d) { setSel(currentIndex + d * (showGrid ? grid.cols : 1)); }
+    function moveHoriz(d) { setSel(currentIndex + d); }
+    function activateCurrent() {
+        if (calcResult !== null) { copy(calcResult); root.launched(); return; }
+        const n = model.length;
+        if (n === 0) return;
+        model[Math.max(0, Math.min(n - 1, currentIndex))].execute();
+        root.launched();
+    }
 
     function isFav(a) { return (settings.favorites || []).indexOf(a.id) >= 0; }
     function toggleFav(a) {
@@ -1371,11 +1475,6 @@ Item {
 
     Process { id: powerProc }
     function exec(cmd) { powerProc.command = cmd; powerProc.startDetached(); }
-
-    function activateFirst() {
-        if (calcResult !== null) { copy(calcResult); root.launched(); return; }
-        if (model.length > 0) { model[0].execute(); root.launched(); }
-    }
 
     // ================= search row =================
     Text {                                       // back chevron — closes the launcher
@@ -1429,8 +1528,21 @@ Item {
             selectByMouse: true
             selectionColor: root.theme.accentDim
             Keys.onEscapePressed: root.closeRequested()
-            Keys.onReturnPressed: root.activateFirst()
-            Keys.onEnterPressed: root.activateFirst()
+            Keys.onReturnPressed: root.activateCurrent()
+            Keys.onEnterPressed: root.activateCurrent()
+            // arrow-key navigation over the list/grid (see moveVert/moveHoriz):
+            // up/down always navigate; left/right navigate in the grid, or in a
+            // list only when the query is empty — otherwise they move the cursor.
+            Keys.onUpPressed: root.moveVert(-1)
+            Keys.onDownPressed: root.moveVert(1)
+            Keys.onLeftPressed: e => {
+                if (!root.showGrid && root.q.length > 0) { e.accepted = false; return; }
+                root.moveHoriz(-1);
+            }
+            Keys.onRightPressed: e => {
+                if (!root.showGrid && root.q.length > 0) { e.accepted = false; return; }
+                root.moveHoriz(1);
+            }
 
             Text {                               // placeholder
                 anchors.fill: parent
@@ -1567,10 +1679,13 @@ Item {
                 delegate: Rectangle {
                     id: appRow
                     required property var modelData
+                    required property int index
                     width: list.width
                     height: root.theme.rowHeight
                     radius: root.theme.radiusSmall
-                    color: rowMa.containsMouse ? root.theme.bgHover : "transparent"
+                    // keyboard-selected row gets the accent tint; hover is the softer bg
+                    color: appRow.index === root.currentIndex ? root.theme.accentDim
+                         : rowMa.containsMouse ? root.theme.bgHover : "transparent"
 
                     Row {
                         anchors.left: parent.left; anchors.leftMargin: 8
@@ -1628,11 +1743,16 @@ Item {
             }
 
             // ---- grid view (resting view when grid mode is on) ----
+            // When the grid is showing *favourites* (canReorder), tiles can be
+            // dragged to reorder: the drag reorders the DelegateModel's items group
+            // live (stable delegates, animated displace), mirrored into `dragOrder`,
+            // and committed to settings.favorites on release. A plain click still
+            // launches; right-click opens the context menu. The all-apps grid
+            // (favApps empty) is not reorderable — there'd be nothing to persist.
             GridView {
                 id: grid
                 anchors.fill: parent
                 visible: root.showGrid
-                model: root.model
                 clip: true
                 cacheBuffer: 800
                 boundsBehavior: Flickable.StopAtBounds
@@ -1640,68 +1760,126 @@ Item {
                 cellWidth: Math.floor(width / cols)
                 cellHeight: 92
 
-                delegate: Item {
-                    id: appTile
-                    required property var modelData
-                    width: grid.cellWidth
-                    height: grid.cellHeight
+                readonly property bool canReorder: root.showGrid && root.favApps.length > 0
+                property var dragOrder: []     // ids, mirrored from the live drag
+                property bool reordered: false // a drag actually moved something
+                moveDisplaced: Transition { NumberAnimation { properties: "x,y"; duration: root.theme.animFast } }
+                displaced: Transition { NumberAnimation { properties: "x,y"; duration: root.theme.animFast } }
 
-                    Rectangle {
-                        anchors.fill: parent
-                        anchors.margins: 4
-                        radius: root.theme.radiusSmall
-                        color: tileMa.containsMouse ? root.theme.bgHover : "transparent"
-
-                        Column {
-                            anchors.centerIn: parent
-                            width: parent.width - 8
-                            spacing: 6
-                            IconImage {
-                                anchors.horizontalCenter: parent.horizontalCenter
-                                implicitSize: 40
-                                asynchronous: true
-                                source: Quickshell.iconPath(appTile.modelData.icon, "application-x-executable")
-                            }
-                            Text {
-                                width: parent.width
-                                horizontalAlignment: Text.AlignHCenter
-                                elide: Text.ElideRight
-                                maximumLineCount: 2
-                                wrapMode: Text.Wrap
-                                text: appTile.modelData.name
-                                color: root.theme.text
-                                font.family: root.theme.family
-                                font.pixelSize: root.theme.fsSmall
-                            }
-                        }
-                        Text {                   // favourite marker
-                            anchors.top: parent.top; anchors.right: parent.right
-                            anchors.margins: 4
-                            visible: root.isFav(appTile.modelData) || tileMa.containsMouse
-                            text: root.isFav(appTile.modelData) ? "★" : "☆"
-                            color: root.isFav(appTile.modelData) ? root.theme.accent : root.theme.textDim
-                            font.family: root.theme.family
-                            font.pixelSize: root.theme.fsNormal
-                            MouseArea {
-                                anchors.fill: parent; anchors.margins: -6
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: root.toggleFav(appTile.modelData)
-                            }
-                        }
-                    }
-                    MouseArea {
-                        id: tileMa
-                        anchors.fill: parent
+                model: DelegateModel {
+                    id: gridModel
+                    model: root.model
+                    delegate: MouseArea {
+                        id: tile
+                        required property var modelData
+                        required property int index
+                        width: grid.cellWidth
+                        height: grid.cellHeight
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
                         acceptedButtons: Qt.LeftButton | Qt.RightButton
+                        readonly property int visualIndex: DelegateModel.itemsIndex
+                        drag.target: grid.canReorder ? tileBg : undefined
+                        drag.axis: Drag.XAndYAxis
+
+                        onPressed: {
+                            if (grid.canReorder) {
+                                grid.dragOrder = root.favApps.map(a => a.id);
+                                grid.reordered = false;
+                            }
+                        }
+                        onReleased: {
+                            if (grid.canReorder && grid.reordered)
+                                root.settings.favorites = grid.dragOrder;
+                        }
                         onClicked: mouse => {
                             if (mouse.button === Qt.RightButton) {
                                 const p = mapToItem(root, mouse.x, mouse.y);
-                                ctx.openFor(appTile.modelData, p.x, p.y);
+                                ctx.openFor(tile.modelData, p.x, p.y);
                             } else {
-                                appTile.modelData.execute();
+                                tile.modelData.execute();
                                 root.launched();
+                            }
+                        }
+
+                        DropArea {                       // reorder as a tile is dragged over
+                            anchors.fill: parent
+                            enabled: grid.canReorder
+                            onEntered: drag => {
+                                const from = drag.source.visualIndex;
+                                const to = tile.visualIndex;
+                                if (from === to)
+                                    return;
+                                gridModel.items.move(from, to);
+                                const o = grid.dragOrder.slice();
+                                o.splice(to, 0, o.splice(from, 1)[0]);
+                                grid.dragOrder = o;
+                                grid.reordered = true;
+                            }
+                        }
+
+                        Rectangle {
+                            id: tileBg
+                            width: tile.width - 8
+                            height: tile.height - 8
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            anchors.verticalCenter: parent.verticalCenter
+                            radius: root.theme.radiusSmall
+                            // keyboard-selected tile gets the accent tint; hover is softer
+                            color: tile.index === root.currentIndex ? root.theme.accentDim
+                                 : tile.containsMouse ? root.theme.bgHover : "transparent"
+                            z: tileBg.Drag.active ? 2 : 0
+
+                            Drag.active: tile.drag.active
+                            Drag.source: tile
+                            Drag.hotSpot.x: width / 2
+                            Drag.hotSpot.y: height / 2
+
+                            Column {
+                                anchors.centerIn: parent
+                                width: parent.width - 8
+                                spacing: 6
+                                IconImage {
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                    implicitSize: 40
+                                    asynchronous: true
+                                    source: Quickshell.iconPath(tile.modelData.icon, "application-x-executable")
+                                }
+                                Text {
+                                    width: parent.width
+                                    horizontalAlignment: Text.AlignHCenter
+                                    elide: Text.ElideRight
+                                    maximumLineCount: 2
+                                    wrapMode: Text.Wrap
+                                    text: tile.modelData.name
+                                    color: root.theme.text
+                                    font.family: root.theme.family
+                                    font.pixelSize: root.theme.fsSmall
+                                }
+                            }
+                            Text {                   // favourite marker
+                                anchors.top: parent.top; anchors.right: parent.right
+                                anchors.margins: 4
+                                visible: root.isFav(tile.modelData) || tile.containsMouse
+                                text: root.isFav(tile.modelData) ? "★" : "☆"
+                                color: root.isFav(tile.modelData) ? root.theme.accent : root.theme.textDim
+                                font.family: root.theme.family
+                                font.pixelSize: root.theme.fsNormal
+                                MouseArea {
+                                    anchors.fill: parent; anchors.margins: -6
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: root.toggleFav(tile.modelData)
+                                }
+                            }
+
+                            states: State {
+                                when: tileBg.Drag.active
+                                ParentChange { target: tileBg; parent: grid }
+                                AnchorChanges {
+                                    target: tileBg
+                                    anchors.horizontalCenter: undefined
+                                    anchors.verticalCenter: undefined
+                                }
                             }
                         }
                     }
@@ -2521,10 +2699,13 @@ PLUGIN = "quickshell-pill-active"
 # --- our DBus service ---
 #   Set(uuid, fs)  — KWin script reports the active window (+ "1"/"0" fullscreen)
 #   List(json)     — KWin script reports the taskbar-eligible window ids (JSON array)
+#   Launcher(scr)  — KWin global shortcut asks the pill to toggle the launcher on
+#                    the screen named `scr` (empty = whichever pill is on it)
 NODE = (
     '<node><interface name="org.kde.pill">'
     '<method name="Set"><arg type="s" direction="in"/><arg type="s" direction="in"/></method>'
     '<method name="List"><arg type="s" direction="in"/></method>'
+    '<method name="Launcher"><arg type="s" direction="in"/></method>'
     "</interface></node>"
 )
 IFACE = Gio.DBusNodeInfo.new_for_xml(NODE).interfaces[0]
@@ -2543,6 +2724,11 @@ def on_call(conn, sender, path, ifc, method, params, inv):
         except Exception:
             state["taskbar"] = None
         emit()
+    elif method == "Launcher":
+        (scr,) = params.unpack()
+        # one-off event line (not the regular state snapshot) the pill reacts to
+        sys.stdout.write(json.dumps({"event": "launcher", "screen": scr}) + "\n")
+        sys.stdout.flush()
     inv.return_value(None)
 
 
@@ -2576,6 +2762,12 @@ KWIN_JS = (
     "var all=workspace.windowList(); for (var i=0;i<all.length;i++) watch(all[i]);\n"
     "setActive(workspace.activeWindow);\n"
     "pushList();\n"
+    # global shortcut (Meta+H) to toggle the launcher; passes the focused window's
+    # screen so the right monitor's pill opens. Configurable in System Settings ->
+    # Shortcuts -> KWin once registered.
+    "function scr(){ var w=workspace.activeWindow; return (w && w.output) ? w.output.name : ''; }\n"
+    'registerShortcut("PillLauncher","Pill: open launcher","Meta+H",function(){\n'
+    '  callDBus("org.kde.pill","/Active","org.kde.pill","Launcher", scr()); });\n'
 )
 
 
@@ -2698,6 +2890,15 @@ ShellRoot {
     property var windows: []          // [{id, uuid, title, icon}]
     property string activeWindow: ""  // active window uuid "{...}"
     property bool activeFullscreen: false  // is the focused window fullscreen?
+    // last *real* focused window — opening the pill (layer-shell keyboard grab)
+    // can momentarily clear activeWindow on KWin, so we keep the last non-empty
+    // value and re-activate it when the pill closes (KWin doesn't restore focus
+    // to the previously-active window on its own when a layer surface lets go).
+    property string lastActiveWindow: ""
+    onActiveWindowChanged: if (activeWindow !== "") lastActiveWindow = activeWindow
+
+    // requested via the Meta+H global shortcut (KWin script -> winbridge -> here)
+    signal launcherShortcut(string screen)
 
     Theme { id: theme }
     // keep the default sink bound so the dashboard volume icon reflects mute live
@@ -2768,6 +2969,115 @@ ShellRoot {
     }
     Process { id: switchProc }
 
+    // ---- keyboard layout (org.kde.keyboard /Layouts) for the language burst ----
+    // getLayoutsList -> a(sss) = (code, customLabel, longName); show the custom
+    // label if the user set one in System Settings, else the uppercased code
+    // (us -> US, ir -> IR). getLayout -> the current index into that list;
+    // layoutChanged(u)/layoutListChanged() keep both live.
+    property var kbLayouts: []        // short labels, one per layout index
+    property int kbIndex: 0
+    Process {
+        id: fetchLayouts
+        running: true
+        command: ["gdbus", "call", "--session", "--dest", "org.kde.keyboard",
+            "--object-path", "/Layouts", "--method",
+            "org.kde.KeyboardLayouts.getLayoutsList"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                const out = [];
+                const re = /\(\s*'([^']*)'\s*,\s*'([^']*)'\s*,\s*'([^']*)'\s*\)/g;
+                let m;
+                while ((m = re.exec(this.text)) !== null)
+                    out.push(m[2] !== "" ? m[2] : m[1].toUpperCase());
+                root.kbLayouts = out;
+            }
+        }
+    }
+    Process {
+        running: true
+        command: ["gdbus", "call", "--session", "--dest", "org.kde.keyboard",
+            "--object-path", "/Layouts", "--method",
+            "org.kde.KeyboardLayouts.getLayout"]
+        stdout: StdioCollector {
+            // seed prevKbIndex here too: kbIndex defaults to 0, so if the fetched
+            // value is also 0 the change handler never fires to consume the initial
+            // value — without this the first *real* switch would be swallowed.
+            onStreamFinished: {
+                const m = this.text.match(/\d+/);
+                if (m) { root.kbIndex = parseInt(m[0]); if (root.prevKbIndex === -1) root.prevKbIndex = root.kbIndex; }
+            }
+        }
+    }
+    Process {
+        running: true
+        command: ["gdbus", "monitor", "--session", "--dest", "org.kde.keyboard",
+            "--object-path", "/Layouts"]
+        stdout: SplitParser {
+            onRead: line => {
+                if (line.indexOf("layoutChanged") !== -1) {
+                    const m = line.match(/\(\s*(?:uint32\s+)?(\d+)\s*\)/);
+                    if (m) root.kbIndex = parseInt(m[1]);
+                } else if (line.indexOf("layoutListChanged") !== -1) {
+                    fetchLayouts.running = true;
+                }
+            }
+        }
+    }
+
+    // ---- transient action bursts (desktop switch / layout change) ----
+    // A 1s overlay that briefly takes over the resting pill to show what just
+    // changed, then reverts: phase 1 settle (300ms) -> phase 2 animate (400ms)
+    // -> phase 3 settle (300ms) -> done. Driven from root so every monitor's
+    // pill shows it; the pill suppresses notifMorph while bursting and floats
+    // the notification deck below instead (so notifications slide down).
+    property string burstKind: ""      // "" | "desktops" | "language"
+    property int    burstPhase: 0      // 0 idle, 1 pre, 2 animate, 3 post
+    property string burstFromDesktop: ""
+    property string burstToDesktop: ""
+    property string burstFromLabel: ""
+    property string burstToLabel: ""
+    // index of the active desktop (also drives the sliding dot in the hovered Row 2)
+    readonly property int deskActiveIdx: desktops.findIndex(d => d.id === currentDesktop)
+    readonly property int burstFromIdx: desktops.findIndex(d => d.id === burstFromDesktop)
+    readonly property int burstToIdx:   desktops.findIndex(d => d.id === burstToDesktop)
+    // index of the moving active dot: the new slot once we start animating
+    readonly property int burstDotIdx: burstPhase >= 2 ? Math.max(0, burstToIdx)
+                                                       : Math.max(0, burstFromIdx)
+    function startBurst(kind) { burstKind = kind; burstPhase = 1; burstTimer.restart(); }
+    Timer {
+        id: burstTimer
+        // settle -> animate (400) -> settle; the desktop burst opens with a shorter
+        // 100ms settle (language keeps 300ms), so it snaps in before the dot slides.
+        interval: root.burstPhase === 2 ? 400
+                : root.burstPhase === 1 ? (root.burstKind === "desktops" ? 100 : 300)
+                : 300
+        repeat: false
+        onTriggered: {
+            if (root.burstPhase < 3) { root.burstPhase++; burstTimer.restart(); }
+            else { root.burstPhase = 0; root.burstKind = ""; }
+        }
+    }
+    // fire the bursts on a *real* change (skip the initial value on startup; QML
+    // change handlers don't carry the old value, so we keep the previous one).
+    property string prevDesktop: ""
+    property int    prevKbIndex: -1
+    onCurrentDesktopChanged: {
+        if (prevDesktop === "") { prevDesktop = currentDesktop; return; }
+        if (currentDesktop === prevDesktop || currentDesktop === "") return;
+        burstFromDesktop = prevDesktop;
+        burstToDesktop = currentDesktop;
+        prevDesktop = currentDesktop;
+        startBurst("desktops");
+    }
+    onKbIndexChanged: {
+        if (prevKbIndex === -1) { prevKbIndex = kbIndex; return; }
+        if (kbIndex === prevKbIndex) return;
+        burstFromLabel = prevKbIndex < kbLayouts.length ? kbLayouts[prevKbIndex] : "";
+        burstToLabel = kbIndex < kbLayouts.length ? kbLayouts[kbIndex] : "";
+        prevKbIndex = kbIndex;
+        startBurst("language");
+    }
+
     // ---- open windows (taskbar) + active window via winbridge.py ----
     // (KRunner windows runner for the list + a tiny KWin script for the active
     //  window — see winbridge.py. Emits one JSON line per update.)
@@ -2778,6 +3088,7 @@ ShellRoot {
             onRead: line => {
                 try {
                     const d = JSON.parse(line);
+                    if (d.event === "launcher") { root.launcherShortcut(d.screen || ""); return; }
                     root.windows = d.windows;
                     root.activeWindow = d.active;
                     root.activeFullscreen = !!d.fullscreen;
@@ -2791,6 +3102,14 @@ ShellRoot {
         runProc.running = true;
     }
     Process { id: runProc }
+    // re-focus the window that was active before the pill grabbed the keyboard
+    // (called when the pill is dismissed without launching anything).
+    function restoreFocus() {
+        const u = root.lastActiveWindow;
+        if (!u) return;
+        const w = root.windows.find(x => x.uuid === u);
+        if (w) root.activateWindow(w.id);
+    }
     Process { id: launchProc }
     function launch(execString) { launchProc.command = ["sh", "-c", execString]; launchProc.startDetached(); }
 
@@ -2852,8 +3171,30 @@ ShellRoot {
             // grab keyboard only while a panel is explicitly open (launcher search /
             // menus), so the collapsed/hovered pill — and an appearing notification —
             // never steal focus from the active window. Inline reply works from the
-            // floating cards under an open pill (which has focus).
-            WlrLayershell.keyboardFocus: (win.open || win.launcher) ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
+            // floating cards under an open pill (which has focus). The launcher uses
+            // *Exclusive* so it grabs the keyboard even when opened by the Meta+H
+            // shortcut (no click to trigger OnDemand focus) and arrow-key nav works;
+            // menus stay OnDemand so a password field focuses only when clicked.
+            WlrLayershell.keyboardFocus: win.launcher ? WlrKeyboardFocus.Exclusive
+                                       : win.open ? WlrKeyboardFocus.OnDemand
+                                       : WlrKeyboardFocus.None
+
+            // toggle the launcher (used by the Meta+H global shortcut). Restores
+            // focus to the previously-active window when the shortcut closes it.
+            function toggleLauncher() {
+                if (win.launcher) { win.launcher = false; root.restoreFocus(); }
+                else { win.open = false; win.ctxGroup = null; win.menu = 4; win.launcher = true; }
+            }
+            Connections {
+                target: root
+                function onLauncherShortcut(screen) {
+                    // with one monitor, ignore the screen hint (names may not match);
+                    // with several, only the pill on the active screen responds
+                    if (screen !== "" && Quickshell.screens.length > 1
+                            && win.screen && screen !== win.screen.name) return;
+                    win.toggleLauncher();
+                }
+            }
             exclusionMode: ExclusionMode.Ignore
             color: "transparent"
             anchors { top: true; bottom: true; left: true; right: true }
@@ -2868,7 +3209,12 @@ ShellRoot {
             // a notification is showing AND the pill isn't in a clicked/menu state:
             // the collapsed pill morphs into the notification card (hover holds it).
             // While clicked/launcher/ctx, notifications float *below* the pill instead.
-            property bool notifMorph: notifs.current !== null && !open && !launcher && ctxGroup === null
+            property bool notifMorph: notifs.current !== null && !open && !launcher && ctxGroup === null && !showBurst
+            // a transient action burst (desktop switch / layout change) takes over
+            // the *resting* pill for 1s; it yields to hover/open/launcher/ctx
+            // (those already show richer UI) and suppresses the notification morph,
+            // floating the deck below the burst pill instead.
+            property bool showBurst: root.burstKind !== "" && !dash
             // hide the resting pill while a fullscreen window is focused (games,
             // video, etc.) — only at true rest: hovering, opening, or a morphing
             // notification all override it, so notifications still appear normally.
@@ -2882,15 +3228,18 @@ ShellRoot {
                 id: backdrop
                 anchors.fill: parent
                 enabled: win.open || win.launcher || win.ctxGroup !== null
-                onClicked: { win.open = false; win.launcher = false; win.ctxGroup = null; }
+                // dismiss without launching -> hand focus back to the active window
+                onClicked: { win.open = false; win.launcher = false; win.ctxGroup = null; root.restoreFocus(); }
             }
 
             Item {
                 id: pill
                 anchors.horizontalCenter: parent.horizontalCenter
                 y: 6
-                width: win.launcher ? 520 : (win.notifMorph ? 420 : (win.dash ? 420 : 56))
-                height: (win.open || win.launcher) ? 470
+                width: win.showBurst ? ((burstLoader.item ? burstLoader.item.implicitWidth : 80) + 28)
+                     : win.launcher ? 520 : (win.notifMorph ? 420 : (win.dash ? 420 : 56))
+                height: win.showBurst ? 28
+                      : (win.open || win.launcher) ? 470
                       : (win.notifMorph ? morphStack.implicitHeight : (win.dash ? 104 : 28))
                 Behavior on width  { NumberAnimation { duration: theme.anim; easing.type: Easing.OutCubic } }
                 Behavior on height { NumberAnimation { duration: theme.anim; easing.type: Easing.OutCubic } }
@@ -2898,7 +3247,7 @@ ShellRoot {
                 // resting (collapsed, un-hovered) pill is dimmed; full opacity once
                 // hovered / open / a notification is morphing it; fully hidden while
                 // a fullscreen window is focused (fsHide)
-                opacity: win.fsHide ? 0 : ((win.dash || win.notifMorph) ? 1 : theme.idleOpacity)
+                opacity: win.showBurst ? 1 : (win.fsHide ? 0 : ((win.dash || win.notifMorph) ? 1 : theme.idleOpacity))
                 Behavior on opacity { NumberAnimation { duration: theme.animFast } }
 
                 HoverHandler { id: hover }
@@ -2922,13 +3271,15 @@ ShellRoot {
                     }
                 }
 
-                MouseArea { anchors.fill: parent; enabled: win.dash && !win.open && !win.launcher && !win.notifMorph; onClicked: { win.menu = 4; win.open = true; } }
+                // clicking the hovered pill body (empty area) opens the launcher;
+                // the Row-2 status icons / app icons handle their own clicks above
+                MouseArea { anchors.fill: parent; enabled: win.dash && !win.open && !win.launcher && !win.notifMorph; onClicked: { win.launcher = true; } }
                 MouseArea { anchors.fill: parent; enabled: win.open || win.launcher; onClicked: {} }
 
                 // ---- collapsed: clock (hh:mm) ----
                 Text {
                     anchors.centerIn: parent
-                    visible: !win.dash && !win.notifMorph
+                    visible: !win.dash && !win.notifMorph && !win.showBurst
                     text: root.clockShort
                     // slightly translucent so the floating pill reveals a hint of
                     // what's behind it (easier to read against any backdrop)
@@ -2955,6 +3306,18 @@ ShellRoot {
                         visible: opacity > 0
                         Behavior on opacity { NumberAnimation { duration: theme.animFast } }
                     }
+                }
+
+                // ---- action burst overlay (desktop switch / layout change) ----
+                // Replaces the collapsed clock for 1s; content picked by burstKind.
+                Loader {
+                    id: burstLoader
+                    anchors.centerIn: parent
+                    active: win.showBurst
+                    sourceComponent: cBurst
+                    opacity: win.showBurst ? 1 : 0
+                    visible: opacity > 0
+                    Behavior on opacity { NumberAnimation { duration: theme.animFast } }
                 }
 
                 // ================= Row 1: datetime (left) | apps (right) =================
@@ -3063,22 +3426,37 @@ ShellRoot {
                                 onClicked: { win.open = false; win.launcher = true; } }
                         }
 
-                        Row {
+                        // hollow dots (click to switch) + one filled dot that slides
+                        // to the active desktop — the same move as the desktop burst.
+                        Item {
                             anchors.verticalCenter: parent.verticalCenter
-                            spacing: 4
-                            Repeater {
-                                model: root.desktops
-                                delegate: Rectangle {
-                                    required property var modelData
-                                    width: 8
-                                    height: 8
-                                    radius: 4
-                                    color: modelData.id === root.currentDesktop ? theme.textDim : "transparent"
-                                    border.color: theme.textDim
-                                    border.width: 1
-                                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor
-                                        onClicked: root.switchDesktop(modelData.id) }
+                            width: deskRow.width
+                            height: 8
+                            Row {
+                                id: deskRow
+                                spacing: 4                       // 8px dot + 4 -> pitch 12
+                                Repeater {
+                                    model: root.desktops
+                                    delegate: Rectangle {
+                                        required property var modelData
+                                        width: 8
+                                        height: 8
+                                        radius: 4
+                                        color: "transparent"
+                                        border.color: theme.textDim
+                                        border.width: 1
+                                        MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                                            onClicked: root.switchDesktop(modelData.id) }
+                                    }
                                 }
+                            }
+                            Rectangle {                          // active indicator, slides on switch
+                                width: 8; height: 8; radius: 4
+                                y: 0
+                                color: theme.textDim
+                                visible: root.deskActiveIdx >= 0
+                                x: Math.max(0, root.deskActiveIdx) * 12
+                                Behavior on x { NumberAnimation { duration: 400; easing.type: Easing.OutCubic } }
                             }
                         }
                     }
@@ -3178,7 +3556,7 @@ ShellRoot {
                         Connections {                 // chevron back -> collapse panel
                             target: menuLoader.item
                             ignoreUnknownSignals: true
-                            function onCloseRequested() { win.open = false; }
+                            function onCloseRequested() { win.open = false; root.restoreFocus(); }
                         }
                     }
                 }
@@ -3211,12 +3589,13 @@ ShellRoot {
                         apps: root.appList
                         settings: settings
                         onLaunched: win.launcher = false
-                        onCloseRequested: win.launcher = false
+                        onCloseRequested: { win.launcher = false; root.restoreFocus(); }
                     }
-                    // focus the search field (and clear it) each time the launcher opens
+                    // focus the search field on open; release it on close so the
+                    // pill drops the keyboard grab and the active window gets it back
                     Connections {
                         target: win
-                        function onLauncherChanged() { if (win.launcher) launcherItem.open(); }
+                        function onLauncherChanged() { if (win.launcher) launcherItem.open(); else launcherItem.close(); }
                     }
                 }
             }
@@ -3286,12 +3665,13 @@ ShellRoot {
             }
 
             // ===================== notifications below an open pill =====================
-            // When the pill is clicked-open / launcher / app-menu, active
-            // notifications don't morph it — the same deck floats below instead.
+            // When the pill is clicked-open / launcher / app-menu — or briefly while
+            // an action burst takes over the pill — notifications don't morph it: the
+            // same deck floats below instead (so a burst pushes notifications down).
             Loader {
                 anchors.horizontalCenter: parent.horizontalCenter
                 y: pill.y + pill.height + 8
-                active: (win.open || win.launcher || win.ctxGroup !== null) && notifs.active.length > 0
+                active: ((win.open || win.launcher || win.ctxGroup !== null) || win.showBurst) && notifs.active.length > 0
                 sourceComponent: cStack
             }
         }
@@ -3305,6 +3685,72 @@ ShellRoot {
     Component { id: cNotif; NotificationHistory { theme: theme; notifs: notifs } }
     // the active-notification deck, reused for the pill morph and the floating stack
     Component { id: cStack; NotificationStack { theme: theme; notifs: notifs } }
+
+    // ---- action-burst content (reads root.burst* / theme by id) ----
+    // language: prevLabel -> (flashing arrow) -> newLabel.
+    // desktops: the same dot row as Row 2, with a filled dot that slides from the
+    // previous desktop's slot to the new one during the 0.3s animate phase.
+    Component {
+        id: cBurst
+        Item {
+            implicitWidth: root.burstKind === "language" ? langRow.implicitWidth : dotRow.width
+            implicitHeight: 28
+
+            Row {                                    // language: EN -> FA
+                id: langRow
+                anchors.centerIn: parent
+                visible: root.burstKind === "language"
+                spacing: 7
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: root.burstFromLabel; color: theme.textDim
+                    font.family: theme.family; font.pixelSize: theme.fsNormal; font.bold: true
+                }
+                Text {                               // arrow flashes during the animate phase
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "→"; color: theme.accent
+                    font.family: theme.family; font.pixelSize: theme.fsNormal; font.bold: true
+                    opacity: root.burstPhase === 2 ? 1 : 0.3
+                    Behavior on opacity { NumberAnimation { duration: 110 } }
+                    SequentialAnimation on scale {
+                        running: root.burstPhase === 2; loops: 2
+                        NumberAnimation { from: 1.0; to: 1.35; duration: 100 }
+                        NumberAnimation { from: 1.35; to: 1.0; duration: 100 }
+                    }
+                }
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: root.burstToLabel; color: theme.text
+                    font.family: theme.family; font.pixelSize: theme.fsNormal; font.bold: true
+                }
+            }
+
+            Item {                                   // desktops: dots with a sliding active dot
+                anchors.centerIn: parent
+                visible: root.burstKind === "desktops"
+                width: dotRow.width; height: 8
+                Row {
+                    id: dotRow
+                    spacing: 4                        // matches the Row-2 desktop dots (pitch 12)
+                    Repeater {
+                        model: root.desktops
+                        delegate: Rectangle {
+                            width: 8; height: 8; radius: 4
+                            color: "transparent"
+                            border.color: theme.textDim; border.width: 1
+                        }
+                    }
+                }
+                Rectangle {                          // the moving active dot
+                    width: 8; height: 8; radius: 4
+                    y: 0
+                    color: theme.textDim
+                    x: root.burstDotIdx * 12
+                    Behavior on x { NumberAnimation { duration: 400; easing.type: Easing.OutCubic } }
+                }
+            }
+        }
+    }
 
     // ---- clock ----
     SystemClock { id: sysclock; precision: SystemClock.Minutes }
