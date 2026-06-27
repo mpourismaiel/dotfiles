@@ -72,7 +72,7 @@ fullscreen-hide are blocked on there being no client-visible window-list protoco
 | VPN selection in network menu                      | ✅ built       | not in the native =Networking= binding — listed + toggled via =nmcli= (=Process=) in =NetworkMenu.qml=         |
 | Hide pill when a fullscreen window is focused       | ✅ built       | =winbridge.py= KWin script reports the active window's =fullScreen= flag; the resting pill fades out + drops from the input mask while it's set (=win.fsHide=) — notifications still morph through |
 | Notifications (popup morph + history + reply)      | ✅ built       | native =Services.Notifications= =NotificationServer=; *requires disabling Plasma's notifications* (see below) — =plasmashell= owns =org.freedesktop.Notifications= without =ALLOW_REPLACEMENT=, verified |
-| Action bursts (desktop switch / layout change)     | ✅ built       | 1s transient takeover of the resting pill (=root.burstKind=): desktop dot slides old→new; layout shows =US → FA=. Layout via KWin DBus =org.kde.keyboard /Layouts=; coexists with notifications (deck floats below) |
+| Action bursts (desktop switch / layout change)     | ✅ built       | 1s transient takeover of the resting pill (=root.burstDesk=/=burstLang=): desktop dot slides old→new; layout shows =US → FA=; both at once → two pills side by side. Layout via KWin DBus =org.kde.keyboard /Layouts=; coexists with notifications (deck floats below) |
 
 The taskbar needs no Wayland window protocol: KWin's KRunner "windows" runner lists
 and activates windows over DBus, and a tiny KWin script reports the active window
@@ -163,7 +163,7 @@ stage:
 4. *launcher* (=launcher=, 520×470): the app launcher takes the menu pane's place,
    *also below the two rows* (same divider + offset), so it matches the menus (see
    [[*Launcher.qml][§ Launcher.qml]]). Opened from the Row-2 grid button
-   (=view-grid-symbolic=), by clicking the hovered pill body, or by the *Meta+H*
+   (=view-grid-symbolic=), by clicking the hovered pill body, or by the *Meta+D*
    global shortcut.
 
 *Keyboard focus.* The layer surface only grabs the keyboard while a panel is open:
@@ -182,10 +182,10 @@ The window =mask= also expands to full-screen when an app *right-click menu* is
 open (=win.ctxGroup=), so that menu (a =Loader= floating below the pill) is
 clickable and an outside click dismisses it.
 
-** Global shortcut (Meta+H)
+** Global shortcut (Meta+D)
 Quickshell's =GlobalShortcut= is Hyprland-only, so the launcher shortcut rides the
 KWin script + DBus we already have (see =winbridge.py=): the script
-=registerShortcut("PillLauncher", …, "Meta+H", …)= calls our =org.kde.pill=
+=registerShortcut("PillLauncher", …, "Meta+D", …)= calls our =org.kde.pill=
 =Launcher(screen)= method (passing the active window's =output.name=); =winbridge=
 prints a =\{event:"launcher", screen\}= line; =init.qml= turns it into the
 =launcherShortcut(screen)= signal, and each monitor's pill toggles its launcher if
@@ -196,22 +196,24 @@ re-bindable in *System Settings ▸ Shortcuts ▸ KWin* once registered.
 KWin advertises no window-list protocol and no active-window over DBus, so
 =winbridge.py= (run as =python <shellDir>/winbridge.py=) glues two KDE APIs and
 prints one JSON line =\{active, fullscreen, windows\}= per update on stdout (plus the
-occasional =\{event:"launcher", screen\}= line for the Meta+H shortcut), which a
+occasional =\{event:"launcher", screen\}= line for the Meta+D shortcut), which a
 =Process= + =SplitParser= parses into =root.windows= / =root.activeWindow= /
 =root.activeFullscreen=:
 - *window list*: the KRunner "windows" runner =org.kde.KWin /WindowsRunner=,
   =org.kde.krunner1.Match("")= returns every window =(id, title, icon, …)= (icon is
   already an app-icon name like =org.kde.dolphin=); polled ~1 s, deduped by id
-  (the runner returns each window twice). =Run(id, "")= focuses one.
+  (the runner returns each window twice). =Run(id, "")= focuses one. While a window
+  is *being activated* the runner briefly lists an internal placeholder (icon
+  =kwin=, no title); we drop =icon == "kwin"= so it doesn't flash a phantom tile.
 - *active window*: the helper owns DBus name =org.kde.pill= and loads a small KWin
   script (via =/Scripting=) that calls us on =workspace.windowActivated= with
   =String(window.internalId)= (=\{uuid\}=, matching the krunner ids) plus the
   window's =fullScreen= flag; it also re-pushes when the active window's
   =fullScreenChanged= fires (so going fullscreen in place hides the pill). The flag
   rides the JSON line as =fullscreen= and drives =win.fsHide=. Unloaded on exit.
-- *launcher shortcut*: the same script =registerShortcut=s *Meta+H*, whose callback
+- *launcher shortcut*: the same script =registerShortcut=s *Meta+D*, whose callback
   calls =org.kde.pill Launcher(activeWindow.output.name)= → the =\{event:"launcher"\}=
-  line above (see [[*Global shortcut (Meta+H)][§ Global shortcut]]).
+  line above (see [[*Global shortcut (Meta+D)][§ Global shortcut]]).
 
 In the UI, =root.appGroups= groups windows by =icon= (one tile per app, with a
 count badge for ≥2 windows and an underline that turns accent when any of the
@@ -345,24 +347,29 @@ notifications visibly *slide down* to make room for the burst pill.
 Some changes deserve a glance even when the pill is at rest, so a *transient
 burst* briefly takes over the collapsed pill for *1s* and then reverts to the
 clock. It is driven from =root= (so every monitor's pill shows it) via
-=burstKind= / =burstPhase=: =startBurst()= runs a single =Timer= through three
-phases — *settle → animate 400ms → settle 300ms* — clearing =burstKind= when done.
-The opening settle is *300ms* for the language burst but only *100ms* for the
-desktop one (so the dots snap in, then the active dot slides). A burst only takes over the *resting* pill (=showBurst=): it yields to
-hover / open / launcher / a right-click group (those already show richer UI), and
-it overrides =notifMorph= so an active notification deck *floats below* the burst
-pill instead of being replaced (the same below-pill =Loader= used for an opened
-pill) — that is how notifications slide down to reveal the change. Even under a
-focused fullscreen window the burst still *draws* (its input region stays empty,
-so it never intercepts clicks). Two events fire bursts today, each guarding
-against its *initial* value on startup (QML change handlers carry no old value, so
-=root= keeps the previous desktop id / layout index to animate *from*):
+=burstDesk= / =burstLang= / =burstPhase=: =startBurst()= runs a single =Timer=
+through three phases — *settle 100ms → animate 300ms → settle 600ms* — clearing
+both flags when done. The burst surface is *one mini-pill per active kind*, each
+carrying the same surface as the *hovered* pill (=theme.bg= + border); the outer
+pill goes transparent so the gap between pills shows the backdrop. *Both* kinds can
+be live at once (a desktop switch and a layout change within the same window):
+then two pills sit *side by side* and *pop apart* on entry — a quick =Translate=
+from centre to their slots (=OutBack=, 180ms). A burst only takes over the
+*resting* pill (=showBurst=): it yields to hover / open / launcher / a right-click
+group (those already show richer UI), and it overrides =notifMorph= so an active
+notification deck *floats below* the burst pill instead of being replaced (the
+same below-pill =Loader= used for an opened pill) — that is how notifications slide
+down to reveal the change. Even under a focused fullscreen window the burst still
+*draws* (its input region stays empty, so it never intercepts clicks). Two events
+fire bursts today, each guarding against its *initial* value on startup (QML change
+handlers carry no old value, so =root= keeps the previous desktop id / layout index
+to animate *from*):
 - *Virtual-desktop switch* (=onCurrentDesktopChanged=) — renders the same dot row
   as Row 2 in its unhovered styling, with a filled =textDim= dot that slides from
-  the previous desktop's slot to the new one across the 400ms animate phase
+  the previous desktop's slot to the new one across the 300ms animate phase
   (=burstDotIdx= flips to the new index once animating; a =Behavior on x= does the
   move). The *hovered* Row-2 dots use the same trick: hollow dots plus one filled
-  dot that slides to =deskActiveIdx= (=Behavior on x=, 400ms =OutCubic=), so
+  dot that slides to =deskActiveIdx= (=Behavior on x=, 300ms =OutCubic=), so
   switching desktops while the pill is open animates instead of jumping.
 - *Keyboard-layout change* (=onKbIndexChanged=) — shows =from → to= (e.g. =US →
   FA=) with the accent arrow *flashing and pulsing* during the animate phase.
@@ -2762,11 +2769,11 @@ KWIN_JS = (
     "var all=workspace.windowList(); for (var i=0;i<all.length;i++) watch(all[i]);\n"
     "setActive(workspace.activeWindow);\n"
     "pushList();\n"
-    # global shortcut (Meta+H) to toggle the launcher; passes the focused window's
+    # global shortcut (Meta+D) to toggle the launcher; passes the focused window's
     # screen so the right monitor's pill opens. Configurable in System Settings ->
     # Shortcuts -> KWin once registered.
     "function scr(){ var w=workspace.activeWindow; return (w && w.output) ? w.output.name : ''; }\n"
-    'registerShortcut("PillLauncher","Pill: open launcher","Meta+H",function(){\n'
+    'registerShortcut("PillLauncher","Pill: open launcher","Meta+D",function(){\n'
     '  callDBus("org.kde.pill","/Active","org.kde.pill","Launcher", scr()); });\n'
 )
 
@@ -2823,6 +2830,11 @@ def windows():
     for m in res.unpack()[0]:
         mid, text, icon = m[0], m[1], m[2]  # id, title, icon name
         if not mid.startswith("0_") or mid in seen:
+            continue
+        # KWin briefly lists an internal placeholder window (icon "kwin", no title)
+        # while a window is being activated; it would flash a phantom app tile in
+        # the taskbar for a frame, so drop it — no real app uses the "kwin" icon.
+        if icon == "kwin":
             continue
         uuid = mid[2:]
         # once KWin has reported the eligible set, drop skip-taskbar windows;
@@ -2897,7 +2909,7 @@ ShellRoot {
     property string lastActiveWindow: ""
     onActiveWindowChanged: if (activeWindow !== "") lastActiveWindow = activeWindow
 
-    // requested via the Meta+H global shortcut (KWin script -> winbridge -> here)
+    // requested via the Meta+D global shortcut (KWin script -> winbridge -> here)
     signal launcherShortcut(string screen)
 
     Theme { id: theme }
@@ -2999,12 +3011,14 @@ ShellRoot {
             "--object-path", "/Layouts", "--method",
             "org.kde.KeyboardLayouts.getLayout"]
         stdout: StdioCollector {
-            // seed prevKbIndex here too: kbIndex defaults to 0, so if the fetched
-            // value is also 0 the change handler never fires to consume the initial
-            // value — without this the first *real* switch would be swallowed.
+            // gdbus prints the index as "(uint32 N,)" — match the digits *after*
+            // "uint32", else a bare /\d+/ grabs the "32" inside "uint32".
+            // Also seed prevKbIndex: kbIndex defaults to 0, so if the fetched value
+            // is also 0 the change handler never fires to consume the initial value
+            // — without this the first *real* switch would be swallowed.
             onStreamFinished: {
-                const m = this.text.match(/\d+/);
-                if (m) { root.kbIndex = parseInt(m[0]); if (root.prevKbIndex === -1) root.prevKbIndex = root.kbIndex; }
+                const m = this.text.match(/uint32\s+(\d+)/);
+                if (m) { root.kbIndex = parseInt(m[1]); if (root.prevKbIndex === -1) root.prevKbIndex = root.kbIndex; }
             }
         }
     }
@@ -3015,7 +3029,8 @@ ShellRoot {
         stdout: SplitParser {
             onRead: line => {
                 if (line.indexOf("layoutChanged") !== -1) {
-                    const m = line.match(/\(\s*(?:uint32\s+)?(\d+)\s*\)/);
+                    // signal payload prints as "(uint32 N,)" — match after "uint32"
+                    const m = line.match(/uint32\s+(\d+)/);
                     if (m) root.kbIndex = parseInt(m[1]);
                 } else if (line.indexOf("layoutListChanged") !== -1) {
                     fetchLayouts.running = true;
@@ -3026,11 +3041,21 @@ ShellRoot {
 
     // ---- transient action bursts (desktop switch / layout change) ----
     // A 1s overlay that briefly takes over the resting pill to show what just
-    // changed, then reverts: phase 1 settle (300ms) -> phase 2 animate (400ms)
-    // -> phase 3 settle (300ms) -> done. Driven from root so every monitor's
+    // changed, then reverts: phase 1 settle (100ms) -> phase 2 animate (300ms)
+    // -> phase 3 settle (600ms) -> done. Driven from root so every monitor's
     // pill shows it; the pill suppresses notifMorph while bursting and floats
-    // the notification deck below instead (so notifications slide down).
-    property string burstKind: ""      // "" | "desktops" | "language"
+    // the notification deck below instead (so notifications slide down). Both kinds
+    // can be live at once (a desktop switch + a layout change within the same
+    // window) — then *two* pills show side by side and pop apart on entry.
+    property bool   burstDesk: false
+    property bool   burstLang: false
+    readonly property bool burstActive: burstDesk || burstLang
+    readonly property var  burstKinds: {       // canonical order: desktops then language
+        const a = [];
+        if (burstDesk) a.push("desktops");
+        if (burstLang) a.push("language");
+        return a;
+    }
     property int    burstPhase: 0      // 0 idle, 1 pre, 2 animate, 3 post
     property string burstFromDesktop: ""
     property string burstToDesktop: ""
@@ -3043,18 +3068,19 @@ ShellRoot {
     // index of the moving active dot: the new slot once we start animating
     readonly property int burstDotIdx: burstPhase >= 2 ? Math.max(0, burstToIdx)
                                                        : Math.max(0, burstFromIdx)
-    function startBurst(kind) { burstKind = kind; burstPhase = 1; burstTimer.restart(); }
+    function startBurst(kind) {
+        if (kind === "desktops") burstDesk = true;
+        else if (kind === "language") burstLang = true;
+        burstPhase = 1;                // (re)start the shared timeline from the top
+        burstTimer.restart();
+    }
     Timer {
         id: burstTimer
-        // settle -> animate (400) -> settle; the desktop burst opens with a shorter
-        // 100ms settle (language keeps 300ms), so it snaps in before the dot slides.
-        interval: root.burstPhase === 2 ? 400
-                : root.burstPhase === 1 ? (root.burstKind === "desktops" ? 100 : 300)
-                : 300
+        interval: root.burstPhase === 1 ? 100 : root.burstPhase === 2 ? 300 : 600
         repeat: false
         onTriggered: {
             if (root.burstPhase < 3) { root.burstPhase++; burstTimer.restart(); }
-            else { root.burstPhase = 0; root.burstKind = ""; }
+            else { root.burstPhase = 0; root.burstDesk = false; root.burstLang = false; }
         }
     }
     // fire the bursts on a *real* change (skip the initial value on startup; QML
@@ -3172,14 +3198,14 @@ ShellRoot {
             // menus), so the collapsed/hovered pill — and an appearing notification —
             // never steal focus from the active window. Inline reply works from the
             // floating cards under an open pill (which has focus). The launcher uses
-            // *Exclusive* so it grabs the keyboard even when opened by the Meta+H
+            // *Exclusive* so it grabs the keyboard even when opened by the Meta+D
             // shortcut (no click to trigger OnDemand focus) and arrow-key nav works;
             // menus stay OnDemand so a password field focuses only when clicked.
             WlrLayershell.keyboardFocus: win.launcher ? WlrKeyboardFocus.Exclusive
                                        : win.open ? WlrKeyboardFocus.OnDemand
                                        : WlrKeyboardFocus.None
 
-            // toggle the launcher (used by the Meta+H global shortcut). Restores
+            // toggle the launcher (used by the Meta+D global shortcut). Restores
             // focus to the previously-active window when the shortcut closes it.
             function toggleLauncher() {
                 if (win.launcher) { win.launcher = false; root.restoreFocus(); }
@@ -3214,7 +3240,7 @@ ShellRoot {
             // the *resting* pill for 1s; it yields to hover/open/launcher/ctx
             // (those already show richer UI) and suppresses the notification morph,
             // floating the deck below the burst pill instead.
-            property bool showBurst: root.burstKind !== "" && !dash
+            property bool showBurst: root.burstActive && !dash
             // hide the resting pill while a fullscreen window is focused (games,
             // video, etc.) — only at true rest: hovering, opening, or a morphing
             // notification all override it, so notifications still appear normally.
@@ -3236,7 +3262,7 @@ ShellRoot {
                 id: pill
                 anchors.horizontalCenter: parent.horizontalCenter
                 y: 6
-                width: win.showBurst ? ((burstLoader.item ? burstLoader.item.implicitWidth : 80) + 28)
+                width: win.showBurst ? (burstLoader.item ? burstLoader.item.implicitWidth : 96)
                      : win.launcher ? 520 : (win.notifMorph ? 420 : (win.dash ? 420 : 56))
                 height: win.showBurst ? 28
                       : (win.open || win.launcher) ? 470
@@ -3257,9 +3283,11 @@ ShellRoot {
                     radius: (win.open || win.launcher) ? Math.min(theme.radius, height / 2) : 12
                     // hovered/open is a solid surface; at rest it's a borderless
                     // translucent *gradient* so the floating pill blends with the
-                    // backdrop. The morph drops the background entirely (cards only).
+                    // backdrop. The morph drops the background entirely (cards only);
+                    // so does a burst — its own pill(s) carry the surface, and the
+                    // transparent gap shows through when two of them are side by side.
                     color: win.notifMorph ? "transparent" : (win.dash ? theme.bg : "transparent")
-                    gradient: (win.dash || win.notifMorph) ? null : restGrad
+                    gradient: (win.dash || win.notifMorph || win.showBurst) ? null : restGrad
                     border.color: theme.border
                     border.width: (win.dash && !win.notifMorph) ? 1 : 0
                     Behavior on radius { NumberAnimation { duration: theme.anim } }
@@ -3309,7 +3337,7 @@ ShellRoot {
                 }
 
                 // ---- action burst overlay (desktop switch / layout change) ----
-                // Replaces the collapsed clock for 1s; content picked by burstKind.
+                // Replaces the collapsed clock for 1s; one mini-pill per burst kind.
                 Loader {
                     id: burstLoader
                     anchors.centerIn: parent
@@ -3456,7 +3484,7 @@ ShellRoot {
                                 color: theme.textDim
                                 visible: root.deskActiveIdx >= 0
                                 x: Math.max(0, root.deskActiveIdx) * 12
-                                Behavior on x { NumberAnimation { duration: 400; easing.type: Easing.OutCubic } }
+                                Behavior on x { NumberAnimation { duration: 300; easing.type: Easing.OutCubic } }
                             }
                         }
                     }
@@ -3687,66 +3715,101 @@ ShellRoot {
     Component { id: cStack; NotificationStack { theme: theme; notifs: notifs } }
 
     // ---- action-burst content (reads root.burst* / theme by id) ----
-    // language: prevLabel -> (flashing arrow) -> newLabel.
-    // desktops: the same dot row as Row 2, with a filled dot that slides from the
-    // previous desktop's slot to the new one during the 0.3s animate phase.
+    // One mini-pill per active kind, laid out side by side with a gap; each carries
+    // the hovered-state surface (theme.bg + border). When *both* kinds are live the
+    // two pills pop apart on entry (a quick Translate from centre to their slots).
+    //   language: prevLabel -> (flashing arrow) -> newLabel.
+    //   desktops: the same dot row as Row 2, with a filled dot that slides from the
+    //             previous desktop's slot to the new one during the 0.3s animate phase.
     Component {
         id: cBurst
-        Item {
-            implicitWidth: root.burstKind === "language" ? langRow.implicitWidth : dotRow.width
-            implicitHeight: 28
-
-            Row {                                    // language: EN -> FA
-                id: langRow
-                anchors.centerIn: parent
-                visible: root.burstKind === "language"
-                spacing: 7
-                Text {
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: root.burstFromLabel; color: theme.textDim
-                    font.family: theme.family; font.pixelSize: theme.fsNormal; font.bold: true
-                }
-                Text {                               // arrow flashes during the animate phase
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: "→"; color: theme.accent
-                    font.family: theme.family; font.pixelSize: theme.fsNormal; font.bold: true
-                    opacity: root.burstPhase === 2 ? 1 : 0.3
-                    Behavior on opacity { NumberAnimation { duration: 110 } }
-                    SequentialAnimation on scale {
-                        running: root.burstPhase === 2; loops: 2
-                        NumberAnimation { from: 1.0; to: 1.35; duration: 100 }
-                        NumberAnimation { from: 1.35; to: 1.0; duration: 100 }
-                    }
-                }
-                Text {
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: root.burstToLabel; color: theme.text
-                    font.family: theme.family; font.pixelSize: theme.fsNormal; font.bold: true
-                }
-            }
-
-            Item {                                   // desktops: dots with a sliding active dot
-                anchors.centerIn: parent
-                visible: root.burstKind === "desktops"
-                width: dotRow.width; height: 8
-                Row {
-                    id: dotRow
-                    spacing: 4                        // matches the Row-2 desktop dots (pitch 12)
-                    Repeater {
-                        model: root.desktops
-                        delegate: Rectangle {
-                            width: 8; height: 8; radius: 4
-                            color: "transparent"
-                            border.color: theme.textDim; border.width: 1
+        Row {
+            id: burstRow
+            spacing: 8                               // the gap between two pills
+            Repeater {
+                model: root.burstKinds
+                delegate: Rectangle {
+                    id: cell
+                    required property int index
+                    required property string modelData
+                    readonly property bool isLang: modelData === "language"
+                    height: 28
+                    width: cellBody.implicitWidth + 24
+                    radius: 12
+                    color: theme.bg                  // same surface as the hovered pill
+                    border.color: theme.border
+                    border.width: 1
+                    // pop apart: only when two pills are shown, slide from centre out
+                    transform: Translate {
+                        NumberAnimation on x {
+                            running: root.burstKinds.length === 2
+                            from: cell.index === 0 ? 14 : -14
+                            to: 0
+                            duration: 180
+                            easing.type: Easing.OutBack
                         }
                     }
-                }
-                Rectangle {                          // the moving active dot
-                    width: 8; height: 8; radius: 4
-                    y: 0
-                    color: theme.textDim
-                    x: root.burstDotIdx * 12
-                    Behavior on x { NumberAnimation { duration: 400; easing.type: Easing.OutCubic } }
+
+                    Item {
+                        id: cellBody
+                        anchors.centerIn: parent
+                        implicitWidth: cell.isLang ? langRow.implicitWidth : dotRow.width
+                        implicitHeight: 28
+
+                        Row {                            // language: EN -> FA
+                            id: langRow
+                            anchors.centerIn: parent
+                            visible: cell.isLang
+                            spacing: 7
+                            Text {
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: root.burstFromLabel; color: theme.textDim
+                                font.family: theme.family; font.pixelSize: theme.fsNormal; font.bold: true
+                            }
+                            Text {                       // arrow flashes during the animate phase
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: "→"; color: theme.accent
+                                font.family: theme.family; font.pixelSize: theme.fsNormal; font.bold: true
+                                opacity: root.burstPhase === 2 ? 1 : 0.3
+                                Behavior on opacity { NumberAnimation { duration: 110 } }
+                                SequentialAnimation on scale {
+                                    running: root.burstPhase === 2; loops: 2
+                                    NumberAnimation { from: 1.0; to: 1.35; duration: 75 }
+                                    NumberAnimation { from: 1.35; to: 1.0; duration: 75 }
+                                }
+                            }
+                            Text {
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: root.burstToLabel; color: theme.text
+                                font.family: theme.family; font.pixelSize: theme.fsNormal; font.bold: true
+                            }
+                        }
+
+                        Item {                           // desktops: dots with a sliding active dot
+                            anchors.centerIn: parent
+                            visible: !cell.isLang
+                            width: dotRow.width; height: 8
+                            Row {
+                                id: dotRow
+                                spacing: 4               // matches the Row-2 desktop dots (pitch 12)
+                                Repeater {
+                                    model: root.desktops
+                                    delegate: Rectangle {
+                                        width: 8; height: 8; radius: 4
+                                        color: "transparent"
+                                        border.color: theme.textDim; border.width: 1
+                                    }
+                                }
+                            }
+                            Rectangle {                  // the moving active dot
+                                width: 8; height: 8; radius: 4
+                                y: 0
+                                color: theme.textDim
+                                x: root.burstDotIdx * 12
+                                Behavior on x { NumberAnimation { duration: 300; easing.type: Easing.OutCubic } }
+                            }
+                        }
+                    }
                 }
             }
         }
