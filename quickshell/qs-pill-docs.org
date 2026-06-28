@@ -3,37 +3,29 @@
 #+PROPERTY: header-args:qml :mkdirp yes :comments no
 #+STARTUP: showeverything
 
-This is the *single source of truth* for the Quickshell "pill". The QML lives in
-[[*Source][§ Source]] as literate tangle blocks; editing them here and tangling
-regenerates the =.qml= files. Read [[*How the pill works][§ How the pill works]]
-before touching code, and keep this file in sync with the running pill — they are
-a pair.
+This is the *single source of truth* for the Quickshell "pill": a literate org
+file whose code blocks (see [[*Source][§ Source]]) tangle to the =.qml= files.
+Each file's section header explains what it does and why — read those before
+touching code, and keep this file in sync with the running pill; they are a pair.
 
-* The brief (what I was asked to build)
+* What this is
 
-Replace KDE's default panels with a Quickshell "pill":
+A Quickshell replacement for KDE's panels: a single *pill* at the top-center of
+every monitor, always on top, reserving no screen space, hidden only while a
+fullscreen window is focused. It morphs through four stages — a collapsed clock, a
+hovered dashboard (virtual-desktop dots, grouped open apps, status icons, system
+tray, date/time), a clicked-open *control panel* (network / volume / bluetooth /
+battery / notification-history menus), and an app *launcher*. It is also this
+machine's freedesktop *notification daemon* (popups morph the pill; history +
+inline reply), and flashes transient *action bursts* on desktop switches and
+keyboard-layout changes. Clicking outside only collapses it — the click is not
+passed through.
 
-- A *pill* at the *top-center*, *always on top*, *not* reserving screen space;
-  hidden only when a fullscreen window is focused.
-- *Collapsed*: only essential info — a notification transforms the pill;
-  otherwise system tray + icons of open apps that have a notification, else time.
-- *Hovered*: original info hides, pill transforms — *virtual-desktop dots*
-  top-left (filled = focused, click to switch), *active apps* top-right (pin-able
-  ideally), *system tray* below the apps, *time* below the desktops.
-- *Clicked*: expands further into a *control panel*. The tray side always shows
-  network/volume/bluetooth/battery/notification icons; clicking one swaps the
-  pane below (default = notification history) for that icon's menu:
-  - *network*: pick Wi-Fi + VPN like KDE's applet.
-  - *volume*: Devices tab (mic + speaker) and Applications tab; pick the active
-    device, change any volume.
-  - *bluetooth*: connected on top, divider, paired, then discovered.
-  - *battery*: battery of all supported devices.
-- Clicking *outside* only collapses the pill; the click is *not* passed through.
-
-Constraints: prefer KDE/system APIs over writing our own; review docs, don't
-guess; if a thing can't be backed by a source, say so. Reference rice:
-[[https://github.com/Gakuseei/Ricelin][Gakuseei/Ricelin]] (Hyprland-only — its
-workspace/taskbar code does not port to KWin; design/animation ideas do).
+Where KWin exposes no client-visible protocol (window list, active window) the
+pill leans on KDE/system APIs over DBus rather than rolling its own — see
+[[*Environment (verified, not assumed)][§ Environment]]. Palette and animation
+cues are borrowed from [[https://github.com/Gakuseei/Ricelin][Gakuseei/Ricelin]]
+(Hyprland-only; its workspace/taskbar code does not port to KWin).
 
 * Environment (verified, not assumed)
 
@@ -52,375 +44,23 @@ Quickshell's =WindowManager= and =Wayland.ToplevelManager= exist but *don't
 function* here — virtual desktops go through KWin DBus, and the taskbar /
 fullscreen-hide are blocked on there being no client-visible window-list protocol.
 
-* What's possible (per feature)
-
-| Feature                                            | Status        | How / why                                                                                  |
-|----------------------------------------------------+---------------+--------------------------------------------------------------------------------------------|
-| Pill: top-center, always-on-top, reserves no space | ✅ built       | full-screen layer-shell =Overlay= + input =mask= toggled per state                          |
-| Morph / transform animations                       | ✅ built       | plain QtQuick (=Behavior= / =NumberAnimation=)                                              |
-| Virtual desktops (list, active, click-to-switch)   | ✅ built       | KWin DBus =org.kde.KWin /VirtualDesktopManager= via =gdbus= (regex now matches all desktops) |
-| System tray (icons + menus)                        | ✅ built       | native =Services.SystemTray=                                                                |
-| Volume control panel (devices + apps)              | ✅ built       | native =Services.Pipewire=; classify nodes by =media.class=; per-node volume/mute/default   |
-| Network control panel (Wi-Fi list/connect/toggle)  | ✅ built       | native =Quickshell.Networking=; =connectWithPsk()= for secured nets                          |
-| Bluetooth control panel (connected/paired/found)   | ✅ built       | native =Quickshell.Bluetooth=; connect/disconnect/pair, battery %                           |
-| Battery control panel (all power devices)          | ✅ built       | native =Services.UPower=; =UPower.devices= + =iconPath(iconName)=                            |
-| Coherent theming                                   | ✅ built       | =Theme.qml= object passed to every component                                                |
-| Taskbar: grouped apps + active indicator + focus   | ✅ built       | =winbridge.py= = KRunner =/WindowsRunner= (list+icons, =Run= to focus) + a 3-line KWin script for the active window |
-| App right-click: window list + launcher actions    | ◐ partial      | window list works (bridge data); launcher actions need =DesktopEntries=, which read 0 apps in my sandbox — verify in a real session |
-| App launcher (search, grid, favourites, calculator) | ✅ built       | =DesktopEntries.applications= in =ListView=/=GridView=; search over name/generic/keywords; grid + favourites persisted via =FileView=/=JsonAdapter=; =wl-copy= for calc results |
-| Pinned apps (taskbar)                               | ⚠️ TODO       | distinct from launcher favourites; would always-show an app tile even when not running |
-| VPN selection in network menu                      | ✅ built       | not in the native =Networking= binding — listed + toggled via =nmcli= (=Process=) in =NetworkMenu.qml=         |
-| Hide pill when a fullscreen window is focused       | ✅ built       | =winbridge.py= KWin script reports the active window's =fullScreen= flag; the resting pill fades out + drops from the input mask while it's set (=win.fsHide=) — notifications still morph through |
-| Notifications (popup morph + history + reply)      | ✅ built       | native =Services.Notifications= =NotificationServer=; *requires disabling Plasma's notifications* (see below) — =plasmashell= owns =org.freedesktop.Notifications= without =ALLOW_REPLACEMENT=, verified |
-| Action bursts (desktop switch / layout change)     | ✅ built       | 1s transient takeover of the resting pill (=root.burstDesk=/=burstLang=): desktop dot slides old→new; layout shows =US → FA=; both at once → two pills side by side. Layout via KWin DBus =org.kde.keyboard /Layouts=; coexists with notifications (deck floats below) |
-
-The taskbar needs no Wayland window protocol: KWin's KRunner "windows" runner lists
-and activates windows over DBus, and a tiny KWin script reports the active window
-(see =winbridge.py=). Remaining: *launcher actions* (blocked on =DesktopEntries=
-returning entries), *pinned apps* (app-side state), and *VPN* (needs nmcli).
-
 * Taking over notifications from Plasma
 
-The pill is now a *real* freedesktop notification daemon (=Quickshell.Services.-
-Notifications.NotificationServer=, see [[*Notifications.qml][§ Notifications.qml]]).
-Only one process may own the bus name =org.freedesktop.Notifications=, and *that
-process must be chosen before the pill can receive anything*.
+The pill is a real freedesktop notification daemon (=NotificationServer=, see
+[[*Notifications.qml][§ Notifications.qml]]). Only one process may own the bus
+name =org.freedesktop.Notifications=, and on this machine that owner is
+*plasmashell itself* (the =org.kde.plasma.notifications= tray applet) — registered
+*without* =ALLOW_REPLACEMENT=, so the pill cannot grab it at runtime. Plasma must
+be stopped from registering it first:
 
-*Verified facts on this machine* (=busctl --user=, June 2026):
-- =org.freedesktop.Notifications= is owned by *=plasmashell= itself* (the built-in
-  =org.kde.plasma.notifications= system-tray applet, backed by
-  =libnotificationmanager.so=) — there is no separate daemon to kill.
-- Plasma registered the name *without* =DBUS_NAME_FLAG_ALLOW_REPLACEMENT=:
-  requesting it with replace+allow-replacement returns =EXISTS= (code 3), so
-  Quickshell *cannot* take it at runtime. Plasma must be stopped from registering
-  it in the first place.
+1. System tray ▸ *Configure System Tray…* ▸ *Entries* ▸ set *Notifications* to
+   *Disabled* (not "Hidden" — that still loads the applet and grabs the name).
+2. Restart the shell: =systemctl --user restart plasma-plasmashell= (or re-login).
+3. Start the pill (=./run-pill.sh=); confirm it owns the daemon — =busctl --user
+   call org.freedesktop.Notifications /org/freedesktop/Notifications
+   org.freedesktop.Notifications GetServerInformation= should report ="quickshell"=.
 
-*How to disable Plasma's notifications* (then the pill grabs the name on its next
-start):
-
-1. Right-click the system tray ▸ *Configure System Tray…* ▸ *Entries*.
-2. Set *Notifications* to *Disabled* (not "Shown"/"Hidden" — those still load the
-   applet and grab the bus name; only *Disabled* skips instantiating it).
-3. Restart the shell so the name is released, e.g.
-   =systemctl --user restart plasma-plasmashell= (or log out / back in).
-4. Start the pill (=./run-pill.sh=). Confirm it owns the daemon:
-   =busctl --user call org.freedesktop.Notifications /org/freedesktop/Notifications
-   org.freedesktop.Notifications GetServerInformation= should now report
-   ="quickshell"= as the server name, not ="Plasma"=.
-
-To hand notifications *back* to Plasma: re-enable the tray entry and restart
-=plasma-plasmashell= (and stop the pill, or stop its server).
-
-Caveat (unverified): if disabling the tray entry alone does not free the name on
-your Plasma build, the fallback is to ensure the pill's =NotificationServer=
-registers *before* plasmashell at login — but on this setup the tray-entry method
-is the supported route, and the name-ownership facts above are confirmed.
-
-* How the pill works
-
-The shell is split into small files (see [[*File map][§ File map]]). Sibling
-=.qml= files are usable as component types via QML's implicit directory import.
-=Theme= is instantiated once in =init.qml= and passed to each menu as a =theme=
-property (no singletons, so nothing magic to set up).
-
-** Window & input model (init.qml)
-=Variants { model: Quickshell.screens }= makes one =PanelWindow= per monitor. Each
-window is a *full-screen* layer-shell =Overlay= surface that reserves no space.
-Input is governed by the window =mask=:
-- *collapsed / hovered*: =mask= = a =Region { item: pill }= → only the pill
-  rectangle catches clicks; the rest of the screen passes through.
-- *open / launcher / right-click menu*: =mask= = a =Region { item: backdrop }=
-  (the whole window) → outside clicks are caught by a backdrop =MouseArea= that
-  closes the panel, so the click is swallowed, never passed through.
-- *fullscreen-hide* (=win.fsHide=): while a fullscreen window is focused and the
-  pill is at true rest (not hovered/open and no notification morphing), the pill
-  fades to =opacity 0= and =mask= = an *empty* =Region= → the whole window is
-  click-through, so a game/video underneath is unobstructed. A notification still
-  morphs the pill (=notifMorph= overrides =fsHide=), so alerts appear as usual.
-
-** Stages
-A single =pill= =Item= animates =width=/=height= between the stages via
-=Behavior=; cross-fading content layers (=opacity= + =visible=) show/hide per
-stage:
-1. *collapsed* (96×28): just =hh:mm=.
-2. *hovered* (=dash=, 384×104): dashboard — *two balanced rows*. Row 1: desktop
-   dots (left) | grouped app icons (right). Row 2: an app-launcher button +
-   date/time (left) | status icons
-   (network/volume/bluetooth/battery/notifications, icon-only, click → open that
-   menu) + system tray (right). =dash= is true when hovered, open, or a
-   right-click menu is up.
-3. *open* (470 tall): control panel. Both dashboard rows *stay visible* on top —
-   Row 2 doubles as the *menu switcher* (the active menu's status icon is
-   highlighted); there is *no icon rail*. Below a divider sits a single full-width
-   menu pane: a =Loader= shows the menu component for =win.menu= (=active= only
-   while open). Each menu renders a shared =MenuHeader= — a back chevron *and title*
-   (both clickable) that collapse the panel via the menu's =closeRequested()= signal
-   (wired through a =Connections= on the loader), plus a trailing slot for the
-   menu's own toggles. Clicking the (hovered) pill body opens the *app launcher*;
-   a Row-2 status icon instead opens straight to its own menu (and switches it
-   while open). =win.menu= still defaults to =4= (notification history) for when a
-   menu is opened without first picking an icon.
-4. *launcher* (=launcher=, 520×470): the app launcher takes the menu pane's place,
-   *also below the two rows* (same divider + offset), so it matches the menus (see
-   [[*Launcher.qml][§ Launcher.qml]]). Opened from the Row-2 grid button
-   (=view-grid-symbolic=), by clicking the hovered pill body, or by the *Meta+D*
-   global shortcut.
-
-*Keyboard focus.* The layer surface only grabs the keyboard while a panel is open:
-=launcher= → =WlrKeyboardFocus.Exclusive= (so it focuses even when opened by the
-shortcut — there's no click to trigger on-demand focus — and arrow-key nav works);
-a =menu= (=open=) → =OnDemand= (a password field focuses when clicked); otherwise
-=None=. KWin does *not* restore focus to the previously-active window when a layer
-surface releases the keyboard, so the pill remembers the last real active window
-(=root.lastActiveWindow=, updated from =winbridge='s active-window reports, ignoring
-the transient empties an open grab causes) and =restoreFocus()= re-activates it via
-the KRunner =Run= whenever the pill is *dismissed without launching* (backdrop
-click, launcher/menu back-chevron, Escape, shortcut toggle-close). Launching an app
-skips the restore — the launched window takes focus itself.
-
-The window =mask= also expands to full-screen when an app *right-click menu* is
-open (=win.ctxGroup=), so that menu (a =Loader= floating below the pill) is
-clickable and an outside click dismisses it.
-
-** Global shortcut (Meta+D)
-Quickshell's =GlobalShortcut= is Hyprland-only, so the launcher shortcut rides the
-KWin script + DBus we already have (see =winbridge.py=): the script
-=registerShortcut("PillLauncher", …, "Meta+D", …)= calls our =org.kde.pill=
-=Launcher(screen)= method (passing the active window's =output.name=); =winbridge=
-prints a =\{event:"launcher", screen\}= line; =init.qml= turns it into the
-=launcherShortcut(screen)= signal, and each monitor's pill toggles its launcher if
-the screen matches (single-monitor setups ignore the hint). The shortcut is
-re-bindable in *System Settings ▸ Shortcuts ▸ KWin* once registered.
-
-** Open windows / taskbar (winbridge.py)
-KWin advertises no window-list protocol and no active-window over DBus, so
-=winbridge.py= (run as =python <shellDir>/winbridge.py=) glues two KDE APIs and
-prints one JSON line =\{active, fullscreen, windows\}= per update on stdout (plus the
-occasional =\{event:"launcher", screen\}= line for the Meta+D shortcut), which a
-=Process= + =SplitParser= parses into =root.windows= / =root.activeWindow= /
-=root.activeFullscreen=:
-- *window list*: the KRunner "windows" runner =org.kde.KWin /WindowsRunner=,
-  =org.kde.krunner1.Match("")= returns every window =(id, title, icon, …)= (icon is
-  already an app-icon name like =org.kde.dolphin=); polled ~1 s, deduped by id
-  (the runner returns each window twice). =Run(id, "")= focuses one. While a window
-  is *being activated* the runner briefly lists an internal placeholder (icon
-  =kwin=, no title); we drop =icon == "kwin"= so it doesn't flash a phantom tile.
-- *active window*: the helper owns DBus name =org.kde.pill= and loads a small KWin
-  script (via =/Scripting=) that calls us on =workspace.windowActivated= with
-  =String(window.internalId)= (=\{uuid\}=, matching the krunner ids) plus the
-  window's =fullScreen= flag; it also re-pushes when the active window's
-  =fullScreenChanged= fires (so going fullscreen in place hides the pill). The flag
-  rides the JSON line as =fullscreen= and drives =win.fsHide=. Unloaded on exit.
-- *launcher shortcut*: the same script =registerShortcut=s *Meta+D*, whose callback
-  calls =org.kde.pill Launcher(activeWindow.output.name)= → the =\{event:"launcher"\}=
-  line above (see [[*Global shortcut (Meta+D)][§ Global shortcut]]).
-
-In the UI, =root.appGroups= groups windows by =icon= (one tile per app, with a
-count badge for ≥2 windows and an underline that turns accent when any of the
-app's windows is active). Left-click =cycleGroup= focuses the app's next window;
-right-click opens a floating menu (this app's windows to focus + launcher actions
-from =DesktopEntries.heuristicLookup(icon).actions= when available).
-
-** Virtual desktops (init.qml, DBus)
-Three =Process= blocks drive =gdbus= against =org.kde.KWin /VirtualDesktopManager=:
-fetch the =desktops= list (a regex parses =(uint32 N, 'id', 'name')= tuples — the
-=uint32= tag is optional because gdbus only prints it on the first tuple), fetch
-=current=, and =gdbus monitor= the =currentChanged= signal so the dots stay live.
-=switchDesktop(id)= sets the writable =current= property.
-
-** Menus (one file each)
-- =NetworkMenu=: finds the Wi-Fi =NetworkDevice= (=type === DeviceType.Wifi=),
-  lists =device.networks= sorted active-first then by =signalStrength=, shows
-  signal bars + a lock for secured nets, connect/disconnect, and a password
-  overlay calling =connectWithPsk()= for secured unknown nets. Toggles
-  =Networking.wifiEnabled=. Turns the scanner on while visible.
-- =VolumeMenu=: a =PwObjectTracker= over every node keeps audio live. Nodes are
-  classified by =properties["media.class"]=: =Audio/Sink= (speakers),
-  =Audio/Source= (mics), =Stream/Output/Audio= (apps). Per row: name, set-default
-  marker (=preferredDefaultAudioSink/Source=), mute, and a =PillSlider= bound to
-  =node.audio.volume=.
-- =BluetoothMenu=: adapter power + scan toggles (=defaultAdapter.enabled= /
-  =.discovering=), then three filtered sections — Connected, Paired, Available —
-  each row connect/disconnect/pair via the device methods, with battery % when
-  =batteryAvailable=.
-- =BatteryMenu=: =UPower.devices= filtered to present, non-line-power devices,
-  each with =IconImage { source: Quickshell.iconPath(iconName) }=, name/type,
-  state and percentage.
-
-Every menu declares a =signal closeRequested()= and opens with a =MenuHeader=
-(back chevron + title + trailing toggle slot); the chevron emits =closeRequested=,
-which =init.qml='s =Connections= on the menu loader turns into =win.open = false=.
-
-** Launcher (init.qml + Launcher.qml)
-=init.qml= builds =appList= once (=DesktopEntries.applications=, =noDisplay=
-filtered, name-sorted) at the long-lived root and shares it with every monitor's
-=Launcher=, so opening is instant and survives close. Grid mode + favourite app
-ids persist in =Quickshell.stateDir + "/launcher.json"= via a =FileView= +
-=JsonAdapter= (=settings=); the adapter auto-flushes on change and is created on
-first run (=onLoadFailed → writeAdapter()=). The =Launcher= itself: a *back chevron*
-(closes the launcher) left of a focused search field (matches
-name/genericName/keywords), a grid/list toggle, ★ favourites (empty query shows
-favourites if any, else all apps; searching is always a flat list), a right-click
-menu (=DesktopEntry.actions= + favourite toggle), and a calculator (a safe
-arithmetic expression, or one prefixed with ===, shows a result row that
-=wl-copy='s on click/Enter). The visible list/grid is *arrow-key navigable* from
-the search field (=currentIndex= highlights a row/tile; =moveVert=/=moveHoriz= step
-it, =activateCurrent= launches on Enter): up/down always move the selection; in the
-grid left/right move a column too, while in a list left/right only navigate when the
-query is empty — otherwise they move the text cursor. In *grid mode* the favourites
-grid is
-*drag-to-reorder*: tiles wrap a =DelegateModel= whose =items= group is moved live
-as a tile is dragged over its neighbours (stable delegates + animated displace),
-and the new order is committed to =settings.favorites= on release (the all-apps
-grid, shown when there are no favourites, is not reorderable). A small *power row*
-sits bottom-right — lock/logout/reboot/shutdown (16px), wired to =loginctl
-lock-session= and =org.kde.Shutdown='s =logout=/=logoutAndReboot=/=logoutAndShutdown=
-over =gdbus=. =init.qml= focuses + clears the field on each open and *drops the
-field's focus on close* (so the pill releases the keyboard) via a =Connections= on
-=win.launcher=.
-
-** Notifications (Notifications.qml + NotificationView.qml + NotificationStack.qml + NotificationHistory.qml)
-=init.qml= instantiates one =Notifications= object (=notifs=) at the long-lived
-root and shares it with every monitor. It owns a =NotificationServer= that
-advertises body/markup/images/actions/action-icons/inline-reply/persistence, so
-apps send the rich payload. Every notification is kept =tracked= so it survives as
-*history* in =server.trackedNotifications=; =notifs.grouped= buckets that by app
-(newest-first inside a group, group ordered by its newest item) for the history
-pane. A separate =active= stack (newest first) holds the *un-closed popups*. Each
-notification has its *own* countdown (so several popups expire independently),
-held centrally in =remaining= keyed by id (a single =Timer= steps them and a
-=tick= counter refreshes the bars) — *not* per-card, since the deck's Repeater
-recreates its delegates whenever =active= changes. *Timeout policy* (=timeoutFor=):
-every popup fades in *5s* (=defaultTimeoutMs=) — the app's requested timeout is
-*ignored* (apps tend to ask for ~60s) — *except* genuinely permanent ones
-(=expireTimeout === 0=) or =Critical=, which never auto-expire. =hold(true)= — set
-while the deck is hovered — pauses *and resets every* countdown at once. Closing a
-popup (the X) or letting it time out only removes it from =active= and *always
-keeps* it in history (even transient ones); we deliberately avoid
-=Notification.dismiss()/expire()= because in Quickshell those *destroy* the
-notification (so they'd wipe the history copy too) — the trade-off is the sender
-isn't told the popup closed. Only =forget()= (the X *in history*) / =clearAll()=
-remove from history (=tracked = false=). The spec carries no timestamp, so arrival
-time is stamped on receipt (re-stamped to "now" for =lastGeneration= notifications
-restored on reload).
-
-A =NotificationView= card is two columns: the notification *image* (200px wide,
-aspect kept) or the *app icon* on the left; on the right three rows — summary +
-close-X with a vertical countdown bar, body (=StyledText=, links open
-externally), and relative time + action buttons — plus an inline-reply field when
-the notification supports it (Telegram, KDE Connect: Enter → =sendInlineReply()=).
-The image is resolved robustly (=resolveImage()=): an =image-path= hint is loaded
-as a =file://= URL directly (Flameshot & co. send the screenshot that way, and
-Quickshell would otherwise route a bare path through its *icon* provider and drop
-it), otherwise Quickshell's =image= (the =image-data= provider URL) is used. The
-=Image= loads *synchronously* (=asynchronous: false=) — Quickshell's image-data
-provider serves nothing on the async path. The
-same card is reused three ways: in the deck (=autoExpire:true=), as *history* rows
-(=inHistory:true=, so the X forgets instead of dismissing), and elsewhere.
-
-=NotificationStack= lays the =active= cards out as a *deck*: at rest the newest is
-on top and the rest peek out below it (offset + scaled back, capped at
-=maxDeck=); hovering the stack drops them into a full vertical list and sets
-=notifs.held=. Its =implicitHeight= reports the laid-out height (deck vs expanded),
-recomputed reactively via a =relayout= bump on any card's height change. Once
-there's an actual stack (more than one active popup) a floating *"Dismiss all"*
-pill appears in a reserved =headroom= band at the deck's top-right; clicking it
-calls =notifs.dismissAll()=, which closes every popup at once but keeps them in
-history (exactly like dismissing each card's X).
-
-In =init.qml= the collapsed pill *morphs* into this deck whenever a notification is
-active and the pill isn't clicked-open / launcher / app-menu (=win.notifMorph=):
-the clock and dashboard rows hide, the pill's own background is dropped, and
-=pill.height= tracks the deck's =implicitHeight= (so hovering grows the pill as the
-deck expands) — you close every notification (or let them time out) to return to
-the clock. While the pill *is* clicked-open / launcher / showing an app menu, the
-same deck floats *below* the pill instead (both via a =Loader= over the shared
-=cStack= component, so only the visible one runs timers). A morphing notification
-*never* takes keyboard focus (the surface only grabs focus while =open=/=launcher=),
-so it can't steal focus from the active window — inline reply is typed from the
-floating cards under an *opened* pill. The Row-2 notification status icon opens
-=NotificationHistory= (menu 4). A momentary *action burst* (next section) also
-suppresses the morph for its one second and floats the deck below, so the
-notifications visibly *slide down* to make room for the burst pill.
-
-** Action bursts (desktop switch, layout change)
-Some changes deserve a glance even when the pill is at rest, so a *transient
-burst* briefly takes over the collapsed pill for *1s* and then reverts to the
-clock. It is driven from =root= (so every monitor's pill shows it) via
-=burstDesk= / =burstLang= / =burstPhase=: =startBurst()= runs a single =Timer=
-through three phases — *settle 100ms → animate 300ms → settle 600ms* — clearing
-both flags when done. The burst surface is *one mini-pill per active kind*, each
-carrying the same surface as the *hovered* pill (=theme.bg= + border); the outer
-pill goes transparent so the gap between pills shows the backdrop. *Both* kinds can
-be live at once (a desktop switch and a layout change within the same window):
-then two pills sit *side by side* and *pop apart* on entry — a quick =Translate=
-from centre to their slots (=OutBack=, 180ms). A burst only takes over the
-*resting* pill (=showBurst=): it yields to hover / open / launcher / a right-click
-group (those already show richer UI), and it overrides =notifMorph= so an active
-notification deck *floats below* the burst pill instead of being replaced (the
-same below-pill =Loader= used for an opened pill) — that is how notifications slide
-down to reveal the change. Even under a focused fullscreen window the burst still
-*draws* (its input region stays empty, so it never intercepts clicks). Two events
-fire bursts today, each guarding against its *initial* value on startup (QML change
-handlers carry no old value, so =root= keeps the previous desktop id / layout index
-to animate *from*):
-- *Virtual-desktop switch* (=onCurrentDesktopChanged=) — renders the same dot row
-  as Row 2 in its unhovered styling, with a filled =textDim= dot that slides from
-  the previous desktop's slot to the new one across the 300ms animate phase
-  (=burstDotIdx= flips to the new index once animating; a =Behavior on x= does the
-  move). The *hovered* Row-2 dots use the same trick: hollow dots plus one filled
-  dot that slides to =deskActiveIdx= (=Behavior on x=, 300ms =OutCubic=), so
-  switching desktops while the pill is open animates instead of jumping.
-- *Keyboard-layout change* (=onKbIndexChanged=) — shows =from → to= (e.g. =US →
-  FA=) with the accent arrow *flashing and pulsing* during the animate phase.
-  Layouts come from KWin's =org.kde.keyboard /Layouts= (=getLayoutsList= →
-  =a(sss)= = code / custom-label / long-name; =getLayout= → current index;
-  =layoutChanged= / =layoutListChanged= keep them live). The label is the user's
-  *custom* layout label if set in System Settings, else the uppercased code (=us=
-  → =US=, =ir= → =IR=).
-
-** Look, translucency & icons
-The palette in =Theme.qml= is the warm vermillion/cream scheme borrowed from
-Ricelin (=accent= vermillion over a cocoa-black =bg=). At rest (collapsed and
-un-hovered) the pill is a *borderless translucent gradient* (=theme.bgGradTop= →
-=theme.bgGradBottom=) and slightly *dimmed* (=theme.idleOpacity=), and its clock
-text is itself a touch translucent so a hint of the backdrop shows through; it
-animates to a solid, full-opacity bordered surface the moment it is hovered,
-opened, or a notification morphs it. This is alpha translucency only — true
-backdrop *blur* would need the KWin blur protocol, which Quickshell does not
-expose (no blur type in its qmltypes).
-
-Icons resolve through Qt's icon theme. =run-pill.sh= loads the *KDE* Qt platform
-theme (=QT_QPA_PLATFORMTHEME=kde=) so every icon — the launcher app list, status
-glyphs, tray — follows KDE's configured icon theme (System Settings ▸ Icons). To
-force a specific theme regardless of KDE, set =Theme.qml='s =iconTheme: "Name"=
-(e.g. ="Papirus"=); =run-pill.sh= reads it and applies it via the gtk3 platform
-theme (Qt has no env var for an icon-theme name, so we write a private
-=gtk-3.0/settings.ini= and prefix =XDG_CONFIG_HOME=). =""= follows KDE.
-
-** Reusable widgets
-=PillToggle= (themed switch), =PillSlider= (themed 0..1 slider) and =MenuHeader=
-(back chevron + title + trailing slot) keep the menus small and the look coherent.
-
-* File map
-
-| File              | Role                                                            |
-|-------------------+-----------------------------------------------------------------|
-| =Theme.qml=       | all colours / metrics / timings (restyle here)                  |
-| =PillToggle.qml=  | reusable themed on/off switch                                   |
-| =PillSlider.qml=  | reusable themed horizontal slider [0,1]                          |
-| =MenuHeader.qml=  | reusable menu header: back chevron + title + trailing slot       |
-| =NetworkMenu.qml= | Wi-Fi list / connect / password / toggle; VPN (nmcli); open KDE network settings |
-| =VolumeMenu.qml=  | devices + applications volume; open KDE Audio/Multimedia settings |
-| =BluetoothMenu.qml= | connected / paired / discovered devices                       |
-| =BatteryMenu.qml= | all power devices                                              |
-| =Launcher.qml=    | app launcher: search, grid/list, favourites, right-click, calculator |
-| =Notifications.qml= | freedesktop notification server + popup/history state (one instance) |
-| =NotificationView.qml= | one notification card (own countdown; morph + floating + history) |
-| =NotificationStack.qml= | active-popup deck; stack at rest, drops to a list on hover     |
-| =NotificationHistory.qml= | grouped, newest-first history pane (menu 4)                |
-| =winbridge.py=    | open-window list (KRunner) + active window (KWin script) → JSON  |
-| =init.qml=    | windows, stages, virtual desktops, taskbar, tray, action bursts, menu host + launcher (entry) |
+To hand notifications back, re-enable the tray entry and restart plasmashell.
 
 * Source
 
@@ -428,6 +68,18 @@ Edit these blocks; tangle to regenerate the files (see [[*Tangling][§ Tangling]
 After tangling, validate with =qs -p quickshell/init.qml=.
 
 ** Theme.qml
+All colours, metrics, timings and font/icon settings in one place — restyle the
+whole pill here. Instantiated once in =init.qml= as =Theme { id: theme }= and
+passed into every component as a =theme= property (no singletons).
+
+The palette is the warm vermillion/cream scheme borrowed from Ricelin (=accent=
+vermillion over a cocoa-black =bg=). At rest the pill is a borderless translucent
+gradient (=bgGradTop= → =bgGradBottom=) and slightly dimmed (=idleOpacity=); it
+animates to a solid bordered surface the moment it is hovered, opened, or morphed
+by a notification. This is alpha translucency only — true backdrop *blur* would
+need the KWin blur protocol, which Quickshell does not expose. Icons resolve
+through Qt's icon theme; =iconTheme= forces a specific one (e.g. ="Papirus"=), =""=
+follows KDE — =run-pill.sh= reads this and applies it (see [[*run-pill.sh][§ run-pill.sh]]).
 #+begin_src qml :tangle ~/.config/quickshell/pill/Theme.qml :mkdirp yes
 pragma ComponentBehavior: Bound
 // Theme.qml — one place for all colours, metrics and timings. Change here to
@@ -488,6 +140,8 @@ QtObject {
 #+end_src
 
 ** PillToggle.qml
+A small themed on/off switch, reused across menus (Wi-Fi enable, Bluetooth
+power/scan).
 #+begin_src qml :tangle ~/.config/quickshell/pill/PillToggle.qml :mkdirp yes
 pragma ComponentBehavior: Bound
 // PillToggle.qml — a small themed on/off switch. Reusable across menus.
@@ -533,6 +187,8 @@ Item {
 #+end_src
 
 ** PillSlider.qml
+A themed horizontal slider over [0,1], reused for per-node volume in the volume
+menu.
 #+begin_src qml :tangle ~/.config/quickshell/pill/PillSlider.qml :mkdirp yes
 pragma ComponentBehavior: Bound
 // PillSlider.qml — a themed horizontal slider over [0,1]. Reused for volume.
@@ -589,6 +245,11 @@ Item {
 #+end_src
 
 ** MenuHeader.qml
+Shared header for every control-panel menu: a back chevron *and title* (both
+clickable) plus a trailing slot for the menu's own toggles. The chevron emits
+=closeRequested()=, which =init.qml='s =Connections= on the menu loader turns into
+=win.open = false=. Children declared inside a =MenuHeader= land in its
+right-aligned trailing row.
 #+begin_src qml :tangle ~/.config/quickshell/pill/MenuHeader.qml :mkdirp yes
 pragma ComponentBehavior: Bound
 // MenuHeader.qml — shared header for every control-panel menu: a back chevron
@@ -656,6 +317,12 @@ Item {
 #+end_src
 
 ** NetworkMenu.qml
+Wi-Fi list (signal bars + a lock on secured nets, sorted active-first then by
+=signalStrength=), connect/disconnect, and a password overlay calling
+=connectWithPsk()= for secured unknown networks; toggles =Networking.wifiEnabled=
+and runs the scanner only while visible. Uses native =Quickshell.Networking=.
+VPN/WireGuard connections are *not* in that binding, so they are listed and toggled
+via =nmcli= (=Process=). A header gear opens KDE's network KCM.
 #+begin_src qml :tangle ~/.config/quickshell/pill/NetworkMenu.qml :mkdirp yes
 pragma ComponentBehavior: Bound
 // NetworkMenu.qml — Wi-Fi list (signal + lock + active), connect/disconnect,
@@ -961,6 +628,12 @@ Item {
 #+end_src
 
 ** VolumeMenu.qml
+Devices tab (speakers = =Audio/Sink=, mics = =Audio/Source=) with per-device
+volume/mute/set-default, and Applications tab (=Stream/Output/Audio=) with
+per-stream volume/mute. Uses native =Quickshell.Services.Pipewire=; a
+=PwObjectTracker= over every node keeps audio live and nodes are classified by
+=media.class=. Header shortcuts open KDE's Audio (=kcm_pulseaudio=) and Multimedia
+(=kcm_phonon=) settings.
 #+begin_src qml :tangle ~/.config/quickshell/pill/VolumeMenu.qml :mkdirp yes
 pragma ComponentBehavior: Bound
 // VolumeMenu.qml — Devices tab (speakers = Audio/Sink, mics = Audio/Source) with
@@ -1125,6 +798,10 @@ Item {
 #+end_src
 
 ** BluetoothMenu.qml
+Adapter power + scan toggles (=defaultAdapter.enabled= / =.discovering=), then three
+filtered sections — Connected, Paired, Available — each row connect/disconnect/pair
+via the device methods, with battery % when =batteryAvailable=. Uses native
+=Quickshell.Bluetooth=.
 #+begin_src qml :tangle ~/.config/quickshell/pill/BluetoothMenu.qml :mkdirp yes
 pragma ComponentBehavior: Bound
 // BluetoothMenu.qml — adapter power + scan toggles, then three sections:
@@ -1261,6 +938,9 @@ Item {
 #+end_src
 
 ** BatteryMenu.qml
+Every present, non-line-power device (laptop battery, mouse, keyboard, headphones,
+…) with a themed icon, name/type, state and percentage. Uses native
+=Quickshell.Services.UPower= (=UPower.devices= + =Quickshell.iconPath(iconName)=).
 #+begin_src qml :tangle ~/.config/quickshell/pill/BatteryMenu.qml :mkdirp yes
 pragma ComponentBehavior: Bound
 // BatteryMenu.qml — every present power device (laptop battery, mouse, keyboard,
@@ -1358,6 +1038,25 @@ Item {
 #+end_src
 
 ** Launcher.qml
+KDE-style app launcher, opened by clicking the hovered pill body, the Row-2 grid
+button, or the *Meta+D* shortcut; it takes the menu pane's place below the two
+dashboard rows. A back chevron + a focused search field (matches
+name/genericName/keywords), a grid/list toggle, ★ favourites (empty query shows
+favourites if any, else all apps; a search is always a flat list), a per-app
+right-click menu (=DesktopEntry.actions= + favourite toggle), and a calculator (a
+safe arithmetic expression, or one prefixed with ===, shows a result row that
+=wl-copy='s on click/Enter).
+
+The list/grid is *arrow-key navigable* from the search field: up/down always move
+the selection; in grid mode left/right move a column, while in a list left/right
+only navigate when the query is empty (else they move the text cursor); Enter
+launches. In grid mode the favourites grid is *drag-to-reorder* (tiles wrap a
+=DelegateModel= moved live as a tile is dragged, committed to =settings.favorites=
+on release). A bottom-right power row — lock/logout/reboot/shutdown — is wired to
+=loginctl= and =org.kde.Shutdown= over =gdbus=. Grid mode + favourite ids persist
+in =Quickshell.stateDir + "/launcher.json"= via =FileView= + =JsonAdapter=. The
+shared =appList= and open/close focus handling live in =init.qml= (see
+[[*init.qml][§ init.qml]]).
 #+begin_src qml :tangle ~/.config/quickshell/pill/Launcher.qml :mkdirp yes
 pragma ComponentBehavior: Bound
 // Launcher.qml — KDE-style application launcher.
@@ -1987,6 +1686,16 @@ The freedesktop notification *server* + popup/history *state*. Instantiated once
 in =init.qml= and shared with every monitor (the morph card, the floating cards
 and the history menu). Requires Plasma's own notifications disabled first — see
 [[*Taking over notifications from Plasma][§ Taking over notifications from Plasma]].
+
+Every notification is kept =tracked= so it survives as *history*; =grouped= buckets
+it by app for the history pane, while a separate =active= stack holds the un-closed
+popups. Each popup has its own countdown held centrally in =remaining= keyed by id
+(a single =Timer= steps them, since the deck recreates its delegates): every popup
+expires in *5s* — the app's requested timeout is ignored — except permanent
+(=expireTimeout === 0=) or =Critical= ones. Closing a popup or letting it time out
+only drops it from =active= and *keeps* it in history; we avoid =dismiss()/expire()=
+because Quickshell would *destroy* the notification (wiping the history copy too),
+so only =forget()= / =clearAll()= remove from history.
 #+begin_src qml :tangle ~/.config/quickshell/pill/Notifications.qml :mkdirp yes
 pragma ComponentBehavior: Bound
 // Notifications.qml — the freedesktop notification server + popup/history state.
@@ -2190,8 +1899,17 @@ QtObject {
 #+end_src
 
 ** NotificationView.qml
-One notification card, reused as the pill *morph*, as *floating* cards under an
-open pill, and as rows in the *history* menu.
+One notification card, reused three ways: the pill *morph* (=autoExpire:true=),
+*floating* cards under an open pill, and rows in the *history* menu
+(=inHistory:true=, so the X forgets instead of dismissing). Two columns: the
+notification *image* (200px, aspect kept) or app icon on the left; on the right
+summary + close-X with a vertical countdown bar, body (=StyledText=, links open
+externally), relative time + action buttons, and an inline-reply field when the
+notification supports it (Telegram, KDE Connect → =sendInlineReply()=). Images are
+resolved by =resolveImage()=: an =image-path= hint loads as a =file://= URL
+directly (Flameshot &c. send screenshots that way), else Quickshell's =image=
+provider URL; the =Image= loads *synchronously* because the data provider serves
+nothing on the async path.
 #+begin_src qml :tangle ~/.config/quickshell/pill/NotificationView.qml :mkdirp yes
 pragma ComponentBehavior: Bound
 // NotificationView.qml — one notification card. Two columns in a row:
@@ -2451,9 +2169,13 @@ Rectangle {
 #+end_src
 
 ** NotificationStack.qml
-The deck of active popups: a stack effect at rest, dropping into a full list on
-hover (which also pauses + resets every card's countdown). Used for the pill
-*morph* and for the cards *below* an open pill.
+The deck of active (un-closed) popups: at rest the newest is on top and the rest
+peek out below it (offset + scaled, capped at =maxDeck=); hovering drops them into a
+full vertical list and sets =notifs.held= (which pauses + resets every countdown).
+=implicitHeight= reports the laid-out height so the morphing pill grows with it.
+Once more than one popup is active a floating *"Dismiss all"* pill appears top-right
+and calls =notifs.dismissAll()= (closes every popup, keeps them in history). Used
+for the pill *morph* and the cards *below* an open pill.
 #+begin_src qml :tangle ~/.config/quickshell/pill/NotificationStack.qml :mkdirp yes
 pragma ComponentBehavior: Bound
 // NotificationStack.qml — the active notifications as a deck. At rest the newest
@@ -2681,7 +2403,22 @@ Item {
 #+end_src
 
 ** winbridge.py
-Self-contained python glue (see [[*Open windows / taskbar][taskbar notes]]).
+Self-contained python glue that feeds the pill its window data, since KWin
+advertises no window-list protocol and no active-window over DBus. Run as =python
+<shellDir>/winbridge.py=, it prints one JSON line =\{active, fullscreen, windows\}=
+per update on stdout (plus an =\{event:"launcher", screen\}= line for the Meta+D
+shortcut), which =init.qml= parses with =Process= + =SplitParser=:
+- *window list*: the KRunner "windows" runner =org.kde.KWin /WindowsRunner=
+  (=Match("")= returns every window =(id, title, icon, …)=; polled ~1 s, deduped by
+  id; =Run(id, "")= focuses one; internal =icon == "kwin"= placeholders dropped so
+  no phantom tile flashes).
+- *active window*: the helper owns DBus name =org.kde.pill= and loads a small KWin
+  script (unloaded on exit) reporting =workspace.windowActivated= — the window's
+  =internalId= (matching the krunner ids) plus its =fullScreen= flag, which rides
+  the line as =fullscreen= and drives =win.fsHide=.
+- *launcher shortcut*: that same script =registerShortcut=s *Meta+D*, whose callback
+  calls =org.kde.pill Launcher(activeWindow.output.name)= → the =\{event:"launcher"\}=
+  line; re-bindable in *System Settings ▸ Shortcuts ▸ KWin*.
 #+begin_src python :tangle ~/.config/quickshell/pill/winbridge.py :mkdirp yes
 #!/usr/bin/env python
 # winbridge.py — feeds the pill its open-window list + the active window.
@@ -2876,6 +2613,81 @@ GLib.MainLoop().run()
 #+end_src
 
 ** init.qml
+The entry point and long-lived root: it owns the per-monitor windows, the stage
+machine, virtual desktops, the taskbar/tray UI, action bursts, and hosts the menus
+and launcher. Sibling =.qml= files are used as component types via QML's implicit
+directory import; =Theme= is instantiated once here and passed to each menu as
+=theme= (no singletons).
+
+*Window & input model.* =Variants { model: Quickshell.screens }= makes one
+full-screen layer-shell =Overlay= =PanelWindow= per monitor that reserves no space.
+The window =mask= governs input: collapsed/hovered → only the pill rectangle catches
+clicks (the rest passes through); open/launcher/right-click → the whole window, where
+a backdrop =MouseArea= swallows outside clicks to close (never passed through);
+fullscreen-hide (=win.fsHide=, set while a fullscreen window is focused and the pill
+is at true rest) → an empty region, so the window is fully click-through and the pill
+fades to opacity 0. A notification still morphs through (=notifMorph= overrides
+=fsHide=).
+
+*Stages.* A single =pill= =Item= animates =width=/=height= between stages via
+=Behavior=, cross-fading content layers per stage:
+1. *collapsed* (96×28): =hh:mm=.
+2. *hovered* (=dash=, 384×104): two balanced rows — Row 1 desktop dots (left) |
+   grouped app icons (right); Row 2 a launcher button + date/time (left) | status
+   icons (network/volume/bluetooth/battery/notifications) + system tray (right).
+3. *open* (470 tall): control panel. Both rows stay visible; Row 2 doubles as the
+   menu switcher (active icon highlighted). A =Loader= below a divider shows the menu
+   for =win.menu= (default 4 = notification history); each menu's =MenuHeader=
+   chevron collapses the panel via =closeRequested()=.
+4. *launcher* (520×470): the launcher takes the menu pane's place (see
+   [[*Launcher.qml][§ Launcher.qml]]).
+
+*Keyboard focus.* The surface grabs the keyboard only while a panel is open:
+launcher → =Exclusive= (focuses even when opened by the shortcut; arrow nav works),
+open menu → =OnDemand= (a password field focuses on click), else =None=. KWin does
+*not* restore focus when a layer surface releases the keyboard, so the pill remembers
+the last real active window (=lastActiveWindow=, from =winbridge=) and =restoreFocus()=
+re-activates it via the KRunner =Run= whenever the pill is dismissed *without*
+launching; launching an app skips the restore.
+
+*Global shortcut (Meta+D).* Quickshell's =GlobalShortcut= is Hyprland-only, so the
+launcher shortcut rides the KWin script in =winbridge.py= (see [[*winbridge.py][§ winbridge.py]]):
+its =\{event:"launcher", screen\}= line becomes the =launcherShortcut(screen)= signal,
+and each monitor toggles its launcher if the screen matches.
+
+*Taskbar.* =appGroups= groups =windows= (from =winbridge=) by =icon= — one tile per
+app, a count badge for ≥2 windows, an underline that turns accent when any of the
+app's windows is active. Left-click =cycleGroup= focuses the app's next window;
+right-click opens a floating menu (this app's windows + =DesktopEntries.heuristic-
+Lookup(icon).actions=). The =mask= expands full-screen while that menu is open
+(=win.ctxGroup=).
+
+*Virtual desktops.* Three =Process= blocks drive =gdbus= against =org.kde.KWin
+/VirtualDesktopManager=: fetch the =desktops= list (a regex parses the tuples), fetch
+=current=, and =gdbus monitor= =currentChanged= to stay live; =switchDesktop(id)=
+sets the writable =current= property.
+
+*Action bursts.* A transient burst briefly (1s) takes over the resting pill then
+reverts to the clock, driven from =root= so every monitor shows it (=burstDesk= /
+=burstLang= / =burstPhase=; one =Timer= runs settle 100ms → animate 300ms → settle
+600ms). Each kind is a mini-pill carrying the hovered surface; both kinds at once sit
+side by side and *pop apart* on entry (=Translate=, =OutBack=). A burst takes over
+only the resting pill (yields to hover/open/launcher/right-click) and overrides
+=notifMorph= so an active notification deck floats below instead of being replaced.
+Two events fire bursts, each guarding its initial value on startup:
+- *desktop switch* (=onCurrentDesktopChanged=) — a filled dot slides from the old
+  slot to the new across the animate phase; the hovered Row-2 dots use the same slide.
+- *layout change* (=onKbIndexChanged=) — shows =from → to= (e.g. =US → FA=) with the
+  arrow flashing. Layouts come from KWin's =org.kde.keyboard /Layouts= (custom label
+  if set in System Settings, else the uppercased code).
+
+*Notifications & launcher hosting.* The =Notifications= object (=notifs=) and the
+shared =appList= (=DesktopEntries.applications=, =noDisplay= filtered, name-sorted)
+are built once here and shared with every monitor. The collapsed pill *morphs* into
+the active-popup deck when a notification arrives and the pill isn't open (the clock
+hides and =pill.height= tracks the deck); while open/launcher/app-menu the deck floats
+*below* instead. The launcher field is focused + cleared on each open and its focus
+dropped on close (so the pill releases the keyboard).
 #+begin_src qml :tangle ~/.config/quickshell/pill/init.qml :mkdirp yes
 pragma ComponentBehavior: Bound
 // ----------------------------------------------------------------------------
@@ -3823,6 +3635,9 @@ ShellRoot {
 #+end_src
 
 ** run-pill.sh
+The launch script (=./run-pill.sh=). Qt picks its platform plugin before any QML
+loads, so the Wayland socket and the icon theme (see [[*Look, translucency & icons][§ Look, translucency & icons]])
+have to be resolved here, not in =init.qml=.
 #+begin_src sh :tangle ~/.config/quickshell/pill/run-pill.sh :mkdirp yes :tangle-mode (identity #o755)
 #!/bin/sh
 # run-pill.sh — launch the pill with a Wayland environment resolved at runtime.
