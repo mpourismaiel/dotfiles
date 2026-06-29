@@ -1691,8 +1691,10 @@ Every notification is kept =tracked= so it survives as *history*; =grouped= buck
 it by app for the history pane, while a separate =active= stack holds the un-closed
 popups. Each popup has its own countdown held centrally in =remaining= keyed by id
 (a single =Timer= steps them, since the deck recreates its delegates): every popup
-expires in *5s* — the app's requested timeout is ignored — except permanent
-(=expireTimeout === 0=) or =Critical= ones. Closing a popup or letting it time out
+is capped at *5s* — a longer app-requested timeout is ignored, a shorter one is
+honoured, and =expireTimeout === 0= ("persistent") is treated as the 5s cap too.
+Only =Critical= popups are permanent (errors shouldn't vanish on their own).
+Closing a popup or letting it time out
 only drops it from =active= and *keeps* it in history; we avoid =dismiss()/expire()=
 because Quickshell would *destroy* the notification (wiping the history copy too),
 so only =forget()= / =clearAll()= remove from history.
@@ -1801,13 +1803,16 @@ QtObject {
         root.tick++;
     }
 
-    readonly property int defaultTimeoutMs: 5000   // every non-permanent notification fades in 5s
+    readonly property int defaultTimeoutMs: 5000   // hard ceiling: no timed popup outlives this
     function timeoutFor(n) {
         if (!n) return 0;
-        // permanent: the app explicitly asked never to expire (0), or it's Critical
-        if (n.expireTimeout === 0 || n.urgency === NotificationUrgency.Critical) return 0;
-        // everything else: ignore the app's value (often ~60s) and use 5s
-        return root.defaultTimeoutMs;
+        // Critical alone is permanent — errors shouldn't auto-dismiss.
+        if (n.urgency === NotificationUrgency.Critical) return 0;
+        // everything else is timed and capped at 5s: honour a *shorter* app-requested
+        // timeout, but ignore longer ones and treat 0 ("persistent") / -1 ("default")
+        // as the cap too, so nothing non-critical lingers past defaultTimeoutMs.
+        const want = n.expireTimeout;
+        return (want > 0 && want < root.defaultTimeoutMs) ? want : root.defaultTimeoutMs;
     }
 
     // remove from the active stack only (the history copy is untouched)
@@ -2017,7 +2022,7 @@ Rectangle {
         // row 1: summary (left) + close X & countdown (right)
         Item {
             width: parent.width
-            height: 20
+            height: 26
             Text {
                 anchors.left: parent.left
                 anchors.right: closeBox.left
@@ -2050,14 +2055,21 @@ Rectangle {
                         color: root.critical ? root.theme.danger : root.theme.accent
                     }
                 }
-                Text {
-                    text: "✕"
-                    color: closeMa.containsMouse ? root.theme.text : root.theme.textDim
-                    font.family: root.theme.family
-                    font.pixelSize: root.theme.fsNormal
+                Rectangle {                          // close / dismiss button
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 26; height: 26; radius: 13
+                    color: closeMa.containsMouse ? root.theme.bgHover : "transparent"
+                    Behavior on color { ColorAnimation { duration: root.theme.animFast } }
+                    Text {
+                        anchors.centerIn: parent
+                        text: "✕"
+                        color: closeMa.containsMouse ? root.theme.text : root.theme.textDim
+                        font.family: root.theme.family
+                        font.pixelSize: root.theme.fsNormal
+                    }
                     MouseArea {
                         id: closeMa
-                        anchors.fill: parent; anchors.margins: -6
+                        anchors.fill: parent
                         hoverEnabled: true; cursorShape: Qt.PointingHandCursor
                         onClicked: root.inHistory ? root.notifs.forget(root.notification)
                                                   : root.notifs.dismiss(root.notification)
@@ -2688,6 +2700,16 @@ the active-popup deck when a notification arrives and the pill isn't open (the c
 hides and =pill.height= tracks the deck); while open/launcher/app-menu the deck floats
 *below* instead. The launcher field is focused + cleared on each open and its focus
 dropped on close (so the pill releases the keyboard).
+
+*Privacy indicators.* At rest the pill also flags a live *camera* (any process
+holding a =/dev/video*= node open, polled every 2s with =fuser=) or an *unmuted
+mic* (the default Pipewire source). Either drops the idle translucency — the
+collapsed pill goes solid (real surface + border, no gradient, full-opacity clock)
+— and shows a small icon next to the clock (=camera-web= / =audio-input-microphone=;
+both side by side when both are live, widening the pill). The icons *pop in* and
+*shrink out* like the action bursts (scale overshoots on appear via =OutBack=, the
+slot width animates so the clock slides over). It also keeps the pill visible over a
+fullscreen window, where it would otherwise hide.
 #+begin_src qml :tangle ~/.config/quickshell/pill/init.qml :mkdirp yes
 pragma ComponentBehavior: Bound
 // ----------------------------------------------------------------------------
@@ -2727,6 +2749,27 @@ ShellRoot {
     Theme { id: theme }
     // keep the default sink bound so the dashboard volume icon reflects mute live
     PwObjectTracker { objects: Pipewire.defaultAudioSink ? [Pipewire.defaultAudioSink] : [] }
+    // keep the default source bound too, so the mic-active indicator updates live
+    PwObjectTracker { objects: Pipewire.defaultAudioSource ? [Pipewire.defaultAudioSource] : [] }
+
+    // ---- privacy indicators (resting pill) ----
+    // camera + mic in use show an icon next to the collapsed clock and make the
+    // resting pill opaque (drops the idle translucency) so it can't be missed.
+    //   camera — poll for any process holding a /dev/video* node open (fuser).
+    //   mic    — the default Pipewire source being unmuted.
+    property bool cameraInUse: false
+    readonly property bool micActive: Pipewire.defaultAudioSource
+                                      && Pipewire.defaultAudioSource.audio
+                                      && !Pipewire.defaultAudioSource.audio.muted
+    readonly property bool privacyActive: cameraInUse || micActive
+    readonly property int  privacyCount: (cameraInUse ? 1 : 0) + (micActive ? 1 : 0)
+    Process {
+        id: cameraProc
+        command: ["sh", "-c", "fuser /dev/video* >/dev/null 2>&1 && echo busy || echo idle"]
+        stdout: StdioCollector { onStreamFinished: root.cameraInUse = (this.text.indexOf("busy") !== -1) }
+    }
+    Timer { interval: 2000; running: true; repeat: true; triggeredOnStart: true
+            onTriggered: cameraProc.running = true }
 
     // ---- notifications (freedesktop server + popup/history state) ----
     // Owns org.freedesktop.Notifications; requires Plasma's own notifications to
@@ -3056,7 +3099,11 @@ ShellRoot {
             // hide the resting pill while a fullscreen window is focused (games,
             // video, etc.) — only at true rest: hovering, opening, or a morphing
             // notification all override it, so notifications still appear normally.
-            property bool fsHide: root.activeFullscreen && !dash && !notifMorph
+            // A live camera/mic keeps it visible regardless (privacy indicator).
+            property bool fsHide: root.activeFullscreen && !dash && !notifMorph && !root.privacyActive
+            // resting pill with a live camera/mic: solid (no idle translucency),
+            // clock paired with the privacy icon(s).
+            property bool privacyRest: root.privacyActive && !dash && !notifMorph && !showBurst
 
             Region { id: pillRegion; item: pill }
             Region { id: fullRegion; item: backdrop }
@@ -3075,7 +3122,7 @@ ShellRoot {
                 anchors.horizontalCenter: parent.horizontalCenter
                 y: 6
                 width: win.showBurst ? (burstLoader.item ? burstLoader.item.implicitWidth : 96)
-                     : win.launcher ? 520 : (win.notifMorph ? 420 : (win.dash ? 420 : 56))
+                     : win.launcher ? 520 : (win.notifMorph ? 420 : (win.dash ? 420 : (56 + root.privacyCount * 20)))
                 height: win.showBurst ? 28
                       : (win.open || win.launcher) ? 470
                       : (win.notifMorph ? morphStack.implicitHeight : (win.dash ? 104 : 28))
@@ -3083,9 +3130,9 @@ ShellRoot {
                 Behavior on height { NumberAnimation { duration: theme.anim; easing.type: Easing.OutCubic } }
 
                 // resting (collapsed, un-hovered) pill is dimmed; full opacity once
-                // hovered / open / a notification is morphing it; fully hidden while
-                // a fullscreen window is focused (fsHide)
-                opacity: win.showBurst ? 1 : (win.fsHide ? 0 : ((win.dash || win.notifMorph) ? 1 : theme.idleOpacity))
+                // hovered / open / a notification is morphing it (or a camera/mic is
+                // live); fully hidden while a fullscreen window is focused (fsHide)
+                opacity: win.showBurst ? 1 : (win.fsHide ? 0 : ((win.dash || win.notifMorph || win.privacyRest) ? 1 : theme.idleOpacity))
                 Behavior on opacity { NumberAnimation { duration: theme.animFast } }
 
                 HoverHandler { id: hover }
@@ -3098,10 +3145,12 @@ ShellRoot {
                     // backdrop. The morph drops the background entirely (cards only);
                     // so does a burst — its own pill(s) carry the surface, and the
                     // transparent gap shows through when two of them are side by side.
-                    color: win.notifMorph ? "transparent" : (win.dash ? theme.bg : "transparent")
-                    gradient: (win.dash || win.notifMorph || win.showBurst) ? null : restGrad
+                    // a live camera/mic makes the resting pill solid too (no gradient,
+                    // a real surface + border) so the privacy state reads at a glance.
+                    color: win.notifMorph ? "transparent" : ((win.dash || win.privacyRest) ? theme.bg : "transparent")
+                    gradient: (win.dash || win.notifMorph || win.showBurst || win.privacyRest) ? null : restGrad
                     border.color: theme.border
-                    border.width: (win.dash && !win.notifMorph) ? 1 : 0
+                    border.width: (!win.notifMorph && (win.dash || win.privacyRest)) ? 1 : 0
                     Behavior on radius { NumberAnimation { duration: theme.anim } }
                     Behavior on color  { ColorAnimation { duration: theme.animFast } }
                     Gradient {
@@ -3116,16 +3165,55 @@ ShellRoot {
                 MouseArea { anchors.fill: parent; enabled: win.dash && !win.open && !win.launcher && !win.notifMorph; onClicked: { win.launcher = true; } }
                 MouseArea { anchors.fill: parent; enabled: win.open || win.launcher; onClicked: {} }
 
-                // ---- collapsed: clock (hh:mm) ----
-                Text {
+                // ---- collapsed: clock (hh:mm) + privacy icons (camera / mic) ----
+                Row {
                     anchors.centerIn: parent
                     visible: !win.dash && !win.notifMorph && !win.showBurst
-                    text: root.clockShort
-                    // slightly translucent so the floating pill reveals a hint of
-                    // what's behind it (easier to read against any backdrop)
-                    color: Qt.rgba(theme.text.r, theme.text.g, theme.text.b, 0.78)
-                    font.family: theme.mono
-                    font.pixelSize: theme.fsNormal
+                    spacing: 6
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: root.clockShort
+                        // full opacity while a camera/mic is live (the pill is solid
+                        // then); otherwise slightly translucent so the floating pill
+                        // reveals a hint of what's behind it (readable on any backdrop)
+                        color: win.privacyRest ? theme.text
+                             : Qt.rgba(theme.text.r, theme.text.g, theme.text.b, 0.78)
+                        font.family: theme.mono
+                        font.pixelSize: theme.fsNormal
+                    }
+                    // camera / mic indicators — pop in (and shrink out) like the
+                    // action bursts: scale overshoots on appear (OutBack), the slot
+                    // width animates 0<->14 so the clock slides over smoothly, and the
+                    // pill's own width Behavior widens to match. Static model so the
+                    // delegates persist (a reactive model would rebuild and skip the
+                    // animation); each reads its live state by index.
+                    Repeater {
+                        model: [
+                            { ic: "camera-web",             fb: "camera-video" },
+                            { ic: "audio-input-microphone", fb: "microphone-sensitivity-high" }
+                        ]
+                        delegate: Item {
+                            id: privIcon
+                            required property int index
+                            required property var modelData
+                            readonly property bool on: index === 0 ? root.cameraInUse : root.micActive
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: privIcon.on ? 14 : 0
+                            height: 14
+                            visible: width > 0 || privImg.opacity > 0   // stay alive through the shrink-out
+                            Behavior on width { NumberAnimation { duration: theme.animFast; easing.type: Easing.OutCubic } }
+                            IconImage {
+                                id: privImg
+                                anchors.centerIn: parent
+                                implicitSize: 14
+                                source: Quickshell.iconPath(privIcon.modelData.ic, privIcon.modelData.fb)
+                                opacity: privIcon.on ? 1 : 0
+                                scale: privIcon.on ? 1 : 0.4
+                                Behavior on opacity { NumberAnimation { duration: theme.animFast } }
+                                Behavior on scale  { NumberAnimation { duration: theme.anim; easing.type: Easing.OutBack } }
+                            }
+                        }
+                    }
                 }
 
                 // ---- notification morph: the collapsed pill becomes a stack ----
@@ -3204,6 +3292,13 @@ ShellRoot {
                                 id: appItem
                                 required property var modelData
                                 width: 26; height: 26
+                                Rectangle {                  // hover highlight
+                                    anchors.fill: parent
+                                    anchors.margins: -4
+                                    radius: theme.radiusSmall
+                                    color: appMa.containsMouse ? theme.bgHover : "transparent"
+                                    Behavior on color { ColorAnimation { duration: theme.animFast } }
+                                }
                                 IconImage {
                                     anchors.top: parent.top
                                     anchors.horizontalCenter: parent.horizontalCenter
@@ -3228,7 +3323,10 @@ ShellRoot {
                                     Behavior on width { NumberAnimation { duration: theme.animFast } }
                                 }
                                 MouseArea {
+                                    id: appMa
                                     anchors.fill: parent
+                                    anchors.margins: -4
+                                    hoverEnabled: true
                                     cursorShape: Qt.PointingHandCursor
                                     acceptedButtons: Qt.LeftButton | Qt.RightButton
                                     onClicked: mouse => {
@@ -3258,11 +3356,17 @@ ShellRoot {
                         anchors.left: parent.left
                         anchors.verticalCenter: parent.verticalCenter
                         spacing: 10
-                        IconImage {                          // open the app launcher
+                        Rectangle {                          // open the app launcher
                             anchors.verticalCenter: parent.verticalCenter
-                            implicitSize: 18
-                            source: Quickshell.iconPath("view-grid-symbolic", "view-grid")
-                            MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                            width: 32; height: 26; radius: theme.radiusSmall
+                            color: launchMa.containsMouse ? theme.bgHover : "transparent"
+                            Behavior on color { ColorAnimation { duration: theme.animFast } }
+                            IconImage {
+                                anchors.centerIn: parent
+                                implicitSize: 18
+                                source: Quickshell.iconPath("view-grid-symbolic", "view-grid")
+                            }
+                            MouseArea { id: launchMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
                                 onClicked: { win.open = false; win.launcher = true; } }
                         }
 
@@ -3334,15 +3438,16 @@ ShellRoot {
                             ]
                             delegate: Rectangle {
                                 required property var modelData
-                                width: 24; height: 22; radius: theme.radiusSmall
-                                color: (win.open && win.menu === modelData.menu) ? theme.accentDim : "transparent"
+                                width: 32; height: 26; radius: theme.radiusSmall
+                                color: (win.open && win.menu === modelData.menu) ? theme.accentDim
+                                       : statusMa.containsMouse ? theme.bgHover : "transparent"
                                 Behavior on color { ColorAnimation { duration: theme.animFast } }
                                 IconImage {
                                     anchors.centerIn: parent
                                     implicitSize: 18
                                     source: Quickshell.iconPath(modelData.ic, "application-x-executable")
                                 }
-                                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                                MouseArea { id: statusMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
                                     // close the launcher too, else both panes stack on top of each other
                                     onClicked: { win.launcher = false; win.menu = modelData.menu; win.open = true; } }
                             }
@@ -3693,7 +3798,7 @@ icon_theme=$(sed -n 's/.*property[[:space:]][[:space:]]*string[[:space:]][[:spac
 if [ -n "${icon_theme:-}" ]; then
     cfg="${XDG_STATE_HOME:-$HOME/.local/state}/quickshell-pill"
     mkdir -p "$cfg/gtk-3.0"
-    printf '[Settings]\ngtk-icon-theme-name=%s\n' "$icon_theme" > "$cfg/gtk-3.0/settings.ini"
+    printf '[Settings]\ngtk-icon-theme-name=%s\n' "$icon_theme" >"$cfg/gtk-3.0/settings.ini"
     export XDG_CONFIG_HOME="$cfg:${XDG_CONFIG_HOME:-$HOME/.config}"
     export QT_QPA_PLATFORMTHEME=gtk3
 else
