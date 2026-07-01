@@ -72,8 +72,11 @@ All colours, metrics, timings and font/icon settings in one place — restyle th
 whole pill here. Instantiated once in =init.qml= as =Theme { id: theme }= and
 passed into every component as a =theme= property (no singletons).
 
-The palette is the warm vermillion/cream scheme borrowed from Ricelin (=accent=
-vermillion over a cocoa-black =bg=). At rest the pill is a borderless translucent
+The palette is the *Broadsheet* scheme (see =__ignore__/Broadsheet.html=): a warm
+vermillion =accent= over a cocoa-black =bg=, cream text, set in *DM Serif Display*
+(titles/clock/figures), *IBM Plex Sans* (body) and *IBM Plex Mono* (uppercase
+labels), with chrome glyphs from *Material Symbols Rounded* (=icon=, rendered via
+[[*MSym.qml][=MSym=]]) while app/tray icons stay Qt-themed. At rest the pill is a borderless translucent
 gradient (=bgGradTop= → =bgGradBottom=) and slightly dimmed (=idleOpacity=); it
 animates to a solid bordered surface the moment it is hovered, opened, or morphed
 by a notification. This is alpha translucency only — true backdrop *blur* would
@@ -88,45 +91,69 @@ pragma ComponentBehavior: Bound
 import QtQuick
 
 QtObject {
-    // ---- palette (Ricelin: warm vermillion accent over cocoa-black) ----
-    readonly property color bg:         "#251a12"   // panel / pill base
-    readonly property color bgElevated:  "#2c2118"   // cards / popups / menus
-    readonly property color bgHover:     "#34271f"   // hovered rows / tiles
-    readonly property color border:      "#3a2a22"
-    readonly property color divider:     "#33241d"
-    readonly property color text:        "#e6d6cb"   // cream
-    readonly property color textDim:     "#8a7d74"   // dim
-    readonly property color accent:      "#c0442b"   // vermillion
-    readonly property color accentDim:   "#46291d"   // selected / active background tint
-    readonly property color danger:      "#e0563b"   // vermillion-light
-    readonly property color good:        "#9ec06a"
+    // ---- palette (Broadsheet: warm cocoa-black under a vermillion accent, set
+    //      in serif; see __ignore__/Broadsheet.html for the reference sheet) ----
+    readonly property color desk:        "#151310"   // deepest desktop wash
+    readonly property color bg:          "#1b1712"   // panel / pill base
+    readonly property color bgElevated:  "#221d16"   // cards / popups / menus
+    readonly property color card:        "#221d16"   // alias of bgElevated (notification cards)
+    readonly property color row:         "#231e17"   // resting list rows / tiles
+    readonly property color rowHi:       "#3a271c"   // selected / active / hover-highlight rows
+    readonly property color bgHover:     "#3a271c"   // shared hover square + hovered surfaces (= rowHi)
+    readonly property color border:      Qt.rgba(0xec / 255.0, 0xe4 / 255.0, 0xd6 / 255.0, 0.12)  // hairline (--line)
+    readonly property color borderStrong: Qt.rgba(0xec / 255.0, 0xe4 / 255.0, 0xd6 / 255.0, 0.22) // (--line-2)
+    readonly property color divider:     Qt.rgba(0xec / 255.0, 0xe4 / 255.0, 0xd6 / 255.0, 0.12)  // (--line)
+    readonly property color text:        "#efe9dd"   // primary cream
+    readonly property color textDim:     "#a89e8c"   // secondary (--dim)
+    readonly property color faint:       "#7a7060"   // tertiary / idle glyphs (--faint)
+    readonly property color accent:      "#cf4636"   // vermillion
+    readonly property color accentSoft:  Qt.rgba(0xcf / 255.0, 0x46 / 255.0, 0x36 / 255.0, 0.15)  // accent tint bg
+    readonly property color accentDim:   "#3a271c"   // selected / active background tint (= rowHi)
+    readonly property color danger:      "#d95435"   // vermillion-light (destructive)
+    readonly property color good:        "#3ecf8e"   // green (privacy/live cue)
+    readonly property color track:       Qt.rgba(0xec / 255.0, 0xe4 / 255.0, 0xd6 / 255.0, 0.14)  // toggle / slider track
 
     // resting (collapsed, un-hovered) pill: translucent + dimmed (see init.qml).
     // NOTE: this is alpha translucency only — true backdrop blur needs the KWin
     // blur protocol, which Quickshell does not expose.
-    readonly property color bgTranslucent: Qt.rgba(0x25 / 255.0, 0x1a / 255.0, 0x12 / 255.0, 0.72)
+    readonly property color bgTranslucent: Qt.rgba(0x1b / 255.0, 0x17 / 255.0, 0x12 / 255.0, 0.72)
     // resting-pill gradient (translucent, no border): warmer/lighter top fading to
     // a darker bottom, so the floating pill blends with whatever is behind it.
-    readonly property color bgGradTop:     Qt.rgba(0x34 / 255.0, 0x27 / 255.0, 0x1f / 255.0, 0.80)
-    readonly property color bgGradBottom:  Qt.rgba(0x1c / 255.0, 0x13 / 255.0, 0x0d / 255.0, 0.66)
+    readonly property color bgGradTop:     Qt.rgba(0x2a / 255.0, 0x24 / 255.0, 0x1b / 255.0, 0.82)
+    readonly property color bgGradBottom:  Qt.rgba(0x15 / 255.0, 0x11 / 255.0, 0x0c / 255.0, 0.66)
     readonly property real idleOpacity:    0.86
 
-    // ---- metrics ----
-    readonly property int radius:        18
-    readonly property int radiusSmall:   10
+    // ---- metrics (Broadsheet radius scale) ----
+    readonly property int radius:        20         // open pill / panel (--r-panel)
+    readonly property int radiusPanel:   20         // menus / launcher panel (--r-panel)
+    readonly property int radiusCard:    18         // notification cards (--r-card)
+    readonly property int radiusTile:    16         // launcher grid tiles (--r-tile)
+    readonly property int radiusRow:     14         // list rows / search field (--r-row)
+    readonly property int radiusBtn:     10         // buttons (--r-btn)
+    readonly property int radiusSmall:   10         // generic small radius
     readonly property int pad:           14
     readonly property int gap:           10
     readonly property int railWidth:     44
-    readonly property int rowHeight:     38
+    readonly property int rowHeight:     40
     // dashboard icon buttons (app-list tiles, launcher, status icons, tray) are
     // all this square size, laid out with this spacing, so the shared hover
     // indicator is one uniform square that jumps between them.
     readonly property int iconCell:      26
     readonly property int iconSpacing:    6
+    // hovered-dashboard app tiles (taskbar) run larger than the menu/tray glyphs
+    readonly property int appCell:       36
+    readonly property int appIcon:       28
 
-    // ---- fonts ----  (swap `family` to test fonts; `mono` is for figures/clock)
-    readonly property string family:     "Inter"
-    readonly property string mono:       "Inter"
+    // ---- fonts ----
+    //   family = body (IBM Plex Sans) · serif = titles/clock/figures (DM Serif
+    //   Display) · mono = uppercase spaced labels (IBM Plex Mono) · icon =
+    //   Material Symbols Rounded (chrome glyphs; app/tray icons stay Qt-themed).
+    readonly property string family:     "IBM Plex Sans"
+    readonly property string serif:      "DM Serif Display"
+    readonly property string mono:       "IBM Plex Mono"
+    readonly property string icon:       "Material Symbols Rounded"
+    // letter-spacing (px) for the uppercase mono labels
+    readonly property real   labelSpacing: 1.4
 
     // ---- icons ----
     // Icons resolve through Qt's icon theme. run-pill.sh makes that follow KDE's
@@ -156,6 +183,42 @@ QtObject {
 }
 #+end_src
 
+** MSym.qml
+A single *Material Symbols Rounded* glyph. =icon= is the symbol's ligature name
+(e.g. ="chevron_left"=, ="search"=, ="grid_view"=); =fill= / =weight= / =grade= /
+=opticalSize= map to the font's variable axes (=FILL=/=wght=/=GRAD=/=opsz=), so a
+=fill: 1= icon is the solid variant. Used for every chrome glyph (menu/launcher/
+search/chevron/status icons); *app and tray icons stay Qt-themed* (=IconImage= /
+=Quickshell.iconPath=). Sizing is via =size= (sets both the pixel size and =opsz=).
+#+begin_src qml :tangle ~/.config/quickshell/pill/MSym.qml :mkdirp yes
+pragma ComponentBehavior: Bound
+// MSym.qml — one Material Symbols Rounded glyph. `icon` is the symbol name
+// (a ligature, e.g. "chevron_left"); fill/weight/grade map to the font's
+// variable axes so `fill: 1` gives the solid variant. `size` sets both the
+// pixel size and the optical-size axis. Chrome glyphs only — app/tray icons
+// stay Qt-themed (IconImage). Validated to render (ligatures + FILL axis) on
+// Qt 6.11 / Material Symbols Rounded variable font.
+import QtQuick
+
+Text {
+    id: sym
+    property string icon: ""
+    property real fill: 0            // 0 outline, 1 solid
+    property int weight: 400        // wght axis
+    property real grade: 0          // GRAD axis
+    property int size: 20           // pixel size == optical size
+
+    text: sym.icon
+    font.family: "Material Symbols Rounded"
+    font.pixelSize: sym.size
+    font.variableAxes: ({ "FILL": sym.fill, "wght": sym.weight, "GRAD": sym.grade, "opsz": sym.size })
+    verticalAlignment: Text.AlignVCenter
+    horizontalAlignment: Text.AlignHCenter
+    color: "#efe9dd"
+    renderType: Text.QtRendering
+}
+#+end_src
+
 ** PillToggle.qml
 A small themed on/off switch, reused across menus (Wi-Fi enable, Bluetooth
 power/scan).
@@ -176,7 +239,7 @@ Item {
     Rectangle {
         anchors.fill: parent
         radius: height / 2
-        color: root.checked ? root.theme.accent : root.theme.bgHover
+        color: root.checked ? root.theme.accent : root.theme.track
         border.color: root.checked ? root.theme.accent : root.theme.border
         border.width: 1
         Behavior on color { ColorAnimation { duration: root.theme.animFast } }
@@ -226,9 +289,9 @@ Item {
         id: track
         anchors.verticalCenter: parent.verticalCenter
         width: parent.width
-        height: 5
-        radius: 2.5
-        color: root.theme.bgHover
+        height: 6
+        radius: 3
+        color: root.theme.track
 
         Rectangle {                   // fill
             width: root.clamped * parent.width
@@ -239,9 +302,9 @@ Item {
     }
 
     Rectangle {                       // handle
-        width: 12
-        height: 12
-        radius: 6
+        width: 14
+        height: 14
+        radius: 7
         color: "white"
         anchors.verticalCenter: parent.verticalCenter
         x: root.clamped * (root.width - width)
@@ -284,8 +347,8 @@ Item {
     signal back()
 
     width: parent ? parent.width : 0
-    implicitHeight: 22
-    height: 22
+    implicitHeight: 26
+    height: 26
 
     Item {                                  // back chevron + title (left) — clickable together
         id: backArea
@@ -296,22 +359,19 @@ Item {
         Row {
             id: backRow
             anchors.verticalCenter: parent.verticalCenter
-            spacing: 8
-            Text {
+            spacing: 7
+            MSym {
                 anchors.verticalCenter: parent.verticalCenter
-                text: "‹"
-                color: backMa.containsMouse ? root.theme.text : root.theme.textDim
-                font.family: root.theme.family
-                font.pixelSize: root.theme.fsLarge + 6
-                font.bold: true
+                icon: "chevron_left"
+                size: 20
+                color: backMa.containsMouse ? root.theme.text : root.theme.faint
             }
             Text {
                 anchors.verticalCenter: parent.verticalCenter
                 text: root.title
                 color: root.theme.text
-                font.family: root.theme.family
-                font.pixelSize: root.theme.fsNormal
-                font.bold: true
+                font.family: root.theme.serif
+                font.pixelSize: root.theme.fsLarge + 4
             }
         }
         MouseArea {
@@ -355,10 +415,11 @@ Item {
     required property var theme
     signal closeRequested()
 
-    // ---- VPN (nmcli, since the native binding has no VPN) ----
+    // ---- wired (LAN) + VPN via nmcli (neither is in the native Wi-Fi binding) ----
     property var vpns: []
+    property var lans: []
     function refreshVpn() { if (!vpnList.running) vpnList.running = true; }
-    function setVpn(name, up) {
+    function setConn(name, up) {
         vpnToggle.command = ["nmcli", "connection", up ? "up" : "down", "id", name];
         vpnToggle.running = true;
     }
@@ -367,7 +428,7 @@ Item {
         command: ["nmcli", "-t", "-f", "NAME,TYPE,STATE", "connection", "show"]
         stdout: StdioCollector {
             onStreamFinished: {
-                const out = [];
+                const vpn = [], lan = [];
                 for (const line of this.text.split("\n")) {
                     if (!line) continue;
                     // `-t` is colon-separated; TYPE/STATE never contain ':', so the
@@ -375,10 +436,14 @@ Item {
                     const p = line.split(":");
                     if (p.length < 3) continue;
                     const state = p[p.length - 1], type = p[p.length - 2];
-                    if (type.indexOf("vpn") === -1 && type.indexOf("wireguard") === -1) continue;
-                    out.push({ name: p.slice(0, p.length - 2).join(":"), active: state === "activated" });
+                    const name = p.slice(0, p.length - 2).join(":");
+                    if (type.indexOf("vpn") !== -1 || type.indexOf("wireguard") !== -1)
+                        vpn.push({ name: name, active: state === "activated" });
+                    else if (type.indexOf("ethernet") !== -1)
+                        lan.push({ name: name, active: state === "activated" });
                 }
-                root.vpns = out;
+                root.vpns = vpn;
+                root.lans = lan;
             }
         }
     }
@@ -411,6 +476,49 @@ Item {
     Component.onCompleted: { if (wifiDev) wifiDev.scannerEnabled = true; root.refreshVpn(); }
     Component.onDestruction: if (wifiDev) wifiDev.scannerEnabled = false
 
+    // a wired/VPN connection row (name + connect/disconnect), reused by both the
+    // LAN and VPN sections (they share the nmcli up/down plumbing).
+    component ConnRow: Rectangle {
+        required property var conn
+        width: parent ? parent.width : 0
+        height: root.theme.rowHeight
+        radius: root.theme.radiusRow
+        color: conn.active ? root.theme.accentDim : root.theme.row
+        Text {
+            anchors.left: parent.left; anchors.leftMargin: 12
+            anchors.right: st.left; anchors.rightMargin: 8
+            anchors.verticalCenter: parent.verticalCenter
+            elide: Text.ElideRight
+            text: conn.name
+            color: root.theme.text
+            font.family: root.theme.family
+            font.pixelSize: root.theme.fsNormal
+        }
+        Text {
+            id: st
+            anchors.right: parent.right; anchors.rightMargin: 12
+            anchors.verticalCenter: parent.verticalCenter
+            text: conn.active ? "Disconnect" : "Connect"
+            color: conn.active ? root.theme.accent : root.theme.textDim
+            font.family: root.theme.mono
+            font.pixelSize: root.theme.fsSmall
+            font.letterSpacing: root.theme.labelSpacing
+            font.capitalization: Font.AllUppercase
+        }
+        MouseArea {
+            anchors.fill: parent
+            cursorShape: Qt.PointingHandCursor
+            onClicked: root.setConn(conn.name, !conn.active)
+        }
+    }
+    component NetLabel: Text {
+        color: root.theme.faint
+        font.family: root.theme.mono
+        font.pixelSize: root.theme.fsSmall
+        font.letterSpacing: root.theme.labelSpacing
+        font.capitalization: Font.AllUppercase
+    }
+
     Column {
         anchors.fill: parent
         spacing: root.theme.gap
@@ -419,12 +527,11 @@ Item {
             theme: root.theme
             title: "Network"
             onBack: root.closeRequested()
-            Text {                              // open KDE network settings
+            MSym {                              // open KDE network settings
                 anchors.verticalCenter: parent.verticalCenter
-                text: "⚙"
-                color: gearMa.containsMouse ? root.theme.text : root.theme.textDim
-                font.family: root.theme.family
-                font.pixelSize: root.theme.fsLarge
+                icon: "settings"
+                size: 19
+                color: gearMa.containsMouse ? root.theme.text : root.theme.faint
                 MouseArea {
                     id: gearMa
                     anchors.fill: parent; anchors.margins: -4
@@ -450,62 +557,15 @@ Item {
                 width: parent.width
                 spacing: 4
 
-                // ---- VPN connections (nmcli) — only shown when some exist ----
-                Text {
-                    visible: root.vpns.length > 0
-                    text: "VPN"
-                    color: root.theme.textDim
-                    font.family: root.theme.family
-                    font.pixelSize: root.theme.fsSmall
-                    font.bold: true
-                }
+                // ---- wired (LAN) — nmcli, shown first ----
+                NetLabel { text: "Wired"; visible: root.lans.length > 0 }
                 Repeater {
-                    model: root.vpns
-                    delegate: Rectangle {
-                        id: vpnRow
-                        required property var modelData
-                        width: netCol.width
-                        height: root.theme.rowHeight
-                        radius: root.theme.radiusSmall
-                        color: vpnRow.modelData.active ? root.theme.accentDim : root.theme.bgHover
-                        Text {
-                            anchors.left: parent.left
-                            anchors.leftMargin: 10
-                            anchors.right: vpnState.left
-                            anchors.rightMargin: 8
-                            anchors.verticalCenter: parent.verticalCenter
-                            elide: Text.ElideRight
-                            text: vpnRow.modelData.name
-                            color: root.theme.text
-                            font.family: root.theme.family
-                            font.pixelSize: root.theme.fsNormal
-                        }
-                        Text {
-                            id: vpnState
-                            anchors.right: parent.right
-                            anchors.rightMargin: 10
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: vpnRow.modelData.active ? "Disconnect" : "Connect"
-                            color: root.theme.textDim
-                            font.family: root.theme.family
-                            font.pixelSize: root.theme.fsSmall
-                        }
-                        MouseArea {
-                            anchors.fill: parent
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: root.setVpn(vpnRow.modelData.name, !vpnRow.modelData.active)
-                        }
-                    }
-                }
-                Text {                          // section label for the Wi-Fi list below
-                    visible: root.vpns.length > 0
-                    text: "Wi-Fi"
-                    color: root.theme.textDim
-                    font.family: root.theme.family
-                    font.pixelSize: root.theme.fsSmall
-                    font.bold: true
+                    model: root.lans
+                    delegate: ConnRow { required property var modelData; width: netCol.width; conn: modelData }
                 }
 
+                // ---- Wi-Fi ----
+                NetLabel { text: "Wi-Fi"; visible: root.nets.length > 0 }
                 Repeater {
                     model: root.nets
                     delegate: Rectangle {
@@ -513,49 +573,52 @@ Item {
                         required property var modelData
                         width: netCol.width
                         height: root.theme.rowHeight
-                        radius: root.theme.radiusSmall
-                        color: modelData.connected ? root.theme.accentDim : root.theme.bgHover
+                        radius: root.theme.radiusRow
+                        color: modelData.connected ? root.theme.accentDim : root.theme.row
 
                         Row {
                             anchors.left: parent.left
-                            anchors.leftMargin: 10
+                            anchors.leftMargin: 12
                             anchors.verticalCenter: parent.verticalCenter
-                            spacing: 8
-                            Text {
+                            spacing: 9
+                            MSym {
                                 anchors.verticalCenter: parent.verticalCenter
-                                text: {
+                                size: 18
+                                fill: 1
+                                icon: {
                                     const s = netRow.modelData.signalStrength;
-                                    return s > 0.75 ? "▰▰▰▰" : s > 0.5 ? "▰▰▰▱" : s > 0.25 ? "▰▰▱▱" : "▰▱▱▱";
+                                    return s > 0.75 ? "network_wifi" : s > 0.5 ? "network_wifi_3_bar"
+                                         : s > 0.25 ? "network_wifi_2_bar" : "network_wifi_1_bar";
                                 }
-                                color: root.theme.accent
-                                font.family: root.theme.family
-                                font.pixelSize: root.theme.fsSmall
+                                color: netRow.modelData.connected ? root.theme.accent : root.theme.textDim
                             }
                             Text {
                                 anchors.verticalCenter: parent.verticalCenter
-                                width: netRow.width - 190
+                                width: netRow.width - 200
                                 elide: Text.ElideRight
                                 text: netRow.modelData.name
                                 color: root.theme.text
                                 font.family: root.theme.family
                                 font.pixelSize: root.theme.fsNormal
                             }
-                            Text {
+                            MSym {
                                 anchors.verticalCenter: parent.verticalCenter
                                 visible: netRow.modelData.security !== WifiSecurityType.Open
-                                text: "🔒"
-                                font.family: root.theme.family
-                                font.pixelSize: root.theme.fsSmall
+                                icon: "lock"
+                                size: 13
+                                color: root.theme.faint
                             }
                         }
                         Text {
                             anchors.right: parent.right
-                            anchors.rightMargin: 10
+                            anchors.rightMargin: 12
                             anchors.verticalCenter: parent.verticalCenter
                             text: netRow.modelData.connected ? "Disconnect" : "Connect"
-                            color: root.theme.textDim
-                            font.family: root.theme.family
+                            color: netRow.modelData.connected ? root.theme.accent : root.theme.textDim
+                            font.family: root.theme.mono
                             font.pixelSize: root.theme.fsSmall
+                            font.letterSpacing: root.theme.labelSpacing
+                            font.capitalization: Font.AllUppercase
                         }
                         MouseArea {
                             anchors.fill: parent
@@ -569,6 +632,13 @@ Item {
                         }
                     }
                 }
+
+                // ---- VPN — nmcli, shown last ----
+                NetLabel { text: "VPN"; visible: root.vpns.length > 0 }
+                Repeater {
+                    model: root.vpns
+                    delegate: ConnRow { required property var modelData; width: netCol.width; conn: modelData }
+                }
             }
         }
     }
@@ -578,7 +648,7 @@ Item {
         anchors.fill: parent
         visible: root.pskTarget !== null
         color: root.theme.bg
-        radius: root.theme.radiusSmall
+        radius: root.theme.radiusPanel
         Column {
             anchors.centerIn: parent
             width: parent.width - 24
@@ -593,10 +663,10 @@ Item {
             }
             Rectangle {
                 width: parent.width
-                height: 34
-                radius: root.theme.radiusSmall
-                color: root.theme.bgHover
-                border.color: root.theme.border
+                height: 36
+                radius: root.theme.radiusRow
+                color: root.theme.row
+                border.color: pskInput.activeFocus ? root.theme.accent : root.theme.border
                 TextInput {
                     id: pskInput
                     anchors.fill: parent
@@ -686,6 +756,73 @@ Item {
     readonly property var sources:  allNodes.filter(n => root.cls(n) === "Audio/Source")
     readonly property var streams:  allNodes.filter(n => root.cls(n) === "Stream/Output/Audio")
 
+    // one device/stream row: name + (default marker) + mute over a volume slider,
+    // reused by the Speakers / Microphones / Applications sections.
+    component NodeRow: Column {
+        required property var node
+        property bool showDefault: false
+        property bool isStream: false
+        width: parent ? parent.width : 0
+        spacing: 4
+        Row {
+            width: parent.width
+            spacing: 6
+            Text {
+                width: parent.width - 46
+                elide: Text.ElideRight
+                text: {
+                    const n = node;
+                    if (isStream)
+                        return (n.properties && (n.properties["application.name"] || n.properties["media.name"])) || n.name;
+                    return n.description || n.nickname || n.name;
+                }
+                color: root.theme.text
+                font.family: root.theme.family
+                font.pixelSize: root.theme.fsNormal
+            }
+            MSym {                       // default-device marker (devices only)
+                anchors.verticalCenter: parent.verticalCenter
+                visible: showDefault
+                readonly property bool isDefault: node === Pipewire.defaultAudioSink
+                       || node === Pipewire.defaultAudioSource
+                icon: isDefault ? "radio_button_checked" : "radio_button_unchecked"
+                size: 16
+                color: isDefault ? root.theme.accent : root.theme.faint
+                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        if (root.cls(node) === "Audio/Sink")
+                            Pipewire.preferredDefaultAudioSink = node;
+                        else
+                            Pipewire.preferredDefaultAudioSource = node;
+                    } }
+            }
+            MSym {                       // mute toggle
+                anchors.verticalCenter: parent.verticalCenter
+                readonly property bool muted: node.audio && node.audio.muted
+                icon: muted ? "volume_off" : "volume_up"
+                size: 17
+                fill: muted ? 0 : 1
+                color: muted ? root.theme.faint : root.theme.textDim
+                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                    onClicked: if (node.audio) node.audio.muted = !node.audio.muted }
+            }
+        }
+        PillSlider {
+            theme: root.theme
+            width: parent.width
+            value: node.audio ? node.audio.volume : 0
+            onMoved: v => { if (node.audio) node.audio.volume = v; }
+        }
+    }
+
+    component VolLabel: Text {
+        color: root.theme.faint
+        font.family: root.theme.mono
+        font.pixelSize: root.theme.fsSmall
+        font.letterSpacing: root.theme.labelSpacing
+        font.capitalization: Font.AllUppercase
+    }
+
     Column {
         anchors.fill: parent
         spacing: root.theme.gap
@@ -705,9 +842,11 @@ Item {
                     required property var modelData
                     anchors.verticalCenter: parent.verticalCenter
                     text: modelData.label
-                    color: setMa.containsMouse ? root.theme.text : root.theme.textDim
-                    font.family: root.theme.family
+                    color: setMa.containsMouse ? root.theme.text : root.theme.faint
+                    font.family: root.theme.mono
                     font.pixelSize: root.theme.fsSmall
+                    font.letterSpacing: root.theme.labelSpacing
+                    font.capitalization: Font.AllUppercase
                     MouseArea {
                         id: setMa
                         anchors.fill: parent; anchors.margins: -4
@@ -719,17 +858,18 @@ Item {
         }
 
         Row {                                   // tabs
-            spacing: 16
+            spacing: 18
             Repeater {
                 model: ["Devices", "Applications"]
                 delegate: Text {
                     required property int index
                     required property string modelData
                     text: modelData
-                    color: root.tab === index ? root.theme.accent : root.theme.textDim
-                    font.family: root.theme.family
-                    font.pixelSize: root.theme.fsNormal
-                    font.bold: root.tab === index
+                    color: root.tab === index ? root.theme.accent : root.theme.faint
+                    font.family: root.theme.mono
+                    font.pixelSize: root.theme.fsSmall
+                    font.letterSpacing: root.theme.labelSpacing
+                    font.capitalization: Font.AllUppercase
                     MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor
                         onClicked: root.tab = index }
                 }
@@ -738,7 +878,7 @@ Item {
 
         Flickable {
             width: parent.width
-            height: parent.height - 34 - 22 - root.theme.gap
+            height: parent.height - 34 - 26 - root.theme.gap
             contentHeight: col.height
             clip: true
             Column {
@@ -746,61 +886,25 @@ Item {
                 width: parent.width
                 spacing: 12
 
+                // ---- Devices tab: Speakers (sinks) then Microphones (sources),
+                //      kept in separate labelled sections ----
+                VolLabel { text: "Speakers"; visible: root.tab === 0 && root.sinks.length > 0 }
                 Repeater {
-                    model: root.tab === 0 ? root.sinks.concat(root.sources) : root.streams
-                    delegate: Column {
-                        id: devCol
-                        required property var modelData
-                        width: col.width
-                        spacing: 4
-
-                        Row {
-                            width: parent.width
-                            spacing: 6
-                            Text {
-                                width: parent.width - 46
-                                elide: Text.ElideRight
-                                text: {
-                                    const n = devCol.modelData;
-                                    if (root.tab === 1)
-                                        return (n.properties && (n.properties["application.name"] || n.properties["media.name"])) || n.name;
-                                    return n.description || n.nickname || n.name;
-                                }
-                                color: root.theme.text
-                                font.family: root.theme.family
-                                font.pixelSize: root.theme.fsNormal
-                            }
-                            Text {                       // default device marker (devices tab)
-                                visible: root.tab === 0
-                                text: (devCol.modelData === Pipewire.defaultAudioSink
-                                       || devCol.modelData === Pipewire.defaultAudioSource) ? "●" : "○"
-                                color: root.theme.accent
-                                font.family: root.theme.family
-                                font.pixelSize: root.theme.fsSmall
-                                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor
-                                    onClicked: {
-                                        if (root.cls(devCol.modelData) === "Audio/Sink")
-                                            Pipewire.preferredDefaultAudioSink = devCol.modelData;
-                                        else
-                                            Pipewire.preferredDefaultAudioSource = devCol.modelData;
-                                    } }
-                            }
-                            Text {                       // mute toggle
-                                text: (devCol.modelData.audio && devCol.modelData.audio.muted) ? "🔇" : "🔊"
-                                font.family: root.theme.family
-                                font.pixelSize: root.theme.fsSmall
-                                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor
-                                    onClicked: if (devCol.modelData.audio) devCol.modelData.audio.muted = !devCol.modelData.audio.muted }
-                            }
-                        }
-                        PillSlider {
-                            theme: root.theme
-                            width: parent.width
-                            value: devCol.modelData.audio ? devCol.modelData.audio.volume : 0
-                            onMoved: v => { if (devCol.modelData.audio) devCol.modelData.audio.volume = v; }
-                        }
-                    }
+                    model: root.tab === 0 ? root.sinks : []
+                    delegate: NodeRow { required property var modelData; width: col.width; node: modelData; showDefault: true }
                 }
+                VolLabel { text: "Microphones"; visible: root.tab === 0 && root.sources.length > 0 }
+                Repeater {
+                    model: root.tab === 0 ? root.sources : []
+                    delegate: NodeRow { required property var modelData; width: col.width; node: modelData; showDefault: true }
+                }
+
+                // ---- Applications tab ----
+                Repeater {
+                    model: root.tab === 1 ? root.streams : []
+                    delegate: NodeRow { required property var modelData; width: col.width; node: modelData; isStream: true }
+                }
+
                 Text {
                     visible: (root.tab === 0 ? (root.sinks.length + root.sources.length) : root.streams.length) === 0
                     text: root.tab === 0 ? "No audio devices" : "No apps playing audio"
@@ -845,13 +949,21 @@ Item {
         property var theme: root.theme
         width: parent ? parent.width : 0
         height: root.theme.rowHeight
-        radius: root.theme.radiusSmall
-        color: device.connected ? root.theme.accentDim : root.theme.bgHover
+        radius: root.theme.radiusRow
+        color: device.connected ? root.theme.accentDim : root.theme.row
         Row {
             anchors.left: parent.left
-            anchors.leftMargin: 10
+            anchors.leftMargin: 12
             anchors.verticalCenter: parent.verticalCenter
-            spacing: 8
+            spacing: 9
+            MSym {
+                anchors.verticalCenter: parent.verticalCenter
+                visible: device.connected
+                icon: "bluetooth_connected"
+                size: 17
+                fill: 1
+                color: root.theme.accent
+            }
             Text {
                 anchors.verticalCenter: parent.verticalCenter
                 text: device.name || device.deviceName || device.address
@@ -863,19 +975,21 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 visible: device.batteryAvailable
                 text: Math.round(device.battery) + "%"
-                color: root.theme.textDim
+                color: root.theme.faint
                 font.family: root.theme.family
                 font.pixelSize: root.theme.fsSmall
             }
         }
         Text {
             anchors.right: parent.right
-            anchors.rightMargin: 10
+            anchors.rightMargin: 12
             anchors.verticalCenter: parent.verticalCenter
             text: device.connected ? "Disconnect" : (device.paired ? "Connect" : "Pair")
-            color: root.theme.textDim
-            font.family: root.theme.family
+            color: device.connected ? root.theme.accent : root.theme.textDim
+            font.family: root.theme.mono
             font.pixelSize: root.theme.fsSmall
+            font.letterSpacing: root.theme.labelSpacing
+            font.capitalization: Font.AllUppercase
         }
         MouseArea {
             anchors.fill: parent
@@ -889,10 +1003,11 @@ Item {
     }
 
     component SectionLabel: Text {
-        color: root.theme.textDim
-        font.family: root.theme.family
+        color: root.theme.faint
+        font.family: root.theme.mono
         font.pixelSize: root.theme.fsSmall
-        font.bold: true
+        font.letterSpacing: root.theme.labelSpacing
+        font.capitalization: Font.AllUppercase
     }
 
     Column {
@@ -906,9 +1021,11 @@ Item {
             Text {
                 anchors.verticalCenter: parent.verticalCenter
                 text: "Scan"
-                color: root.theme.textDim
-                font.family: root.theme.family
+                color: root.theme.faint
+                font.family: root.theme.mono
                 font.pixelSize: root.theme.fsSmall
+                font.letterSpacing: root.theme.labelSpacing
+                font.capitalization: Font.AllUppercase
             }
             PillToggle {
                 theme: root.theme
@@ -990,13 +1107,13 @@ Item {
 
     Flickable {
         width: parent.width
-        height: parent.height - 22 - root.theme.gap
+        height: parent.height - 26 - root.theme.gap
         contentHeight: col.height
         clip: true
         Column {
             id: col
             width: parent.width
-            spacing: 12
+            spacing: 14
 
             Repeater {
                 model: root.devs
@@ -1004,16 +1121,32 @@ Item {
                     id: devRow
                     required property var modelData
                     width: col.width
-                    spacing: 10
+                    spacing: 14
 
-                    IconImage {
+                    MSym {
                         anchors.verticalCenter: parent.verticalCenter
-                        implicitSize: 28
-                        source: Quickshell.iconPath(devRow.modelData.iconName, "battery")
+                        size: 24
+                        fill: 1
+                        color: root.theme.textDim
+                        // map UPower state / percentage to a Material battery glyph
+                        icon: {
+                            const st = devRow.modelData.state;
+                            if (st === UPowerDeviceState.Charging || st === UPowerDeviceState.PendingCharge)
+                                return "battery_charging_full";
+                            if (st === UPowerDeviceState.Unknown) return "battery_unknown";
+                            const p = devRow.modelData.percentage;
+                            if (p >= 0.95) return "battery_full";
+                            if (p >= 0.80) return "battery_6_bar";
+                            if (p >= 0.60) return "battery_5_bar";
+                            if (p >= 0.45) return "battery_4_bar";
+                            if (p >= 0.30) return "battery_3_bar";
+                            if (p >= 0.15) return "battery_2_bar";
+                            return "battery_1_bar";
+                        }
                     }
                     Column {
                         anchors.verticalCenter: parent.verticalCenter
-                        width: parent.width - 28 - 10 - 60
+                        width: parent.width - 24 - 14 - 60
                         Text {
                             width: parent.width
                             elide: Text.ElideRight
@@ -1026,7 +1159,7 @@ Item {
                         }
                         Text {
                             text: UPowerDeviceState.toString(devRow.modelData.state)
-                            color: root.theme.textDim
+                            color: root.theme.faint
                             font.family: root.theme.family
                             font.pixelSize: root.theme.fsSmall
                         }
@@ -1035,9 +1168,8 @@ Item {
                         anchors.verticalCenter: parent.verticalCenter
                         text: Math.round(devRow.modelData.percentage) + "%"
                         color: root.theme.text
-                        font.family: root.theme.family
-                        font.pixelSize: root.theme.fsLarge
-                        font.bold: true
+                        font.family: root.theme.serif
+                        font.pixelSize: root.theme.fsLarge + 3
                     }
                 }
             }
@@ -1232,15 +1364,13 @@ navigation above) and the grid/list toggle.
 #+begin_src qml
 
 // ================= search row =================
-Text {                                       // back chevron — closes the launcher
+MSym {                                       // back chevron — closes the launcher
     id: backChevron
     anchors.left: parent.left
     anchors.verticalCenter: searchBox.verticalCenter
-    text: "‹"
-    color: backChevMa.containsMouse ? root.theme.text : root.theme.textDim
-    font.family: root.theme.family
-    font.pixelSize: root.theme.fsLarge + 6
-    font.bold: true
+    icon: "chevron_left"
+    size: 20
+    color: backChevMa.containsMouse ? root.theme.text : root.theme.faint
     MouseArea {
         id: backChevMa
         anchors.fill: parent; anchors.margins: -6
@@ -1254,19 +1384,20 @@ Rectangle {
     anchors.left: backChevron.right
     anchors.leftMargin: 8
     anchors.right: parent.right
-    height: 34
-    radius: root.theme.radiusSmall
-    color: root.theme.bgHover
+    height: 40
+    radius: root.theme.radiusRow
+    color: root.theme.row
     border.color: search.activeFocus ? root.theme.accent : root.theme.border
     border.width: 1
 
-    IconImage {
+    MSym {
         id: searchIcon
         anchors.left: parent.left
-        anchors.leftMargin: 10
+        anchors.leftMargin: 12
         anchors.verticalCenter: parent.verticalCenter
-        implicitSize: 16
-        source: Quickshell.iconPath("search", "system-search")
+        icon: "search"
+        size: 18
+        color: search.activeFocus ? root.theme.accent : root.theme.faint
     }
     TextInput {
         id: search
@@ -1303,8 +1434,9 @@ Rectangle {
             anchors.fill: parent
             verticalAlignment: Text.AlignVCenter
             visible: search.text.length === 0
-            text: "Search apps  ·  type a sum to calculate"
-            color: root.theme.textDim
+            textFormat: Text.StyledText
+            text: 'Search apps  ·  <font face="' + root.theme.serif + '"><i>type a sum to calculate</i></font>'
+            color: root.theme.faint
             font.family: root.theme.family
             font.pixelSize: root.theme.fsNormal
             elide: Text.ElideRight
@@ -1313,16 +1445,18 @@ Rectangle {
     Rectangle {                              // grid / list toggle
         id: gridToggle
         anchors.right: parent.right
-        anchors.rightMargin: 4
+        anchors.rightMargin: 5
         anchors.verticalCenter: parent.verticalCenter
-        width: 28; height: 28
-        radius: root.theme.radiusSmall
-        color: gridMa.containsMouse ? root.theme.bg : "transparent"
-        IconImage {
+        width: 30; height: 30
+        radius: root.theme.radiusBtn
+        color: root.theme.accentSoft
+        MSym {
             anchors.centerIn: parent
-            implicitSize: 18
-            source: Quickshell.iconPath(root.settings.grid ? "view-list-symbolic" : "view-grid-symbolic",
-                                        root.settings.grid ? "view-list" : "view-grid")
+            icon: root.settings.grid ? "view_list" : "grid_view"
+            size: 19
+            fill: 1
+            weight: 500
+            color: root.theme.accent
         }
         MouseArea {
             id: gridMa
@@ -1351,12 +1485,14 @@ Row {
     anchors.bottomMargin: 6
     spacing: 12
 
-    // do-not-disturb: a bell while notifications pop, a struck-through bell (and
-    // full opacity, the "on" cue) while DND silences them into history only.
-    IconImage {
-        implicitSize: 16
-        opacity: (root.notifs.dnd || dndMa.containsMouse) ? 1 : 0.65
-        source: Quickshell.iconPath(root.notifs.dnd ? "notifications-disabled" : "notifications", root.notifs.dnd ? "notification-disabled" : "notification")
+    // do-not-disturb: a bell while notifications pop, a slashed bell (and the
+    // accent colour, the "on" cue) while DND silences them into history only.
+    MSym {
+        icon: root.notifs.dnd ? "notifications_off" : "notifications"
+        size: 18
+        fill: root.notifs.dnd ? 1 : 0
+        color: root.notifs.dnd ? root.theme.accent
+             : (dndMa.containsMouse ? root.theme.text : root.theme.faint)
 
         MouseArea {
             id: dndMa
@@ -1366,13 +1502,6 @@ Row {
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
             onClicked: root.notifs.dnd = !root.notifs.dnd
-        }
-
-        Behavior on opacity {
-            NumberAnimation {
-                duration: root.theme.animFast
-            }
-
         }
 
     }
@@ -1399,33 +1528,38 @@ Row {
         // `confirm` entries pop the full-screen confirmation first (`action` is
         // the word shown on it); lock fires immediately.
         model: [{
-            "ic": "system-lock-screen",
+            "ic": "lock",
+            "col": root.theme.accent,
             "action": "",
             "confirm": false,
             "cmd": ["loginctl", "lock-session"]
         }, {
-            "ic": "system-log-out",
+            "ic": "switch_account",
+            "col": root.theme.good,
             "action": "logout",
             "confirm": true,
             "cmd": ["gdbus", "call", "--session", "--dest", "org.kde.Shutdown", "--object-path", "/Shutdown", "--method", "org.kde.Shutdown.logout"]
         }, {
-            "ic": "system-reboot",
+            "ic": "restart_alt",
+            "col": "#d98a3a",
             "action": "reboot",
             "confirm": true,
             "cmd": ["gdbus", "call", "--session", "--dest", "org.kde.Shutdown", "--object-path", "/Shutdown", "--method", "org.kde.Shutdown.logoutAndReboot"]
         }, {
-            "ic": "system-shutdown",
+            "ic": "power_settings_new",
+            "col": root.theme.accent,
             "action": "shutdown",
             "confirm": true,
             "cmd": ["gdbus", "call", "--session", "--dest", "org.kde.Shutdown", "--object-path", "/Shutdown", "--method", "org.kde.Shutdown.logoutAndShutdown"]
         }]
 
-        delegate: IconImage {
+        delegate: MSym {
             required property var modelData
 
-            implicitSize: 16
-            opacity: pma.containsMouse ? 1 : 0.65
-            source: Quickshell.iconPath(modelData.ic, "application-x-executable")
+            icon: modelData.ic
+            size: 18
+            opacity: pma.containsMouse ? 1 : 0.82
+            color: modelData.col
 
             MouseArea {
                 id: pma
@@ -1477,28 +1611,41 @@ Item {
         anchors.right: parent.right
         height: visible ? root.theme.rowHeight : 0
         visible: root.calcResult !== null
-        radius: root.theme.radiusSmall
-        color: calcMa.containsMouse ? root.theme.bgHover : root.theme.bgElevated
+        radius: root.theme.radiusRow
+        color: calcMa.containsMouse ? root.theme.rowHi : root.theme.bgElevated
+        border.color: root.theme.border
+        border.width: 1
 
         Text {
             anchors.left: parent.left
-            anchors.leftMargin: 12
+            anchors.leftMargin: 14
             anchors.verticalCenter: parent.verticalCenter
             text: "= " + root.calcResult
             color: root.theme.accent
-            font.family: root.theme.family
-            font.pixelSize: root.theme.fsLarge
-            font.bold: true
+            font.family: root.theme.serif
+            font.pixelSize: root.theme.fsLarge + 3
         }
 
-        Text {
+        Row {
             anchors.right: parent.right
             anchors.rightMargin: 12
             anchors.verticalCenter: parent.verticalCenter
-            text: "copy"
-            color: root.theme.textDim
-            font.family: root.theme.family
-            font.pixelSize: root.theme.fsSmall
+            spacing: 5
+            MSym {
+                anchors.verticalCenter: parent.verticalCenter
+                icon: "content_copy"
+                size: 14
+                color: root.theme.faint
+            }
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                text: "Copy"
+                color: root.theme.faint
+                font.family: root.theme.mono
+                font.pixelSize: root.theme.fsSmall
+                font.letterSpacing: root.theme.labelSpacing
+                font.capitalization: Font.AllUppercase
+            }
         }
 
         MouseArea {
@@ -1544,9 +1691,9 @@ Item {
 
                 width: list.width
                 height: root.theme.rowHeight
-                radius: root.theme.radiusSmall
+                radius: root.theme.radiusRow
                 // keyboard-selected row gets the accent tint; hover is the softer bg
-                color: appRow.index === root.currentIndex ? root.theme.accentDim : rowMa.containsMouse ? root.theme.bgHover : "transparent"
+                color: appRow.index === root.currentIndex ? root.theme.accentDim : rowMa.containsMouse ? root.theme.rowHi : "transparent"
 
                 Row {
                     anchors.left: parent.left
@@ -1576,17 +1723,18 @@ Item {
                 }
                 // favourite marker (filled when favourite, on hover otherwise)
 
-                Text {
+                MSym {
                     id: favStar
 
                     anchors.right: parent.right
-                    anchors.rightMargin: 10
+                    anchors.rightMargin: 12
                     anchors.verticalCenter: parent.verticalCenter
                     visible: root.isFav(appRow.modelData) || rowMa.containsMouse
-                    text: root.isFav(appRow.modelData) ? "★" : "☆"
-                    color: root.isFav(appRow.modelData) ? root.theme.accent : root.theme.textDim
-                    font.family: root.theme.family
-                    font.pixelSize: root.theme.fsNormal
+                    icon: "star"
+                    size: 16
+                    fill: root.isFav(appRow.modelData) ? 1 : 0
+                    weight: 500
+                    color: root.isFav(appRow.modelData) ? root.theme.accent : root.theme.faint
 
                     MouseArea {
                         anchors.fill: parent
@@ -1725,9 +1873,11 @@ Item {
                         height: tile.height - 8
                         anchors.horizontalCenter: parent.horizontalCenter
                         anchors.verticalCenter: parent.verticalCenter
-                        radius: root.theme.radiusSmall
+                        radius: root.theme.radiusTile
                         // keyboard-selected tile gets the accent tint; hover is softer
-                        color: tile.index === root.currentIndex ? root.theme.accentDim : tile.containsMouse ? root.theme.bgHover : "transparent"
+                        color: tile.index === root.currentIndex ? root.theme.accentDim : tile.containsMouse ? root.theme.rowHi : "transparent"
+                        border.width: tile.index === root.currentIndex ? 1 : 0
+                        border.color: root.theme.accent
                         z: tileBg.Drag.active ? 2 : 0
                         Drag.active: tile.drag.active
                         Drag.source: tile
@@ -1761,15 +1911,16 @@ Item {
                         }
                         // favourite marker
 
-                        Text {
+                        MSym {
                             anchors.top: parent.top
                             anchors.right: parent.right
-                            anchors.margins: 4
+                            anchors.margins: 7
                             visible: root.isFav(tile.modelData) || tile.containsMouse
-                            text: root.isFav(tile.modelData) ? "★" : "☆"
-                            color: root.isFav(tile.modelData) ? root.theme.accent : root.theme.textDim
-                            font.family: root.theme.family
-                            font.pixelSize: root.theme.fsNormal
+                            icon: "star"
+                            size: 15
+                            fill: root.isFav(tile.modelData) ? 1 : 0
+                            weight: 500
+                            color: root.isFav(tile.modelData) ? root.theme.accent : root.theme.faint
 
                             MouseArea {
                                 anchors.fill: parent
@@ -1844,9 +1995,9 @@ Rectangle {
     }
     visible: app !== null
     x: px; y: py
-    width: 200
+    width: 210
     height: ctxCol.height + 8
-    radius: root.theme.radiusSmall
+    radius: root.theme.radiusCard
     color: root.theme.bgElevated
     border.color: root.theme.border
     border.width: 1
@@ -1859,20 +2010,22 @@ Rectangle {
 
         Text {
             width: parent.width; elide: Text.ElideRight
-            leftPadding: 6; bottomPadding: 4; topPadding: 2
+            leftPadding: 8; bottomPadding: 5; topPadding: 3
             text: ctx.app ? ctx.app.name : ""
-            color: root.theme.textDim
-            font.family: root.theme.family
-            font.pixelSize: root.theme.fsSmall; font.bold: true
+            color: root.theme.faint
+            font.family: root.theme.mono
+            font.pixelSize: root.theme.fsSmall
+            font.letterSpacing: root.theme.labelSpacing
+            font.capitalization: Font.AllUppercase
         }
         Repeater {                            // desktop actions (New Window, …)
             model: ctx.app ? ctx.app.actions : []
             delegate: Rectangle {
                 required property var modelData
-                width: ctxCol.width; height: 28; radius: root.theme.radiusSmall
-                color: actMa.containsMouse ? root.theme.bgHover : "transparent"
+                width: ctxCol.width; height: 30; radius: root.theme.radiusBtn
+                color: actMa.containsMouse ? root.theme.rowHi : "transparent"
                 Text {
-                    anchors.verticalCenter: parent.verticalCenter; x: 8
+                    anchors.verticalCenter: parent.verticalCenter; x: 10
                     font.family: root.theme.family
                     text: modelData.name; color: root.theme.text; font.pixelSize: root.theme.fsNormal
                 }
@@ -1883,13 +2036,25 @@ Rectangle {
             }
         }
         Rectangle {                           // favourite toggle
-            width: ctxCol.width; height: 28; radius: root.theme.radiusSmall
-            color: favMa.containsMouse ? root.theme.bgHover : "transparent"
-            Text {
-                anchors.verticalCenter: parent.verticalCenter; x: 8
-                text: (ctx.app && root.isFav(ctx.app)) ? "★  Remove favourite" : "☆  Add favourite"
-                font.family: root.theme.family
-                color: root.theme.text; font.pixelSize: root.theme.fsNormal
+            width: ctxCol.width; height: 30; radius: root.theme.radiusBtn
+            color: favMa.containsMouse ? root.theme.rowHi : "transparent"
+            Row {
+                anchors.verticalCenter: parent.verticalCenter; x: 10
+                spacing: 8
+                MSym {
+                    anchors.verticalCenter: parent.verticalCenter
+                    icon: "star"
+                    size: 16
+                    fill: (ctx.app && root.isFav(ctx.app)) ? 1 : 0
+                    weight: 500
+                    color: (ctx.app && root.isFav(ctx.app)) ? root.theme.accent : root.theme.faint
+                }
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: (ctx.app && root.isFav(ctx.app)) ? "Remove favourite" : "Add favourite"
+                    font.family: root.theme.family
+                    color: root.theme.text; font.pixelSize: root.theme.fsNormal
+                }
             }
             MouseArea {
                 id: favMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
@@ -2204,8 +2369,8 @@ Rectangle {
     readonly property real timeoutMs: notifs ? notifs.timeoutFor(notification) : 0
     readonly property real progress: notifs ? notifs.progressFor(notification) : 0
 
-    color: surface ? theme.bgElevated : "transparent"
-    radius: theme.radiusSmall
+    color: surface ? theme.card : "transparent"
+    radius: theme.radiusCard
     border.width: surface ? 1 : 0
     border.color: critical ? theme.danger : theme.border
     implicitWidth: 420
@@ -2320,12 +2485,11 @@ Rectangle {
                     }
                 }
 
-                Text {
+                MSym {
                     anchors.centerIn: parent
-                    text: "✕"
-                    color: closeMa.containsMouse ? root.theme.text : root.theme.textDim
-                    font.family: root.theme.family
-                    font.pixelSize: root.theme.fsSmall
+                    icon: "close"
+                    size: 17
+                    color: closeMa.containsMouse ? root.theme.text : root.theme.faint
                 }
                 MouseArea {
                     id: closeMa
@@ -2360,7 +2524,7 @@ Rectangle {
                 anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
                 text: root.notification ? root.notifs.relTime(root.notification.id) : ""
-                color: root.theme.textDim
+                color: root.theme.faint
                 font.family: root.theme.family
                 font.pixelSize: root.theme.fsSmall
             }
@@ -2368,23 +2532,29 @@ Rectangle {
                 id: actionRow
                 anchors.right: parent.right
                 anchors.verticalCenter: parent.verticalCenter
-                spacing: 6
+                spacing: 7
                 Repeater {
                     model: root.notification ? root.notification.actions : []
                     delegate: Rectangle {
                         required property var modelData
+                        required property int index
                         visible: modelData.identifier !== "default"
-                        width: visible ? actLabel.implicitWidth + 16 : 0
-                        height: 24; radius: root.theme.radiusSmall
-                        color: actMa.containsMouse ? root.theme.bgHover : root.theme.bg
-                        border.color: root.theme.border; border.width: 1
+                        // first action reads as the primary (accent) button
+                        readonly property bool primary: index === 0
+                        width: visible ? actLabel.implicitWidth + 24 : 0
+                        height: 26; radius: root.theme.radiusBtn
+                        color: primary ? (actMa.containsMouse ? root.theme.danger : root.theme.accent)
+                                       : (actMa.containsMouse ? root.theme.rowHi : root.theme.row)
+                        border.color: root.theme.border; border.width: primary ? 0 : 1
                         Text {
                             id: actLabel
                             anchors.centerIn: parent
                             text: modelData.text
-                            color: root.theme.text
-                            font.family: root.theme.family
+                            color: parent.primary ? "#ffffff" : root.theme.text
+                            font.family: root.theme.mono
                             font.pixelSize: root.theme.fsSmall
+                            font.letterSpacing: root.theme.labelSpacing
+                            font.capitalization: Font.AllUppercase
                         }
                         MouseArea {
                             id: actMa
@@ -2400,9 +2570,9 @@ Rectangle {
         Rectangle {
             width: parent.width
             visible: !!(root.notification && root.notification.hasInlineReply)
-            height: visible ? 30 : 0
-            radius: root.theme.radiusSmall
-            color: root.theme.bgHover
+            height: visible ? 32 : 0
+            radius: root.theme.radiusRow
+            color: root.theme.row
             border.width: 1
             border.color: reply.activeFocus ? root.theme.accent : root.theme.border
             TextInput {
@@ -2474,7 +2644,9 @@ Item {
     // The gutter is inside the stack's own width, so the morph pill (sized to this)
     // doesn't clip the button and the input mask still covers it.
     readonly property int cardWidth: 420
-    readonly property int dismissRail: rep.count > 1 ? 104 : 0
+    // the right gutter is sized to hold the "dismiss all" pill fully clear of the
+    // card (its width + a gap), so it never overlaps the notification.
+    readonly property int dismissRail: rep.count > 1 ? Math.ceil(dismissAll.width) + 16 : 0
 
     width: cardWidth + dismissRail * 2
     implicitWidth: cardWidth + dismissRail * 2
@@ -2550,11 +2722,11 @@ Item {
         z: 10000
         anchors.right: parent.right
         anchors.top: parent.top
-        anchors.topMargin: stack.theme.pad
-        height: 22
-        width: dismissRow.implicitWidth + 16
+        anchors.topMargin: 0            // aligned with the top card's top edge
+        height: 26
+        width: dismissRow.implicitWidth + 20
         radius: height / 2
-        color: dismissMa.containsMouse ? stack.theme.danger : stack.theme.bgElevated
+        color: dismissMa.containsMouse ? stack.theme.danger : stack.theme.bg
         border.color: stack.theme.border
         border.width: 1
         opacity: visible ? 1 : 0
@@ -2562,20 +2734,21 @@ Item {
         Row {
             id: dismissRow
             anchors.centerIn: parent
-            spacing: 5
+            spacing: 6
             Text {
                 anchors.verticalCenter: parent.verticalCenter
                 text: "Dismiss all"
-                color: stack.theme.text
-                font.family: stack.theme.family
+                color: dismissMa.containsMouse ? "#ffffff" : stack.theme.textDim
+                font.family: stack.theme.mono
                 font.pixelSize: stack.theme.fsSmall
+                font.letterSpacing: stack.theme.labelSpacing
+                font.capitalization: Font.AllUppercase
             }
-            Text {
+            MSym {
                 anchors.verticalCenter: parent.verticalCenter
-                text: "✕"
-                color: dismissMa.containsMouse ? stack.theme.text : stack.theme.textDim
-                font.family: stack.theme.family
-                font.pixelSize: stack.theme.fsSmall
+                icon: "close"
+                size: 15
+                color: dismissMa.containsMouse ? "#ffffff" : stack.theme.faint
             }
         }
         MouseArea {
@@ -2621,8 +2794,10 @@ Item {
                 visible: root.notifs.grouped.length > 0
                 text: "Clear all"
                 color: clearMa.containsMouse ? root.theme.danger : root.theme.textDim
-                font.family: root.theme.family
+                font.family: root.theme.mono
                 font.pixelSize: root.theme.fsSmall
+                font.letterSpacing: root.theme.labelSpacing
+                font.capitalization: Font.AllUppercase
                 MouseArea {
                     id: clearMa
                     anchors.fill: parent; anchors.margins: -4
@@ -2634,7 +2809,7 @@ Item {
 
         Flickable {
             width: parent.width
-            height: parent.height - 22 - root.theme.gap
+            height: parent.height - 26 - root.theme.gap
             contentHeight: groupsCol.height
             clip: true
             Column {
@@ -2658,18 +2833,21 @@ Item {
                                 anchors.left: parent.left
                                 anchors.verticalCenter: parent.verticalCenter
                                 text: modelData.app + "  ·  " + modelData.items.length
-                                color: root.theme.textDim
-                                font.family: root.theme.family
+                                color: root.theme.faint
+                                font.family: root.theme.mono
                                 font.pixelSize: root.theme.fsSmall
-                                font.bold: true
+                                font.letterSpacing: root.theme.labelSpacing
+                                font.capitalization: Font.AllUppercase
                             }
                             Text {
                                 anchors.right: parent.right
                                 anchors.verticalCenter: parent.verticalCenter
                                 text: "Clear"
-                                color: grpClearMa.containsMouse ? root.theme.danger : root.theme.textDim
-                                font.family: root.theme.family
+                                color: grpClearMa.containsMouse ? root.theme.danger : root.theme.faint
+                                font.family: root.theme.mono
                                 font.pixelSize: root.theme.fsSmall
+                                font.letterSpacing: root.theme.labelSpacing
+                                font.capitalization: Font.AllUppercase
                                 MouseArea {
                                     id: grpClearMa
                                     anchors.fill: parent; anchors.margins: -4
@@ -2963,19 +3141,19 @@ Item {
     signal switchRequested(string id)
 
     implicitWidth: dotRow.width
-    implicitHeight: 8
+    implicitHeight: 9
 
     Row {
         id: dotRow
-        spacing: 4                       // 8px dot + 4 -> pitch 12
+        spacing: 4                       // 9px dot + 4 -> pitch 13
         Repeater {
             model: root.desktops
             delegate: Rectangle {
                 required property var modelData
-                width: 8; height: 8; radius: 4
+                width: 9; height: 9; radius: 4.5
                 color: "transparent"
-                border.color: root.theme.textDim
-                border.width: 1
+                border.color: root.theme.faint
+                border.width: 1.5
                 MouseArea {
                     anchors.fill: parent
                     enabled: root.interactive
@@ -2986,11 +3164,11 @@ Item {
         }
     }
     Rectangle {                          // active indicator, slides on switch
-        width: 8; height: 8; radius: 4
+        width: 9; height: 9; radius: 4.5
         y: 0
-        color: root.theme.textDim
+        color: root.theme.accent
         visible: root.activeIdx >= 0
-        x: Math.max(0, root.activeIdx) * 12
+        x: Math.max(0, root.activeIdx) * 13
         Behavior on x { NumberAnimation { duration: 300; easing.type: Easing.OutCubic } }
     }
 }
@@ -3031,15 +3209,15 @@ Row {
             id: appItem
             required property var modelData
             readonly property bool active: appItem.modelData.wins.some(w => w.uuid === root.activeWindow)
-            width: root.theme.iconCell; height: root.theme.iconCell
+            width: root.theme.appCell; height: root.theme.appCell
             // ask the shared hover square for a little extra padding around app
             // tiles (their icons run larger than the menu/tray glyphs).
-            readonly property int hoverPad: 4
+            readonly property int hoverPad: 5
             IconImage {
                 id: appIcon
                 anchors.top: parent.top
                 anchors.horizontalCenter: parent.horizontalCenter
-                implicitSize: 22
+                implicitSize: root.theme.appIcon
                 // some icon names resolve to a path that still fails to decode;
                 // when that happens fall back to the generic app glyph so a tile
                 // never renders blank.
@@ -3049,21 +3227,28 @@ Row {
                         : Quickshell.iconPath(appItem.modelData.icon, "application-x-executable")
                 onStatusChanged: if (status === Image.Error) appIcon.failed = true;
             }
-            Text {                       // window-count badge (2+ windows)
+            Rectangle {                  // window-count badge (2+ windows)
                 visible: appItem.modelData.wins.length > 1
                 anchors.top: parent.top
                 anchors.right: parent.right
-                text: appItem.modelData.wins.length
-                font.family: root.theme.family
-                color: root.theme.text; font.pixelSize: 9; font.bold: true
+                anchors.topMargin: -3
+                anchors.rightMargin: -3
+                width: 15; height: 15; radius: 7.5
+                color: root.theme.accent
+                Text {
+                    anchors.centerIn: parent
+                    text: appItem.modelData.wins.length
+                    font.family: root.theme.family
+                    color: "#ffffff"; font.pixelSize: 9; font.bold: true
+                }
             }
             Rectangle {                  // active / running indicator
                 anchors.bottom: parent.bottom
                 anchors.horizontalCenter: parent.horizontalCenter
                 height: 2
                 radius: 1
-                width: appItem.active ? 16 : 6
-                color: appItem.active ? root.theme.accent : root.theme.textDim
+                width: appItem.active ? 20 : 7
+                color: appItem.active ? root.theme.accent : root.theme.faint
                 Behavior on width { NumberAnimation { duration: root.theme.animFast } }
             }
             MouseArea {
@@ -3097,8 +3282,6 @@ pragma ComponentBehavior: Bound
 // The hover highlight is NOT drawn here (only the open-menu selection): each icon
 // reports itself via itemEntered (on enter only) so the shared hover square jumps to it.
 import QtQuick
-import Quickshell
-import Quickshell.Widgets
 import Quickshell.Services.Pipewire
 import Quickshell.Services.UPower
 
@@ -3110,36 +3293,43 @@ Row {
     signal menuRequested(int menu)
     signal itemEntered(var item)         // icon hovered -> move the shared indicator
 
-    spacing: root.theme.iconSpacing
+    // live glyphs: volume follows Pipewire mute; battery follows UPower state.
+    readonly property bool muted: Pipewire.defaultAudioSink && Pipewire.defaultAudioSink.audio && Pipewire.defaultAudioSink.audio.muted
+    function batteryIcon() {
+        const d = UPower.displayDevice;
+        if (!d || !d.isPresent) return "power";
+        if (d.state === UPowerDeviceState.Charging || d.state === UPowerDeviceState.PendingCharge)
+            return "battery_charging_full";
+        const p = d.percentage;
+        if (p >= 0.95) return "battery_full";
+        if (p >= 0.60) return "battery_5_bar";
+        if (p >= 0.30) return "battery_3_bar";
+        return "battery_2_bar";
+    }
+
+    spacing: root.theme.iconSpacing + 4
     Repeater {
         model: [
-            { ic: "network-wireless", menu: 0 },
-            {
-                ic: (Pipewire.defaultAudioSink && Pipewire.defaultAudioSink.audio && Pipewire.defaultAudioSink.audio.muted)
-                    ? "audio-volume-muted"
-                    : "audio-volume-high",
-                menu: 1
-            },
-            { ic: "bluetooth", menu: 2 },
-            {
-                ic: (UPower.displayDevice && UPower.displayDevice.iconName)
-                    ? UPower.displayDevice.iconName
-                    : "battery",
-                menu: 3
-            },
-            { ic: "preferences-desktop-notification", menu: 4 }
+            { ic: "wifi",          fill: 0, menu: 0 },
+            { ic: root.muted ? "volume_off" : "volume_up", fill: root.muted ? 0 : 1, menu: 1 },
+            { ic: "bluetooth",     fill: 0, menu: 2 },
+            { ic: root.batteryIcon(), fill: 1, menu: 3 },
+            { ic: "notifications", fill: 0, menu: 4 }
         ]
         delegate: Rectangle {
             id: statusItem
             required property var modelData
-            width: root.theme.iconCell; height: root.theme.iconCell; radius: root.theme.radiusSmall
+            readonly property bool selected: root.open && root.menu === modelData.menu
+            width: root.theme.iconCell + 4; height: root.theme.iconCell + 4; radius: root.theme.radiusBtn
             // only the open-menu selection is drawn here; hover is the shared square
-            color: (root.open && root.menu === modelData.menu) ? root.theme.accentDim : "transparent"
+            color: selected ? root.theme.accentDim : "transparent"
             Behavior on color { ColorAnimation { duration: root.theme.animFast } }
-            IconImage {
+            MSym {
                 anchors.centerIn: parent
-                implicitSize: 18
-                source: Quickshell.iconPath(modelData.ic, "application-x-executable")
+                icon: modelData.ic
+                size: 21
+                fill: modelData.fill
+                color: statusItem.selected ? root.theme.accent : root.theme.textDim
             }
             MouseArea {
                 id: statusMa
@@ -3208,15 +3398,15 @@ Row {
         // what's behind it (readable on any backdrop)
         color: root.solid ? root.theme.text
              : Qt.rgba(root.theme.text.r, root.theme.text.g, root.theme.text.b, 0.78)
-        font.family: root.theme.mono
-        font.pixelSize: root.theme.fsNormal
+        font.family: root.theme.serif
+        font.pixelSize: root.theme.fsLarge
     }
     // camera / mic indicators — static model so the delegates persist (a reactive
     // model would rebuild and skip the animation); each reads its live state by index.
     Repeater {
         model: [
-            { ic: "camera-web",             fb: "camera-video" },
-            { ic: "audio-input-microphone", fb: "microphone-sensitivity-high" }
+            { ic: "videocam", col: root.theme.good },
+            { ic: "mic",      col: root.theme.textDim }
         ]
         delegate: Item {
             id: privIcon
@@ -3224,15 +3414,18 @@ Row {
             required property var modelData
             readonly property bool on: index === 0 ? root.cameraOn : root.micOn
             anchors.verticalCenter: parent.verticalCenter
-            width: privIcon.on ? 14 : 0
-            height: 14
+            width: privIcon.on ? 15 : 0
+            height: 15
             visible: width > 0 || privImg.opacity > 0   // stay alive through the shrink-out
             Behavior on width { NumberAnimation { duration: root.theme.animFast; easing.type: Easing.OutCubic } }
-            IconImage {
+            MSym {
                 id: privImg
                 anchors.centerIn: parent
-                implicitSize: 14
-                source: Quickshell.iconPath(privIcon.modelData.ic, privIcon.modelData.fb)
+                icon: privIcon.modelData.ic
+                size: 15
+                fill: 1
+                weight: 500
+                color: privIcon.modelData.col
                 opacity: privIcon.on ? 1 : 0
                 scale: privIcon.on ? 1 : 0.4
                 Behavior on opacity { NumberAnimation { duration: root.theme.animFast } }
@@ -3307,12 +3500,12 @@ Row {
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
                         text: root.fromLabel; color: root.theme.textDim
-                        font.family: root.theme.family; font.pixelSize: root.theme.fsNormal; font.bold: true
+                        font.family: root.theme.mono; font.pixelSize: root.theme.fsNormal
+                        font.letterSpacing: root.theme.labelSpacing; font.capitalization: Font.AllUppercase
                     }
-                    Text {                       // arrow flashes during the animate phase
+                    MSym {                       // arrow flashes during the animate phase
                         anchors.verticalCenter: parent.verticalCenter
-                        text: "→"; color: root.theme.accent
-                        font.family: root.theme.family; font.pixelSize: root.theme.fsNormal; font.bold: true
+                        icon: "arrow_right_alt"; size: 18; color: root.theme.accent
                         opacity: root.phase === 2 ? 1 : 0.3
                         Behavior on opacity { NumberAnimation { duration: 110 } }
                         SequentialAnimation on scale {
@@ -3324,7 +3517,8 @@ Row {
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
                         text: root.toLabel; color: root.theme.text
-                        font.family: root.theme.family; font.pixelSize: root.theme.fsNormal; font.bold: true
+                        font.family: root.theme.mono; font.pixelSize: root.theme.fsNormal
+                        font.letterSpacing: root.theme.labelSpacing; font.capitalization: Font.AllUppercase
                     }
                 }
 
@@ -3372,7 +3566,7 @@ Rectangle {
 
     width: 240
     height: ctxCol.height + 16
-    radius: root.theme.radiusSmall
+    radius: root.theme.radiusCard
     color: root.theme.bgElevated
     border.color: root.theme.border; border.width: 1
 
@@ -3384,19 +3578,21 @@ Rectangle {
 
         Text {
             width: parent.width; elide: Text.ElideRight
+            leftPadding: 2
             text: root.entry ? root.entry.name : (root.group ? root.group.icon : "")
-            font.family: root.theme.family
-            color: root.theme.textDim; font.pixelSize: root.theme.fsSmall; font.bold: true
-            bottomPadding: 4
+            font.family: root.theme.mono
+            color: root.theme.faint; font.pixelSize: root.theme.fsSmall
+            font.letterSpacing: root.theme.labelSpacing; font.capitalization: Font.AllUppercase
+            bottomPadding: 5
         }
         Repeater {                        // launcher actions (New Window, …)
             model: root.entry ? root.entry.actions : []
             delegate: Rectangle {
                 required property var modelData
-                width: ctxCol.width; height: 28; radius: root.theme.radiusSmall
-                color: ma.containsMouse ? root.theme.bgHover : "transparent"
+                width: ctxCol.width; height: 30; radius: root.theme.radiusBtn
+                color: ma.containsMouse ? root.theme.rowHi : "transparent"
                 Text {
-                    anchors.verticalCenter: parent.verticalCenter; x: 8
+                    anchors.verticalCenter: parent.verticalCenter; x: 10
                     font.family: root.theme.family
                     text: modelData.name; color: root.theme.text; font.pixelSize: root.theme.fsNormal
                 }
@@ -3410,11 +3606,11 @@ Rectangle {
             model: root.group ? root.group.wins : []
             delegate: Rectangle {
                 required property var modelData
-                width: ctxCol.width; height: 28; radius: root.theme.radiusSmall
-                color: wma.containsMouse ? root.theme.bgHover : "transparent"
+                width: ctxCol.width; height: 30; radius: root.theme.radiusBtn
+                color: wma.containsMouse ? root.theme.rowHi : "transparent"
                 Text {
-                    anchors.verticalCenter: parent.verticalCenter; x: 8
-                    width: parent.width - 16; elide: Text.ElideRight
+                    anchors.verticalCenter: parent.verticalCenter; x: 10
+                    width: parent.width - 20; elide: Text.ElideRight
                     font.family: root.theme.family
                     text: modelData.title; color: root.theme.text; font.pixelSize: root.theme.fsSmall
                 }
@@ -3446,9 +3642,10 @@ fades to opacity 0. A notification still morphs through (=notifMorph= overrides
 *Stages.* A single =pill= =Item= animates =width=/=height= between stages via
 =Behavior=, cross-fading content layers per stage:
 1. *collapsed* (56×28): =hh:mm=.
-2. *hovered* (=dash=, 520×116): two balanced rows — Row 1 date/time with the
-   virtual-desktop dots stacked beneath it (left) | grouped app icons (right);
-   Row 2 a launcher button (left) | system tray + status icons
+2. *hovered* (=dash=, 520×116): two balanced rows separated by a hairline rule —
+   Row 1 date/time (serif clock over a mono date label) with the virtual-desktop
+   dots stacked beneath it (left) | grouped app icons (right); Row 2 a launcher
+   button (left) | system tray + status icons
    (network/volume/bluetooth/battery/notifications) (right). The launcher, status
    icons and tray icons are the same square =iconCell= size at =iconSpacing= apart;
    the app tiles match the cell but are spaced 1.5× wider (their icons run larger).
@@ -3456,12 +3653,13 @@ fades to opacity 0. A notification still morphs through (=notifMorph= overrides
    item as the pointer enters each (growing a little behind the larger app tiles).
    It *stays* on the last item once the pointer leaves and only resets to the
    launcher icon when the dashboard collapses (=win.hoverItem= / =hoverEnter=).
-3. *open* (470 tall): control panel. Both rows stay visible; Row 2 doubles as the
-   menu switcher (active icon highlighted). A =Loader= below a divider shows the menu
-   for =win.menu= (default 4 = notification history); each menu's =MenuHeader=
-   chevron collapses the panel via =closeRequested()=.
-4. *launcher* (600×470): the launcher takes the menu pane's place (see
-   [[*Launcher.qml][§ Launcher.qml]]).
+3. *open* (470 tall): control panel. The two dashboard rows *fade out* so the menu
+   fills the pill from the top; a =Loader= shows the menu for =win.menu= (default
+   4 = notification history). Each menu carries its own =MenuHeader= (back chevron +
+   serif title); the chevron collapses the panel via =closeRequested()=, returning
+   to the dashboard where another status icon can open a different menu.
+4. *launcher* (600×470): the launcher takes the menu pane's place — the rows fade
+   out here too (see [[*Launcher.qml][§ Launcher.qml]]).
 
 *Keyboard focus.* The surface grabs the keyboard only while a panel is open:
 launcher → =Exclusive= (focuses even when opened by the shortcut; arrow nav works),
@@ -3995,6 +4193,10 @@ Variants {
         // launcher pill width
         readonly property int openHeight: 470
         // open + launcher pill height
+        // hovered dashboard geometry (its own generous, HTML-scale size — distinct
+        // from the open menu's 520 so the two rows can breathe).
+        readonly property int hoverWidth: 640
+        readonly property int hoverHeight: 158
         // a notification is showing AND the pill isn't in a clicked/menu state:
         // the collapsed pill morphs into the notification card (hover holds it).
         // While clicked/launcher/ctx, notifications float *below* the pill instead.
@@ -4154,8 +4356,8 @@ Variants {
 
             anchors.horizontalCenter: parent.horizontalCenter
             y: 6
-            width: win.showBurst ? (burstLoader.item ? burstLoader.item.implicitWidth : 96) : win.launcher ? win.launcherWidth : (win.notifMorph ? (morphStack.item ? morphStack.item.implicitWidth : 420) : (win.dash ? 520 : (56 + root.privacyCount * 20 + (notifs.grouped.length > 0 ? 14 : 0))))
-            height: win.showBurst ? 28 : (win.open || win.launcher) ? win.openHeight : (win.notifMorph ? morphStack.implicitHeight : (win.dash ? 116 : 28))
+            width: win.showBurst ? (burstLoader.item ? burstLoader.item.implicitWidth : 96) : win.launcher ? win.launcherWidth : (win.notifMorph ? (morphStack.item ? morphStack.item.implicitWidth : 420) : (win.open ? 520 : (win.dash ? win.hoverWidth : (56 + root.privacyCount * 20 + (notifs.grouped.length > 0 ? 14 : 0)))))
+            height: win.showBurst ? 28 : (win.open || win.launcher) ? win.openHeight : (win.notifMorph ? morphStack.implicitHeight : (win.dash ? win.hoverHeight : 28))
             // resting (collapsed, un-hovered) pill is dimmed; full opacity once
             // hovered / open / a notification is morphing it (or a camera/mic is
             // live); fully hidden while a fullscreen window is focused (fsHide)
@@ -4167,7 +4369,9 @@ Variants {
 
             Rectangle {
                 anchors.fill: parent
-                radius: (win.open || win.launcher) ? Math.min(theme.radius, height / 2) : 12
+                // collapsed pill is fully round; the dashboard / open panel uses
+                // the Broadsheet panel radius.
+                radius: win.dash ? theme.radiusPanel : Math.min(theme.radiusPanel, height / 2)
                 // hovered/open is a solid surface; at rest it's a borderless
                 // translucent *gradient* so the floating pill blends with the
                 // backdrop. The morph drops the background entirely (cards only);
@@ -4299,7 +4503,9 @@ Variants {
             Rectangle {
                 id: hoverInd
 
-                readonly property var target: win.hoverItem ? win.hoverItem : launcherIcon
+                // the roving square only appears over app tiles / tray / status
+                // icons; the launcher is its own accent-soft button (no default rest).
+                readonly property var target: win.hoverItem
                 readonly property point pos: {
                     const _dep = [win.dash, win.open, win.launcher, pill.width, pill.height];
                     return hoverInd.target ? pill.mapFromItem(hoverInd.target, 0, 0) : Qt.point(0, 0);
@@ -4311,7 +4517,7 @@ Variants {
 
                 radius: theme.radiusSmall
                 color: theme.bgHover
-                opacity: (win.dash && !win.notifMorph && target) ? 1 : 0
+                opacity: (win.dash && !win.open && !win.launcher && !win.notifMorph && target) ? 1 : 0
                 visible: opacity > 0
                 x: pos.x - pad
                 y: pos.y - pad
@@ -4361,11 +4567,11 @@ Variants {
 
             // ========= Row 1: datetime + virtual desktops (left) | apps (right) =========
             Item {
-                x: theme.pad
-                y: 12
-                width: pill.width - theme.pad * 2
-                height: 26
-                opacity: (win.dash && !win.notifMorph) ? 1 : 0
+                x: theme.pad + 8
+                y: 20
+                width: pill.width - (theme.pad + 8) * 2
+                height: 36
+                opacity: (win.dash && !win.open && !win.launcher && !win.notifMorph) ? 1 : 0
                 visible: opacity > 0
 
                 // date/time with the virtual-desktop dots stacked beneath it
@@ -4373,28 +4579,29 @@ Variants {
                 Column {
                     anchors.left: parent.left
                     anchors.top: parent.top
-                    spacing: 6
+                    spacing: 9
 
                     // time over date (unchanged style)
                     Column {
-                        spacing: 0
+                        spacing: 1
 
-                        // big time, prominent
+                        // big time, prominent — set in the serif display face
                         Text {
                             text: root.clockShort
                             color: theme.text
-                            font.family: theme.mono
-                            font.pixelSize: theme.fsLarge
-                            font.bold: true
-                            lineHeight: 0.95
+                            font.family: theme.serif
+                            font.pixelSize: 34
+                            lineHeight: 0.9
                         }
 
-                        // date, dim underneath
+                        // date, dim underneath — uppercase mono label
                         Text {
                             text: root.clockDate
                             color: theme.textDim
-                            font.family: theme.family
+                            font.family: theme.mono
                             font.pixelSize: theme.fsSmall
+                            font.letterSpacing: theme.labelSpacing
+                            font.capitalization: Font.AllUppercase
                             lineHeight: 0.95
                         }
 
@@ -4403,6 +4610,7 @@ Variants {
                     // hollow dots (click to switch) + one filled dot that slides
                     // to the active desktop — the same move as the desktop burst.
                     DesktopDots {
+                        id: deskDots
                         theme: theme
                         desktops: root.desktops
                         activeIdx: root.deskActiveIdx
@@ -4441,33 +4649,51 @@ Variants {
 
             }
 
+            // hairline rule separating the two dashboard rows (hover state only).
+            // Starts just to the right of the virtual-desktop dots (whose row sits
+            // on this baseline) and runs to the pill's right edge.
+            Rectangle {
+                x: theme.pad + 8 + deskDots.width + 16
+                y: 94
+                width: pill.width - (theme.pad + 8) - x
+                height: 1
+                color: theme.divider
+                opacity: (win.dash && !win.open && !win.launcher && !win.notifMorph) ? 1 : 0
+                visible: opacity > 0
+                Behavior on opacity { NumberAnimation { duration: theme.animFast } }
+            }
+
             // ============ Row 2: launcher icon (left) | tray + status (right) ============
             Item {
-                x: theme.pad
-                y: 74
-                width: pill.width - theme.pad * 2
-                height: 24
-                opacity: (win.dash && !win.notifMorph) ? 1 : 0
+                x: theme.pad + 8
+                y: 108
+                width: pill.width - (theme.pad + 8) * 2
+                height: 42
+                opacity: (win.dash && !win.open && !win.launcher && !win.notifMorph) ? 1 : 0
                 visible: opacity > 0
 
-                // open the app launcher (the virtual-desktop dots now live under
-                // the datetime in Row 1, so this stays alone on the left). This is
-                // also the shared hover square's resting spot, so it draws no
-                // highlight of its own — the square rests here by default.
+                // open the app launcher — an accent grid glyph that only picks up
+                // the accent-soft background on hover (transparent at rest, so it
+                // doesn't read as permanently highlighted). It has its own hover
+                // feedback and so doesn't share the roving hover square.
                 Rectangle {
                     id: launcherIcon
 
                     anchors.left: parent.left
                     anchors.verticalCenter: parent.verticalCenter
-                    width: theme.iconCell
-                    height: theme.iconCell
-                    radius: theme.radiusSmall
-                    color: "transparent"
+                    width: 42
+                    height: 42
+                    radius: 12
+                    color: launchMa.containsMouse ? theme.accentSoft : "transparent"
+                    Behavior on color { ColorAnimation { duration: theme.animFast } }
 
-                    IconImage {
+                    MSym {
                         anchors.centerIn: parent
-                        implicitSize: 18
-                        source: Quickshell.iconPath("view-grid-symbolic", "view-grid")
+                        icon: "grid_view"
+                        size: 22
+                        fill: 1
+                        weight: 500
+                        color: theme.accent
                     }
 
                     MouseArea {
@@ -4476,11 +4702,6 @@ Variants {
                         anchors.fill: parent
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
-                        onContainsMouseChanged: {
-                            if (launchMa.containsMouse)
-                                win.hoverEnter(launcherIcon);
-
-                        }
                         onClicked: {
                             win.open = false;
                             win.launcher = true;
@@ -4493,7 +4714,7 @@ Variants {
                 Row {
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
-                    spacing: theme.iconSpacing
+                    spacing: theme.iconSpacing + 4
 
                     // system tray — sits to the LEFT of the menu icons
                     Repeater {
@@ -4504,13 +4725,13 @@ Variants {
 
                             required property SystemTrayItem modelData
 
-                            width: theme.iconCell
-                            height: theme.iconCell
+                            width: theme.iconCell + 4
+                            height: theme.iconCell + 4
 
                             Image {
                                 anchors.centerIn: parent
-                                width: 18
-                                height: 18
+                                width: 20
+                                height: 20
                                 source: trayItem.modelData.icon
                                 fillMode: Image.PreserveAspectFit
                             }
@@ -4564,48 +4785,35 @@ Variants {
             }
 
             // ===================== control panel (open) =====================
-            // Sits below the two dashboard rows (which stay visible; Row 2
-            // doubles as the menu switcher). Full-width — no icon rail; each
-            // menu carries its own back chevron + title via MenuHeader.
+            // The two dashboard rows fade out when a panel opens, so the menu
+            // fills the pill from the top. Full-width — no icon rail; each menu
+            // carries its own back chevron + title via MenuHeader (the chevron
+            // collapses the panel back to the dashboard).
             Item {
                 x: theme.pad
-                y: 104
+                y: theme.pad
                 width: pill.width - theme.pad * 2
-                height: pill.height - 104 - theme.pad
+                height: pill.height - theme.pad * 2
                 opacity: win.open ? 1 : 0
                 visible: opacity > 0
 
-                Rectangle {
-                    width: parent.width
-                    height: 1
-                    color: theme.divider
+                Loader {
+                    id: menuLoader
+
+                    anchors.fill: parent
+                    active: win.open
+                    sourceComponent: win.menu === 0 ? cNet : win.menu === 1 ? cVol : win.menu === 2 ? cBt : win.menu === 3 ? cBatt : cNotif
                 }
+                // chevron back -> collapse panel
 
-                // menu pane (full width)
-                Item {
-                    y: 14
-                    width: parent.width
-                    height: parent.height - 14
-
-                    Loader {
-                        id: menuLoader
-
-                        anchors.fill: parent
-                        active: win.open
-                        sourceComponent: win.menu === 0 ? cNet : win.menu === 1 ? cVol : win.menu === 2 ? cBt : win.menu === 3 ? cBatt : cNotif
-                    }
-                    // chevron back -> collapse panel
-
-                    Connections {
-                        function onCloseRequested() {
-                            win.open = false;
-                            root.restoreFocus();
-                        }
-
-                        target: menuLoader.item
-                        ignoreUnknownSignals: true
+                Connections {
+                    function onCloseRequested() {
+                        win.open = false;
+                        root.restoreFocus();
                     }
 
+                    target: menuLoader.item
+                    ignoreUnknownSignals: true
                 }
 
                 Behavior on opacity {
@@ -4618,22 +4826,16 @@ Variants {
             }
 
             // ===================== launcher (wider open state) =====================
-            // Like the control panel: sits below the two dashboard rows (which
-            // stay visible), with a divider on top.
+            // Like the control panel: the two dashboard rows fade out, so the
+            // launcher fills the pill from the top.
             Item {
                 x: theme.pad
-                y: 104
+                y: theme.pad
                 width: pill.width - theme.pad * 2
-                height: pill.height - 104 - theme.pad
+                height: pill.height - theme.pad * 2
                 clip: true
                 opacity: win.launcher ? 1 : 0
                 visible: opacity > 0
-
-                Rectangle {
-                    width: parent.width
-                    height: 1
-                    color: theme.divider
-                }
 
                 // Kept instantiated (not gated on win.launcher) so the list
                 // virtualises and pre-warms its icons in the background at
@@ -4643,13 +4845,11 @@ Variants {
                 Launcher {
                     id: launcherItem
 
-                    y: 14
+                    y: 0
                     width: win.launcherWidth - theme.pad * 2
-                    // bottom must line up with the clipping container above
-                    // (which ends at pill.height - 104 - pad); the y:14 offset +
-                    // this 104 leave the power / toggle rows fully inside the
-                    // clip instead of half-cut at the panel's bottom edge.
-                    height: win.openHeight - 104 - theme.pad - 14
+                    // sized to the fixed open dimensions (not the animating pill)
+                    // so the ListView always has room; the container clips.
+                    height: win.openHeight - theme.pad * 2
                     theme: theme
                     apps: root.appList
                     settings: settings
