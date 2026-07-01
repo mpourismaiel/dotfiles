@@ -118,6 +118,11 @@ QtObject {
     readonly property int gap:           10
     readonly property int railWidth:     44
     readonly property int rowHeight:     38
+    // dashboard icon buttons (app-list tiles, launcher, status icons, tray) are
+    // all this square size, laid out with this spacing, so the shared hover
+    // indicator is one uniform square that jumps between them.
+    readonly property int iconCell:      26
+    readonly property int iconSpacing:    6
 
     // ---- fonts ----  (swap `family` to test fonts; `mono` is for figures/clock)
     readonly property string family:     "Inter"
@@ -136,6 +141,18 @@ QtObject {
     // ---- animation ----
     readonly property int anim:          210
     readonly property int animFast:      130
+
+    // ---- power confirmation design ----
+    // Which full-screen shutdown/reboot/logout confirmation to show (see the
+    // powerConfirm block in init.qml). One of the four Claude-designed variants,
+    // or "random" to pick a fresh one on every open:
+    //   "1a" Hush   — restrained italic serif on a dark wash
+    //   "1b" Blaze  — full vermillion flood, brutalist
+    //   "1c" Ledger — editorial, keyline frame
+    //   "1d" Split  — decisive left (yes) / right (no) halves
+    //   "random"    — one of the above, chosen per open
+    // Needs the fonts: IBM Plex Mono, Newsreader, DM Serif Display, Instrument Serif.
+    readonly property string confirmation: "random"
 }
 #+end_src
 
@@ -1053,7 +1070,8 @@ only navigate when the query is empty (else they move the text cursor); Enter
 launches. In grid mode the favourites grid is *drag-to-reorder* (tiles wrap a
 =DelegateModel= moved live as a tile is dragged, committed to =settings.favorites=
 on release). A bottom-right power row — lock/logout/reboot/shutdown — is wired to
-=loginctl= and =org.kde.Shutdown= over =gdbus=, and a bottom-left toggle row holds
+=loginctl= and =org.kde.Shutdown= over =gdbus= (logout/reboot/shutdown first raise
+a full-screen confirmation in =init.qml=; lock fires at once), and a bottom-left toggle row holds
 a *Do-Not-Disturb* bell (drives =notifs.dnd=), with room for more toggles later.
 Grid mode + favourite ids persist
 in =Quickshell.stateDir + "/launcher.json"= via =FileView= + =JsonAdapter=. The
@@ -1090,6 +1108,9 @@ Item {
     required property var notifs      // notification state (the DND toggle drives it)
     signal launched()
     signal closeRequested()
+    // shutdown / reboot / logout ask for a full-screen confirmation first; the
+    // parent shows it and only runs `cmd` if the user picks "yes".
+    signal confirmPower(string action, var cmd)
     <<launcher-logic>>
     <<launcher-search>>
     <<launcher-toggles>>
@@ -1327,6 +1348,7 @@ Row {
 
     anchors.left: parent.left
     anchors.bottom: parent.bottom
+    anchors.bottomMargin: 6
     spacing: 12
 
     // do-not-disturb: a bell while notifications pop, a struck-through bell (and
@@ -1334,8 +1356,7 @@ Row {
     IconImage {
         implicitSize: 16
         opacity: (root.notifs.dnd || dndMa.containsMouse) ? 1 : 0.65
-        source: Quickshell.iconPath(root.notifs.dnd ? "notifications-disabled" : "notifications",
-                                    root.notifs.dnd ? "notification-disabled" : "notification")
+        source: Quickshell.iconPath(root.notifs.dnd ? "notifications-disabled" : "notifications", root.notifs.dnd ? "notification-disabled" : "notification")
 
         MouseArea {
             id: dndMa
@@ -1361,7 +1382,8 @@ Row {
 
 *** Launcher.qml — power buttons
 The bottom-right power row — lock / logout / reboot / shutdown — wired to =loginctl=
-and =org.kde.Shutdown= over =gdbus=.
+and =org.kde.Shutdown= over =gdbus=. Lock fires immediately; logout / reboot / shutdown
+emit =confirmPower= so =init.qml= raises the full-screen confirmation first.
 #+name: launcher-power
 #+begin_src qml
 // ================= power buttons (bottom-right) =================
@@ -1370,20 +1392,31 @@ Row {
 
     anchors.right: parent.right
     anchors.bottom: parent.bottom
+    anchors.bottomMargin: 6
     spacing: 12
 
     Repeater {
+        // `confirm` entries pop the full-screen confirmation first (`action` is
+        // the word shown on it); lock fires immediately.
         model: [{
             "ic": "system-lock-screen",
+            "action": "",
+            "confirm": false,
             "cmd": ["loginctl", "lock-session"]
         }, {
             "ic": "system-log-out",
+            "action": "logout",
+            "confirm": true,
             "cmd": ["gdbus", "call", "--session", "--dest", "org.kde.Shutdown", "--object-path", "/Shutdown", "--method", "org.kde.Shutdown.logout"]
         }, {
             "ic": "system-reboot",
+            "action": "reboot",
+            "confirm": true,
             "cmd": ["gdbus", "call", "--session", "--dest", "org.kde.Shutdown", "--object-path", "/Shutdown", "--method", "org.kde.Shutdown.logoutAndReboot"]
         }, {
             "ic": "system-shutdown",
+            "action": "shutdown",
+            "confirm": true,
             "cmd": ["gdbus", "call", "--session", "--dest", "org.kde.Shutdown", "--object-path", "/Shutdown", "--method", "org.kde.Shutdown.logoutAndShutdown"]
         }]
 
@@ -1401,7 +1434,7 @@ Row {
                 anchors.margins: -4
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
-                onClicked: root.exec(modelData.cmd)
+                onClicked: modelData.confirm ? root.confirmPower(modelData.action, modelData.cmd) : root.exec(modelData.cmd)
             }
 
             Behavior on opacity {
@@ -2704,8 +2737,9 @@ import sys, os, json, atexit, tempfile
 from gi.repository import Gio, GLib
 
 bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
-# "taskbar" is the set of window ids that belong in a taskbar (normal, not
-# skip-taskbar) as reported by KWin; None until the first report arrives.
+# "taskbar" maps each taskbar-eligible window id (normal, not skip-taskbar, as
+# reported by KWin) to its { seq, cls, dfile } metadata; None until the first
+# report arrives.
 state = {"active": "", "taskbar": None, "fullscreen": False}
 PLUGIN = "quickshell-pill-active"
 
@@ -2733,7 +2767,8 @@ def on_call(conn, sender, path, ifc, method, params, inv):
     elif method == "List":
         (j,) = params.unpack()
         try:
-            state["taskbar"] = set(json.loads(j))
+            # map uuid -> { seq, cls, dfile } for the taskbar-eligible windows
+            state["taskbar"] = {m["id"]: m for m in json.loads(j)}
         except Exception:
             state["taskbar"] = None
         emit()
@@ -2757,9 +2792,20 @@ def on_bus_acquired(conn, name):
 #     on skipTaskbar changes, and re-push the active window when *its* fullScreen
 #     toggles (e.g. a video going fullscreen without re-activating the window). ---
 KWIN_JS = (
+    # each taskbar window is reported as { id, seq, cls, dfile }: seq is a stable
+    # open-order index (assigned the first time a window is seen, so newly opened
+    # windows sort after older ones), cls is the app's resourceClass and dfile its
+    # desktopFileName — both used by the pill to group by app and resolve a proper
+    # icon (the KRunner icon name alone often misses).
+    "var seqN=0, seq={};\n"
+    "function meta(w){ var id=String(w.internalId);\n"
+    "  if (seq[id]===undefined) seq[id]=seqN++;\n"
+    "  return { id:id, seq:seq[id],\n"
+    "    cls:(w.resourceClass?String(w.resourceClass):''),\n"
+    "    dfile:(w.desktopFileName?String(w.desktopFileName):'') }; }\n"
     "function ids(){ var ws=workspace.windowList(), o=[];\n"
     "  for (var i=0;i<ws.length;i++){ var w=ws[i];\n"
-    "    if (w.normalWindow && !w.skipTaskbar) o.push(String(w.internalId)); }\n"
+    "    if (w.normalWindow && !w.skipTaskbar) o.push(meta(w)); }\n"
     "  return o; }\n"
     'function pushList(){ callDBus("org.kde.pill","/Active","org.kde.pill","List",'
     " JSON.stringify(ids())); }\n"
@@ -2847,8 +2893,21 @@ def windows():
         # before the first report, show everything (previous behaviour)
         if tb is not None and uuid not in tb:
             continue
-        seen[mid] = {"id": mid, "uuid": uuid, "title": text, "icon": icon}
-    return sorted(seen.values(), key=lambda d: d["id"])
+        meta = tb.get(uuid) if isinstance(tb, dict) else None
+        seen[mid] = {
+            "id": mid,
+            "uuid": uuid,
+            "title": text,
+            "icon": icon,
+            # class + desktop file (from the KWin script) let the pill group by
+            # app and resolve a proper icon; seq is the open-order index.
+            "cls": (meta or {}).get("cls", ""),
+            "dfile": (meta or {}).get("dfile", ""),
+            "seq": (meta or {}).get("seq", 0),
+        }
+    # order by open time (seq); before the first List report seq is 0 for all, so
+    # fall back to id for a stable order.
+    return sorted(seen.values(), key=lambda d: (d["seq"], d["id"]))
 
 
 def emit():
@@ -2884,13 +2943,13 @@ GLib.MainLoop().run()
 ** DesktopDots.qml
 The virtual-desktop indicator: hollow dots (one per desktop) with a single filled
 dot that *slides* to the active one. Reused in two places — the hovered dashboard's
-Row 2 (=interactive: true=, dots switch desktop on click) and the desktop-switch
+Row 1, beneath the date/time (=interactive: true=, dots switch desktop on click) and the desktop-switch
 action burst (=interactive: false=, just the sliding dot). =activeIdx= is the slot
 the filled dot sits at (=-1= hides it); =switchRequested(id)= fires on a dot click.
 #+begin_src qml :tangle ~/.config/quickshell/pill/DesktopDots.qml :mkdirp yes
 pragma ComponentBehavior: Bound
 // DesktopDots.qml — virtual-desktop dots with a sliding active dot. Used by the
-// dashboard Row 2 (interactive: dots switch desktop) and the desktop action burst
+// dashboard Row 1, under the date/time (interactive: dots switch desktop) and the desktop action burst
 // (non-interactive: just the slide). activeIdx is the filled dot's slot (-1 hides
 // it); switchRequested(id) fires when an interactive dot is clicked.
 import QtQuick
@@ -2948,6 +3007,8 @@ pragma ComponentBehavior: Bound
 // app group ({ icon, wins }); a count badge for 2+ windows and an active underline.
 // activated(group) = left-click (cycle the app's windows); contextRequested(group)
 // = right-click (open the app menu). activeWindow drives the active underline.
+// The hover highlight is NOT drawn here: each tile reports itself via itemEntered
+// (on enter only) so the dashboard's single shared hover square jumps to it.
 import QtQuick
 import Quickshell
 import Quickshell.Widgets
@@ -2959,27 +3020,34 @@ Row {
     required property string activeWindow
     signal activated(var group)
     signal contextRequested(var group)
+    signal itemEntered(var item)         // tile hovered -> move the shared indicator
 
-    spacing: 6
+    // app icons are bigger than the menu/tray glyphs, so the app row is spaced
+    // 1.5x the base icon spacing to keep the tiles from crowding.
+    spacing: Math.round(root.theme.iconSpacing * 1.5)
     Repeater {
         model: root.groups
         delegate: Item {
             id: appItem
             required property var modelData
             readonly property bool active: appItem.modelData.wins.some(w => w.uuid === root.activeWindow)
-            width: 26; height: 26
-            Rectangle {                  // hover highlight
-                anchors.fill: parent
-                anchors.margins: -4
-                radius: root.theme.radiusSmall
-                color: appMa.containsMouse ? root.theme.bgHover : "transparent"
-                Behavior on color { ColorAnimation { duration: root.theme.animFast } }
-            }
+            width: root.theme.iconCell; height: root.theme.iconCell
+            // ask the shared hover square for a little extra padding around app
+            // tiles (their icons run larger than the menu/tray glyphs).
+            readonly property int hoverPad: 4
             IconImage {
+                id: appIcon
                 anchors.top: parent.top
                 anchors.horizontalCenter: parent.horizontalCenter
                 implicitSize: 22
-                source: Quickshell.iconPath(appItem.modelData.icon, "application-x-executable")
+                // some icon names resolve to a path that still fails to decode;
+                // when that happens fall back to the generic app glyph so a tile
+                // never renders blank.
+                property bool failed: false
+                source: appIcon.failed
+                        ? Quickshell.iconPath("application-x-executable")
+                        : Quickshell.iconPath(appItem.modelData.icon, "application-x-executable")
+                onStatusChanged: if (status === Image.Error) appIcon.failed = true;
             }
             Text {                       // window-count badge (2+ windows)
                 visible: appItem.modelData.wins.length > 1
@@ -3001,10 +3069,10 @@ Row {
             MouseArea {
                 id: appMa
                 anchors.fill: parent
-                anchors.margins: -4
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
                 acceptedButtons: Qt.LeftButton | Qt.RightButton
+                onContainsMouseChanged: if (appMa.containsMouse) root.itemEntered(appItem);
                 onClicked: mouse => {
                     if (mouse.button === Qt.LeftButton) root.activated(appItem.modelData);
                     else root.contextRequested(appItem.modelData);
@@ -3026,6 +3094,8 @@ pragma ComponentBehavior: Bound
 // bluetooth / battery / notifications; volume + battery glyphs follow live Pipewire
 // mute and UPower state. menuRequested(menu) fires on click; when `open`, the icon
 // for the current `menu` is highlighted. Menu ids: 0 net, 1 vol, 2 bt, 3 batt, 4 notif.
+// The hover highlight is NOT drawn here (only the open-menu selection): each icon
+// reports itself via itemEntered (on enter only) so the shared hover square jumps to it.
 import QtQuick
 import Quickshell
 import Quickshell.Widgets
@@ -3038,8 +3108,9 @@ Row {
     property bool open: false
     property int menu: -1
     signal menuRequested(int menu)
+    signal itemEntered(var item)         // icon hovered -> move the shared indicator
 
-    spacing: 8
+    spacing: root.theme.iconSpacing
     Repeater {
         model: [
             { ic: "network-wireless", menu: 0 },
@@ -3059,10 +3130,11 @@ Row {
             { ic: "preferences-desktop-notification", menu: 4 }
         ]
         delegate: Rectangle {
+            id: statusItem
             required property var modelData
-            width: 32; height: 26; radius: root.theme.radiusSmall
-            color: (root.open && root.menu === modelData.menu) ? root.theme.accentDim
-                   : statusMa.containsMouse ? root.theme.bgHover : "transparent"
+            width: root.theme.iconCell; height: root.theme.iconCell; radius: root.theme.radiusSmall
+            // only the open-menu selection is drawn here; hover is the shared square
+            color: (root.open && root.menu === modelData.menu) ? root.theme.accentDim : "transparent"
             Behavior on color { ColorAnimation { duration: root.theme.animFast } }
             IconImage {
                 anchors.centerIn: parent
@@ -3072,6 +3144,7 @@ Row {
             MouseArea {
                 id: statusMa
                 anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                onContainsMouseChanged: if (statusMa.containsMouse) root.itemEntered(statusItem);
                 onClicked: root.menuRequested(modelData.menu)
             }
         }
@@ -3286,12 +3359,16 @@ import Quickshell
 Rectangle {
     id: root
     required property var theme
-    required property var group          // { icon, wins: [{ id, title }] }
+    required property var group          // { icon, entry, wins: [{ id, title }] }
     signal launchRequested(string execString)
     signal activateRequested(string id)
     signal dismissed()
 
-    readonly property var entry: root.group ? DesktopEntries.heuristicLookup(root.group.icon) : null
+    // the host (init.qml appGroups) already resolved the best DesktopEntry; fall
+    // back to a heuristic lookup on the icon name for safety.
+    readonly property var entry: root.group
+        ? (root.group.entry || DesktopEntries.heuristicLookup(root.group.icon))
+        : null
 
     width: 240
     height: ctxCol.height + 16
@@ -3369,9 +3446,16 @@ fades to opacity 0. A notification still morphs through (=notifMorph= overrides
 *Stages.* A single =pill= =Item= animates =width=/=height= between stages via
 =Behavior=, cross-fading content layers per stage:
 1. *collapsed* (56×28): =hh:mm=.
-2. *hovered* (=dash=, 520×104): two balanced rows — Row 1 desktop dots (left) |
-   grouped app icons (right); Row 2 a launcher button + date/time (left) | status
-   icons (network/volume/bluetooth/battery/notifications) + system tray (right).
+2. *hovered* (=dash=, 520×116): two balanced rows — Row 1 date/time with the
+   virtual-desktop dots stacked beneath it (left) | grouped app icons (right);
+   Row 2 a launcher button (left) | system tray + status icons
+   (network/volume/bluetooth/battery/notifications) (right). The launcher, status
+   icons and tray icons are the same square =iconCell= size at =iconSpacing= apart;
+   the app tiles match the cell but are spaced 1.5× wider (their icons run larger).
+   All of them share a *single* hover square (=hoverInd=) that slides from item to
+   item as the pointer enters each (growing a little behind the larger app tiles).
+   It *stays* on the last item once the pointer leaves and only resets to the
+   launcher icon when the dashboard collapses (=win.hoverItem= / =hoverEnter=).
 3. *open* (470 tall): control panel. Both rows stay visible; Row 2 doubles as the
    menu switcher (active icon highlighted). A =Loader= below a divider shows the menu
    for =win.menu= (default 4 = notification history); each menu's =MenuHeader=
@@ -3392,9 +3476,12 @@ launcher shortcut rides the KWin script in =winbridge.py= (see [[*winbridge.py][
 its =\{event:"launcher", screen\}= line becomes the =launcherShortcut(screen)= signal,
 and each monitor toggles its launcher if the screen matches.
 
-*Taskbar.* =appGroups= groups =windows= (from =winbridge=) by =icon= — one tile per
-app, a count badge for ≥2 windows, an underline that turns accent when any of the
-app's windows is active. Left-click =cycleGroup= focuses the app's next window;
+*Taskbar.* =appGroups= groups =windows= (from =winbridge=) by *app class*, ordered
+by *open time* (winbridge stamps each window with a stable open-order =seq=) — one
+tile per app, a count badge for ≥2 windows, an underline that turns accent when any
+of the app's windows is active. Each group's icon is resolved through
+=DesktopEntries.heuristicLookup= (desktop-file name → class → KRunner icon name), so
+tiles get a real icon instead of the generic fallback. Left-click =cycleGroup= focuses the app's next window;
 right-click opens a floating menu (this app's windows + =DesktopEntries.heuristic-
 Lookup(icon).actions=). The =mask= expands full-screen while that menu is open
 (=win.ctxGroup=).
@@ -3413,7 +3500,7 @@ only the resting pill (yields to hover/open/launcher/right-click) and overrides
 =notifMorph= so an active notification deck floats below instead of being replaced.
 Two events fire bursts, each guarding its initial value on startup:
 - *desktop switch* (=onCurrentDesktopChanged=) — a filled dot slides from the old
-  slot to the new across the animate phase; the hovered Row-2 dots use the same slide.
+  slot to the new across the animate phase; the hovered Row-1 dots use the same slide.
 - *layout change* (=onKbIndexChanged=) — shows =from → to= (e.g. =US → FA=) with the
   arrow flashing. Layouts come from KWin's =org.kde.keyboard /Layouts= (custom label
   if set in System Settings, else the uppercased code).
@@ -3483,7 +3570,8 @@ keep the default audio sink/source live so the volume + mic indicators update.
 #+begin_src qml
 property var desktops: []
 property string currentDesktop: ""
-property var windows: []          // [{id, uuid, title, icon}]
+property var windows: []          // [{id, uuid, title, icon, cls, dfile, seq}]
+property string _winJson: ""      // last windows payload, to skip no-op rebuilds
 property string activeWindow: ""  // active window uuid "{...}"
 property bool activeFullscreen: false  // is the focused window fullscreen?
 // last *real* focused window — opening the pill (layer-shell keyboard grab)
@@ -3706,7 +3794,7 @@ property string burstFromDesktop: ""
 property string burstToDesktop: ""
 property string burstFromLabel: ""
 property string burstToLabel: ""
-// index of the active desktop (also drives the sliding dot in the hovered Row 2)
+// index of the active desktop (also drives the sliding dot in the hovered Row 1)
 readonly property int deskActiveIdx: desktops.findIndex(d => d.id === currentDesktop)
 readonly property int burstFromIdx: desktops.findIndex(d => d.id === burstFromDesktop)
 readonly property int burstToIdx:   desktops.findIndex(d => d.id === burstToDesktop)
@@ -3768,7 +3856,11 @@ Process {
             try {
                 const d = JSON.parse(line);
                 if (d.event === "launcher") { root.launcherShortcut(d.screen || ""); return; }
-                root.windows = d.windows;
+                // winbridge re-emits every second; only replace `windows` (which
+                // rebuilds the taskbar tiles) when it actually changed, so the
+                // shared hover square doesn't flicker while pointing at a tile.
+                const wj = JSON.stringify(d.windows);
+                if (wj !== root._winJson) { root._winJson = wj; root.windows = d.windows; }
                 root.activeWindow = d.active;
                 root.activeFullscreen = !!d.fullscreen;
             } catch (e) {}
@@ -3792,12 +3884,39 @@ function restoreFocus() {
 Process { id: launchProc }
 function launch(execString) { launchProc.command = ["sh", "-c", execString]; launchProc.startDetached(); }
 
-// group windows by app (icon name); preserve first-seen order
+// best DesktopEntry for a window: try its desktopFileName, then resourceClass,
+// then the KRunner icon name (heuristicLookup is fuzzy). Used to group windows of
+// one app together and to resolve a real icon — the bare KRunner icon name often
+// isn't a themed icon, which is why some tiles fell back to the generic glyph.
+function winEntry(w) {
+    const cands = [w.dfile, w.cls, w.icon];
+    for (const c of cands) {
+        if (!c || !c.length) continue;
+        const e = DesktopEntries.heuristicLookup(String(c).replace(/\.desktop$/i, ""));
+        if (e) return e;
+    }
+    return null;
+}
+// group windows by app class (falling back to icon name, then uuid), ordered by
+// open time. `windows` already arrives in open order (winbridge sorts by seq), so
+// the first-seen group order is open order — keep it.
 readonly property var appGroups: {
     const g = {}, order = [];
     for (const w of windows) {
-        if (!g[w.icon]) { g[w.icon] = { icon: w.icon, wins: [] }; order.push(w.icon); }
-        g[w.icon].wins.push(w);
+        const key = (w.cls && w.cls.length) ? w.cls.toLowerCase()
+                  : (w.icon && w.icon.length) ? w.icon.toLowerCase() : w.uuid;
+        if (!g[key]) {
+            const e = root.winEntry(w);
+            // icon: prefer the resolved entry's icon, else the KRunner name, else
+            // the class / desktop file. `entry` is reused by the context menu.
+            g[key] = {
+                icon: (e && e.icon) ? e.icon : (w.icon || w.cls || w.dfile || ""),
+                entry: e,
+                wins: []
+            };
+            order.push(key);
+        }
+        g[key].wins.push(w);
     }
     return order.map(k => g[k]);
 }
@@ -3872,8 +3991,10 @@ Variants {
         // open-state pill geometry, in ONE place: the control panel and the
         // launcher both lay out to these, so resizing the open/launcher pill here
         // can't leave the launcher mis-sized (the bug from the last resize).
-        readonly property int launcherWidth: 600  // launcher pill width
-        readonly property int openHeight: 470     // open + launcher pill height
+        readonly property int launcherWidth: 600
+        // launcher pill width
+        readonly property int openHeight: 470
+        // open + launcher pill height
         // a notification is showing AND the pill isn't in a clicked/menu state:
         // the collapsed pill morphs into the notification card (hover holds it).
         // While clicked/launcher/ctx, notifications float *below* the pill instead.
@@ -3891,6 +4012,54 @@ Variants {
         // resting pill with a live camera/mic: solid (no idle translucency),
         // clock paired with the privacy icon(s).
         property bool privacyRest: root.privacyActive && !dash && !notifMorph && !showBurst
+        // ---- shared hover indicator ----
+        // One rounded faded square (drawn once, below the rows) jumps to whatever
+        // dashboard item — app tile, launcher, status icon, tray icon — the pointer
+        // is over, instead of every item drawing its own highlight. Items report
+        // themselves via hoverEnter on enter only; the square *stays* on the last
+        // item once the pointer leaves it (it does not snap back), and only resets
+        // to the launcher icon (the default target, when `hoverItem` is null) when
+        // the dashboard collapses.
+        property var hoverItem: null
+        // ---- full-screen power confirmation ----
+        // shutdown / reboot / logout route through here instead of firing at
+        // once: a full-screen page takes over until the user answers. Nothing
+        // runs unless `confirm()` (the "yes" button) is pressed.
+        property string confirmAction: ""
+        // "shutdown"/"reboot"/"logout"; "" hidden
+        property var confirmCmd: null
+        property string confirmMsg: ""
+        // which design the current confirmation renders ("1a".."1d"); resolved in
+        // requestConfirm from theme.confirmation, so "random" re-rolls per open.
+        property string confirmVariant: "1a"
+        readonly property bool confirmActive: confirmAction !== ""
+
+        function hoverEnter(it) {
+            win.hoverItem = it;
+        }
+
+        function requestConfirm(action, cmd) {
+            const msgs = ["Really?", "Are you serious?", "No kidding?", "No shit!", "Dayum?"];
+            win.confirmMsg = msgs[Math.floor(Math.random() * msgs.length)];
+            const variants = ["1a", "1b", "1c", "1d"];
+            win.confirmVariant = theme.confirmation === "random" ? variants[Math.floor(Math.random() * variants.length)] : theme.confirmation;
+            win.confirmCmd = cmd;
+            win.confirmAction = action;
+        }
+
+        function confirm() {
+            if (win.confirmCmd) {
+                confirmProc.command = win.confirmCmd;
+                confirmProc.startDetached();
+            }
+            win.confirmAction = "";
+            win.confirmCmd = null;
+        }
+
+        function cancelConfirm() {
+            win.confirmAction = "";
+            win.confirmCmd = null;
+        }
 
         // toggle the launcher (used by the Meta+D global shortcut). Restores
         // focus to the previously-active window when the shortcut closes it.
@@ -3906,6 +4075,11 @@ Variants {
             }
         }
 
+        onDashChanged: {
+            if (!win.dash)
+                win.hoverItem = null;
+
+        }
         screen: modelData
         WlrLayershell.layer: WlrLayer.Overlay
         // grab keyboard only while a panel is explicitly open (launcher search /
@@ -3918,7 +4092,11 @@ Variants {
         WlrLayershell.keyboardFocus: win.launcher ? WlrKeyboardFocus.Exclusive : win.open ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
         exclusionMode: ExclusionMode.Ignore
         color: "transparent"
-        mask: (win.open || win.launcher || win.ctxGroup !== null) ? fullRegion : (win.fsHide ? emptyRegion : pillRegion)
+        mask: (win.open || win.launcher || win.ctxGroup !== null || win.confirmActive) ? fullRegion : (win.fsHide ? emptyRegion : pillRegion)
+
+        Process {
+            id: confirmProc
+        }
 
         Connections {
             function onLauncherShortcut(screen) {
@@ -3977,7 +4155,7 @@ Variants {
             anchors.horizontalCenter: parent.horizontalCenter
             y: 6
             width: win.showBurst ? (burstLoader.item ? burstLoader.item.implicitWidth : 96) : win.launcher ? win.launcherWidth : (win.notifMorph ? (morphStack.item ? morphStack.item.implicitWidth : 420) : (win.dash ? 520 : (56 + root.privacyCount * 20 + (notifs.grouped.length > 0 ? 14 : 0))))
-            height: win.showBurst ? 28 : (win.open || win.launcher) ? win.openHeight : (win.notifMorph ? morphStack.implicitHeight : (win.dash ? 104 : 28))
+            height: win.showBurst ? 28 : (win.open || win.launcher) ? win.openHeight : (win.notifMorph ? morphStack.implicitHeight : (win.dash ? 116 : 28))
             // resting (collapsed, un-hovered) pill is dimmed; full opacity once
             // hovered / open / a notification is morphing it (or a camera/mic is
             // live); fully hidden while a fullscreen window is focused (fsHide)
@@ -4112,7 +4290,76 @@ Variants {
 
             }
 
-            // ================= Row 1: datetime (left) | apps (right) =================
+            // ---- shared hover indicator (one square that jumps between items) ----
+            // Declared before the rows so it sits *behind* their icons. Its target
+            // is the hovered item (win.hoverItem) or, when none, the launcher icon;
+            // geometry is mapped from that item into `pill`'s coordinate space and
+            // animated, so the square slides from item to item. Re-maps on stage /
+            // pill-size changes too, so it stays glued through morphs.
+            Rectangle {
+                id: hoverInd
+
+                readonly property var target: win.hoverItem ? win.hoverItem : launcherIcon
+                readonly property point pos: {
+                    const _dep = [win.dash, win.open, win.launcher, pill.width, pill.height];
+                    return hoverInd.target ? pill.mapFromItem(hoverInd.target, 0, 0) : Qt.point(0, 0);
+                }
+                // items may ask for extra padding around themselves (the app tiles
+                // do, since their icons are larger) so the square grows a little
+                // when it sits behind them; everything else gets a snug fit.
+                readonly property int pad: (target && target.hoverPad) ? target.hoverPad : 0
+
+                radius: theme.radiusSmall
+                color: theme.bgHover
+                opacity: (win.dash && !win.notifMorph && target) ? 1 : 0
+                visible: opacity > 0
+                x: pos.x - pad
+                y: pos.y - pad
+                width: target ? target.width + pad * 2 : 0
+                height: target ? target.height + pad * 2 : 0
+
+                Behavior on x {
+                    NumberAnimation {
+                        duration: theme.animFast
+                        easing.type: Easing.OutCubic
+                    }
+
+                }
+
+                Behavior on y {
+                    NumberAnimation {
+                        duration: theme.animFast
+                        easing.type: Easing.OutCubic
+                    }
+
+                }
+
+                Behavior on width {
+                    NumberAnimation {
+                        duration: theme.animFast
+                        easing.type: Easing.OutCubic
+                    }
+
+                }
+
+                Behavior on height {
+                    NumberAnimation {
+                        duration: theme.animFast
+                        easing.type: Easing.OutCubic
+                    }
+
+                }
+
+                Behavior on opacity {
+                    NumberAnimation {
+                        duration: theme.animFast
+                    }
+
+                }
+
+            }
+
+            // ========= Row 1: datetime + virtual desktops (left) | apps (right) =========
             Item {
                 x: theme.pad
                 y: 12
@@ -4121,15 +4368,15 @@ Variants {
                 opacity: (win.dash && !win.notifMorph) ? 1 : 0
                 visible: opacity > 0
 
-                // virtual desktops
-                Row {
+                // date/time with the virtual-desktop dots stacked beneath it
+                // (top-anchored so the dots spill into the gap above Row 2).
+                Column {
                     anchors.left: parent.left
-                    anchors.verticalCenter: parent.verticalCenter
-                    spacing: 4
+                    anchors.top: parent.top
+                    spacing: 6
 
-                    // time over date
+                    // time over date (unchanged style)
                     Column {
-                        anchors.verticalCenter: parent.verticalCenter
                         spacing: 0
 
                         // big time, prominent
@@ -4153,6 +4400,18 @@ Variants {
 
                     }
 
+                    // hollow dots (click to switch) + one filled dot that slides
+                    // to the active desktop — the same move as the desktop burst.
+                    DesktopDots {
+                        theme: theme
+                        desktops: root.desktops
+                        activeIdx: root.deskActiveIdx
+                        interactive: true
+                        onSwitchRequested: (id) => {
+                            return root.switchDesktop(id);
+                        }
+                    }
+
                 }
 
                 // grouped app icons (taskbar)
@@ -4168,6 +4427,9 @@ Variants {
                     onContextRequested: (grp) => {
                         return win.ctxGroup = grp;
                     }
+                    onItemEntered: (it) => {
+                        return win.hoverEnter(it);
+                    }
                 }
 
                 Behavior on opacity {
@@ -4179,76 +4441,100 @@ Variants {
 
             }
 
-            // ============ Row 2: launcher icon + virtual desktops (left) | status + tray (right) ============
+            // ============ Row 2: launcher icon (left) | tray + status (right) ============
             Item {
                 x: theme.pad
-                y: 62
+                y: 74
                 width: pill.width - theme.pad * 2
                 height: 24
                 opacity: (win.dash && !win.notifMorph) ? 1 : 0
                 visible: opacity > 0
 
-                // launcher button + date/time (left)
-                Row {
+                // open the app launcher (the virtual-desktop dots now live under
+                // the datetime in Row 1, so this stays alone on the left). This is
+                // also the shared hover square's resting spot, so it draws no
+                // highlight of its own — the square rests here by default.
+                Rectangle {
+                    id: launcherIcon
+
                     anchors.left: parent.left
                     anchors.verticalCenter: parent.verticalCenter
-                    spacing: 10
+                    width: theme.iconCell
+                    height: theme.iconCell
+                    radius: theme.radiusSmall
+                    color: "transparent"
 
-                    // open the app launcher
-                    Rectangle {
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: 32
-                        height: 26
-                        radius: theme.radiusSmall
-                        color: launchMa.containsMouse ? theme.bgHover : "transparent"
-
-                        IconImage {
-                            anchors.centerIn: parent
-                            implicitSize: 18
-                            source: Quickshell.iconPath("view-grid-symbolic", "view-grid")
-                        }
-
-                        MouseArea {
-                            id: launchMa
-
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: {
-                                win.open = false;
-                                win.launcher = true;
-                            }
-                        }
-
-                        Behavior on color {
-                            ColorAnimation {
-                                duration: theme.animFast
-                            }
-
-                        }
-
+                    IconImage {
+                        anchors.centerIn: parent
+                        implicitSize: 18
+                        source: Quickshell.iconPath("view-grid-symbolic", "view-grid")
                     }
 
-                    // hollow dots (click to switch) + one filled dot that slides
-                    // to the active desktop — the same move as the desktop burst.
-                    DesktopDots {
-                        anchors.verticalCenter: parent.verticalCenter
-                        theme: theme
-                        desktops: root.desktops
-                        activeIdx: root.deskActiveIdx
-                        interactive: true
-                        onSwitchRequested: (id) => {
-                            return root.switchDesktop(id);
+                    MouseArea {
+                        id: launchMa
+
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onContainsMouseChanged: {
+                            if (launchMa.containsMouse)
+                                win.hoverEnter(launcherIcon);
+
+                        }
+                        onClicked: {
+                            win.open = false;
+                            win.launcher = true;
                         }
                     }
 
                 }
 
-                // status icons + system tray (right)
+                // system tray (left of the menu icons) + status/menu icons (right)
                 Row {
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
-                    spacing: 8
+                    spacing: theme.iconSpacing
+
+                    // system tray — sits to the LEFT of the menu icons
+                    Repeater {
+                        model: SystemTray.items
+
+                        delegate: Item {
+                            id: trayItem
+
+                            required property SystemTrayItem modelData
+
+                            width: theme.iconCell
+                            height: theme.iconCell
+
+                            Image {
+                                anchors.centerIn: parent
+                                width: 18
+                                height: 18
+                                source: trayItem.modelData.icon
+                                fillMode: Image.PreserveAspectFit
+                            }
+
+                            MouseArea {
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                acceptedButtons: Qt.LeftButton | Qt.RightButton
+                                onContainsMouseChanged: {
+                                    if (containsMouse)
+                                        win.hoverEnter(trayItem);
+
+                                }
+                                onClicked: (mouse) => {
+                                    if (mouse.button === Qt.LeftButton)
+                                        trayItem.modelData.activate();
+                                    else
+                                        trayItem.modelData.display(win, width / 2, height);
+                                }
+                            }
+
+                        }
+
+                    }
 
                     // status icons -> open panel to that menu (active one highlighted)
                     StatusIcons {
@@ -4261,37 +4547,9 @@ Variants {
                             win.menu = m;
                             win.open = true;
                         }
-                    }
-
-                    // system tray
-                    Repeater {
-                        model: SystemTray.items
-
-                        delegate: Item {
-                            required property SystemTrayItem modelData
-
-                            width: 18
-                            height: 18
-
-                            Image {
-                                anchors.fill: parent
-                                source: modelData.icon
-                                fillMode: Image.PreserveAspectFit
-                            }
-
-                            MouseArea {
-                                anchors.fill: parent
-                                acceptedButtons: Qt.LeftButton | Qt.RightButton
-                                onClicked: (mouse) => {
-                                    if (mouse.button === Qt.LeftButton)
-                                        modelData.activate();
-                                    else
-                                        modelData.display(win, width / 2, height);
-                                }
-                            }
-
+                        onItemEntered: (it) => {
+                            return win.hoverEnter(it);
                         }
-
                     }
 
                 }
@@ -4311,9 +4569,9 @@ Variants {
             // menu carries its own back chevron + title via MenuHeader.
             Item {
                 x: theme.pad
-                y: 92
+                y: 104
                 width: pill.width - theme.pad * 2
-                height: pill.height - 92 - theme.pad
+                height: pill.height - 104 - theme.pad
                 opacity: win.open ? 1 : 0
                 visible: opacity > 0
 
@@ -4364,9 +4622,9 @@ Variants {
             // stay visible), with a divider on top.
             Item {
                 x: theme.pad
-                y: 92
+                y: 104
                 width: pill.width - theme.pad * 2
-                height: pill.height - 92 - theme.pad
+                height: pill.height - 104 - theme.pad
                 clip: true
                 opacity: win.launcher ? 1 : 0
                 visible: opacity > 0
@@ -4387,7 +4645,11 @@ Variants {
 
                     y: 14
                     width: win.launcherWidth - theme.pad * 2
-                    height: win.openHeight - 92 - theme.pad - 14
+                    // bottom must line up with the clipping container above
+                    // (which ends at pill.height - 104 - pad); the y:14 offset +
+                    // this 104 leave the power / toggle rows fully inside the
+                    // clip instead of half-cut at the panel's bottom edge.
+                    height: win.openHeight - 104 - theme.pad - 14
                     theme: theme
                     apps: root.appList
                     settings: settings
@@ -4396,6 +4658,9 @@ Variants {
                     onCloseRequested: {
                         win.launcher = false;
                         root.restoreFocus();
+                    }
+                    onConfirmPower: (action, cmd) => {
+                        return win.requestConfirm(action, cmd);
                     }
                 }
 
@@ -4475,6 +4740,584 @@ Variants {
             y: pill.y + pill.height + 8
             active: ((win.open || win.launcher || win.ctxGroup !== null) || win.showBurst) && notifs.active.length > 0
             sourceComponent: cStack
+        }
+
+        // ===================== power confirmation (full-screen) =====================
+        // Clicking shutdown / reboot / logout opens this opaque page on top of
+        // everything instead of firing the command. Four interchangeable designs
+        // (1a Hush / 1b Blaze / 1c Ledger / 1d Split), ported from the Claude
+        // mockups, are selected per-open by `theme.confirmation` ("1a".."1d" or
+        // "random"); `win.confirmVariant` holds the resolved pick. Each design
+        // renders the same data — the action word (shutdown/reboot/logout), the
+        // random one-liner `confirmMsg`, and yes/no wired to win.confirm() /
+        // win.cancelConfirm(). Escape (or "no") backs out; Enter confirms.
+        // Fonts required: IBM Plex Mono, Newsreader, DM Serif Display,
+        // Instrument Serif.
+        Rectangle {
+            id: powerConfirm
+
+            // uppercased action word for the mono labels ("SHUTDOWN" etc.)
+            readonly property string actionUpper: win.confirmAction.toUpperCase()
+
+            anchors.fill: parent
+            z: 1000
+            color: "#09080a"
+            opacity: win.confirmActive ? 1 : 0
+            visible: opacity > 0
+            focus: win.confirmActive
+            Keys.onEscapePressed: win.cancelConfirm()
+            Keys.onReturnPressed: win.confirm()
+            Keys.onEnterPressed: win.confirm()
+
+            // swallow every stray click so nothing leaks to the launcher behind
+            MouseArea {
+                anchors.fill: parent
+                hoverEnabled: true
+            }
+
+            // only the chosen design is built (and rebuilt on each open, so the
+            // entrance animations re-run and "random" re-rolls).
+            Loader {
+                anchors.fill: parent
+                active: win.confirmActive
+                sourceComponent: win.confirmVariant === "1b" ? cBlaze : win.confirmVariant === "1c" ? cLedger : win.confirmVariant === "1d" ? cSplit : cHush
+            }
+
+            // ---------------- 1a — HUSH : restrained, italic serif ----------------
+            Component {
+                id: cHush
+
+                Item {
+                    anchors.fill: parent
+
+                    // near-black vertical wash (approximates the mockup's radial)
+                    Rectangle {
+                        anchors.fill: parent
+
+                        gradient: Gradient {
+                            GradientStop { position: 0.0; color: "#17131a" }
+                            GradientStop { position: 0.55; color: "#0d0b0e" }
+                            GradientStop { position: 1.0; color: "#090809" }
+                        }
+                    }
+
+                    Column {
+                        id: hushCol
+
+                        anchors.centerIn: parent
+                        width: Math.min(760, parent.width - 120)
+                        spacing: 0
+                        opacity: 0
+                        transform: Translate { id: hushTr; y: 14 }
+
+                        NumberAnimation { target: hushCol; property: "opacity"; from: 0; to: 1; duration: 700; easing.type: Easing.OutCubic; running: true }
+                        NumberAnimation { target: hushTr; property: "y"; from: 14; to: 0; duration: 700; easing.type: Easing.OutCubic; running: true }
+
+                        Text {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            text: win.confirmAction
+                            color: "#7a7076"
+                            font.family: "IBM Plex Mono"
+                            font.weight: Font.Medium
+                            font.pixelSize: 15
+                            font.letterSpacing: 6
+                            font.capitalization: Font.AllUppercase
+                        }
+
+                        Text {
+                            width: parent.width
+                            horizontalAlignment: Text.AlignHCenter
+                            fontSizeMode: Text.HorizontalFit
+                            text: win.confirmMsg
+                            color: "#d95435"
+                            topPadding: 22
+                            bottomPadding: 4
+                            font.family: "Instrument Serif"
+                            font.italic: true
+                            font.pixelSize: 190
+                        }
+
+                        Text {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            width: Math.min(520, parent.width)
+                            horizontalAlignment: Text.AlignHCenter
+                            wrapMode: Text.WordWrap
+                            text: "Everything unsaved will be closed. This can’t be undone."
+                            color: "#8f868c"
+                            font.family: "Newsreader"
+                            font.pixelSize: 22
+                            lineHeight: 1.45
+                        }
+
+                        Row {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            topPadding: 52
+                            spacing: 56
+
+                            Column {
+                                spacing: 6
+
+                                Text {
+                                    text: "Yes, " + win.confirmAction
+                                    color: "#e9e2e6"
+                                    font.family: "Newsreader"
+                                    font.pixelSize: 30
+
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        anchors.margins: -8
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: win.confirm()
+                                    }
+                                }
+
+                                Rectangle { width: parent.width; height: 2; color: "#cf4a2c" }
+                            }
+
+                            Text {
+                                text: "Cancel"
+                                color: hushNo.containsMouse ? "#b9b1b6" : "#6b6369"
+                                font.family: "Newsreader"
+                                font.pixelSize: 30
+
+                                MouseArea {
+                                    id: hushNo
+
+                                    anchors.fill: parent
+                                    anchors.margins: -8
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: win.cancelConfirm()
+                                }
+                            }
+                        }
+                    }
+
+                    Text {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        anchors.bottom: parent.bottom
+                        anchors.bottomMargin: 34
+                        text: "ESC TO CANCEL · ↵ TO CONFIRM"
+                        color: "#463f45"
+                        font.family: "IBM Plex Mono"
+                        font.pixelSize: 12
+                        font.letterSpacing: 2
+                    }
+                }
+            }
+
+            // ---------------- 1b — BLAZE : full color flood, brutalist ----------------
+            Component {
+                id: cBlaze
+
+                Item {
+                    anchors.fill: parent
+
+                    Rectangle { anchors.fill: parent; color: "#cf4a2c" }
+
+                    // header — system tag (left) + live clock (right)
+                    Text {
+                        anchors.left: parent.left
+                        anchors.top: parent.top
+                        anchors.leftMargin: 52
+                        anchors.topMargin: 44
+                        text: "SYSTEM · " + powerConfirm.actionUpper
+                        color: "#3d130a"
+                        font.family: "IBM Plex Mono"
+                        font.pixelSize: 14
+                        font.letterSpacing: 4
+                        font.capitalization: Font.AllUppercase
+                    }
+
+                    Text {
+                        anchors.right: parent.right
+                        anchors.top: parent.top
+                        anchors.rightMargin: 52
+                        anchors.topMargin: 44
+                        text: root.clockShort
+                        color: "#3d130a"
+                        font.family: "IBM Plex Mono"
+                        font.pixelSize: 14
+                        font.letterSpacing: 3
+                    }
+
+                    // headline + subtitle, left-aligned, riding above the buttons
+                    Column {
+                        id: blazeCol
+
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.bottom: blazeButtons.top
+                        anchors.leftMargin: 52
+                        anchors.rightMargin: 52
+                        anchors.bottomMargin: 60
+                        spacing: 24
+                        opacity: 0
+                        transform: Translate { id: blazeTr; y: 14 }
+
+                        NumberAnimation { target: blazeCol; property: "opacity"; from: 0; to: 1; duration: 700; easing.type: Easing.OutCubic; running: true }
+                        NumberAnimation { target: blazeTr; property: "y"; from: 14; to: 0; duration: 700; easing.type: Easing.OutCubic; running: true }
+
+                        Text {
+                            width: parent.width
+                            fontSizeMode: Text.HorizontalFit
+                            text: win.confirmMsg
+                            color: "#160805"
+                            font.family: "DM Serif Display"
+                            font.pixelSize: 200
+                            font.letterSpacing: -3
+                            lineHeight: 0.82
+                        }
+
+                        Text {
+                            width: Math.min(560, parent.width)
+                            wrapMode: Text.WordWrap
+                            text: "All apps will close. Hold nothing back."
+                            color: "#4a1b0e"
+                            font.family: "Newsreader"
+                            font.pixelSize: 24
+                            lineHeight: 1.4
+                        }
+                    }
+
+                    // full-width yes / no bar
+                    Row {
+                        id: blazeButtons
+
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.bottom: parent.bottom
+
+                        Rectangle {
+                            width: parent.width / 2
+                            height: 108
+                            color: "#160805"
+
+                            Text {
+                                anchors.centerIn: parent
+                                text: "Yes"
+                                color: "#f4c9bc"
+                                font.family: "DM Serif Display"
+                                font.pixelSize: 40
+                            }
+
+                            MouseArea {
+                                anchors.fill: parent
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: win.confirm()
+                            }
+                        }
+
+                        Rectangle {
+                            width: parent.width / 2
+                            height: 108
+                            color: blazeNo.containsMouse ? "#c33f22" : "transparent"
+
+                            // left keyline between the two halves
+                            Rectangle { anchors.left: parent.left; width: 2; height: parent.height; color: "#a5361f" }
+
+                            Text {
+                                anchors.centerIn: parent
+                                text: "No"
+                                color: "#3d130a"
+                                font.family: "DM Serif Display"
+                                font.pixelSize: 40
+                            }
+
+                            MouseArea {
+                                id: blazeNo
+
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: win.cancelConfirm()
+                            }
+                        }
+                    }
+
+                    // top keyline above the button bar
+                    Rectangle {
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.bottom: blazeButtons.top
+                        height: 2
+                        color: "#a5361f"
+                    }
+                }
+            }
+
+            // ---------------- 1c — LEDGER : editorial, keyline frame ----------------
+            Component {
+                id: cLedger
+
+                Item {
+                    anchors.fill: parent
+
+                    Rectangle { anchors.fill: parent; color: "#0d0b0e" }
+
+                    Column {
+                        id: ledgerCol
+
+                        anchors.centerIn: parent
+                        width: Math.min(760, parent.width * 0.82)
+                        spacing: 26
+                        opacity: 0
+                        transform: Translate { id: ledgerTr; y: 14 }
+
+                        NumberAnimation { target: ledgerCol; property: "opacity"; from: 0; to: 1; duration: 700; easing.type: Easing.OutCubic; running: true }
+                        NumberAnimation { target: ledgerTr; property: "y"; from: 14; to: 0; duration: 700; easing.type: Easing.OutCubic; running: true }
+
+                        // keyline: pulsing dot · label · rule to the right edge
+                        Item {
+                            width: parent.width
+                            height: 14
+
+                            Rectangle {
+                                id: ledgerDot
+
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: 8
+                                height: 8
+                                radius: 4
+                                color: "#cf4a2c"
+
+                                SequentialAnimation on opacity {
+                                    running: true
+                                    loops: Animation.Infinite
+
+                                    NumberAnimation { from: 0.55; to: 0.9; duration: 1200; easing.type: Easing.InOutSine }
+                                    NumberAnimation { from: 0.9; to: 0.55; duration: 1200; easing.type: Easing.InOutSine }
+                                }
+                            }
+
+                            Text {
+                                id: ledgerTag
+
+                                anchors.left: ledgerDot.right
+                                anchors.leftMargin: 16
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: "Confirm " + win.confirmAction
+                                color: "#7a7076"
+                                font.family: "IBM Plex Mono"
+                                font.pixelSize: 13
+                                font.letterSpacing: 4
+                                font.capitalization: Font.AllUppercase
+                            }
+
+                            Rectangle {
+                                anchors.left: ledgerTag.right
+                                anchors.leftMargin: 16
+                                anchors.right: parent.right
+                                anchors.verticalCenter: parent.verticalCenter
+                                height: 1
+                                color: "#241f26"
+                            }
+                        }
+
+                        Text {
+                            width: parent.width
+                            fontSizeMode: Text.HorizontalFit
+                            text: win.confirmMsg
+                            color: "#ece6e9"
+                            font.family: "Newsreader"
+                            font.weight: Font.Normal
+                            font.pixelSize: 96
+                            font.letterSpacing: -1
+                            lineHeight: 1.02
+                        }
+
+                        Text {
+                            width: Math.min(600, parent.width)
+                            wrapMode: Text.WordWrap
+                            text: "Your session ends and open work closes. You’ll need to sign back in."
+                            color: "#8f868c"
+                            font.family: "Newsreader"
+                            font.pixelSize: 23
+                            lineHeight: 1.5
+                        }
+
+                        Row {
+                            topPadding: 20
+                            spacing: 16
+
+                            Rectangle {
+                                width: ledgerYes.implicitWidth + 68
+                                height: ledgerYes.implicitHeight + 36
+                                radius: 3
+                                color: "#cf4a2c"
+
+                                Text {
+                                    id: ledgerYes
+
+                                    anchors.centerIn: parent
+                                    text: powerConfirm.actionUpper
+                                    color: "#0f0d0f"
+                                    font.family: "IBM Plex Mono"
+                                    font.pixelSize: 15
+                                    font.letterSpacing: 2
+                                }
+
+                                MouseArea {
+                                    anchors.fill: parent
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: win.confirm()
+                                }
+                            }
+
+                            Rectangle {
+                                width: ledgerNo.implicitWidth + 68
+                                height: ledgerNo.implicitHeight + 36
+                                radius: 3
+                                color: ledgerNoMa.containsMouse ? "#1a151b" : "transparent"
+                                border.width: 1
+                                border.color: "#2d272e"
+
+                                Text {
+                                    id: ledgerNo
+
+                                    anchors.centerIn: parent
+                                    text: "CANCEL"
+                                    color: "#b9b1b6"
+                                    font.family: "IBM Plex Mono"
+                                    font.pixelSize: 15
+                                    font.letterSpacing: 2
+                                }
+
+                                MouseArea {
+                                    id: ledgerNoMa
+
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: win.cancelConfirm()
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ---------------- 1d — SPLIT : decisive left / right ----------------
+            Component {
+                id: cSplit
+
+                Item {
+                    anchors.fill: parent
+
+                    Row {
+                        anchors.fill: parent
+
+                        // left half — YES (confirm)
+                        Rectangle {
+                            width: parent.width / 2
+                            height: parent.height
+                            color: splitYesMa.containsMouse ? "#141014" : "#0d0b0e"
+
+                            Column {
+                                anchors.centerIn: parent
+                                spacing: 20
+
+                                Text {
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                    text: "Yes"
+                                    color: splitYesMa.containsMouse ? "#e9603f" : "#d95435"
+                                    font.family: "DM Serif Display"
+                                    font.pixelSize: 120
+                                }
+
+                                Text {
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                    text: "power off now"
+                                    color: "#7a7076"
+                                    font.family: "IBM Plex Mono"
+                                    font.pixelSize: 13
+                                    font.letterSpacing: 3
+                                    font.capitalization: Font.AllUppercase
+                                }
+                            }
+
+                            MouseArea {
+                                id: splitYesMa
+
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: win.confirm()
+                            }
+                        }
+
+                        // right half — NO (cancel)
+                        Rectangle {
+                            width: parent.width / 2
+                            height: parent.height
+                            color: splitNoMa.containsMouse ? "#100e11" : "#0a090b"
+
+                            Column {
+                                anchors.centerIn: parent
+                                spacing: 20
+
+                                Text {
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                    text: "No"
+                                    color: splitNoMa.containsMouse ? "#6a636c" : "#4d4750"
+                                    font.family: "DM Serif Display"
+                                    font.pixelSize: 120
+                                }
+
+                                Text {
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                    text: "stay awake"
+                                    color: "#5a535a"
+                                    font.family: "IBM Plex Mono"
+                                    font.pixelSize: 13
+                                    font.letterSpacing: 3
+                                    font.capitalization: Font.AllUppercase
+                                }
+                            }
+
+                            MouseArea {
+                                id: splitNoMa
+
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: win.cancelConfirm()
+                            }
+                        }
+                    }
+
+                    // centre divider
+                    Rectangle {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        anchors.top: parent.top
+                        anchors.bottom: parent.bottom
+                        width: 1
+                        color: "#221d23"
+                    }
+
+                    // the question, centred at the top
+                    Text {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        anchors.top: parent.top
+                        anchors.topMargin: 44
+                        text: win.confirmMsg
+                        color: "#5a535a"
+                        font.family: "IBM Plex Mono"
+                        font.pixelSize: 14
+                        font.letterSpacing: 6
+                        font.capitalization: Font.AllUppercase
+                    }
+                }
+            }
+
+            Behavior on opacity {
+                NumberAnimation {
+                    duration: theme.anim
+                }
+
+            }
+
         }
 
     }
