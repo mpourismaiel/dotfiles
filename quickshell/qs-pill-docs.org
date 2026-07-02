@@ -68,6 +68,7 @@ Edit these blocks; tangle to regenerate the files (see [[*Tangling][§ Tangling]
 After tangling, validate with =qs -p quickshell/init.qml=.
 
 ** Theme.qml
+*** Description
 All colours, metrics, timings and font/icon settings in one place — restyle the
 whole pill here. Instantiated once in =init.qml= as =Theme { id: theme }= and
 passed into every component as a =theme= property (no singletons).
@@ -83,6 +84,7 @@ by a notification. This is alpha translucency only — true backdrop *blur* woul
 need the KWin blur protocol, which Quickshell does not expose. Icons resolve
 through Qt's icon theme; =iconTheme= forces a specific one (e.g. ="Papirus"=), =""=
 follows KDE — =run-pill.sh= reads this and applies it (see [[*run-pill.sh][§ run-pill.sh]]).
+*** Code
 #+begin_src qml :tangle ~/.config/quickshell/pill/Theme.qml :mkdirp yes
 pragma ComponentBehavior: Bound
 // Theme.qml — one place for all colours, metrics and timings. Change here to
@@ -179,7 +181,7 @@ QtObject {
     //   "1d" Split  — decisive left (yes) / right (no) halves
     //   "random"    — one of the above, chosen per open
     // Needs the fonts: IBM Plex Mono, Newsreader, DM Serif Display, Instrument Serif.
-    readonly property string confirmation: "random"
+    readonly property string confirmation: "1a"
 }
 #+end_src
 
@@ -1491,8 +1493,7 @@ Row {
         icon: root.notifs.dnd ? "notifications_off" : "notifications"
         size: 18
         fill: root.notifs.dnd ? 1 : 0
-        color: root.notifs.dnd ? root.theme.accent
-             : (dndMa.containsMouse ? root.theme.text : root.theme.faint)
+        color: root.notifs.dnd ? root.theme.accent : (dndMa.containsMouse ? root.theme.text : root.theme.faint)
 
         MouseArea {
             id: dndMa
@@ -1631,12 +1632,14 @@ Item {
             anchors.rightMargin: 12
             anchors.verticalCenter: parent.verticalCenter
             spacing: 5
+
             MSym {
                 anchors.verticalCenter: parent.verticalCenter
                 icon: "content_copy"
                 size: 14
                 color: root.theme.faint
             }
+
             Text {
                 anchors.verticalCenter: parent.verticalCenter
                 text: "Copy"
@@ -1646,6 +1649,7 @@ Item {
                 font.letterSpacing: root.theme.labelSpacing
                 font.capitalization: Font.AllUppercase
             }
+
         }
 
         MouseArea {
@@ -2292,6 +2296,13 @@ QtObject {
         gs.sort((g1, g2) => ts(g2.items[0].id) - ts(g1.items[0].id));
         root.grouped = gs;
     }
+    // total un-cleared notifications in history (sum across app groups); drives the
+    // collapsed-pill unread dot and the status-switcher notifications badge.
+    readonly property int unreadCount: {
+        let c = 0;
+        for (const g of root.grouped) c += g.items.length;
+        return c;
+    }
     readonly property Connections rebuilder: Connections {
         target: root.server
         function onTrackedNotificationsChanged() { root.rebuild(); }
@@ -2899,6 +2910,12 @@ shortcut), which =init.qml= parses with =Process= + =SplitParser=:
 - *launcher shortcut*: that same script =registerShortcut=s *Meta+D*, whose callback
   calls =org.kde.pill Launcher(activeWindow.output.name)= → the =\{event:"launcher"\}=
   line; re-bindable in *System Settings ▸ Shortcuts ▸ KWin*.
+- *window actions*: the taskbar right-click menu calls =org.kde.pill Action(idsJson,
+  verb)=; there is no per-window DBus, so this loads a *one-shot* KWin script
+  (=quickshell-pill-action= plugin slot, replaced each call) that finds every window
+  whose =internalId= is in =idsJson= and applies =verb= — =minimize/maximize/above/
+  below= toggle the group's aggregate state, =close= closes each, =desktop:<id>= /
+  =desktop:all= move them (=Window.desktops=/=onAllDesktops=/=setMaximize=/=closeWindow=).
 #+begin_src python :tangle ~/.config/quickshell/pill/winbridge.py :mkdirp yes
 #!/usr/bin/env python
 # winbridge.py — feeds the pill its open-window list + the active window.
@@ -2920,17 +2937,22 @@ bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
 # report arrives.
 state = {"active": "", "taskbar": None, "fullscreen": False}
 PLUGIN = "quickshell-pill-active"
+ACTION_PLUGIN = "quickshell-pill-action"
 
 # --- our DBus service ---
 #   Set(uuid, fs)  — KWin script reports the active window (+ "1"/"0" fullscreen)
 #   List(json)     — KWin script reports the taskbar-eligible window ids (JSON array)
 #   Launcher(scr)  — KWin global shortcut asks the pill to toggle the launcher on
 #                    the screen named `scr` (empty = whichever pill is on it)
+#   Action(ids,vb) — the taskbar right-click menu asks KWin to run window action
+#                    `vb` against every window whose internalId is in the JSON
+#                    array `ids` (see run_action / ACTION_JS).
 NODE = (
     '<node><interface name="org.kde.pill">'
     '<method name="Set"><arg type="s" direction="in"/><arg type="s" direction="in"/></method>'
     '<method name="List"><arg type="s" direction="in"/></method>'
     '<method name="Launcher"><arg type="s" direction="in"/></method>'
+    '<method name="Action"><arg type="s" direction="in"/><arg type="s" direction="in"/></method>'
     "</interface></node>"
 )
 IFACE = Gio.DBusNodeInfo.new_for_xml(NODE).interfaces[0]
@@ -2955,6 +2977,9 @@ def on_call(conn, sender, path, ifc, method, params, inv):
         # one-off event line (not the regular state snapshot) the pill reacts to
         sys.stdout.write(json.dumps({"event": "launcher", "screen": scr}) + "\n")
         sys.stdout.flush()
+    elif method == "Action":
+        (ids_json, verb) = params.unpack()
+        run_action(ids_json, verb)
     inv.return_value(None)
 
 
@@ -2970,17 +2995,21 @@ def on_bus_acquired(conn, name):
 #     on skipTaskbar changes, and re-push the active window when *its* fullScreen
 #     toggles (e.g. a video going fullscreen without re-activating the window). ---
 KWIN_JS = (
-    # each taskbar window is reported as { id, seq, cls, dfile }: seq is a stable
-    # open-order index (assigned the first time a window is seen, so newly opened
-    # windows sort after older ones), cls is the app's resourceClass and dfile its
-    # desktopFileName — both used by the pill to group by app and resolve a proper
-    # icon (the KRunner icon name alone often misses).
+    # each taskbar window is reported as { id, seq, cls, dfile, desk }: seq is a
+    # stable open-order index (assigned the first time a window is seen, so newly
+    # opened windows sort after older ones), cls is the app's resourceClass and
+    # dfile its desktopFileName — both used by the pill to group by app and resolve
+    # a proper icon (the KRunner icon name alone often misses) — and desk is the
+    # window's virtual desktop (for the right-click Move-to-Desktop marker).
     "var seqN=0, seq={};\n"
     "function meta(w){ var id=String(w.internalId);\n"
     "  if (seq[id]===undefined) seq[id]=seqN++;\n"
     "  return { id:id, seq:seq[id],\n"
     "    cls:(w.resourceClass?String(w.resourceClass):''),\n"
-    "    dfile:(w.desktopFileName?String(w.desktopFileName):'') }; }\n"
+    "    dfile:(w.desktopFileName?String(w.desktopFileName):''),\n"
+    # desk = which virtual desktop the window is on ('all', a desktop id, or '');
+    # the pill marks it in the right-click Move-to-Desktop list.
+    "    desk:(w.onAllDesktops ? 'all' : (w.desktops && w.desktops.length ? String(w.desktops[0].id) : '')) }; }\n"
     "function ids(){ var ws=workspace.windowList(), o=[];\n"
     "  for (var i=0;i<ws.length;i++){ var w=ws[i];\n"
     "    if (w.normalWindow && !w.skipTaskbar) o.push(meta(w)); }\n"
@@ -2991,6 +3020,7 @@ KWIN_JS = (
     ' w ? String(w.internalId) : "", (w && w.fullScreen) ? "1" : "0"); }\n'
     "function watch(w){ if (!w) return;\n"
     "  if (w.skipTaskbarChanged) w.skipTaskbarChanged.connect(pushList);\n"
+    "  if (w.desktopsChanged) w.desktopsChanged.connect(pushList);\n"
     "  if (w.fullScreenChanged) w.fullScreenChanged.connect(function(){\n"
     "    if (w === workspace.activeWindow) setActive(w); }); }\n"
     "workspace.windowActivated.connect(setActive);\n"
@@ -3034,9 +3064,63 @@ def load_kwin_script():
     kwin("start", None)
 
 
+# --- the taskbar right-click window actions ---
+# A one-shot KWin script (there is no per-window DBus): it looks up every window
+# whose internalId is in TARGETS and applies VERB. Toggle verbs act on the group's
+# AGGREGATE state so a grouped app stays in sync — e.g. minimize hides them all
+# unless they're already all hidden (then it restores all). maximizeMode 3 = full.
+ACTION_JS = (
+    "(function(){\n"
+    "  var wl = workspace.windowList ? workspace.windowList() : workspace.clientList();\n"
+    "  var wins = [];\n"
+    "  for (var i=0;i<wl.length;i++){ var id=String(wl[i].internalId);\n"
+    "    for (var j=0;j<TARGETS.length;j++) if (TARGETS[j]===id){ wins.push(wl[i]); break; } }\n"
+    "  if (!wins.length) return;\n"
+    "  function every(f){ for (var i=0;i<wins.length;i++) if (!f(wins[i])) return false; return true; }\n"
+    '  if (VERB === "close"){ for (var i=0;i<wins.length;i++) wins[i].closeWindow(); }\n'
+    '  else if (VERB === "minimize"){ var on = !every(function(w){return w.minimized;});\n'
+    "    for (var i=0;i<wins.length;i++) wins[i].minimized = on; }\n"
+    '  else if (VERB === "maximize"){ var on = !every(function(w){return w.maximizeMode === 3;});\n'
+    "    for (var i=0;i<wins.length;i++) wins[i].setMaximize(on, on); }\n"
+    '  else if (VERB === "above"){ var on = !every(function(w){return w.keepAbove;});\n'
+    "    for (var i=0;i<wins.length;i++){ wins[i].keepAbove = on; if (on) wins[i].keepBelow = false; } }\n"
+    '  else if (VERB === "below"){ var on = !every(function(w){return w.keepBelow;});\n'
+    "    for (var i=0;i<wins.length;i++){ wins[i].keepBelow = on; if (on) wins[i].keepAbove = false; } }\n"
+    '  else if (VERB === "desktop:all"){ for (var i=0;i<wins.length;i++) wins[i].onAllDesktops = true; }\n'
+    '  else if (VERB.indexOf("desktop:") === 0){ var did = VERB.substring(8);\n'
+    "    var ds = workspace.desktops, vd = null;\n"
+    "    for (var i=0;i<ds.length;i++) if (String(ds[i].id) === did) vd = ds[i];\n"
+    "    if (vd) for (var i=0;i<wins.length;i++){ wins[i].onAllDesktops = false; wins[i].desktops = [vd]; } }\n"
+    "})();\n"
+)
+
+
+def run_action(ids_json, verb):
+    # validate the ids JSON so a bad payload can't inject into the script body
+    try:
+        ids = json.loads(ids_json)
+        if not isinstance(ids, list):
+            return
+    except Exception:
+        return
+    js = (
+        "var TARGETS = %s;\nvar VERB = %s;\n%s"
+        % (json.dumps(ids), json.dumps(verb), ACTION_JS)
+    )
+    path = os.path.join(tempfile.gettempdir(), "quickshell_pill_action.js")
+    with open(path, "w") as f:
+        f.write(js)
+    # reuse one plugin slot: the previous action script already ran, so unloading
+    # it is safe; load+start runs the fresh one exactly once.
+    kwin("unloadScript", GLib.Variant("(s)", (ACTION_PLUGIN,)))
+    kwin("loadScript", GLib.Variant("(ss)", (path, ACTION_PLUGIN)))
+    kwin("start", None)
+
+
 @atexit.register
 def _cleanup():
     kwin("unloadScript", GLib.Variant("(s)", (PLUGIN,)))
+    kwin("unloadScript", GLib.Variant("(s)", (ACTION_PLUGIN,)))
 
 
 # --- poll the KRunner windows runner for the window list ---
@@ -3082,6 +3166,8 @@ def windows():
             "cls": (meta or {}).get("cls", ""),
             "dfile": (meta or {}).get("dfile", ""),
             "seq": (meta or {}).get("seq", 0),
+            # which virtual desktop the window is on ('all' / a desktop id / '')
+            "desk": (meta or {}).get("desk", ""),
         }
     # order by open time (seq); before the first List report seq is 0 for all, so
     # fall back to id for a stable order.
@@ -3270,17 +3356,23 @@ Row {
 
 ** StatusIcons.qml
 The hovered dashboard's status switcher (Row 2, right): network / volume / bluetooth
-/ battery / notifications icons. The volume and battery glyphs track live Pipewire
-mute and UPower state. Clicking one emits =menuRequested(menu)=; while the panel is
-open the active menu's icon is highlighted (=open= + =menu=).
+/ battery / notifications icons. The glyphs track live state — the volume icon
+follows Pipewire mute *and* level (off / mute / down / up), the battery follows
+UPower charge/state (6-bar granularity, plus a red alert glyph when critically low),
+and the notifications bell carries a count badge for un-cleared history (=notifs=).
+Clicking one emits =menuRequested(menu)=; while the panel is open the active menu's
+icon is highlighted (=open= + =menu=).
 #+begin_src qml :tangle ~/.config/quickshell/pill/StatusIcons.qml :mkdirp yes
 pragma ComponentBehavior: Bound
 // StatusIcons.qml — the dashboard status switcher (Row 2). Network / volume /
-// bluetooth / battery / notifications; volume + battery glyphs follow live Pipewire
-// mute and UPower state. menuRequested(menu) fires on click; when `open`, the icon
-// for the current `menu` is highlighted. Menu ids: 0 net, 1 vol, 2 bt, 3 batt, 4 notif.
-// The hover highlight is NOT drawn here (only the open-menu selection): each icon
-// reports itself via itemEntered (on enter only) so the shared hover square jumps to it.
+// bluetooth / battery / notifications; the glyphs track live state — the volume
+// icon follows Pipewire mute AND level (off/mute/down/up), the battery follows
+// UPower charge/state (6-bar granularity + a red alert glyph when critically low),
+// and the notifications icon carries a count badge for un-cleared history.
+// menuRequested(menu) fires on click; when `open`, the icon for the current `menu`
+// is highlighted. Menu ids: 0 net, 1 vol, 2 bt, 3 batt, 4 notif. The hover highlight
+// is NOT drawn here (only the open-menu selection): each icon reports itself via
+// itemEntered (on enter only) so the shared hover square jumps to it.
 import QtQuick
 import Quickshell.Services.Pipewire
 import Quickshell.Services.UPower
@@ -3288,33 +3380,56 @@ import Quickshell.Services.UPower
 Row {
     id: root
     required property var theme
+    property var notifs                  // notification state (drives the badge count)
     property bool open: false
     property int menu: -1
     signal menuRequested(int menu)
     signal itemEntered(var item)         // icon hovered -> move the shared indicator
 
-    // live glyphs: volume follows Pipewire mute; battery follows UPower state.
-    readonly property bool muted: Pipewire.defaultAudioSink && Pipewire.defaultAudioSink.audio && Pipewire.defaultAudioSink.audio.muted
-    function batteryIcon() {
-        const d = UPower.displayDevice;
-        if (!d || !d.isPresent) return "power";
-        if (d.state === UPowerDeviceState.Charging || d.state === UPowerDeviceState.PendingCharge)
-            return "battery_charging_full";
-        const p = d.percentage;
-        if (p >= 0.95) return "battery_full";
-        if (p >= 0.60) return "battery_5_bar";
-        if (p >= 0.30) return "battery_3_bar";
-        return "battery_2_bar";
+    // keep the default sink live so `volume`/`muted` fire property updates here.
+    PwObjectTracker { objects: Pipewire.defaultAudioSink ? [Pipewire.defaultAudioSink] : [] }
+
+    // live glyphs: volume follows Pipewire mute + level; battery follows UPower.
+    readonly property var sinkAudio: (Pipewire.defaultAudioSink && Pipewire.defaultAudioSink.audio) ? Pipewire.defaultAudioSink.audio : null
+    readonly property bool muted: root.sinkAudio ? root.sinkAudio.muted : false
+    readonly property real volume: root.sinkAudio ? root.sinkAudio.volume : 0
+    function volumeIcon() {
+        if (root.muted) return "volume_off";
+        if (root.volume <= 0.001) return "volume_mute";  // speaker, no waves
+        if (root.volume < 0.5) return "volume_down";      // one wave
+        return "volume_up";                               // two waves
     }
+
+    readonly property var battery: (UPower.displayDevice && UPower.displayDevice.isPresent) ? UPower.displayDevice : null
+    readonly property bool charging: root.battery
+        && (root.battery.state === UPowerDeviceState.Charging || root.battery.state === UPowerDeviceState.PendingCharge)
+    // critically low and not on charge -> flag it (glyph turns red).
+    readonly property bool batteryLow: root.battery && !root.charging && root.battery.percentage <= 0.15
+    function batteryIcon() {
+        if (!root.battery) return "power";
+        if (root.charging) return "battery_charging_full";
+        if (root.battery.state === UPowerDeviceState.Unknown) return "battery_unknown";
+        const p = root.battery.percentage;
+        if (p >= 0.95) return "battery_full";
+        if (p >= 0.80) return "battery_6_bar";
+        if (p >= 0.60) return "battery_5_bar";
+        if (p >= 0.45) return "battery_4_bar";
+        if (p >= 0.30) return "battery_3_bar";
+        if (p >= 0.15) return "battery_2_bar";
+        if (p >= 0.05) return "battery_1_bar";
+        return "battery_alert";
+    }
+
+    readonly property int unread: root.notifs ? root.notifs.unreadCount : 0
 
     spacing: root.theme.iconSpacing + 4
     Repeater {
         model: [
-            { ic: "wifi",          fill: 0, menu: 0 },
-            { ic: root.muted ? "volume_off" : "volume_up", fill: root.muted ? 0 : 1, menu: 1 },
-            { ic: "bluetooth",     fill: 0, menu: 2 },
-            { ic: root.batteryIcon(), fill: 1, menu: 3 },
-            { ic: "notifications", fill: 0, menu: 4 }
+            { ic: "wifi",          fill: 0, menu: 0, warn: false, badge: 0 },
+            { ic: root.volumeIcon(), fill: root.muted ? 0 : 1, menu: 1, warn: false, badge: 0 },
+            { ic: "bluetooth",     fill: 0, menu: 2, warn: false, badge: 0 },
+            { ic: root.batteryIcon(), fill: 1, menu: 3, warn: root.batteryLow, badge: 0 },
+            { ic: "notifications", fill: root.unread > 0 ? 1 : 0, menu: 4, warn: false, badge: root.unread }
         ]
         delegate: Rectangle {
             id: statusItem
@@ -3329,7 +3444,27 @@ Row {
                 icon: modelData.ic
                 size: 21
                 fill: modelData.fill
-                color: statusItem.selected ? root.theme.accent : root.theme.textDim
+                color: statusItem.selected ? root.theme.accent
+                     : modelData.warn ? root.theme.danger
+                     : root.theme.textDim
+            }
+            // un-cleared notifications count badge (top-right of the bell); "9+"
+            // once past nine so it never outgrows the pill.
+            Rectangle {
+                visible: modelData.badge > 0
+                anchors.top: parent.top
+                anchors.right: parent.right
+                anchors.topMargin: 1
+                anchors.rightMargin: 1
+                width: Math.max(14, badgeText.implicitWidth + 6); height: 14; radius: 7
+                color: root.theme.accent
+                Text {
+                    id: badgeText
+                    anchors.centerIn: parent
+                    text: modelData.badge > 9 ? "9+" : modelData.badge
+                    font.family: root.theme.family
+                    color: "#ffffff"; font.pixelSize: 9; font.bold: true
+                }
             }
             MouseArea {
                 id: statusMa
@@ -3592,85 +3727,279 @@ Row {
 #+end_src
 
 ** AppContextMenu.qml
-The taskbar app right-click menu: the app's name, its launcher actions (New Window, …
-from =DesktopEntries.heuristicLookup(icon).actions=), then the app's open windows
-(click to focus). =launchRequested(execString)= runs an action, =activateRequested(id)=
-focuses a window, and either also emits =dismissed()= so the host can close the menu.
+The taskbar app right-click menu, rendered *inside* the pill like the control-panel
+menus (not a floating popup): a [[*MenuHeader.qml][=MenuHeader=]] showing the app
+name (chevron backs out), then — *only for a grouped app (>1 window)* — one collapsible
+*submenu per window* (a split row: click the title to *focus* that window, click its
+chevron to expand the same actions as a single-app menu, targeting just that window)
+plus a separator, the app's own launcher actions (New Window, … from
+=DesktopEntries.heuristicLookup(icon).actions=) + separator, an "All windows" section,
+then the KWin window actions — *Move to Desktop* (an inline accordion listing
+=desktops=), *Minimize*, *Maximize*, *Keep Above/Below Others* — a separator, and a
+*Close* row (these act on the whole group). The per-window actions and the whole-group
+actions share one reusable =ActionBlock= sub-component.
+
+=launchRequested(execString)= runs a launcher action; =activateRequested(id)= focuses
+one window (a title row's body); =windowAction(verb, uuids)= asks the host to drive KWin
+(=minimize/maximize/above/below/close/desktop:<id>=, =desktop:all=) against the passed
+uuids (a single window, or the whole group); =closeRequested()= backs out (host clears
+=win.ctxGroup=). The host also clears =ctxGroup= after any window/launch action, so
+acting closes the menu (Plasma behaviour). Content scrolls in a =Flickable=;
+=implicitHeight= (header + rows, independent of the given height) drives the pill's
+ctx-mode size.
 #+begin_src qml :tangle ~/.config/quickshell/pill/AppContextMenu.qml :mkdirp yes
 pragma ComponentBehavior: Bound
-// AppContextMenu.qml — the taskbar app right-click menu: app name, launcher actions
-// (DesktopEntries.heuristicLookup(icon).actions) and the app's open windows (click
-// to focus). launchRequested(execString)/activateRequested(id) act; both then emit
-// dismissed() so the host closes the menu.
+// AppContextMenu.qml — the taskbar app right-click menu, rendered inside the pill
+// (like the control-panel menus). MenuHeader shows the app name; below it: for a
+// grouped app (>1 window) a split-row submenu per window (click body=activateRequested
+// to focus, click chevron=expand that window's ActionBlock) + separator, the app's
+// launcher actions (DesktopEntries.heuristicLookup(icon).actions) + separator, an "All
+// windows" ActionBlock — Move to Desktop (inline accordion over `desktops`), Minimize,
+// Maximize, Keep Above/Below, Close. launchRequested(execString) runs a launcher
+// action; windowAction(verb, uuids) drives KWin against those uuids; the host
+// clears win.ctxGroup after either (so acting closes the menu). closeRequested() backs
+// out. implicitHeight (header + rows) sizes the ctx-mode pill.
 import QtQuick
 import Quickshell
 
-Rectangle {
+Item {
     id: root
     required property var theme
-    required property var group          // { icon, entry, wins: [{ id, title }] }
+    required property var group          // { icon, entry, wins, desks, onAll }
+    property var desktops: []            // [{ id, name }] — KWin virtual desktops
+    // which desktops the group's windows occupy (radio-marked in the list)
+    readonly property var winDesks: root.group && root.group.desks ? root.group.desks : []
+    readonly property bool winOnAll: !!(root.group && root.group.onAll)
     signal launchRequested(string execString)
-    signal activateRequested(string id)
-    signal dismissed()
+    signal activateRequested(string id)  // focus one window (a grouped app's title row)
+    // act on the given window uuids: minimize|maximize|above|below|close|desktop:<id>
+    signal windowAction(string verb, var uuids)
+    signal closeRequested()
 
     // the host (init.qml appGroups) already resolved the best DesktopEntry; fall
     // back to a heuristic lookup on the icon name for safety.
     readonly property var entry: root.group
         ? (root.group.entry || DesktopEntries.heuristicLookup(root.group.icon))
         : null
+    readonly property var actions: root.entry && root.entry.actions ? root.entry.actions : []
+    // all window uuids in the group (the whole-group action targets), and whether
+    // this app has more than one open window (→ per-window submenus).
+    readonly property var allUuids: root.group && root.group.wins ? root.group.wins.map(w => w.uuid) : []
+    readonly property bool grouped: !!(root.group && root.group.wins && root.group.wins.length > 1)
 
-    width: 240
-    height: ctxCol.height + 16
-    radius: root.theme.radiusCard
-    color: root.theme.bgElevated
-    border.color: root.theme.border; border.width: 1
+    // header + content, independent of the height we're actually given (so the pill
+    // can bind its ctx-mode height to this without a layout cycle).
+    implicitHeight: header.implicitHeight + root.theme.gap + bodyCol.implicitHeight
 
-    Column {
-        id: ctxCol
-        x: 8; y: 8
-        width: parent.width - 16
-        spacing: 2
-
-        Text {
-            width: parent.width; elide: Text.ElideRight
-            leftPadding: 2
-            text: root.entry ? root.entry.name : (root.group ? root.group.icon : "")
-            font.family: root.theme.mono
-            color: root.theme.faint; font.pixelSize: root.theme.fsSmall
-            font.letterSpacing: root.theme.labelSpacing; font.capitalization: Font.AllUppercase
-            bottomPadding: 5
+    // one clickable menu row: optional leading glyph, label, optional trailing chevron.
+    // splitChev = the chevron is its own hit target (a rounded button that toggles the
+    // submenu via chevAct); the rest of the row fires act(). Used for the window-title
+    // rows — click the row to focus the window, click the chevron to open its menu.
+    // Without splitChev the whole row fires act() (chevron is just an affordance).
+    component Row0: Rectangle {
+        id: r0
+        property string glyph: ""
+        property string label: ""
+        property bool chev: false
+        property bool expanded: false
+        property bool danger: false
+        property real indent: 0
+        property bool splitChev: false
+        property bool chevHover: false
+        readonly property real chevZone: 40   // right-edge px that hit the chevron
+        signal act()
+        signal chevAct()
+        width: parent ? parent.width : 0
+        height: 34
+        radius: root.theme.radiusBtn
+        // while the pointer is over the split chevron, the row body doesn't highlight
+        // (the chevron button does instead) so the two targets read as distinct.
+        color: (r0ma.containsMouse && !r0.chevHover) ? root.theme.rowHi : "transparent"
+        MSym {
+            id: r0ic
+            visible: r0.glyph !== ""
+            anchors.left: parent.left; anchors.leftMargin: 10 + r0.indent
+            anchors.verticalCenter: parent.verticalCenter
+            icon: r0.glyph; size: 18
+            color: r0.danger ? root.theme.accent : root.theme.textDim
         }
-        Repeater {                        // launcher actions (New Window, …)
-            model: root.entry ? root.entry.actions : []
-            delegate: Rectangle {
-                required property var modelData
-                width: ctxCol.width; height: 30; radius: root.theme.radiusBtn
-                color: ma.containsMouse ? root.theme.rowHi : "transparent"
-                Text {
-                    anchors.verticalCenter: parent.verticalCenter; x: 10
-                    font.family: root.theme.family
-                    text: modelData.name; color: root.theme.text; font.pixelSize: root.theme.fsNormal
-                }
-                MouseArea { id: ma; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
-                    onClicked: { root.launchRequested(modelData.execString); root.dismissed(); } }
+        Text {
+            anchors.left: r0.glyph !== "" ? r0ic.right : parent.left
+            anchors.leftMargin: r0.glyph !== "" ? 12 : 12 + r0.indent
+            anchors.right: parent.right; anchors.rightMargin: 34
+            anchors.verticalCenter: parent.verticalCenter
+            elide: Text.ElideRight
+            text: r0.label
+            color: r0.danger ? root.theme.accent : root.theme.text
+            font.family: root.theme.family; font.pixelSize: root.theme.fsNormal
+        }
+        Rectangle {                          // chevron (its own button when splitChev)
+            visible: r0.chev
+            anchors.right: parent.right; anchors.rightMargin: 4
+            anchors.verticalCenter: parent.verticalCenter
+            width: 28; height: 28; radius: root.theme.radiusBtn
+            color: (r0.splitChev && r0.chevHover) ? root.theme.rowHi : "transparent"
+            MSym {
+                anchors.centerIn: parent
+                icon: r0.expanded ? "expand_more" : "chevron_right"
+                size: 18
+                color: (r0.splitChev && r0.chevHover) ? root.theme.text : root.theme.faint
             }
         }
-        Rectangle { width: parent.width; height: 1; color: root.theme.divider
-            visible: root.group !== null && root.group.wins.length > 0 }
-        Repeater {                        // this app's windows (click to focus)
-            model: root.group ? root.group.wins : []
-            delegate: Rectangle {
+        MouseArea {
+            id: r0ma
+            anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+            onPositionChanged: (m) => r0.chevHover = r0.splitChev && r0.chev && m.x > r0.width - r0.chevZone
+            onExited: r0.chevHover = false
+            onClicked: (m) => {
+                if (r0.splitChev && r0.chev && m.x > r0.width - r0.chevZone) r0.chevAct();
+                else r0.act();
+            }
+        }
+    }
+    component Sep: Rectangle {
+        width: parent ? parent.width : 0
+        height: 9
+        color: "transparent"
+        Rectangle {
+            anchors.verticalCenter: parent.verticalCenter
+            anchors.left: parent.left; anchors.right: parent.right
+            anchors.leftMargin: 4; anchors.rightMargin: 4
+            height: 1; color: root.theme.divider
+        }
+    }
+    // small mono section label ("All windows")
+    component Label0: Text {
+        width: parent ? parent.width : 0
+        leftPadding: 10; topPadding: 6; bottomPadding: 2
+        color: root.theme.faint
+        font.family: root.theme.mono; font.pixelSize: root.theme.fsSmall
+        font.letterSpacing: root.theme.labelSpacing; font.capitalization: Font.AllUppercase
+    }
+    // the KWin window-action rows for `targets` (uuids) — reused for the whole group
+    // and for each individual window. Each block owns its Move-to-Desktop accordion;
+    // `deskMark`/`markAll` say which desktop entries to radio-mark (where the
+    // target(s) currently live).
+    component ActionBlock: Column {
+        id: ab
+        property var targets: []
+        property var deskMark: []
+        property bool markAll: false
+        property real indent: 0
+        property bool deskExpanded: false
+        width: parent ? parent.width : 0
+        spacing: 2
+
+        Row0 {
+            visible: root.desktops.length > 0
+            indent: ab.indent
+            glyph: "dashboard"; label: "Move to Desktop"
+            chev: true; expanded: ab.deskExpanded
+            onAct: ab.deskExpanded = !ab.deskExpanded
+        }
+        Row0 {
+            visible: root.desktops.length > 0 && ab.deskExpanded
+            indent: ab.indent + 26; label: "All Desktops"
+            glyph: ab.markAll ? "radio_button_checked" : "radio_button_unchecked"
+            onAct: root.windowAction("desktop:all", ab.targets)
+        }
+        Repeater {
+            model: ab.deskExpanded ? root.desktops : []
+            delegate: Row0 {
                 required property var modelData
-                width: ctxCol.width; height: 30; radius: root.theme.radiusBtn
-                color: wma.containsMouse ? root.theme.rowHi : "transparent"
-                Text {
-                    anchors.verticalCenter: parent.verticalCenter; x: 10
-                    width: parent.width - 20; elide: Text.ElideRight
-                    font.family: root.theme.family
-                    text: modelData.title; color: root.theme.text; font.pixelSize: root.theme.fsSmall
+                indent: ab.indent + 26
+                glyph: ab.deskMark.indexOf(modelData.id) >= 0 ? "radio_button_checked" : "radio_button_unchecked"
+                label: modelData.name
+                onAct: root.windowAction("desktop:" + modelData.id, ab.targets)
+            }
+        }
+        Row0 { indent: ab.indent; glyph: "minimize";                   label: "Minimize";          onAct: root.windowAction("minimize", ab.targets) }
+        Row0 { indent: ab.indent; glyph: "crop_square";                label: "Maximize";          onAct: root.windowAction("maximize", ab.targets) }
+        Row0 { indent: ab.indent; glyph: "keyboard_double_arrow_up";   label: "Keep Above Others"; onAct: root.windowAction("above", ab.targets) }
+        Row0 { indent: ab.indent; glyph: "keyboard_double_arrow_down"; label: "Keep Below Others"; onAct: root.windowAction("below", ab.targets) }
+        Sep {}
+        Row0 { indent: ab.indent; glyph: "close"; label: "Close"; danger: true; onAct: root.windowAction("close", ab.targets) }
+    }
+
+    Column {
+        anchors.fill: parent
+        spacing: root.theme.gap
+
+        MenuHeader {
+            id: header
+            theme: root.theme
+            title: root.entry ? root.entry.name : (root.group ? root.group.icon : "")
+            onBack: root.closeRequested()
+        }
+
+        Flickable {
+            id: bodyFlick
+            width: parent.width
+            height: parent.height - header.height - root.theme.gap
+            contentHeight: bodyCol.implicitHeight
+            clip: true
+            boundsBehavior: Flickable.StopAtBounds
+
+            // width MUST reference the Flickable id, not `parent.width`: a Column's
+            // parent inside a Flickable is the contentItem (width tied to
+            // contentWidth ~ 0), and children binding `parent.width` back to it
+            // stalls the positioner (implicitHeight stays 0).
+            Column {
+                id: bodyCol
+                width: bodyFlick.width
+                spacing: 2
+
+                // ---- grouped app: one expandable submenu per open window ----
+                // each window's title expands (chevron) to the same action block as
+                // a single-app menu, but targeting just that window. Only shown when
+                // the app has >1 instance; a separator sets them off below.
+                Repeater {
+                    model: root.grouped ? root.group.wins : []
+                    delegate: Column {
+                        id: winItem
+                        required property var modelData
+                        property bool expanded: false
+                        width: parent ? parent.width : 0
+                        spacing: 2
+                        Row0 {
+                            glyph: "web_asset"; label: winItem.modelData.title
+                            chev: true; expanded: winItem.expanded
+                            // click the row → focus the window; click the chevron → open its menu
+                            splitChev: true
+                            onAct: root.activateRequested(winItem.modelData.id)
+                            onChevAct: winItem.expanded = !winItem.expanded
+                        }
+                        ActionBlock {
+                            visible: winItem.expanded
+                            indent: 26
+                            targets: [winItem.modelData.uuid]
+                            markAll: winItem.modelData.desk === "all"
+                            deskMark: winItem.modelData.desk && winItem.modelData.desk !== "all"
+                                ? [winItem.modelData.desk] : []
+                        }
+                    }
                 }
-                MouseArea { id: wma; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
-                    onClicked: { root.activateRequested(modelData.id); root.dismissed(); } }
+                Sep { visible: root.grouped }
+
+                // ---- the app's own launcher actions (New Window, …) ----
+                Repeater {
+                    model: root.actions
+                    delegate: Row0 {
+                        required property var modelData
+                        glyph: "open_in_new"
+                        label: modelData.name
+                        onAct: root.launchRequested(modelData.execString)
+                    }
+                }
+                Sep { visible: root.actions.length > 0 }
+
+                // ---- window actions for the whole group (or the single window) ----
+                Label0 { visible: root.grouped; text: "All windows" }
+                ActionBlock {
+                    targets: root.allUuids
+                    markAll: root.winOnAll
+                    deskMark: root.winDesks
+                }
             }
         }
     }
@@ -3735,9 +4064,15 @@ tile per app, a count badge for ≥2 windows, an underline that turns accent whe
 of the app's windows is active. Each group's icon is resolved through
 =DesktopEntries.heuristicLookup= (desktop-file name → class → KRunner icon name), so
 tiles get a real icon instead of the generic fallback. Left-click =cycleGroup= focuses the app's next window;
-right-click opens a floating menu (this app's windows + =DesktopEntries.heuristic-
-Lookup(icon).actions=). The =mask= expands full-screen while that menu is open
-(=win.ctxGroup=).
+right-click opens the [[*AppContextMenu.qml][=AppContextMenu=]] *inside the pill*
+(like the control-panel menus, not a floating popup): the app name, its
+=DesktopEntries.heuristicLookup(icon).actions=, then the KWin window actions (Move to
+Desktop / Minimize / Maximize / Keep Above/Below / Close). Selecting a window action
+calls =root.windowAction(group, verb)=, which asks =winbridge='s =org.kde.pill Action=
+method to run a one-shot KWin script against *every* window in the group. The pill
+sizes to the menu's =implicitHeight= in ctx mode and the =mask= expands full-screen
+while it's open (=win.ctxGroup=); the two dashboard rows fade out like they do for an
+open menu.
 
 *Virtual desktops.* Three =Process= blocks drive =gdbus= against =org.kde.KWin
 /VirtualDesktopManager=: fetch the =desktops= list (a regex parses the tuples), fetch
@@ -4161,6 +4496,21 @@ function restoreFocus() {
 Process { id: launchProc }
 function launch(execString) { launchProc.command = ["sh", "-c", execString]; launchProc.startDetached(); }
 
+// KWin window actions for the taskbar right-click menu. winbridge.py owns the
+// org.kde.pill service and turns this into a one-shot KWin script that finds the
+// windows in `uuids` by internalId and applies `verb`: minimize|maximize|above|
+// below|close toggle the aggregate state; desktop:<id> / desktop:all move them.
+// The menu passes either the whole group's uuids (whole-app actions) or one
+// window's uuid (a per-window submenu). No-op if KWin/winbridge is absent.
+Process { id: actionProc }
+function windowAction(uuids, verb) {
+    if (!uuids || !uuids.length) return;
+    actionProc.command = ["gdbus", "call", "--session", "--dest", "org.kde.pill",
+        "--object-path", "/Active", "--method", "org.kde.pill.Action",
+        JSON.stringify(uuids), verb];
+    actionProc.running = true;
+}
+
 // best DesktopEntry for a window: try its desktopFileName, then resourceClass,
 // then the KRunner icon name (heuristicLookup is fuzzy). Used to group windows of
 // one app together and to resolve a real icon — the bare KRunner icon name often
@@ -4195,7 +4545,22 @@ readonly property var appGroups: {
         }
         g[key].wins.push(w);
     }
-    return order.map(k => g[k]);
+    // per-group virtual-desktop occupancy (for the right-click Move-to-Desktop
+    // marker): `desks` = the unique desktop ids the group's windows sit on,
+    // `onAll` = any window is on all desktops. `desk` per window comes from
+    // winbridge (the KWin script).
+    return order.map(k => {
+        const grp = g[k];
+        const desks = [];
+        let onAll = false;
+        for (const w of grp.wins) {
+            if (w.desk === "all") onAll = true;
+            else if (w.desk && desks.indexOf(w.desk) < 0) desks.push(w.desk);
+        }
+        grp.desks = desks;
+        grp.onAll = onAll;
+        return grp;
+    });
 }
 // (Taskbar computes per-group "active" itself from `activeWindow`.)
 function cycleGroup(grp) {
@@ -4435,8 +4800,8 @@ Variants {
 
             anchors.horizontalCenter: parent.horizontalCenter
             y: 6
-            width: win.showBurst ? (burstLoader.item ? burstLoader.item.implicitWidth : 96) : win.launcher ? win.launcherWidth : (win.notifMorph ? (morphStack.item ? morphStack.item.implicitWidth : 420) : (win.open ? 520 : (win.dash ? win.hoverWidth : (56 + root.privacyCount * 20 + (notifs.grouped.length > 0 ? 14 : 0)))))
-            height: win.showBurst ? 28 : (win.open || win.launcher) ? win.openHeight : (win.notifMorph ? morphStack.implicitHeight : (win.dash ? win.hoverHeight : 28))
+            width: win.showBurst ? (burstLoader.item ? burstLoader.item.implicitWidth : 96) : win.launcher ? win.launcherWidth : win.ctxGroup !== null ? 520 : (win.notifMorph ? (morphStack.item ? morphStack.item.implicitWidth : 420) : (win.open ? 520 : (win.dash ? win.hoverWidth : (56 + root.privacyCount * 20 + (notifs.grouped.length > 0 ? 14 : 0)))))
+            height: win.showBurst ? 28 : (win.open || win.launcher) ? win.openHeight : win.ctxGroup !== null ? Math.min(win.openHeight, (ctxLoader.item ? ctxLoader.item.implicitHeight + theme.pad * 2 : 300)) : (win.notifMorph ? morphStack.implicitHeight : (win.dash ? win.hoverHeight : 28))
             // resting (collapsed, un-hovered) pill is dimmed; full opacity once
             // hovered / open / a notification is morphing it (or a camera/mic is
             // live); fully hidden while a fullscreen window is focused (fsHide)
@@ -4444,6 +4809,38 @@ Variants {
 
             HoverHandler {
                 id: hover
+            }
+
+            // scroll anywhere over the *hovered dashboard* to nudge the active
+            // speaker's volume up/down. Gated to the plain hover stage only — not
+            // the open control panel / menus, not the launcher, not a ctx menu,
+            // and not the notification morph (those either scroll their own
+            // content or shouldn't hijack the wheel). Forced topmost (z) so it
+            // sees the wheel before the Row 2 status icons; acceptedButtons
+            // NoButton so clicks + hover fall straight through to the body (open
+            // launcher) and the icons underneath — this only claims the wheel.
+            MouseArea {
+                anchors.fill: parent
+                z: 100
+                enabled: win.dash && !win.open && !win.launcher && win.ctxGroup === null && !win.notifMorph
+                acceptedButtons: Qt.NoButton
+                onWheel: wheel => {
+                    const sink = Pipewire.defaultAudioSink;
+                    if (!sink || !sink.audio)
+                        return ;
+
+                    // angleDelta is in eighths of a degree; a full mouse notch is
+                    // 120, but hi-res / free-spinning wheels report many smaller
+                    // ticks — so scale the step by the actual amount (120 = 5%)
+                    // instead of stepping a fixed 5% per event. Some devices
+                    // report on x, so fall back to it.
+                    const dy = wheel.angleDelta.y !== 0 ? wheel.angleDelta.y : wheel.angleDelta.x;
+                    if (dy === 0)
+                        return ;
+
+                    const v = Math.max(0, Math.min(1, sink.audio.volume + (dy / 120) * 0.05));
+                    sink.audio.volume = v;
+                }
             }
 
             Rectangle {
@@ -4498,7 +4895,7 @@ Variants {
             // the Row-2 status icons / app icons handle their own clicks above
             MouseArea {
                 anchors.fill: parent
-                enabled: win.dash && !win.open && !win.launcher && !win.notifMorph
+                enabled: win.dash && !win.open && !win.launcher && !win.notifMorph && win.ctxGroup === null
                 onClicked: {
                     win.launcher = true;
                 }
@@ -4521,7 +4918,7 @@ Variants {
                 cameraOn: root.cameraInUse
                 micOn: root.micActive
                 recordingOn: root.screenRecording
-                hasUnread: notifs.grouped.length > 0
+                hasUnread: notifs.unreadCount > 0
             }
 
             // ---- notification morph: the collapsed pill becomes a stack ----
@@ -4597,7 +4994,7 @@ Variants {
 
                 radius: theme.radiusSmall
                 color: theme.bgHover
-                opacity: (win.dash && !win.open && !win.launcher && !win.notifMorph && target) ? 1 : 0
+                opacity: (win.dash && !win.open && !win.launcher && !win.notifMorph && win.ctxGroup === null && target) ? 1 : 0
                 visible: opacity > 0
                 x: pos.x - pad
                 y: pos.y - pad
@@ -4651,7 +5048,7 @@ Variants {
                 y: 20
                 width: pill.width - (theme.pad + 8) * 2
                 height: 36
-                opacity: (win.dash && !win.open && !win.launcher && !win.notifMorph) ? 1 : 0
+                opacity: (win.dash && !win.open && !win.launcher && !win.notifMorph && win.ctxGroup === null) ? 1 : 0
                 visible: opacity > 0
 
                 // date/time with the virtual-desktop dots stacked beneath it
@@ -4691,6 +5088,7 @@ Variants {
                     // to the active desktop — the same move as the desktop burst.
                     DesktopDots {
                         id: deskDots
+
                         theme: theme
                         desktops: root.desktops
                         activeIdx: root.deskActiveIdx
@@ -4738,9 +5136,16 @@ Variants {
                 width: pill.width - (theme.pad + 8) - x
                 height: 1
                 color: theme.divider
-                opacity: (win.dash && !win.open && !win.launcher && !win.notifMorph) ? 1 : 0
+                opacity: (win.dash && !win.open && !win.launcher && !win.notifMorph && win.ctxGroup === null) ? 1 : 0
                 visible: opacity > 0
-                Behavior on opacity { NumberAnimation { duration: theme.animFast } }
+
+                Behavior on opacity {
+                    NumberAnimation {
+                        duration: theme.animFast
+                    }
+
+                }
+
             }
 
             // ============ Row 2: launcher icon (left) | tray + status (right) ============
@@ -4749,7 +5154,7 @@ Variants {
                 y: 108
                 width: pill.width - (theme.pad + 8) * 2
                 height: 42
-                opacity: (win.dash && !win.open && !win.launcher && !win.notifMorph) ? 1 : 0
+                opacity: (win.dash && !win.open && !win.launcher && !win.notifMorph && win.ctxGroup === null) ? 1 : 0
                 visible: opacity > 0
 
                 // open the app launcher — an accent grid glyph that only picks up
@@ -4765,7 +5170,6 @@ Variants {
                     height: 42
                     radius: 12
                     color: launchMa.containsMouse ? theme.accentSoft : "transparent"
-                    Behavior on color { ColorAnimation { duration: theme.animFast } }
 
                     MSym {
                         anchors.centerIn: parent
@@ -4786,6 +5190,13 @@ Variants {
                             win.open = false;
                             win.launcher = true;
                         }
+                    }
+
+                    Behavior on color {
+                        ColorAnimation {
+                            duration: theme.animFast
+                        }
+
                     }
 
                 }
@@ -4840,6 +5251,7 @@ Variants {
                     // status icons -> open panel to that menu (active one highlighted)
                     StatusIcons {
                         theme: theme
+                        notifs: notifs
                         open: win.open
                         menu: win.menu
                         // close the launcher too, else both panes stack on top of each other
@@ -4966,6 +5378,55 @@ Variants {
 
             }
 
+            // ================= app right-click (context) menu =================
+            // Rendered INSIDE the pill like the control panel (not a floating
+            // popup): the dashboard rows fade out and the AppContextMenu fills the
+            // pill from the top. The pill's ctx-mode height binds to this menu's
+            // implicitHeight (see the `width`/`height` bindings above). Acting on a
+            // row (launcher action / window action) also clears win.ctxGroup so the
+            // menu closes, matching Plasma.
+            Item {
+                x: theme.pad
+                y: theme.pad
+                width: pill.width - theme.pad * 2
+                height: pill.height - theme.pad * 2
+                opacity: win.ctxGroup !== null ? 1 : 0
+                visible: opacity > 0
+
+                Loader {
+                    id: ctxLoader
+
+                    anchors.fill: parent
+                    active: win.ctxGroup !== null
+                    sourceComponent: AppContextMenu {
+                        theme: theme
+                        group: win.ctxGroup
+                        desktops: root.desktops
+                        onLaunchRequested: (s) => {
+                            root.launch(s);
+                            win.ctxGroup = null;
+                        }
+                        onActivateRequested: (id) => {
+                            root.activateWindow(id);
+                            win.ctxGroup = null;
+                        }
+                        onWindowAction: (verb, uuids) => {
+                            root.windowAction(uuids, verb);
+                            win.ctxGroup = null;
+                        }
+                        onCloseRequested: win.ctxGroup = null
+                    }
+                }
+
+                Behavior on opacity {
+                    NumberAnimation {
+                        duration: theme.anim
+                    }
+
+                }
+
+            }
+
             Behavior on width {
                 NumberAnimation {
                     duration: theme.anim
@@ -4991,25 +5452,6 @@ Variants {
 
         }
 
-        // ===================== app right-click menu =====================
-        Loader {
-            active: win.ctxGroup !== null
-            anchors.horizontalCenter: parent.horizontalCenter
-            y: pill.y + pill.height + 6
-
-            sourceComponent: AppContextMenu {
-                theme: theme
-                group: win.ctxGroup
-                onLaunchRequested: (s) => {
-                    return root.launch(s);
-                }
-                onActivateRequested: (id) => {
-                    return root.activateWindow(id);
-                }
-                onDismissed: win.ctxGroup = null
-            }
-
-        }
 
         // ===================== notifications below an open pill =====================
         // When the pill is clicked-open / launcher / app-menu — or briefly while
@@ -5075,10 +5517,23 @@ Variants {
                         anchors.fill: parent
 
                         gradient: Gradient {
-                            GradientStop { position: 0.0; color: "#17131a" }
-                            GradientStop { position: 0.55; color: "#0d0b0e" }
-                            GradientStop { position: 1.0; color: "#090809" }
+                            GradientStop {
+                                position: 0
+                                color: "#17131a"
+                            }
+
+                            GradientStop {
+                                position: 0.55
+                                color: "#0d0b0e"
+                            }
+
+                            GradientStop {
+                                position: 1
+                                color: "#090809"
+                            }
+
                         }
+
                     }
 
                     Column {
@@ -5088,10 +5543,26 @@ Variants {
                         width: Math.min(760, parent.width - 120)
                         spacing: 0
                         opacity: 0
-                        transform: Translate { id: hushTr; y: 14 }
 
-                        NumberAnimation { target: hushCol; property: "opacity"; from: 0; to: 1; duration: 700; easing.type: Easing.OutCubic; running: true }
-                        NumberAnimation { target: hushTr; property: "y"; from: 14; to: 0; duration: 700; easing.type: Easing.OutCubic; running: true }
+                        NumberAnimation {
+                            target: hushCol
+                            property: "opacity"
+                            from: 0
+                            to: 1
+                            duration: 700
+                            easing.type: Easing.OutCubic
+                            running: true
+                        }
+
+                        NumberAnimation {
+                            target: hushTr
+                            property: "y"
+                            from: 14
+                            to: 0
+                            duration: 700
+                            easing.type: Easing.OutCubic
+                            running: true
+                        }
 
                         Text {
                             anchors.horizontalCenter: parent.horizontalCenter
@@ -5150,9 +5621,15 @@ Variants {
                                         cursorShape: Qt.PointingHandCursor
                                         onClicked: win.confirm()
                                     }
+
                                 }
 
-                                Rectangle { width: parent.width; height: 2; color: "#cf4a2c" }
+                                Rectangle {
+                                    width: parent.width
+                                    height: 2
+                                    color: "#cf4a2c"
+                                }
+
                             }
 
                             Text {
@@ -5170,8 +5647,17 @@ Variants {
                                     cursorShape: Qt.PointingHandCursor
                                     onClicked: win.cancelConfirm()
                                 }
+
                             }
+
                         }
+
+                        transform: Translate {
+                            id: hushTr
+
+                            y: 14
+                        }
+
                     }
 
                     Text {
@@ -5184,7 +5670,9 @@ Variants {
                         font.pixelSize: 12
                         font.letterSpacing: 2
                     }
+
                 }
+
             }
 
             // ---------------- 1b — BLAZE : full color flood, brutalist ----------------
@@ -5194,7 +5682,10 @@ Variants {
                 Item {
                     anchors.fill: parent
 
-                    Rectangle { anchors.fill: parent; color: "#cf4a2c" }
+                    Rectangle {
+                        anchors.fill: parent
+                        color: "#cf4a2c"
+                    }
 
                     // header — system tag (left) + live clock (right)
                     Text {
@@ -5234,10 +5725,26 @@ Variants {
                         anchors.bottomMargin: 60
                         spacing: 24
                         opacity: 0
-                        transform: Translate { id: blazeTr; y: 14 }
 
-                        NumberAnimation { target: blazeCol; property: "opacity"; from: 0; to: 1; duration: 700; easing.type: Easing.OutCubic; running: true }
-                        NumberAnimation { target: blazeTr; property: "y"; from: 14; to: 0; duration: 700; easing.type: Easing.OutCubic; running: true }
+                        NumberAnimation {
+                            target: blazeCol
+                            property: "opacity"
+                            from: 0
+                            to: 1
+                            duration: 700
+                            easing.type: Easing.OutCubic
+                            running: true
+                        }
+
+                        NumberAnimation {
+                            target: blazeTr
+                            property: "y"
+                            from: 14
+                            to: 0
+                            duration: 700
+                            easing.type: Easing.OutCubic
+                            running: true
+                        }
 
                         Text {
                             width: parent.width
@@ -5259,6 +5766,13 @@ Variants {
                             font.pixelSize: 24
                             lineHeight: 1.4
                         }
+
+                        transform: Translate {
+                            id: blazeTr
+
+                            y: 14
+                        }
+
                     }
 
                     // full-width yes / no bar
@@ -5287,6 +5801,7 @@ Variants {
                                 cursorShape: Qt.PointingHandCursor
                                 onClicked: win.confirm()
                             }
+
                         }
 
                         Rectangle {
@@ -5295,7 +5810,12 @@ Variants {
                             color: blazeNo.containsMouse ? "#c33f22" : "transparent"
 
                             // left keyline between the two halves
-                            Rectangle { anchors.left: parent.left; width: 2; height: parent.height; color: "#a5361f" }
+                            Rectangle {
+                                anchors.left: parent.left
+                                width: 2
+                                height: parent.height
+                                color: "#a5361f"
+                            }
 
                             Text {
                                 anchors.centerIn: parent
@@ -5313,7 +5833,9 @@ Variants {
                                 cursorShape: Qt.PointingHandCursor
                                 onClicked: win.cancelConfirm()
                             }
+
                         }
+
                     }
 
                     // top keyline above the button bar
@@ -5324,7 +5846,9 @@ Variants {
                         height: 2
                         color: "#a5361f"
                     }
+
                 }
+
             }
 
             // ---------------- 1c — LEDGER : editorial, keyline frame ----------------
@@ -5334,7 +5858,10 @@ Variants {
                 Item {
                     anchors.fill: parent
 
-                    Rectangle { anchors.fill: parent; color: "#0d0b0e" }
+                    Rectangle {
+                        anchors.fill: parent
+                        color: "#0d0b0e"
+                    }
 
                     Column {
                         id: ledgerCol
@@ -5343,10 +5870,26 @@ Variants {
                         width: Math.min(760, parent.width * 0.82)
                         spacing: 26
                         opacity: 0
-                        transform: Translate { id: ledgerTr; y: 14 }
 
-                        NumberAnimation { target: ledgerCol; property: "opacity"; from: 0; to: 1; duration: 700; easing.type: Easing.OutCubic; running: true }
-                        NumberAnimation { target: ledgerTr; property: "y"; from: 14; to: 0; duration: 700; easing.type: Easing.OutCubic; running: true }
+                        NumberAnimation {
+                            target: ledgerCol
+                            property: "opacity"
+                            from: 0
+                            to: 1
+                            duration: 700
+                            easing.type: Easing.OutCubic
+                            running: true
+                        }
+
+                        NumberAnimation {
+                            target: ledgerTr
+                            property: "y"
+                            from: 14
+                            to: 0
+                            duration: 700
+                            easing.type: Easing.OutCubic
+                            running: true
+                        }
 
                         // keyline: pulsing dot · label · rule to the right edge
                         Item {
@@ -5366,9 +5909,22 @@ Variants {
                                     running: true
                                     loops: Animation.Infinite
 
-                                    NumberAnimation { from: 0.55; to: 0.9; duration: 1200; easing.type: Easing.InOutSine }
-                                    NumberAnimation { from: 0.9; to: 0.55; duration: 1200; easing.type: Easing.InOutSine }
+                                    NumberAnimation {
+                                        from: 0.55
+                                        to: 0.9
+                                        duration: 1200
+                                        easing.type: Easing.InOutSine
+                                    }
+
+                                    NumberAnimation {
+                                        from: 0.9
+                                        to: 0.55
+                                        duration: 1200
+                                        easing.type: Easing.InOutSine
+                                    }
+
                                 }
+
                             }
 
                             Text {
@@ -5393,6 +5949,7 @@ Variants {
                                 height: 1
                                 color: "#241f26"
                             }
+
                         }
 
                         Text {
@@ -5443,6 +6000,7 @@ Variants {
                                     cursorShape: Qt.PointingHandCursor
                                     onClicked: win.confirm()
                                 }
+
                             }
 
                             Rectangle {
@@ -5472,10 +6030,21 @@ Variants {
                                     cursorShape: Qt.PointingHandCursor
                                     onClicked: win.cancelConfirm()
                                 }
+
                             }
+
                         }
+
+                        transform: Translate {
+                            id: ledgerTr
+
+                            y: 14
+                        }
+
                     }
+
                 }
+
             }
 
             // ---------------- 1d — SPLIT : decisive left / right ----------------
@@ -5515,6 +6084,7 @@ Variants {
                                     font.letterSpacing: 3
                                     font.capitalization: Font.AllUppercase
                                 }
+
                             }
 
                             MouseArea {
@@ -5525,6 +6095,7 @@ Variants {
                                 cursorShape: Qt.PointingHandCursor
                                 onClicked: win.confirm()
                             }
+
                         }
 
                         // right half — NO (cancel)
@@ -5554,6 +6125,7 @@ Variants {
                                     font.letterSpacing: 3
                                     font.capitalization: Font.AllUppercase
                                 }
+
                             }
 
                             MouseArea {
@@ -5564,7 +6136,9 @@ Variants {
                                 cursorShape: Qt.PointingHandCursor
                                 onClicked: win.cancelConfirm()
                             }
+
                         }
+
                     }
 
                     // centre divider
@@ -5588,7 +6162,9 @@ Variants {
                         font.letterSpacing: 6
                         font.capitalization: Font.AllUppercase
                     }
+
                 }
+
             }
 
             Behavior on opacity {
