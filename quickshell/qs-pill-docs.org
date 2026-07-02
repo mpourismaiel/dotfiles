@@ -3344,15 +3344,19 @@ Row {
 
 ** CollapsedPill.qml
 The collapsed pill's content: the =hh:mm= clock, plus the privacy indicators —
-a camera icon while any process holds a =/dev/video*= node and a mic icon while the
-default source is unmuted. The icons *pop in* / *shrink out* (scale overshoot via
-=OutBack=, an animated slot width so the clock slides over). =solid= (a live
-camera/mic) shows the clock at full opacity; otherwise it is slightly translucent.
+a camera icon while any process holds a =/dev/video*= node, a mic icon while the
+default source is unmuted, and a pulsing red dot while the screen is being
+shared/recorded (=recordingOn=; the dot emits a fading ring once every 5s). The
+icons *pop in* / *shrink out* (scale overshoot via =OutBack=, an animated slot
+width so the clock slides over). =solid= (a live camera/mic/recording) shows the
+clock at full opacity; otherwise it is slightly translucent.
 #+begin_src qml :tangle ~/.config/quickshell/pill/CollapsedPill.qml :mkdirp yes
 pragma ComponentBehavior: Bound
-// CollapsedPill.qml — the collapsed pill: the hh:mm clock plus camera/mic privacy
-// indicators that pop in (OutBack scale + animated slot width so the clock slides
-// over) while live. `solid` (a live camera/mic) shows the clock at full opacity.
+// CollapsedPill.qml — the collapsed pill: the hh:mm clock plus camera/mic/screen
+// privacy indicators that pop in (OutBack scale + animated slot width so the clock
+// slides over) while live. `solid` (a live camera/mic/recording) shows the clock at
+// full opacity. Screen recording is a bold red dot that emits a fading ring once
+// every 5s (a recording "pulse").
 import QtQuick
 import Quickshell
 import Quickshell.Widgets
@@ -3364,6 +3368,7 @@ Row {
     property bool solid: false          // privacy-rest: clock at full opacity
     property bool cameraOn: false
     property bool micOn: false
+    property bool recordingOn: false    // screen being shared/recorded
     property bool hasUnread: false      // un-cleared notifications waiting in history
 
     spacing: 6
@@ -3400,6 +3405,56 @@ Row {
              : Qt.rgba(root.theme.text.r, root.theme.text.g, root.theme.text.b, 0.78)
         font.family: root.theme.serif
         font.pixelSize: root.theme.fsLarge
+    }
+    // screen-recording indicator — a bold red dot that pulses (emits a fading,
+    // expanding ring) once every 5s while the screen is being shared/recorded.
+    // Same pop-in / shrink-out slot behaviour as the camera/mic glyphs so the
+    // clock slides over when it appears/disappears.
+    Item {
+        id: recSlot
+        anchors.verticalCenter: parent.verticalCenter
+        width: root.recordingOn ? 14 : 0
+        height: 14
+        visible: width > 0 || recDot.opacity > 0   // stay alive through the shrink-out
+        Behavior on width { NumberAnimation { duration: root.theme.animFast; easing.type: Easing.OutCubic } }
+
+        // radiating pulse ring — one expand+fade per 5s cycle (1.5s pulse, 3.5s rest)
+        Rectangle {
+            id: recRing
+            anchors.centerIn: recDot
+            width: recDot.width
+            height: recDot.height
+            radius: width / 2
+            color: "transparent"
+            border.width: 2
+            border.color: root.theme.danger
+            opacity: 0
+            SequentialAnimation {
+                running: root.recordingOn
+                loops: Animation.Infinite
+                ParallelAnimation {
+                    NumberAnimation { target: recRing; property: "scale"; from: 0.9; to: 2.6; duration: 1500; easing.type: Easing.OutCubic }
+                    SequentialAnimation {
+                        NumberAnimation { target: recRing; property: "opacity"; from: 0; to: 0.55; duration: 250 }
+                        NumberAnimation { target: recRing; property: "opacity"; from: 0.55; to: 0; duration: 1250; easing.type: Easing.InCubic }
+                    }
+                }
+                PauseAnimation { duration: 3500 }
+            }
+        }
+        // the dot itself — pops in / shrinks out like the other privacy indicators
+        Rectangle {
+            id: recDot
+            anchors.centerIn: parent
+            width: 12
+            height: 12
+            radius: 6
+            color: root.theme.danger
+            opacity: root.recordingOn ? 1 : 0
+            scale: root.recordingOn ? 1 : 0.4
+            Behavior on opacity { NumberAnimation { duration: root.theme.animFast } }
+            Behavior on scale  { NumberAnimation { duration: root.theme.anim; easing.type: Easing.OutBack } }
+        }
     }
     // camera / mic indicators — static model so the delegates persist (a reactive
     // model would rebuild and skip the animation); each reads its live state by index.
@@ -3712,14 +3767,17 @@ hides and =pill.height= tracks the deck); while open/launcher/app-menu the deck 
 dropped on close (so the pill releases the keyboard).
 
 *Privacy indicators.* At rest the pill also flags a live *camera* (any process
-holding a =/dev/video*= node open, polled every 2s with =fuser=) or an *unmuted
-mic* (the default Pipewire source). Either drops the idle translucency — the
-collapsed pill goes solid (real surface + border, no gradient, full-opacity clock)
-— and shows a small icon next to the clock (=camera-web= / =audio-input-microphone=;
-both side by side when both are live, widening the pill). The icons *pop in* and
-*shrink out* like the action bursts (scale overshoots on appear via =OutBack=, the
-slot width animates so the clock slides over). It also keeps the pill visible over a
-fullscreen window, where it would otherwise hide.
+holding a =/dev/video*= node open, polled every 2s with =fuser=), an *unmuted mic*
+(the default Pipewire source), or an active *screen capture* (a =Stream/Output/Video=
+PipeWire node published by xdg-desktop-portal / KWin while the screen is shared or
+recorded). Any of these drops the idle translucency — the collapsed pill goes solid
+(real surface + border, no gradient, full-opacity clock) — and shows an indicator
+next to the clock: camera/mic as glyphs, screen recording as a *big red dot that
+pulses (emits a fading ring) once every 5s*; they sit side by side when several are
+live, widening the pill. The glyphs *pop in* and *shrink out* like the action bursts
+(scale overshoots on appear via =OutBack=, the slot width animates so the clock
+slides over). It also keeps the pill visible over a fullscreen window, where it would
+otherwise hide.
 Edit these chunks; they assemble (via org's =noweb=) into the single =init.qml=
 below — the order is fixed by the =<<...>>= references, so a chunk's subtree can
 be moved freely. Each chunk's own header + notes are in the =*** init.qml — …=
@@ -3791,22 +3849,43 @@ PwObjectTracker { objects: Pipewire.defaultAudioSource ? [Pipewire.defaultAudioS
 
 *** init.qml — privacy indicators
 Privacy indicators for the resting pill — a camera in use (any process holding a
-=/dev/video*= node, polled with =fuser=) and an unmuted default mic. Either makes the
-collapsed pill solid and shows an icon (rendered by [[*CollapsedPill.qml][=CollapsedPill=]]).
+=/dev/video*= node, polled with =fuser=), an unmuted default mic, and an active
+*screen capture* (a =Stream/Output/Video= PipeWire node published by
+xdg-desktop-portal / KWin while the screen is shared or recorded). Any of the three
+makes the collapsed pill solid and shows an indicator (rendered by
+[[*CollapsedPill.qml][=CollapsedPill=]]) — camera/mic as glyphs, screen recording
+as a pulsing red dot.
 #+name: init-privacy
 #+begin_src qml
 
 // ---- privacy indicators (resting pill) ----
-// camera + mic in use show an icon next to the collapsed clock and make the
-// resting pill opaque (drops the idle translucency) so it can't be missed.
+// camera + mic + screen-capture in use show an icon next to the collapsed clock
+// and make the resting pill opaque (drops the idle translucency) so it can't be
+// missed.
 //   camera — poll for any process holding a /dev/video* node open (fuser).
 //   mic    — the default Pipewire source being unmuted.
+//   screen — a live screencast: xdg-desktop-portal / KWin exposes the captured
+//            frames as a "Stream/Output/Video" PipeWire node while the screen is
+//            shared or recorded (cameras are "Video/Source" and consumers are
+//            "Stream/Input/Video", so a video *output* stream uniquely means the
+//            screen itself is being captured). Shown as a pulsing red dot.
 property bool cameraInUse: false
 readonly property bool micActive: Pipewire.defaultAudioSource
                                   && Pipewire.defaultAudioSource.audio
                                   && !Pipewire.defaultAudioSource.audio.muted
-readonly property bool privacyActive: cameraInUse || micActive
-readonly property int  privacyCount: (cameraInUse ? 1 : 0) + (micActive ? 1 : 0)
+// keep every PipeWire node bound so a screencast node's media.class is readable
+// the moment it appears (and disappears) — this drives screenRecording below.
+PwObjectTracker { objects: Pipewire.nodes ? Pipewire.nodes.values : [] }
+readonly property bool screenRecording: {
+    const ns = Pipewire.nodes ? Pipewire.nodes.values : [];
+    for (let i = 0; i < ns.length; i++) {
+        const p = ns[i].properties;
+        if (p && p["media.class"] === "Stream/Output/Video") return true;
+    }
+    return false;
+}
+readonly property bool privacyActive: cameraInUse || micActive || screenRecording
+readonly property int  privacyCount: (cameraInUse ? 1 : 0) + (micActive ? 1 : 0) + (screenRecording ? 1 : 0)
 Process {
     id: cameraProc
     command: ["sh", "-c", "fuser /dev/video* >/dev/null 2>&1 && echo busy || echo idle"]
@@ -4441,6 +4520,7 @@ Variants {
                 solid: win.privacyRest
                 cameraOn: root.cameraInUse
                 micOn: root.micActive
+                recordingOn: root.screenRecording
                 hasUnread: notifs.grouped.length > 0
             }
 
