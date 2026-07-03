@@ -19,6 +19,9 @@ node_modules
 *.log
 *.css.map
 
+# tangle-release.sh output (built configs are attached to GitHub Releases, not tracked)
+dist/
+
 ags/config.json
 extra/doom/private.el
 extra/doom/connections.json
