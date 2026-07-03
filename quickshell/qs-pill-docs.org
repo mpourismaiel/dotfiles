@@ -4006,6 +4006,234 @@ Item {
 }
 #+end_src
 
+** TrayMenuLevel.qml
+One level of a system-tray item's StatusNotifierItem/DBusMenu, rendered as pill
+rows. It walks a =QsMenuHandle= with =QsMenuOpener= and repeats its =children=
+(=QsMenuEntry=) into rows: separators become a divider; =buttonType= (CheckBox /
+RadioButton) draws the matching =check_box=/=radio_button= glyph from =checkState=;
+entries with a DBus =icon= show it as a Qt-themed =Image= (like the tray/app icons
+elsewhere). A =hasChildren= entry is a submenu — its row toggles an inline
+accordion that instantiates *another* =TrayMenuLevel= (self-referencing by file
+name) for its handle, deferred behind a =Loader= so collapsed submenus don't eagerly
+open over DBus. Leaf clicks call =modelData.triggered()= then bubble =activated()=
+so the host closes the whole menu (matching how acting on the app menu closes it).
+#+begin_src qml :tangle ~/.config/quickshell/pill/TrayMenuLevel.qml :mkdirp yes
+pragma ComponentBehavior: Bound
+// TrayMenuLevel.qml — one level of a tray item's DBus menu, as pill rows. Walks a
+// QsMenuHandle via QsMenuOpener and repeats children (QsMenuEntry): isSeparator →
+// divider; buttonType CheckBox/RadioButton → check/radio glyph from checkState; a
+// DBus icon → Qt-themed Image; hasChildren → inline accordion holding a nested
+// TrayMenuLevel (self-referencing, deferred behind a Loader so collapsed submenus
+// don't open over DBus). Leaf click → modelData.triggered() then activated() so the
+// host closes the menu.
+import QtQuick
+import Quickshell
+
+Column {
+    id: level
+    // plain (not required) properties: submenus are instantiated via a Loader
+    // `source` URL — the runtime-resolved self-reference that lets a QML component
+    // recurse (a static TrayMenuLevel { } inside itself is rejected as recursive) —
+    // and a URL-loaded item can't have required properties set before creation, so
+    // the nested level sets these imperatively in the Loader's onLoaded.
+    property var theme: null
+    property var handle: null       // QsMenuHandle: the tray item's .menu, or a submenu entry
+    property real indent: 0
+    signal activated()
+
+    width: parent ? parent.width : 0
+    spacing: 2
+
+    QsMenuOpener {
+        id: opener
+        menu: level.handle
+    }
+
+    Repeater {
+        model: opener.children
+
+        delegate: Column {
+            id: entryCol
+            required property var modelData
+            property bool expanded: false
+            width: level.width
+            spacing: 2
+
+            // ---- separator ----
+            Item {
+                visible: entryCol.modelData.isSeparator
+                width: level.width
+                height: visible ? 9 : 0
+                Rectangle {
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.left: parent.left; anchors.right: parent.right
+                    anchors.leftMargin: 4 + level.indent; anchors.rightMargin: 4
+                    height: 1; color: level.theme.divider
+                }
+            }
+
+            // ---- entry row (leaf or submenu parent) ----
+            Rectangle {
+                id: row
+                visible: !entryCol.modelData.isSeparator
+                width: level.width
+                height: visible ? 34 : 0
+                radius: level.theme.radiusBtn
+                opacity: entryCol.modelData.enabled ? 1 : 0.4
+                color: (rowMa.containsMouse && entryCol.modelData.enabled) ? level.theme.rowHi : "transparent"
+
+                // leading: check/radio glyph for toggles, else the DBus icon
+                readonly property bool isCheck: entryCol.modelData.buttonType === QsMenuButtonType.CheckBox
+                readonly property bool isRadio: entryCol.modelData.buttonType === QsMenuButtonType.RadioButton
+                readonly property bool isToggle: row.isCheck || row.isRadio
+                readonly property bool on: entryCol.modelData.checkState === Qt.Checked
+
+                MSym {
+                    id: tglGlyph
+                    visible: row.isToggle
+                    anchors.left: parent.left; anchors.leftMargin: 10 + level.indent
+                    anchors.verticalCenter: parent.verticalCenter
+                    size: 18
+                    color: row.on ? level.theme.accent : level.theme.textDim
+                    icon: row.isRadio
+                        ? (row.on ? "radio_button_checked" : "radio_button_unchecked")
+                        : (row.on ? "check_box" : "check_box_outline_blank")
+                }
+                Image {
+                    id: dbusIcon
+                    visible: !row.isToggle && entryCol.modelData.icon !== ""
+                    anchors.left: parent.left; anchors.leftMargin: 10 + level.indent
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 18; height: 18
+                    source: entryCol.modelData.icon
+                    fillMode: Image.PreserveAspectFit
+                }
+
+                Text {
+                    anchors.left: (row.isToggle) ? tglGlyph.right
+                        : (dbusIcon.visible ? dbusIcon.right : parent.left)
+                    anchors.leftMargin: (row.isToggle || dbusIcon.visible) ? 12 : 12 + level.indent
+                    anchors.right: parent.right; anchors.rightMargin: 34
+                    anchors.verticalCenter: parent.verticalCenter
+                    elide: Text.ElideRight
+                    text: entryCol.modelData.text
+                    color: level.theme.text
+                    font.family: level.theme.family; font.pixelSize: level.theme.fsNormal
+                }
+
+                MSym {                              // submenu chevron
+                    visible: entryCol.modelData.hasChildren
+                    anchors.right: parent.right; anchors.rightMargin: 8
+                    anchors.verticalCenter: parent.verticalCenter
+                    icon: entryCol.expanded ? "expand_more" : "chevron_right"
+                    size: 18; color: level.theme.faint
+                }
+
+                MouseArea {
+                    id: rowMa
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    enabled: entryCol.modelData.enabled
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        if (entryCol.modelData.hasChildren) {
+                            entryCol.expanded = !entryCol.expanded;
+                        } else {
+                            entryCol.modelData.triggered();
+                            level.activated();
+                        }
+                    }
+                }
+            }
+
+            // ---- inline submenu (deferred until first expanded) ----
+            // Loaded by URL (not sourceComponent) so the self-reference resolves at
+            // runtime — a static nested TrayMenuLevel { } is rejected as recursive.
+            // Properties are set in onLoaded since a URL-loaded item can't take them
+            // pre-creation; the child's `activated` is chained up to this level's.
+            Loader {
+                width: level.width
+                active: entryCol.modelData.hasChildren && entryCol.expanded
+                visible: active
+                source: active ? "TrayMenuLevel.qml" : ""
+                onLoaded: {
+                    item.theme = level.theme;
+                    item.handle = entryCol.modelData;
+                    item.indent = level.indent + 26;
+                    item.activated.connect(level.activated);
+                }
+            }
+        }
+    }
+}
+#+end_src
+
+** TrayMenu.qml
+The system-tray item's right-click menu, rendered *inside* the pill like the
+[[*AppContextMenu.qml][=AppContextMenu=]]: a [[*MenuHeader.qml][=MenuHeader=]] (the item's
+title; the chevron backs out via =closeRequested()=) over a scrolling
+[[*TrayMenuLevel.qml][=TrayMenuLevel=]] bound to the item's =menu= handle. =implicitHeight=
+(header + rows) drives the pill's ctx-mode height, exactly as the app menu does.
+Triggering any leaf bubbles =TrayMenuLevel.activated()= up to =closeRequested()=, so
+acting dismisses the menu (Plasma behaviour).
+#+begin_src qml :tangle ~/.config/quickshell/pill/TrayMenu.qml :mkdirp yes
+pragma ComponentBehavior: Bound
+// TrayMenu.qml — a system-tray item's DBus menu inside the pill (like
+// AppContextMenu, not a native popup). MenuHeader shows the item title (chevron =
+// closeRequested); below it a scrolling TrayMenuLevel walks trayItem.menu. The
+// menu's implicitHeight sizes the ctx-mode pill. Any leaf trigger bubbles up to
+// closeRequested() so acting closes the menu.
+import QtQuick
+
+Item {
+    id: root
+    required property var theme
+    required property var trayItem      // SystemTrayItem
+    signal closeRequested()
+
+    readonly property string title: (root.trayItem && (root.trayItem.title || root.trayItem.id)) || "Menu"
+
+    // header + content, independent of the height we're given, so the pill can bind
+    // its ctx-mode height to this without a layout cycle (as AppContextMenu does).
+    implicitHeight: header.implicitHeight + root.theme.gap + bodyCol.implicitHeight
+
+    Column {
+        anchors.fill: parent
+        spacing: root.theme.gap
+
+        MenuHeader {
+            id: header
+            theme: root.theme
+            title: root.title
+            onBack: root.closeRequested()
+        }
+
+        Flickable {
+            id: bodyFlick
+            width: parent.width
+            height: parent.height - header.height - root.theme.gap
+            contentHeight: bodyCol.implicitHeight
+            clip: true
+            boundsBehavior: Flickable.StopAtBounds
+
+            // width MUST reference the Flickable id (its Column's parent is the
+            // contentItem, width ~ contentWidth ~ 0) — see AppContextMenu's note.
+            Column {
+                id: bodyCol
+                width: bodyFlick.width
+
+                TrayMenuLevel {
+                    width: parent.width
+                    theme: root.theme
+                    handle: root.trayItem ? root.trayItem.menu : null
+                    onActivated: root.closeRequested()
+                }
+            }
+        }
+    }
+}
+#+end_src
+
 ** init.qml
 The entry point and long-lived root: it owns the per-monitor windows, the stage
 machine, virtual desktops, the taskbar/tray UI, action bursts, and hosts the menus
@@ -4073,6 +4301,15 @@ method to run a one-shot KWin script against *every* window in the group. The pi
 sizes to the menu's =implicitHeight= in ctx mode and the =mask= expands full-screen
 while it's open (=win.ctxGroup=); the two dashboard rows fade out like they do for an
 open menu.
+
+The *system-tray* icons share the same in-pill ctx mode. Right-clicking a tray icon
+(=SystemTrayItem.hasMenu=) opens its StatusNotifierItem/DBusMenu as a
+[[*TrayMenu.qml][=TrayMenu=]] (=win.trayItem=) rendered exactly like the app menu — not
+the fragile native =display()= popup — walking the menu handle with =QsMenuOpener= (see
+[[*TrayMenuLevel.qml][=TrayMenuLevel=]]). =win.ctxMode= (=ctxGroup !== null || trayItem
+!== null=) is the shared predicate that both menus drive the pill mode / mask / fade
+through, while each menu keeps its own =Loader=. Left-click still =activate()=s (or opens
+the menu for =onlyMenu= items); a menu-less item falls back to =secondaryActivate()=.
 
 *Virtual desktops.* Three =Process= blocks drive =gdbus= against =org.kde.KWin
 /VirtualDesktopManager=: fetch the =desktops= list (a regex parses the tuples), fetch
@@ -4628,7 +4865,14 @@ Variants {
         property bool open: false
         property bool launcher: false // app launcher (wider open state)
         property var ctxGroup: null // app group whose right-click menu is shown
-        property bool dash: open || launcher || hover.hovered || ctxGroup !== null
+        property var trayItem: null // SystemTrayItem whose DBus menu is shown in-pill
+        // "ctx mode": an in-pill right-click menu is up (either the taskbar app
+        // menu or a system-tray item menu). Both reuse the same pill machinery —
+        // dashboard rows fade out, the pill sizes to the menu loader, the mask and
+        // backdrop go full-screen — so mode/size/fade bindings key off this, while
+        // each menu's own Loader keys off its specific state (ctxGroup / trayItem).
+        readonly property bool ctxMode: ctxGroup !== null || trayItem !== null
+        property bool dash: open || launcher || hover.hovered || ctxMode
         property int menu: 4 // 0 net, 1 vol, 2 bt, 3 batt, 4 notif (default pane)
         // open-state pill geometry, in ONE place: the control panel and the
         // launcher both lay out to these, so resizing the open/launcher pill here
@@ -4644,7 +4888,7 @@ Variants {
         // a notification is showing AND the pill isn't in a clicked/menu state:
         // the collapsed pill morphs into the notification card (hover holds it).
         // While clicked/launcher/ctx, notifications float *below* the pill instead.
-        property bool notifMorph: notifs.current !== null && !open && !launcher && ctxGroup === null && !showBurst
+        property bool notifMorph: notifs.current !== null && !open && !launcher && !ctxMode && !showBurst
         // a transient action burst (desktop switch / layout change) takes over
         // the *resting* pill for 1s; it yields to hover/open/launcher/ctx
         // (those already show richer UI) and suppresses the notification morph,
@@ -4716,6 +4960,7 @@ Variants {
             } else {
                 win.open = false;
                 win.ctxGroup = null;
+                win.trayItem = null;
                 win.menu = 4;
                 win.launcher = true;
             }
@@ -4738,7 +4983,7 @@ Variants {
         WlrLayershell.keyboardFocus: win.launcher ? WlrKeyboardFocus.Exclusive : win.open ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
         exclusionMode: ExclusionMode.Ignore
         color: "transparent"
-        mask: (win.open || win.launcher || win.ctxGroup !== null || win.confirmActive) ? fullRegion : (win.fsHide ? emptyRegion : pillRegion)
+        mask: (win.open || win.launcher || win.ctxMode || win.confirmActive) ? fullRegion : (win.fsHide ? emptyRegion : pillRegion)
 
         Process {
             id: confirmProc
@@ -4785,12 +5030,13 @@ Variants {
             id: backdrop
 
             anchors.fill: parent
-            enabled: win.open || win.launcher || win.ctxGroup !== null
+            enabled: win.open || win.launcher || win.ctxMode
             // dismiss without launching -> hand focus back to the active window
             onClicked: {
                 win.open = false;
                 win.launcher = false;
                 win.ctxGroup = null;
+                win.trayItem = null;
                 root.restoreFocus();
             }
         }
@@ -4800,8 +5046,10 @@ Variants {
 
             anchors.horizontalCenter: parent.horizontalCenter
             y: 6
-            width: win.showBurst ? (burstLoader.item ? burstLoader.item.implicitWidth : 96) : win.launcher ? win.launcherWidth : win.ctxGroup !== null ? 520 : (win.notifMorph ? (morphStack.item ? morphStack.item.implicitWidth : 420) : (win.open ? 520 : (win.dash ? win.hoverWidth : (56 + root.privacyCount * 20 + (notifs.grouped.length > 0 ? 14 : 0)))))
-            height: win.showBurst ? 28 : (win.open || win.launcher) ? win.openHeight : win.ctxGroup !== null ? Math.min(win.openHeight, (ctxLoader.item ? ctxLoader.item.implicitHeight + theme.pad * 2 : 300)) : (win.notifMorph ? morphStack.implicitHeight : (win.dash ? win.hoverHeight : 28))
+            width: win.showBurst ? (burstLoader.item ? burstLoader.item.implicitWidth : 96) : win.launcher ? win.launcherWidth : win.ctxMode ? 520 : (win.notifMorph ? (morphStack.item ? morphStack.item.implicitWidth : 420) : (win.open ? 520 : (win.dash ? win.hoverWidth : (56 + root.privacyCount * 20 + (notifs.grouped.length > 0 ? 14 : 0)))))
+            // in ctx mode the pill sizes to whichever menu loader is active (app
+            // context menu or tray menu).
+            height: win.showBurst ? 28 : (win.open || win.launcher) ? win.openHeight : win.ctxMode ? Math.min(win.openHeight, ((ctxLoader.item || trayLoader.item) ? (ctxLoader.item || trayLoader.item).implicitHeight + theme.pad * 2 : 300)) : (win.notifMorph ? morphStack.implicitHeight : (win.dash ? win.hoverHeight : 28))
             // resting (collapsed, un-hovered) pill is dimmed; full opacity once
             // hovered / open / a notification is morphing it (or a camera/mic is
             // live); fully hidden while a fullscreen window is focused (fsHide)
@@ -4822,7 +5070,7 @@ Variants {
             MouseArea {
                 anchors.fill: parent
                 z: 100
-                enabled: win.dash && !win.open && !win.launcher && win.ctxGroup === null && !win.notifMorph
+                enabled: win.dash && !win.open && !win.launcher && !win.ctxMode && !win.notifMorph
                 acceptedButtons: Qt.NoButton
                 onWheel: wheel => {
                     const sink = Pipewire.defaultAudioSink;
@@ -4895,7 +5143,7 @@ Variants {
             // the Row-2 status icons / app icons handle their own clicks above
             MouseArea {
                 anchors.fill: parent
-                enabled: win.dash && !win.open && !win.launcher && !win.notifMorph && win.ctxGroup === null
+                enabled: win.dash && !win.open && !win.launcher && !win.notifMorph && !win.ctxMode
                 onClicked: {
                     win.launcher = true;
                 }
@@ -4994,7 +5242,7 @@ Variants {
 
                 radius: theme.radiusSmall
                 color: theme.bgHover
-                opacity: (win.dash && !win.open && !win.launcher && !win.notifMorph && win.ctxGroup === null && target) ? 1 : 0
+                opacity: (win.dash && !win.open && !win.launcher && !win.notifMorph && !win.ctxMode && target) ? 1 : 0
                 visible: opacity > 0
                 x: pos.x - pad
                 y: pos.y - pad
@@ -5048,7 +5296,7 @@ Variants {
                 y: 20
                 width: pill.width - (theme.pad + 8) * 2
                 height: 36
-                opacity: (win.dash && !win.open && !win.launcher && !win.notifMorph && win.ctxGroup === null) ? 1 : 0
+                opacity: (win.dash && !win.open && !win.launcher && !win.notifMorph && !win.ctxMode) ? 1 : 0
                 visible: opacity > 0
 
                 // date/time with the virtual-desktop dots stacked beneath it
@@ -5136,7 +5384,7 @@ Variants {
                 width: pill.width - (theme.pad + 8) - x
                 height: 1
                 color: theme.divider
-                opacity: (win.dash && !win.open && !win.launcher && !win.notifMorph && win.ctxGroup === null) ? 1 : 0
+                opacity: (win.dash && !win.open && !win.launcher && !win.notifMorph && !win.ctxMode) ? 1 : 0
                 visible: opacity > 0
 
                 Behavior on opacity {
@@ -5154,7 +5402,7 @@ Variants {
                 y: 108
                 width: pill.width - (theme.pad + 8) * 2
                 height: 42
-                opacity: (win.dash && !win.open && !win.launcher && !win.notifMorph && win.ctxGroup === null) ? 1 : 0
+                opacity: (win.dash && !win.open && !win.launcher && !win.notifMorph && !win.ctxMode) ? 1 : 0
                 visible: opacity > 0
 
                 // open the app launcher — an accent grid glyph that only picks up
@@ -5236,11 +5484,24 @@ Variants {
                                         win.hoverEnter(trayItem);
 
                                 }
+                                // left-click activates (or opens the menu for
+                                // menu-only items); right-click opens the item's
+                                // DBus menu *inside the pill* (TrayMenu), matching
+                                // the taskbar app menus rather than a native popup.
                                 onClicked: (mouse) => {
-                                    if (mouse.button === Qt.LeftButton)
-                                        trayItem.modelData.activate();
-                                    else
-                                        trayItem.modelData.display(win, width / 2, height);
+                                    const it = trayItem.modelData;
+                                    if (mouse.button === Qt.LeftButton) {
+                                        if (it.onlyMenu && it.hasMenu)
+                                            win.trayItem = it;
+                                        else
+                                            it.activate();
+                                    } else if (it.hasMenu) {
+                                        win.launcher = false;
+                                        win.open = false;
+                                        win.trayItem = it;
+                                    } else {
+                                        it.secondaryActivate();
+                                    }
                                 }
                             }
 
@@ -5427,6 +5688,40 @@ Variants {
 
             }
 
+            // ================= system-tray item (context) menu =================
+            // The right-clicked tray item's DBus menu, rendered INSIDE the pill the
+            // same way as the app context menu above (TrayMenu walks the menu via
+            // QsMenuOpener). Shares the ctx-mode pill sizing/fade; triggering a leaf
+            // clears win.trayItem so the menu closes.
+            Item {
+                x: theme.pad
+                y: theme.pad
+                width: pill.width - theme.pad * 2
+                height: pill.height - theme.pad * 2
+                opacity: win.trayItem !== null ? 1 : 0
+                visible: opacity > 0
+
+                Loader {
+                    id: trayLoader
+
+                    anchors.fill: parent
+                    active: win.trayItem !== null
+                    sourceComponent: TrayMenu {
+                        theme: theme
+                        trayItem: win.trayItem
+                        onCloseRequested: win.trayItem = null
+                    }
+                }
+
+                Behavior on opacity {
+                    NumberAnimation {
+                        duration: theme.anim
+                    }
+
+                }
+
+            }
+
             Behavior on width {
                 NumberAnimation {
                     duration: theme.anim
@@ -5460,7 +5755,7 @@ Variants {
         Loader {
             anchors.horizontalCenter: parent.horizontalCenter
             y: pill.y + pill.height + 8
-            active: ((win.open || win.launcher || win.ctxGroup !== null) || win.showBurst) && notifs.active.length > 0
+            active: ((win.open || win.launcher || win.ctxMode) || win.showBurst) && notifs.active.length > 0
             sourceComponent: cStack
         }
 
