@@ -2295,6 +2295,37 @@ sources have something to anchor to."
 (global-set-key [mouse-8] #'xref-go-back)
 (global-set-key [mouse-9] #'xref-go-forward)
 
+(defun mp/split-and-run (split-fn cmd)
+  "Create a split via SPLIT-FN, focus it, then run CMD there."
+  (select-window (funcall split-fn))
+  (call-interactively cmd))
+
+(defun mp/goto-definition-split-right ()
+  "Jump to definition in a split to the right."
+  (interactive)
+  (mp/split-and-run #'split-window-right #'+lookup/definition))
+
+(defun mp/goto-definition-split-below ()
+  "Jump to definition in a split below."
+  (interactive)
+  (mp/split-and-run #'split-window-below #'+lookup/definition))
+
+(defun mp/goto-references-split-right ()
+  "Find references in a split to the right."
+  (interactive)
+  (mp/split-and-run #'split-window-right #'xref-find-references))
+
+(defun mp/goto-references-split-below ()
+  "Find references in a split below."
+  (interactive)
+  (mp/split-and-run #'split-window-below #'xref-find-references))
+
+(map! :leader
+      :desc "Definition → vsplit" "m g d v" #'mp/goto-definition-split-right
+      :desc "Definition → hsplit" "m g d s" #'mp/goto-definition-split-below
+      :desc "References → vsplit" "m g r v" #'mp/goto-references-split-right
+      :desc "References → hsplit" "m g r s" #'mp/goto-references-split-below)
+
 (defun mp/project-root-default-directory (&optional dir)
   "Return the preferred project root for DIR, preferring explicit workspace roots."
   (or (mp/current-workspace-project-root)

@@ -2852,6 +2852,41 @@ With mouse:
 (global-set-key [mouse-9] #'xref-go-forward)
 #+end_src
 
+In a split. =v= splits right, =s= splits below (matching the =w= window
+prefix), then jumps in and focuses the new split.
+#+begin_src emacs-lisp
+(defun mp/split-and-run (split-fn cmd)
+  "Create a split via SPLIT-FN, focus it, then run CMD there."
+  (select-window (funcall split-fn))
+  (call-interactively cmd))
+
+(defun mp/goto-definition-split-right ()
+  "Jump to definition in a split to the right."
+  (interactive)
+  (mp/split-and-run #'split-window-right #'+lookup/definition))
+
+(defun mp/goto-definition-split-below ()
+  "Jump to definition in a split below."
+  (interactive)
+  (mp/split-and-run #'split-window-below #'+lookup/definition))
+
+(defun mp/goto-references-split-right ()
+  "Find references in a split to the right."
+  (interactive)
+  (mp/split-and-run #'split-window-right #'xref-find-references))
+
+(defun mp/goto-references-split-below ()
+  "Find references in a split below."
+  (interactive)
+  (mp/split-and-run #'split-window-below #'xref-find-references))
+
+(map! :leader
+      :desc "Definition → vsplit" "m g d v" #'mp/goto-definition-split-right
+      :desc "Definition → hsplit" "m g d s" #'mp/goto-definition-split-below
+      :desc "References → vsplit" "m g r v" #'mp/goto-references-split-right
+      :desc "References → hsplit" "m g r s" #'mp/goto-references-split-below)
+#+end_src
+
 **** Custom Shortcuts
 #+begin_src emacs-lisp
 (defun mp/project-root-default-directory (&optional dir)
