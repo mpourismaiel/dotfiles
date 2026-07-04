@@ -3103,9 +3103,10 @@ def run_action(ids_json, verb):
             return
     except Exception:
         return
-    js = (
-        "var TARGETS = %s;\nvar VERB = %s;\n%s"
-        % (json.dumps(ids), json.dumps(verb), ACTION_JS)
+    js = "var TARGETS = %s;\nvar VERB = %s;\n%s" % (
+        json.dumps(ids),
+        json.dumps(verb),
+        ACTION_JS,
     )
     path = os.path.join(tempfile.gettempdir(), "quickshell_pill_action.js")
     with open(path, "w") as f:
@@ -4884,7 +4885,7 @@ Variants {
         // hovered dashboard geometry (its own generous, HTML-scale size — distinct
         // from the open menu's 520 so the two rows can breathe).
         readonly property int hoverWidth: 640
-        readonly property int hoverHeight: 158
+        readonly property int hoverHeight: 150
         // a notification is showing AND the pill isn't in a clicked/menu state:
         // the collapsed pill morphs into the notification card (hover holds it).
         // While clicked/launcher/ctx, notifications float *below* the pill instead.
@@ -5072,7 +5073,7 @@ Variants {
                 z: 100
                 enabled: win.dash && !win.open && !win.launcher && !win.ctxMode && !win.notifMorph
                 acceptedButtons: Qt.NoButton
-                onWheel: wheel => {
+                onWheel: (wheel) => {
                     const sink = Pipewire.defaultAudioSink;
                     if (!sink || !sink.audio)
                         return ;
@@ -5304,6 +5305,12 @@ Variants {
                 Column {
                     anchors.left: parent.left
                     anchors.top: parent.top
+                    // DM Serif Display carries ~10px of empty ascent above the
+                    // digits, so the clock's line-box top sits well below the
+                    // taskbar icon tops (which are top-anchored). Pull the whole
+                    // block up by that gap so the clock's cap-top lines up with
+                    // the taskbar top (tune this one number if it over/undershoots).
+                    anchors.topMargin: -10
                     spacing: 9
 
                     // time over date (unchanged style)
@@ -5380,7 +5387,7 @@ Variants {
             // on this baseline) and runs to the pill's right edge.
             Rectangle {
                 x: theme.pad + 8 + deskDots.width + 16
-                y: 94
+                y: 86
                 width: pill.width - (theme.pad + 8) - x
                 height: 1
                 color: theme.divider
@@ -5399,7 +5406,7 @@ Variants {
             // ============ Row 2: launcher icon (left) | tray + status (right) ============
             Item {
                 x: theme.pad + 8
-                y: 108
+                y: 100
                 width: pill.width - (theme.pad + 8) * 2
                 height: 42
                 opacity: (win.dash && !win.open && !win.launcher && !win.notifMorph && !win.ctxMode) ? 1 : 0
@@ -5659,6 +5666,7 @@ Variants {
 
                     anchors.fill: parent
                     active: win.ctxGroup !== null
+
                     sourceComponent: AppContextMenu {
                         theme: theme
                         group: win.ctxGroup
@@ -5677,6 +5685,7 @@ Variants {
                         }
                         onCloseRequested: win.ctxGroup = null
                     }
+
                 }
 
                 Behavior on opacity {
@@ -5706,11 +5715,13 @@ Variants {
 
                     anchors.fill: parent
                     active: win.trayItem !== null
+
                     sourceComponent: TrayMenu {
                         theme: theme
                         trayItem: win.trayItem
                         onCloseRequested: win.trayItem = null
                     }
+
                 }
 
                 Behavior on opacity {
@@ -5746,7 +5757,6 @@ Variants {
             }
 
         }
-
 
         // ===================== notifications below an open pill =====================
         // When the pill is clicked-open / launcher / app-menu — or briefly while
