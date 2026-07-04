@@ -33,6 +33,11 @@
 (package! pipenv :disable t)
 (package! renpy-mode :recipe (:host github :repo "Reagankm/renpy-mode"))
 
+(package! lsp-bridge
+  :recipe (:host github :repo "manateelazycat/lsp-bridge"
+           :files (:defaults "*.py" "acm" "core" "langserver" "multiserver" "resources")
+           :build (:not compile)))
+
 (package! shell-maker)
 (package! olivetti)
 (package! spacious-padding)

@@ -2709,6 +2709,73 @@ Enable desktop notifications for agent-shell buffers so turns that need attentio
   :hook (prog-mode . copilot-mode))
 #+end_src
 
+*** LSP Bridge
+[[https://github.com/manateelazycat/lsp-bridge][lsp-bridge]] is a self-contained, fully asynchronous LSP client with its own
+completion UI (~acm~). It replaces =lsp-mode= *and* =corfu= /in the buffers where
+it runs/ — the two stacks cannot share a buffer, so this is wired up as an
+*opt-in, per-buffer toggle* rather than a global mode. The default VSCode-feel
+stack (Corfu + lsp-mode + Prescient + Copilot) is left completely intact; nothing
+below runs until you invoke =SPC t b= (=mp/lsp-bridge-toggle=) in a buffer.
+
+The Python backend runs from a dedicated venv so it never touches the system
+Python. If you move/rebuild the venv, only ~lsp-bridge-python-command~ below needs
+updating.
+
+#+begin_src emacs-lisp
+(use-package! lsp-bridge
+  :defer t
+  :commands (lsp-bridge-mode global-lsp-bridge-mode)
+  :init
+  ;; Point the backend at the isolated venv (created outside of tangling).
+  (setq lsp-bridge-python-command
+        (expand-file-name ".local/etc/lsp-bridge-venv/bin/python" doom-emacs-dir))
+  :config
+  ;; ACM completion UI — tuned to match the existing "VSCode feel".
+  (setq acm-enable-icon t
+        acm-enable-doc t                 ; documentation popup beside candidates
+        acm-enable-quick-access nil
+        acm-enable-tabnine nil
+        acm-enable-copilot nil           ; keep copilot.el as the sole Copilot source
+        acm-candidate-match-function 'orderless-flex)
+  ;; Editor behaviour.
+  (setq lsp-bridge-enable-hover-diagnostic t
+        lsp-bridge-enable-signature-help t
+        lsp-bridge-signature-show-function 'lsp-bridge-signature-show-with-frame
+        lsp-bridge-enable-search-words nil
+        lsp-bridge-diagnostic-fetch-idle 1.0)
+  ;; IDE-style navigation, scoped to lsp-bridge buffers so it never shadows the
+  ;; lsp-mode bindings elsewhere.
+  (map! :map lsp-bridge-mode-map
+        :n "gd"  #'lsp-bridge-find-def
+        :n "gD"  #'lsp-bridge-find-references
+        :n "gi"  #'lsp-bridge-find-impl
+        :n "gr"  #'lsp-bridge-rename
+        :n "K"   #'lsp-bridge-popup-documentation
+        :n "]e"  #'lsp-bridge-diagnostic-jump-next
+        :n "[e"  #'lsp-bridge-diagnostic-jump-prev
+        :n "gb"  #'lsp-bridge-find-def-return))
+
+;; Per-buffer opt-in: swap the default stack out for lsp-bridge (and back).
+(defun mp/lsp-bridge-toggle ()
+  "Toggle lsp-bridge in the current buffer.
+Enabling turns off Corfu and lsp-mode locally (they cannot coexist with
+lsp-bridge); disabling restores them."
+  (interactive)
+  (if (bound-and-true-p lsp-bridge-mode)
+      (progn
+        (lsp-bridge-mode -1)
+        (when (fboundp 'corfu-mode) (corfu-mode 1))
+        (message "lsp-bridge disabled — Corfu restored (restart lsp with SPC c l if you want lsp-mode back)"))
+    ;; Tear down the default completion stack in THIS buffer only.
+    (when (bound-and-true-p lsp-mode) (lsp-mode -1))
+    (when (fboundp 'corfu-mode) (corfu-mode -1))
+    (setq-local corfu-auto nil)
+    (lsp-bridge-mode 1)
+    (message "lsp-bridge enabled in this buffer")))
+
+(map! :leader :desc "LSP Bridge (this buffer)" "t b" #'mp/lsp-bridge-toggle)
+#+end_src
+
 *** Languages
 **** Python And Pipenv Safeguards
 This section exists to stop Pipenv from being inferred, created, or invoked in the wrong directory, especially inside monorepos where a repository root is not the correct Python project root.
@@ -3280,6 +3347,23 @@ non-zero, or produces empty output."
 ;; if package state changes during future experiments.
 (package! pipenv :disable t)
 (package! renpy-mode :recipe (:host github :repo "Reagankm/renpy-mode"))
+#+end_src
+
+**** LSP Bridge
+An alternative, fully asynchronous LSP client + completion UI
+([[https://github.com/manateelazycat/lsp-bridge][lsp-bridge]]). It runs its own Python backend and its own ~acm~
+completion menu, so it deliberately does /not/ use =lsp-mode=, =eglot=, or
+=corfu=. It is opt-in per-buffer (see the *LSP Bridge* section under Config), so
+the default Corfu + lsp-mode stack stays untouched until you toggle it on.
+
+The Python backend deps live in a dedicated venv at
+=~/.config/emacs/.local/etc/lsp-bridge-venv= (created out-of-band, not tangled).
+
+#+begin_src emacs-lisp
+(package! lsp-bridge
+  :recipe (:host github :repo "manateelazycat/lsp-bridge"
+           :files (:defaults "*.py" "acm" "core" "langserver" "multiserver" "resources")
+           :build (:not compile)))
 #+end_src
 
 *** Visuals
