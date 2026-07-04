@@ -186,12 +186,14 @@ QtObject {
 #+end_src
 
 ** MSym.qml
+*** Description
 A single *Material Symbols Rounded* glyph. =icon= is the symbol's ligature name
 (e.g. ="chevron_left"=, ="search"=, ="grid_view"=); =fill= / =weight= / =grade= /
 =opticalSize= map to the font's variable axes (=FILL=/=wght=/=GRAD=/=opsz=), so a
 =fill: 1= icon is the solid variant. Used for every chrome glyph (menu/launcher/
 search/chevron/status icons); *app and tray icons stay Qt-themed* (=IconImage= /
 =Quickshell.iconPath=). Sizing is via =size= (sets both the pixel size and =opsz=).
+*** Code
 #+begin_src qml :tangle ~/.config/quickshell/pill/MSym.qml :mkdirp yes
 pragma ComponentBehavior: Bound
 // MSym.qml — one Material Symbols Rounded glyph. `icon` is the symbol name
@@ -222,8 +224,10 @@ Text {
 #+end_src
 
 ** PillToggle.qml
+*** Description
 A small themed on/off switch, reused across menus (Wi-Fi enable, Bluetooth
 power/scan).
+*** Code
 #+begin_src qml :tangle ~/.config/quickshell/pill/PillToggle.qml :mkdirp yes
 pragma ComponentBehavior: Bound
 // PillToggle.qml — a small themed on/off switch. Reusable across menus.
@@ -269,8 +273,10 @@ Item {
 #+end_src
 
 ** PillSlider.qml
+*** Description
 A themed horizontal slider over [0,1], reused for per-node volume in the volume
 menu.
+*** Code
 #+begin_src qml :tangle ~/.config/quickshell/pill/PillSlider.qml :mkdirp yes
 pragma ComponentBehavior: Bound
 // PillSlider.qml — a themed horizontal slider over [0,1]. Reused for volume.
@@ -327,11 +333,13 @@ Item {
 #+end_src
 
 ** MenuHeader.qml
+*** Description
 Shared header for every control-panel menu: a back chevron *and title* (both
 clickable) plus a trailing slot for the menu's own toggles. The chevron emits
 =closeRequested()=, which =init.qml='s =Connections= on the menu loader turns into
 =win.open = false=. Children declared inside a =MenuHeader= land in its
 right-aligned trailing row.
+*** Code
 #+begin_src qml :tangle ~/.config/quickshell/pill/MenuHeader.qml :mkdirp yes
 pragma ComponentBehavior: Bound
 // MenuHeader.qml — shared header for every control-panel menu: a back chevron
@@ -396,10 +404,12 @@ Item {
 #+end_src
 
 ** BusyStripe.qml
+*** Description
 A subtle *barber-pole* — diagonal stripes that slide sideways behind a button/row
 to signal an in-flight action (connecting / disconnecting / pairing). Clipped to its
 parent and faded via =opacity=, so it reads as a moving texture rather than a solid
 fill. Shown only while =active=.
+*** Code
 #+begin_src qml :tangle ~/.config/quickshell/pill/BusyStripe.qml :mkdirp yes
 pragma ComponentBehavior: Bound
 // BusyStripe.qml — a diagonal barber-pole that slides sideways behind a button to
@@ -453,11 +463,13 @@ Item {
 #+end_src
 
 ** ConnButton.qml
+*** Description
 The compact uppercase *Connect / Disconnect / Pair* control shared by the network
 and Bluetooth rows. Presentational by default (the whole row is the click target);
 set =interactive= to make the chip itself clickable (used by the Wi-Fi password
 field). While =busy= it fills with a [[*BusyStripe.qml][=BusyStripe=]] barber-pole
 and stops accepting clicks, so an in-flight connect/disconnect reads at a glance.
+*** Code
 #+begin_src qml :tangle ~/.config/quickshell/pill/ConnButton.qml :mkdirp yes
 pragma ComponentBehavior: Bound
 // ConnButton.qml — the compact uppercase Connect/Disconnect/Pair control shared by
@@ -508,6 +520,7 @@ Item {
 #+end_src
 
 ** NetState.qml
+*** Description
 Shared network state (owned once in =init.qml=, passed to =StatusIcons= and
 =NetworkMenu= — no singletons, mirroring =notifs= / =clipboard=). Wi-Fi (device,
 scanned networks, the active AP + its signal, radio on/off) comes from native
@@ -516,6 +529,7 @@ binding, so they are polled via =nmcli=. Exposes the aggregate the dashboard gly
 needs (=lanActive= / =wifiActive= / =wifiSignal= / =vpnActive=) and drives LAN/VPN
 connect/disconnect (=setConn=), tracking the one in-flight name in =busyConn= so its
 row can show a connecting stripe.
+*** Code
 #+begin_src qml :tangle ~/.config/quickshell/pill/NetState.qml :mkdirp yes
 pragma ComponentBehavior: Bound
 // NetState.qml — shared network state (owned in init.qml, passed to StatusIcons +
@@ -607,12 +621,14 @@ QtObject {
 #+end_src
 
 ** NetworkMenu.qml
+*** Description
 Wi-Fi list (signal bars + a lock on secured nets, sorted active-first then by
 =signalStrength=), connect/disconnect, and a password overlay calling
 =connectWithPsk()= for secured unknown networks; toggles =Networking.wifiEnabled=
 and runs the scanner only while visible. Uses native =Quickshell.Networking=.
 VPN/WireGuard connections are *not* in that binding, so they are listed and toggled
 via =nmcli= (=Process=). A header gear opens KDE's network KCM.
+*** Code
 #+begin_src qml :tangle ~/.config/quickshell/pill/NetworkMenu.qml :mkdirp yes
 pragma ComponentBehavior: Bound
 // NetworkMenu.qml — Wi-Fi list (signal + lock + active), connect/disconnect, and an
@@ -911,12 +927,14 @@ Item {
 #+end_src
 
 ** VolumeMenu.qml
+*** Description
 Devices tab (speakers = =Audio/Sink=, mics = =Audio/Source=) with per-device
 volume/mute/set-default, and Applications tab (=Stream/Output/Audio=) with
 per-stream volume/mute. Uses native =Quickshell.Services.Pipewire=; a
 =PwObjectTracker= over every node keeps audio live and nodes are classified by
 =media.class=. Header shortcuts open KDE's Audio (=kcm_pulseaudio=) and Multimedia
 (=kcm_phonon=) settings.
+*** Code
 #+begin_src qml :tangle ~/.config/quickshell/pill/VolumeMenu.qml :mkdirp yes
 pragma ComponentBehavior: Bound
 // VolumeMenu.qml — Devices tab (speakers = Audio/Sink, mics = Audio/Source) with
@@ -1115,10 +1133,12 @@ Item {
 #+end_src
 
 ** BluetoothMenu.qml
+*** Description
 Adapter power + scan toggles (=defaultAdapter.enabled= / =.discovering=), then three
 filtered sections — Connected, Paired, Available — each row connect/disconnect/pair
 via the device methods, with battery % when =batteryAvailable=. Uses native
 =Quickshell.Bluetooth=.
+*** Code
 #+begin_src qml :tangle ~/.config/quickshell/pill/BluetoothMenu.qml :mkdirp yes
 pragma ComponentBehavior: Bound
 // BluetoothMenu.qml — adapter power + scan toggles, then three sections:
@@ -1284,6 +1304,7 @@ Item {
 #+end_src
 
 ** Brightness.qml
+*** Description
 Per-display screen brightness over KDE's =org.kde.ScreenBrightness= DBus service —
 the exact backend Plasma's own brightness slider and keys use, so it drives the
 internal panel's *backlight* and external monitors over *DDC/CI* alike (no
@@ -1297,6 +1318,7 @@ enumerated on demand (=refresh()=, called when the battery menu opens): for each
 per pixel or thrash a slow DDC bus. =stepActive(screen, sign)= re-reads the live
 value in-shell before clamping + writing, so a keybind never drifts from KDE's OSD.
 Mirrors =NetState= / =Clipboard= (no singletons).
+*** Code
 #+begin_src qml :tangle ~/.config/quickshell/pill/Brightness.qml :mkdirp yes
 pragma ComponentBehavior: Bound
 // Brightness.qml — per-display screen brightness over KDE's org.kde.ScreenBrightness
@@ -1448,11 +1470,13 @@ Item {
 #+end_src
 
 ** BatteryMenu.qml
+*** Description
 Every present, non-line-power device (laptop battery, mouse, keyboard, headphones,
 …) with a themed icon, name/type, state and percentage. Uses native
 =Quickshell.Services.UPower= (=UPower.devices= + =Quickshell.iconPath(iconName)=). A
 *Screen brightness* section at the top gives one [[*PillSlider.qml][slider]] per
 display, driven by the shared [[*Brightness.qml][=Brightness=]] state.
+*** Code
 #+begin_src qml :tangle ~/.config/quickshell/pill/BatteryMenu.qml :mkdirp yes
 pragma ComponentBehavior: Bound
 // BatteryMenu.qml — every present power device (laptop battery, mouse, keyboard,
@@ -1629,6 +1653,7 @@ Item {
 #+end_src
 
 ** Launcher.qml
+*** Description
 KDE-style app launcher, opened by clicking the hovered pill body, the Row-2 grid
 button, or the *Meta+D* shortcut; it takes the menu pane's place below the two
 dashboard rows. A back chevron + a focused search field, a grid/list toggle, ★
@@ -1661,6 +1686,8 @@ shared =appList= and open/close focus handling live in =init.qml= (see
 [[*init.qml][§ init.qml]]).
 Like [[*init.qml][init.qml]], the body is split into =noweb= chunks (assembled in
 reference order) so each section has its own header and can be moved independently.
+*** Code
+**** Launcher.qml - Init
 #+begin_src qml :tangle ~/.config/quickshell/pill/Launcher.qml :mkdirp yes :noweb yes
 pragma ComponentBehavior: Bound
 // Launcher.qml — KDE-style application launcher.
@@ -1708,7 +1735,7 @@ Item {
 }
 #+end_src
 
-*** Launcher.qml — query, selection & calculator logic
+**** Launcher.qml — query, selection & calculator logic
 The non-visual core: open/close focus handling, the =q= query, the =filtered= /
 =favApps= / =model= derivations, =showGrid=, arrow-key selection (=currentIndex=,
 =setSel=, =moveVert= / =moveHoriz=, =activateCurrent=), favourite toggling, the safe
@@ -1832,7 +1859,7 @@ Process { id: powerProc }
 function exec(cmd) { powerProc.command = cmd; powerProc.startDetached(); }
 #+end_src
 
-*** Launcher.qml — search row
+**** Launcher.qml — search row
 The back chevron + focused search field (its key handlers drive the arrow-key
 navigation above) and the grid/list toggle.
 #+name: launcher-search
@@ -1944,7 +1971,7 @@ Rectangle {
 }
 #+end_src
 
-*** Launcher.qml — toggle buttons
+**** Launcher.qml — toggle buttons
 The bottom-left toggle row, mirroring the power row opposite it. The first (and so
 far only) toggle is *Do-Not-Disturb*: a bell that strikes through while on, driving
 =notifs.dnd= so arriving notifications go straight to history without popping. More
@@ -1983,7 +2010,7 @@ Row {
 }
 #+end_src
 
-*** Launcher.qml — power buttons
+**** Launcher.qml — power buttons
 The bottom-right power row — lock / logout / reboot / shutdown — wired to =loginctl=
 and =org.kde.Shutdown= over =gdbus=. Lock fires immediately; logout / reboot / shutdown
 emit =confirmPower= so =init.qml= raises the full-screen confirmation first.
@@ -2059,7 +2086,7 @@ Row {
 }
 #+end_src
 
-*** Launcher.qml — body (list / grid)
+**** Launcher.qml — body (list / grid)
 The result area: the calculator result card on top, then one of three views — the
 resting app =ListView=, the drag-to-reorder favourites =GridView= (=showGrid=), or
 the KRunner results =ListView= (=searching=, bound to the Milou model and grouped by
@@ -2564,7 +2591,7 @@ Item {
 }
 #+end_src
 
-*** Launcher.qml — app right-click menu
+**** Launcher.qml — app right-click menu
 The per-app right-click menu (=DesktopEntry.actions= + a favourite toggle) with an
 outside-click backdrop; positioned at the click via =openFor=.
 #+name: launcher-context
@@ -2660,6 +2687,7 @@ Rectangle {
 #+end_src
 
 ** Notifications.qml
+*** Description
 The freedesktop notification *server* + popup/history *state*. Instantiated once
 in =init.qml= and shared with every monitor (the morph card, the floating cards
 and the history menu). Requires Plasma's own notifications disabled first — see
@@ -2676,6 +2704,7 @@ Closing a popup or letting it time out
 only drops it from =active= and *keeps* it in history; we avoid =dismiss()/expire()=
 because Quickshell would *destroy* the notification (wiping the history copy too),
 so only =forget()= / =clearAll()= remove from history.
+*** Code
 #+begin_src qml :tangle ~/.config/quickshell/pill/Notifications.qml :mkdirp yes
 pragma ComponentBehavior: Bound
 // Notifications.qml — the freedesktop notification server + popup/history state.
@@ -2911,6 +2940,7 @@ QtObject {
 #+end_src
 
 ** NotificationView.qml
+*** Description
 One notification card, reused three ways: the pill *morph* (=autoExpire:true=),
 *floating* cards under an open pill, and rows in the *history* menu
 (=inHistory:true=, so the X forgets instead of dismissing). Two columns: the
@@ -2922,6 +2952,7 @@ resolved by =resolveImage()=: an =image-path= hint loads as a =file://= URL
 directly (Flameshot &c. send screenshots that way), else Quickshell's =image=
 provider URL; the =Image= loads *synchronously* because the data provider serves
 nothing on the async path.
+*** Code
 #+begin_src qml :tangle ~/.config/quickshell/pill/NotificationView.qml :mkdirp yes
 pragma ComponentBehavior: Bound
 // NotificationView.qml — one notification card. Two columns in a row:
@@ -3211,6 +3242,7 @@ Rectangle {
 #+end_src
 
 ** NotificationStack.qml
+*** Description
 The deck of active (un-closed) popups: at rest the newest is on top and the rest
 peek out below it (offset + scaled, capped at =maxDeck=); hovering drops them into a
 full vertical list and sets =notifs.held= (which pauses + resets every countdown).
@@ -3218,6 +3250,7 @@ full vertical list and sets =notifs.held= (which pauses + resets every countdown
 Once more than one popup is active a floating *"Dismiss all"* pill appears to the
 right and calls =notifs.dismissAll()= (closes every popup, keeps them in history). Used
 for the pill *morph* and the cards *below* an open pill.
+*** Code
 #+begin_src qml :tangle ~/.config/quickshell/pill/NotificationStack.qml :mkdirp yes
 pragma ComponentBehavior: Bound
 // NotificationStack.qml — the active notifications as a deck. At rest the newest
@@ -3364,7 +3397,9 @@ Item {
 #+end_src
 
 ** NotificationHistory.qml
+*** Description
 The control-panel pane (=win.menu === 4=) — grouped, newest-first history.
+*** Code
 #+begin_src qml :tangle ~/.config/quickshell/pill/NotificationHistory.qml :mkdirp yes
 pragma ComponentBehavior: Bound
 // NotificationHistory.qml — notification history pane. Notifications are grouped
@@ -3484,6 +3519,7 @@ Item {
 #+end_src
 
 ** Clipboard.qml
+*** Description
 Clipboard-history *state*, instantiated once in =init.qml= as
 =Clipboard { id: clipboard }= and handed to the menu (no singletons, mirroring
 =Notifications=). It shells out to [[*clipbridge.py][=clipbridge.py=]]: =refresh()=
@@ -3491,6 +3527,7 @@ reloads =entries= (a JSON array of =\{id, kind, …\}= — image rows carry =w/h
 text rows carry =text= + an =images= count), and =copy/remove/wipe= act on an entry
 and re-=refresh()=. The watchers that actually record history are started separately
 at root (see [[*init.qml — clipboard][§ init.qml — clipboard]]).
+*** Code
 #+begin_src qml :tangle ~/.config/quickshell/pill/Clipboard.qml :mkdirp yes
 pragma ComponentBehavior: Bound
 // Clipboard.qml — clipboard-history state over clipbridge.py (cliphist backend).
@@ -3531,6 +3568,7 @@ QtObject {
 #+end_src
 
 ** ClipboardMenu.qml
+*** Description
 The control-panel pane (=win.menu === 5=, between battery and notifications) — a
 Klipper-style clipboard history. A =MenuHeader= (title + *Clear all*) and a fuzzy
 search field sit above a scrolling list of the recent entries (the ten newest when
@@ -3540,6 +3578,7 @@ when smaller than the box, fit when larger); *text* entries show the preview, it
 right edge fading out before an always-visible *Delete* label. Text that carries
 embedded =data:image= screenshots shows a "+N images" chip with those blobs stripped
 from the preview. Clicking a row copies it (and closes the panel); *Delete* only removes.
+*** Code
 #+begin_src qml :tangle ~/.config/quickshell/pill/ClipboardMenu.qml :mkdirp yes
 pragma ComponentBehavior: Bound
 // ClipboardMenu.qml — clipboard history (cliphist via Clipboard/clipbridge.py).
@@ -3825,6 +3864,7 @@ Item {
 #+end_src
 
 ** winbridge.py
+*** Description
 Self-contained python glue that feeds the pill its window data, since KWin
 advertises no window-list protocol and no active-window over DBus. Run as =python
 <shellDir>/winbridge.py=, it prints one JSON line =\{active, fullscreen, screen,
@@ -3849,6 +3889,8 @@ Meta+D shortcut), which =init.qml= parses with =Process= + =SplitParser=:
   whose =internalId= is in =idsJson= and applies =verb= — =minimize/maximize/above/
   below= toggle the group's aggregate state, =close= closes each, =desktop:<id>= /
   =desktop:all= move them (=Window.desktops=/=onAllDesktops=/=setMaximize=/=closeWindow=).
+
+*** Code
 #+begin_src python :tangle ~/.config/quickshell/pill/winbridge.py :mkdirp yes
 #!/usr/bin/env python
 # winbridge.py — feeds the pill its open-window list + the active window.
@@ -4143,6 +4185,7 @@ GLib.MainLoop().run()
 #+end_src
 
 ** clipbridge.py
+*** Description
 The clipboard-history backend. The pill has no native clipboard access, so history
 is delegated to =cliphist= (storage / dedup / persistence) fed by =wl-paste --watch=
 (the Wayland clipboard), and =wl-copy= puts a chosen entry back on the clipboard.
@@ -4153,6 +4196,7 @@ its children on exit), =list= prints the history as JSON (images decoded to a ca
 file; =data:image= URIs embedded in copied *text* are stripped from the preview and
 counted), and =copy=/=delete=/=wipe= act on entries. =cliphist= ids are stable per
 stored value, so decoded images are cached by id and stale files pruned on each =list=.
+*** Code
 #+begin_src python :tangle ~/.config/quickshell/pill/clipbridge.py :mkdirp yes
 #!/usr/bin/env python3
 # clipbridge.py — clipboard-history backend for the pill (cliphist + wl-clipboard).
@@ -4346,11 +4390,13 @@ if __name__ == "__main__":
 #+end_src
 
 ** DesktopDots.qml
+*** Description
 The virtual-desktop indicator: hollow dots (one per desktop) with a single filled
 dot that *slides* to the active one. Reused in two places — the hovered dashboard's
 Row 1, beneath the date/time (=interactive: true=, dots switch desktop on click) and the desktop-switch
 action burst (=interactive: false=, just the sliding dot). =activeIdx= is the slot
 the filled dot sits at (=-1= hides it); =switchRequested(id)= fires on a dot click.
+*** Code
 #+begin_src qml :tangle ~/.config/quickshell/pill/DesktopDots.qml :mkdirp yes
 pragma ComponentBehavior: Bound
 // DesktopDots.qml — virtual-desktop dots with a sliding active dot. Used by the
@@ -4402,10 +4448,12 @@ Item {
 #+end_src
 
 ** Taskbar.qml
+*** Description
 The hovered dashboard's grouped app icons (Row 1, right): one tile per app (windows
 grouped by icon upstream), a count badge for ≥2 windows, and an underline that turns
 accent when any of the app's windows is active. Left-click =activated(group)= cycles
 the app's windows; right-click =contextRequested(group)= opens its menu.
+*** Code
 #+begin_src qml :tangle ~/.config/quickshell/pill/Taskbar.qml :mkdirp yes
 pragma ComponentBehavior: Bound
 // Taskbar.qml — grouped app icons for the hovered dashboard (Row 1). One tile per
@@ -4496,6 +4544,7 @@ Row {
 #+end_src
 
 ** StatusIcons.qml
+*** Description
 The hovered dashboard's status switcher (Row 2, right): network / volume / bluetooth
 / battery / clipboard / notifications icons. The glyphs track live state — the volume icon
 follows Pipewire mute *and* level (off / mute / down / up), the battery follows
@@ -4503,6 +4552,7 @@ UPower charge/state (6-bar granularity, plus a red alert glyph when critically l
 and the notifications bell carries a count badge for un-cleared history (=notifs=).
 Clicking one emits =menuRequested(menu)=; while the panel is open the active menu's
 icon is highlighted (=open= + =menu=).
+*** Code
 #+begin_src qml :tangle ~/.config/quickshell/pill/StatusIcons.qml :mkdirp yes
 pragma ComponentBehavior: Bound
 // StatusIcons.qml — the dashboard status switcher (Row 2). Network / volume /
@@ -4658,6 +4708,7 @@ Row {
 #+end_src
 
 ** CollapsedPill.qml
+*** Description
 The collapsed pill's content: the =hh:mm= clock, plus the privacy indicators —
 a camera icon while any process holds a =/dev/video*= node, a mic icon while the
 default source is unmuted, and a pulsing red dot while the screen is being
@@ -4665,6 +4716,7 @@ shared/recorded (=recordingOn=; the dot emits a fading ring once every 5s). The
 icons *pop in* / *shrink out* (scale overshoot via =OutBack=, an animated slot
 width so the clock slides over). =solid= (a live camera/mic/recording) shows the
 clock at full opacity; otherwise it is slightly translucent.
+*** Code
 #+begin_src qml :tangle ~/.config/quickshell/pill/CollapsedPill.qml :mkdirp yes
 pragma ComponentBehavior: Bound
 // CollapsedPill.qml — the collapsed pill: the hh:mm clock plus camera/mic/screen
@@ -4807,12 +4859,14 @@ Row {
 #+end_src
 
 ** ActionBurstPill.qml
+*** Description
 The transient action-burst content: one mini-pill per active kind, side by side with
 a gap, each carrying the hovered-pill surface. When *both* kinds are live the two
 pills pop apart on entry (a quick =Translate=, =OutBack=). =language= shows
 =from → to= with the arrow flashing during the animate phase (=phase === 2=);
 =desktops= shows the dot row (via [[*DesktopDots.qml][=DesktopDots=]]) with the filled
 dot sliding to =dotIdx=.
+*** Code
 #+begin_src qml :tangle ~/.config/quickshell/pill/ActionBurstPill.qml :mkdirp yes
 pragma ComponentBehavior: Bound
 // ActionBurstPill.qml — action-burst overlay content. One mini-pill per kind in
@@ -4907,6 +4961,7 @@ Row {
 #+end_src
 
 ** AppContextMenu.qml
+*** Description
 The taskbar app right-click menu, rendered *inside* the pill like the control-panel
 menus (not a floating popup): a [[*MenuHeader.qml][=MenuHeader=]] showing the app
 name (chevron backs out), then — *only for a grouped app (>1 window)* — one collapsible
@@ -4927,6 +4982,7 @@ uuids (a single window, or the whole group); =closeRequested()= backs out (host 
 acting closes the menu (Plasma behaviour). Content scrolls in a =Flickable=;
 =implicitHeight= (header + rows, independent of the given height) drives the pill's
 ctx-mode size.
+*** Code
 #+begin_src qml :tangle ~/.config/quickshell/pill/AppContextMenu.qml :mkdirp yes
 pragma ComponentBehavior: Bound
 // AppContextMenu.qml — the taskbar app right-click menu, rendered inside the pill
@@ -5187,6 +5243,7 @@ Item {
 #+end_src
 
 ** TrayMenuLevel.qml
+*** Description
 One level of a system-tray item's StatusNotifierItem/DBusMenu, rendered as pill
 rows. It walks a =QsMenuHandle= with =QsMenuOpener= and repeats its =children=
 (=QsMenuEntry=) into rows: separators become a divider; =buttonType= (CheckBox /
@@ -5197,6 +5254,7 @@ accordion that instantiates *another* =TrayMenuLevel= (self-referencing by file
 name) for its handle, deferred behind a =Loader= so collapsed submenus don't eagerly
 open over DBus. Leaf clicks call =modelData.triggered()= then bubble =activated()=
 so the host closes the whole menu (matching how acting on the app menu closes it).
+*** Code
 #+begin_src qml :tangle ~/.config/quickshell/pill/TrayMenuLevel.qml :mkdirp yes
 pragma ComponentBehavior: Bound
 // TrayMenuLevel.qml — one level of a tray item's DBus menu, as pill rows. Walks a
@@ -5349,6 +5407,7 @@ Column {
 #+end_src
 
 ** TrayMenu.qml
+*** Description
 The system-tray item's right-click menu, rendered *inside* the pill like the
 [[*AppContextMenu.qml][=AppContextMenu=]]: a [[*MenuHeader.qml][=MenuHeader=]] (the item's
 title; the chevron backs out via =closeRequested()=) over a scrolling
@@ -5356,6 +5415,7 @@ title; the chevron backs out via =closeRequested()=) over a scrolling
 (header + rows) drives the pill's ctx-mode height, exactly as the app menu does.
 Triggering any leaf bubbles =TrayMenuLevel.activated()= up to =closeRequested()=, so
 acting dismisses the menu (Plasma behaviour).
+*** Code
 #+begin_src qml :tangle ~/.config/quickshell/pill/TrayMenu.qml :mkdirp yes
 pragma ComponentBehavior: Bound
 // TrayMenu.qml — a system-tray item's DBus menu inside the pill (like
@@ -5415,6 +5475,7 @@ Item {
 #+end_src
 
 ** init.qml
+*** Description
 The entry point and long-lived root: it owns the per-monitor windows, the stage
 machine, virtual desktops, the taskbar/tray UI, action bursts, and hosts the menus
 and launcher. Sibling =.qml= files are used as component types via QML's implicit
@@ -5554,6 +5615,8 @@ Edit these chunks; they assemble (via org's =noweb=) into the single =init.qml=
 below — the order is fixed by the =<<...>>= references, so a chunk's subtree can
 be moved freely. Each chunk's own header + notes are in the =*** init.qml — …=
 subsections that follow.
+*** Code
+**** init.qml - Init
 #+begin_src qml :tangle ~/.config/quickshell/pill/init.qml :mkdirp yes :noweb yes
 pragma ComponentBehavior: Bound
 // ----------------------------------------------------------------------------
@@ -5592,7 +5655,7 @@ ShellRoot {
 }
 #+end_src
 
-*** init.qml — root state & shared services
+**** init.qml — root state & shared services
 Top-level shared state: the window / desktop / active-window properties fed by the
 services below (=lastActiveWindow= caches the last real focus so it can be restored),
 the Meta+D =launcherShortcut= signal, the single =Theme=, and =PwObjectTracker=s that
@@ -5640,7 +5703,7 @@ PwObjectTracker { objects: Pipewire.defaultAudioSink ? [Pipewire.defaultAudioSin
 PwObjectTracker { objects: Pipewire.defaultAudioSource ? [Pipewire.defaultAudioSource] : [] }
 #+end_src
 
-*** init.qml — privacy indicators
+**** init.qml — privacy indicators
 Privacy indicators for the resting pill — a camera in use (any process holding a
 =/dev/video*= node, polled with =fuser=), an unmuted default mic, and an active
 *screen capture* (a =Stream/Output/Video= PipeWire node published by
@@ -5688,7 +5751,7 @@ Timer { interval: 2000; running: true; repeat: true; triggeredOnStart: true
         onTriggered: cameraProc.running = true }
 #+end_src
 
-*** init.qml — notification server
+**** init.qml — notification server
 The shared notification server + state object (see [[*Notifications.qml][§ Notifications.qml]]),
 built once and handed to every monitor's morph card, floating stack and history pane.
 #+name: init-notifications
@@ -5705,7 +5768,7 @@ Notifications {
 }
 #+end_src
 
-*** init.qml — clipboard
+**** init.qml — clipboard
 The clipboard-history state ([[*Clipboard.qml][=Clipboard=]], shared with the menu)
 plus the =wl-paste= watchers that feed =cliphist=, run once at root (not per monitor)
 via [[*clipbridge.py][=clipbridge.py=]] =watch=. The watcher =Process= is =running:
@@ -5721,7 +5784,7 @@ Process {
 }
 #+end_src
 
-*** init.qml — network state
+**** init.qml — network state
 Shared network state ([[*NetState.qml][=NetState=]]) — Wi-Fi (native) plus LAN/VPN
 (nmcli) — owned once at root and handed to both the dashboard status glyph and the
 network menu (no singletons, mirroring =notifs= / =clipboard=).
@@ -5733,7 +5796,7 @@ NetState {
 }
 #+end_src
 
-*** init.qml — screen brightness
+**** init.qml — screen brightness
 Shared per-display brightness state ([[*Brightness.qml][=Brightness=]], over KDE's
 =org.kde.ScreenBrightness=) — owned once at root and handed to the battery menu's
 sliders and the brightness shortcut (=stepActive=), mirroring =netState=.
@@ -5745,7 +5808,7 @@ Brightness {
 }
 #+end_src
 
-*** init.qml — virtual desktops (KWin DBus)
+**** init.qml — virtual desktops (KWin DBus)
 KWin virtual desktops over DBus (=org.kde.KWin /VirtualDesktopManager=): fetch the
 list + current, =gdbus monitor= to stay live, and =switchDesktop(id)= to change one.
 #+name: init-virtual-desktops
@@ -5810,7 +5873,7 @@ function switchDesktop(id) {
 Process { id: switchProc }
 #+end_src
 
-*** init.qml — keyboard layout
+**** init.qml — keyboard layout
 The keyboard-layout labels + current index from =org.kde.keyboard /Layouts=, kept
 live; this is what the language action burst (=US → FA=) reads.
 #+name: init-keyboard-layout
@@ -5875,7 +5938,7 @@ Process {
 }
 #+end_src
 
-*** init.qml — action-burst state machine
+**** init.qml — action-burst state machine
 The transient action-burst state machine (desktop switch / layout change): the
 =burst*= state, the shared three-phase timeline =Timer=, and the change handlers that
 fire a burst on a *real* change. The visuals live in [[*ActionBurstPill.qml][=ActionBurstPill=]].
@@ -5948,7 +6011,7 @@ onKbIndexChanged: {
 }
 #+end_src
 
-*** init.qml — windows, taskbar grouping & focus
+**** init.qml — windows, taskbar grouping & focus
 Open windows + active window via [[*winbridge.py][=winbridge.py=]] (=Process= +
 =SplitParser=), the window actions (=activateWindow=, =restoreFocus=, =launch=) and the
 per-app =appGroups= grouping + =cycleGroup= consumed by [[*Taskbar.qml][=Taskbar=]].
@@ -6068,7 +6131,7 @@ function cycleGroup(grp) {
 }
 #+end_src
 
-*** init.qml — launcher app list & settings
+**** init.qml — launcher app list & settings
 The shared launcher app list (=DesktopEntries=, =noDisplay=-filtered, name-sorted),
 built once here, plus the persisted launcher settings (grid mode + favourite ids) in
 =launcher.json= via =FileView= + =JsonAdapter=. Both are handed to every monitor's
@@ -6107,7 +6170,7 @@ FileView {
 }
 #+end_src
 
-*** init.qml — per-monitor overlay window
+**** init.qml — per-monitor overlay window
 The per-monitor overlay: one full-screen layer-shell =PanelWindow= per screen that
 reserves no space. It owns the input =mask=, the keyboard-focus policy and the stage
 machine (collapsed → dashboard → control panel → launcher), and composes the extracted
@@ -7778,7 +7841,7 @@ Variants {
 }
 #+end_src
 
-*** init.qml — menu & burst components
+**** init.qml — menu & burst components
 The =Component= definitions the overlay's =Loader=s instantiate: the five control-panel
 menus, the reused notification deck ([[*NotificationStack.qml][=NotificationStack=]]) and
 the action-burst content wrapper ([[*ActionBurstPill.qml][=ActionBurstPill=]]).
@@ -7812,7 +7875,7 @@ Component {
 }
 #+end_src
 
-*** init.qml — clock
+**** init.qml — clock
 The shared minute clock and its formatted =hh:mm= time + date strings.
 #+name: init-clock
 #+begin_src qml
@@ -7824,9 +7887,11 @@ readonly property string clockDate:  Qt.formatDateTime(sysclock.date, "ddd, d MM
 #+end_src
 
 ** run-pill.sh
+*** Description
 The launch script (=./run-pill.sh=). Qt picks its platform plugin before any QML
 loads, so the Wayland socket and the icon theme (see [[*Look, translucency & icons][§ Look, translucency & icons]])
 have to be resolved here, not in =init.qml=.
+*** Code
 #+begin_src sh :tangle ~/.config/quickshell/pill/run-pill.sh :mkdirp yes :tangle-mode (identity #o755)
 #!/bin/sh
 # run-pill.sh — launch the pill with a Wayland environment resolved at runtime.
