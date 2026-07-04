@@ -1283,10 +1283,176 @@ Item {
 }
 #+end_src
 
+** Brightness.qml
+Per-display screen brightness over KDE's =org.kde.ScreenBrightness= DBus service —
+the exact backend Plasma's own brightness slider and keys use, so it drives the
+internal panel's *backlight* and external monitors over *DDC/CI* alike (no
+=ddcutil=/=brightnessctl= of our own). Owned once in =init.qml= and shared with the
+[[*BatteryMenu.qml][battery menu]] (a slider per display) and the *brightness
+shortcut* (=stepActive=, which adjusts whichever monitor is active). Displays are
+enumerated on demand (=refresh()=, called when the battery menu opens): for each
+=DisplaysDBusNames= entry it reads =Label=, =Brightness=, =MaxBrightness= and
+=IsInternal=. Slider writes are *optimistic* (the UI moves at once) and *throttled*
+(≈80 ms, with a guaranteed trailing write) so a drag doesn't spawn a =qdbus= process
+per pixel or thrash a slow DDC bus. =stepActive(screen, sign)= re-reads the live
+value in-shell before clamping + writing, so a keybind never drifts from KDE's OSD.
+Mirrors =NetState= / =Clipboard= (no singletons).
+#+begin_src qml :tangle ~/.config/quickshell/pill/Brightness.qml :mkdirp yes
+pragma ComponentBehavior: Bound
+// Brightness.qml — per-display screen brightness over KDE's org.kde.ScreenBrightness
+// DBus service (the same backend Plasma's brightness slider/keys use: it drives the
+// internal panel's backlight and external monitors over DDC/CI). Owned once by
+// init.qml and shared with the battery menu (per-display sliders) and the brightness
+// shortcut (step the active monitor). Displays are enumerated on demand (menu open);
+// writes are optimistic + throttled so a slider drag doesn't spawn a qdbus process
+// per pixel or thrash a slow DDC bus.
+import QtQuick
+import Quickshell.Io
+
+Item {
+    id: root
+    readonly property string svc: "org.kde.ScreenBrightness"
+    // one stable QtObject per display: mutating its `value`/`raw` in place (rather
+    // than replacing the `displays` array) keeps the battery menu's Repeater from
+    // rebuilding the slider delegate mid-drag — which would drop the mouse grab and
+    // break click-and-drag (the array is only reassigned on refresh, never on a
+    // slider move). Same idea as the volume menu writing a live Pipewire node.
+    component Display: QtObject {
+        property string path
+        property string name
+        property string label
+        property bool   internal
+        property int    max: 1
+        property int    raw
+        property real   value       // 0..1
+    }
+    property var displays: []
+    readonly property bool available: displays.length > 0
+    Component { id: displayComp; Display {} }
+
+    // ---- enumerate displays + read label/brightness/max/internal for each ----
+    // qdbus is the terse way to read the per-display properties (gdbus needs a
+    // verbose Properties.Get per field); one sh loop emits a tab-separated line
+    // per display which the collector parses below.
+    Process {
+        id: enumProc
+        command: ["sh", "-c",
+            'svc=org.kde.ScreenBrightness; base=/org/kde/ScreenBrightness; ' +
+            'for d in $(qdbus $svc $base org.kde.ScreenBrightness.DisplaysDBusNames); do ' +
+              'b=$(qdbus $svc $base/$d org.kde.ScreenBrightness.Display.Brightness); ' +
+              'm=$(qdbus $svc $base/$d org.kde.ScreenBrightness.Display.MaxBrightness); ' +
+              'i=$(qdbus $svc $base/$d org.kde.ScreenBrightness.Display.IsInternal); ' +
+              'l=$(qdbus $svc $base/$d org.kde.ScreenBrightness.Display.Label); ' +
+              'printf "%s\\t%s\\t%s\\t%s\\t%s\\n" "$d" "$b" "$m" "$i" "$l"; ' +
+            'done']
+        stdout: StdioCollector {
+            onStreamFinished: {
+                const out = [];
+                const lines = this.text.split("\n");
+                for (let k = 0; k < lines.length; k++) {
+                    const f = lines[k].split("\t");
+                    if (f.length < 5) continue;
+                    const max = parseInt(f[2]) || 1;
+                    const raw = parseInt(f[1]) || 0;
+                    out.push(displayComp.createObject(root, {
+                        path: "/org/kde/ScreenBrightness/" + f[0],
+                        name: f[0],
+                        raw: raw,
+                        max: max,
+                        internal: f[3].trim() === "true",
+                        label: f[4],
+                        value: raw / max
+                    }));
+                }
+                const old = root.displays;
+                root.displays = out;
+                for (let j = 0; j < old.length; j++)
+                    if (old[j]) old[j].destroy();   // free the previous generation
+            }
+        }
+    }
+    function refresh() { enumProc.running = true; }
+    Component.onCompleted: refresh()
+
+    // ---- throttled optimistic writes (slider drag) ----
+    // The UI updates instantly (optimistic `displays`); the DBus write is coalesced
+    // to one every ~80 ms with a guaranteed trailing flush, so dragging is smooth
+    // and a slow DDC monitor isn't hammered.
+    Process { id: writeProc }
+    property var _pending: ({})     // display path -> raw brightness to write
+    property bool _cooling: false
+    property bool _dirty: false
+    Timer {
+        id: coolTimer
+        interval: 80; repeat: false
+        onTriggered: {
+            if (root._dirty) { root._dirty = false; root._flush(); coolTimer.restart(); }
+            else root._cooling = false;
+        }
+    }
+    function _flush() {
+        const cmds = [];
+        for (const p in root._pending)
+            cmds.push("qdbus " + root.svc + " " + p +
+                      " org.kde.ScreenBrightness.Display.SetBrightness " + root._pending[p] + " 1");
+        root._pending = ({});
+        if (!cmds.length) return;
+        writeProc.command = ["sh", "-c", cmds.join("; ")];
+        writeProc.startDetached();
+    }
+    // set a display (the Display object) to `ratio` in [0,1]: move the UI now (mutate
+    // the object in place, so the array — and the slider delegate — is untouched),
+    // queue the DBus write behind the throttle.
+    function setRatio(disp, ratio) {
+        if (!disp) return;
+        ratio = Math.max(0, Math.min(1, ratio));
+        disp.raw = Math.round(ratio * disp.max);
+        disp.value = ratio;
+        root._pending[disp.path] = disp.raw;
+        if (root._cooling) { root._dirty = true; return; }
+        root._flush();
+        root._cooling = true;
+        coolTimer.restart();
+    }
+
+    // ---- brightness shortcut: step the display on the active monitor ----
+    Process { id: stepProc }
+    Timer { id: stepRefresh; interval: 150; repeat: false; onTriggered: root.refresh() }
+    // map a KWin output name (e.g. "eDP-1", "HDMI-A-1") to a display: internal
+    // connectors (eDP/LVDS/DSI) -> the IsInternal display, otherwise the first
+    // external one. An empty name (no focused window) falls back to internal.
+    function displayForScreen(name) {
+        if (!root.displays.length) return null;
+        const internal = (name === "" || /^(eDP|LVDS|DSI)/i.test(name));
+        for (let i = 0; i < root.displays.length; i++)
+            if (root.displays[i].internal === internal) return root.displays[i];
+        return root.displays[0];
+    }
+    // step the active monitor's brightness by ~5%. Reads the live value in-shell
+    // (so it never drifts from KDE's OSD / another client) then clamps + writes.
+    function stepActive(screen, sign) {
+        const d = root.displayForScreen(screen);
+        if (!d) return;
+        const delta = Math.round(d.max * 0.05) * (sign < 0 ? -1 : 1);
+        stepProc.command = ["sh", "-c",
+            'p=' + d.path + '; svc=' + root.svc + '; ' +
+            'c=$(qdbus $svc $p org.kde.ScreenBrightness.Display.Brightness); ' +
+            'm=$(qdbus $svc $p org.kde.ScreenBrightness.Display.MaxBrightness); ' +
+            'n=$((c + (' + delta + '))); ' +
+            '[ $n -lt 0 ] && n=0; [ $n -gt $m ] && n=$m; ' +
+            'qdbus $svc $p org.kde.ScreenBrightness.Display.SetBrightness $n 1'];
+        stepProc.startDetached();
+        stepRefresh.restart();   // pull the new value back if the menu is open
+    }
+}
+#+end_src
+
 ** BatteryMenu.qml
 Every present, non-line-power device (laptop battery, mouse, keyboard, headphones,
 …) with a themed icon, name/type, state and percentage. Uses native
-=Quickshell.Services.UPower= (=UPower.devices= + =Quickshell.iconPath(iconName)=).
+=Quickshell.Services.UPower= (=UPower.devices= + =Quickshell.iconPath(iconName)=). A
+*Screen brightness* section at the top gives one [[*PillSlider.qml][slider]] per
+display, driven by the shared [[*Brightness.qml][=Brightness=]] state.
 #+begin_src qml :tangle ~/.config/quickshell/pill/BatteryMenu.qml :mkdirp yes
 pragma ComponentBehavior: Bound
 // BatteryMenu.qml — every present power device (laptop battery, mouse, keyboard,
@@ -1300,7 +1466,12 @@ import Quickshell.Services.UPower
 Item {
     id: root
     required property var theme
+    required property var brightness      // shared Brightness state (per-display)
     signal closeRequested()
+
+    // re-read the displays each time the menu opens (values may have changed via
+    // the shortcut / KDE OSD while it was closed).
+    Component.onCompleted: if (root.brightness) root.brightness.refresh()
 
     readonly property var devs: {
         const a = UPower.devices ? UPower.devices.values : [];
@@ -1326,6 +1497,65 @@ Item {
             id: col
             width: parent.width
             spacing: 14
+
+            // ---- per-monitor screen brightness (KDE ScreenBrightness / DDC) ----
+            Text {
+                visible: root.brightness && root.brightness.available
+                text: "Screen brightness"
+                color: root.theme.faint
+                font.family: root.theme.mono
+                font.pixelSize: root.theme.fsSmall
+                font.letterSpacing: root.theme.labelSpacing
+                font.capitalization: Font.AllUppercase
+            }
+            Repeater {
+                model: (root.brightness && root.brightness.available) ? root.brightness.displays : []
+                delegate: Column {
+                    id: brRow
+                    required property var modelData
+                    width: col.width
+                    spacing: 4
+                    Row {
+                        width: parent.width
+                        spacing: 6
+                        MSym {
+                            anchors.verticalCenter: parent.verticalCenter
+                            size: 18
+                            fill: 1
+                            color: root.theme.textDim
+                            icon: brRow.modelData.internal ? "laptop" : "monitor"
+                        }
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: parent.width - 18 - 6 - 44
+                            elide: Text.ElideRight
+                            text: brRow.modelData.label
+                            color: root.theme.text
+                            font.family: root.theme.family
+                            font.pixelSize: root.theme.fsNormal
+                        }
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 44
+                            horizontalAlignment: Text.AlignRight
+                            text: Math.round(brRow.modelData.value * 100) + "%"
+                            color: root.theme.faint
+                            font.family: root.theme.mono
+                            font.pixelSize: root.theme.fsSmall
+                        }
+                    }
+                    PillSlider {
+                        theme: root.theme
+                        width: parent.width
+                        value: brRow.modelData.value
+                        onMoved: v => root.brightness.setRatio(brRow.modelData, v)
+                    }
+                }
+            }
+            Rectangle {                          // divider before the battery devices
+                visible: root.brightness && root.brightness.available && root.devs.length > 0
+                width: parent.width; height: 1; color: root.theme.divider
+            }
 
             Repeater {
                 model: root.devs
@@ -3597,9 +3827,9 @@ Item {
 ** winbridge.py
 Self-contained python glue that feeds the pill its window data, since KWin
 advertises no window-list protocol and no active-window over DBus. Run as =python
-<shellDir>/winbridge.py=, it prints one JSON line =\{active, fullscreen, windows\}=
-per update on stdout (plus an =\{event:"launcher", screen\}= line for the Meta+D
-shortcut), which =init.qml= parses with =Process= + =SplitParser=:
+<shellDir>/winbridge.py=, it prints one JSON line =\{active, fullscreen, screen,
+windows\}= per update on stdout (plus an =\{event:"launcher", screen\}= line for the
+Meta+D shortcut), which =init.qml= parses with =Process= + =SplitParser=:
 - *window list*: the KRunner "windows" runner =org.kde.KWin /WindowsRunner=
   (=Match("")= returns every window =(id, title, icon, …)=; polled ~1 s, deduped by
   id; =Run(id, "")= focuses one; internal =icon == "kwin"= placeholders dropped so
@@ -3607,7 +3837,9 @@ shortcut), which =init.qml= parses with =Process= + =SplitParser=:
 - *active window*: the helper owns DBus name =org.kde.pill= and loads a small KWin
   script (unloaded on exit) reporting =workspace.windowActivated= — the window's
   =internalId= (matching the krunner ids) plus its =fullScreen= flag, which rides
-  the line as =fullscreen= and drives =win.fsHide=.
+  the line as =fullscreen= and drives =win.fsHide=, and its output/monitor name
+  (=w.output.name=), which rides as =screen= and drives =root.activeScreen= (the
+  target of the per-monitor brightness shortcut).
 - *launcher shortcut*: that same script =registerShortcut=s *Meta+D*, whose callback
   calls =org.kde.pill Launcher(activeWindow.output.name)= → the =\{event:"launcher"\}=
   line; re-bindable in *System Settings ▸ Shortcuts ▸ KWin*.
@@ -3636,12 +3868,13 @@ bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
 # "taskbar" maps each taskbar-eligible window id (normal, not skip-taskbar, as
 # reported by KWin) to its { seq, cls, dfile } metadata; None until the first
 # report arrives.
-state = {"active": "", "taskbar": None, "fullscreen": False}
+state = {"active": "", "taskbar": None, "fullscreen": False, "screen": ""}
 PLUGIN = "quickshell-pill-active"
 ACTION_PLUGIN = "quickshell-pill-action"
 
 # --- our DBus service ---
-#   Set(uuid, fs)  — KWin script reports the active window (+ "1"/"0" fullscreen)
+#   Set(uuid,fs,scr) — KWin script reports the active window (+ "1"/"0" fullscreen
+#                    + its output/monitor name, for the per-monitor brightness key)
 #   List(json)     — KWin script reports the taskbar-eligible window ids (JSON array)
 #   Launcher(scr)  — KWin global shortcut asks the pill to toggle the launcher on
 #                    the screen named `scr` (empty = whichever pill is on it)
@@ -3650,7 +3883,7 @@ ACTION_PLUGIN = "quickshell-pill-action"
 #                    array `ids` (see run_action / ACTION_JS).
 NODE = (
     '<node><interface name="org.kde.pill">'
-    '<method name="Set"><arg type="s" direction="in"/><arg type="s" direction="in"/></method>'
+    '<method name="Set"><arg type="s" direction="in"/><arg type="s" direction="in"/><arg type="s" direction="in"/></method>'
     '<method name="List"><arg type="s" direction="in"/></method>'
     '<method name="Launcher"><arg type="s" direction="in"/></method>'
     '<method name="Action"><arg type="s" direction="in"/><arg type="s" direction="in"/></method>'
@@ -3661,9 +3894,10 @@ IFACE = Gio.DBusNodeInfo.new_for_xml(NODE).interfaces[0]
 
 def on_call(conn, sender, path, ifc, method, params, inv):
     if method == "Set":
-        (u, fs) = params.unpack()
+        (u, fs, scr) = params.unpack()
         state["active"] = u
         state["fullscreen"] = fs == "1"
+        state["screen"] = scr
         emit()
     elif method == "List":
         (j,) = params.unpack()
@@ -3718,7 +3952,8 @@ KWIN_JS = (
     'function pushList(){ callDBus("org.kde.pill","/Active","org.kde.pill","List",'
     " JSON.stringify(ids())); }\n"
     'function setActive(w){ callDBus("org.kde.pill","/Active","org.kde.pill","Set",'
-    ' w ? String(w.internalId) : "", (w && w.fullScreen) ? "1" : "0"); }\n'
+    ' w ? String(w.internalId) : "", (w && w.fullScreen) ? "1" : "0",'
+    ' (w && w.output) ? String(w.output.name) : ""); }\n'
     "function watch(w){ if (!w) return;\n"
     "  if (w.skipTaskbarChanged) w.skipTaskbarChanged.connect(pushList);\n"
     "  if (w.desktopsChanged) w.desktopsChanged.connect(pushList);\n"
@@ -3881,6 +4116,7 @@ def emit():
         {
             "active": state["active"],
             "fullscreen": state["fullscreen"],
+            "screen": state["screen"],
             "windows": windows(),
         },
         ensure_ascii=False,
@@ -5238,6 +5474,18 @@ assign it e.g. *Super+V* (free it from Klipper first). The call fires
 =clipboardShortcut("")= → =openClipboard()= on every pill (an empty screen name);
 =clipboardOn(screen)= targets one monitor. Re-firing while it's up toggles it shut.
 
+*Brightness shortcut (IPC).* The same =IpcHandler= exposes =brightnessUp= /
+=brightnessDown=, which step the *active monitor's* screen brightness by ≈5% via the
+shared [[*Brightness.qml][=Brightness=]] state (KDE's =org.kde.ScreenBrightness=, i.e.
+the internal backlight *or* an external monitor over DDC/CI). The active monitor is
+the focused window's output (=root.activeScreen=, from =winbridge=). Bind two *Custom
+Shortcuts* (System Settings ▸ Shortcuts) running
+=qs -p /home/<user>/.config/quickshell/pill/init.qml ipc call pill brightnessUp= and
+=… brightnessDown= — assign e.g. the =Monitor Brightness Up/Down= keys (free them
+from Plasma's built-in brightness action first, since that one drives all displays
+at once). =brightnessUpOn(screen)= / =brightnessDownOn(screen)= target a named output
+explicitly. KDE shows its usual brightness OSD on the change.
+
 *Taskbar.* =appGroups= groups =windows= (from =winbridge=) by *app class*, ordered
 by *open time* (winbridge stamps each window with a stable open-order =seq=) — one
 tile per app, a count badge for ≥2 windows, an underline that turns accent when any
@@ -5332,6 +5580,7 @@ ShellRoot {
     <<init-notifications>>
     <<init-clipboard>>
     <<init-network>>
+    <<init-brightness>>
     <<init-virtual-desktops>>
     <<init-keyboard-layout>>
     <<init-action-bursts>>
@@ -5355,6 +5604,7 @@ property string currentDesktop: ""
 property var windows: []          // [{id, uuid, title, icon, cls, dfile, seq}]
 property string _winJson: ""      // last windows payload, to skip no-op rebuilds
 property string activeWindow: ""  // active window uuid "{...}"
+property string activeScreen: ""  // output name of the focused window's monitor
 property bool activeFullscreen: false  // is the focused window fullscreen?
 // last *real* focused window — opening the pill (layer-shell keyboard grab)
 // can momentarily clear activeWindow on KWin, so we keep the last non-empty
@@ -5373,6 +5623,14 @@ IpcHandler {
     target: "pill"
     function clipboard(): void { root.clipboardShortcut(""); }
     function clipboardOn(screen: string): void { root.clipboardShortcut(screen); }
+    // step the *active monitor's* brightness up/down by ~5%. Bind these to KDE
+    // custom-command shortcuts (see the brightness-shortcut note below); the active
+    // monitor is the focused window's output (activeScreen, from winbridge).
+    function brightnessUp(): void   { brightness.stepActive(root.activeScreen, 1); }
+    function brightnessDown(): void { brightness.stepActive(root.activeScreen, -1); }
+    // target a named monitor explicitly (skip the active-window lookup)
+    function brightnessUpOn(screen: string): void   { brightness.stepActive(screen, 1); }
+    function brightnessDownOn(screen: string): void { brightness.stepActive(screen, -1); }
 }
 
 Theme { id: theme }
@@ -5472,6 +5730,18 @@ network menu (no singletons, mirroring =notifs= / =clipboard=).
 // ---- network state (Wi-Fi native + LAN/VPN via nmcli), shared ----
 NetState {
     id: netState
+}
+#+end_src
+
+*** init.qml — screen brightness
+Shared per-display brightness state ([[*Brightness.qml][=Brightness=]], over KDE's
+=org.kde.ScreenBrightness=) — owned once at root and handed to the battery menu's
+sliders and the brightness shortcut (=stepActive=), mirroring =netState=.
+#+name: init-brightness
+#+begin_src qml
+// ---- screen brightness (per-display, KDE ScreenBrightness / DDC), shared ----
+Brightness {
+    id: brightness
 }
 #+end_src
 
@@ -5702,6 +5972,7 @@ Process {
                 const wj = JSON.stringify(d.windows);
                 if (wj !== root._winJson) { root._winJson = wj; root.windows = d.windows; }
                 root.activeWindow = d.active;
+                root.activeScreen = d.screen || "";
                 root.activeFullscreen = !!d.fullscreen;
             } catch (e) {}
         }
@@ -7518,7 +7789,7 @@ the action-burst content wrapper ([[*ActionBurstPill.qml][=ActionBurstPill=]]).
 Component { id: cNet;  NetworkMenu   { theme: theme; netState: netState } }
 Component { id: cVol;  VolumeMenu    { theme: theme } }
 Component { id: cBt;   BluetoothMenu { theme: theme } }
-Component { id: cBatt; BatteryMenu   { theme: theme } }
+Component { id: cBatt; BatteryMenu   { theme: theme; brightness: brightness } }
 Component { id: cClip; ClipboardMenu { theme: theme; clip: clipboard } }
 Component { id: cNotif; NotificationHistory { theme: theme; notifs: notifs } }
 // the active-notification deck, reused for the pill morph and the floating stack
