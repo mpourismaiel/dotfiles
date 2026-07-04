@@ -7,7 +7,7 @@
 * Doom
 ** Init
 :PROPERTIES:
-:header-args:emacs-lisp: :tangle init.el
+:header-args:emacs-lisp: :tangle ~/.config/doom/init.el
 :END:
 
 *** init.el
@@ -215,7 +215,7 @@
 
 ** Config
 :PROPERTIES:
-:header-args:emacs-lisp: :tangle config.el
+:header-args:emacs-lisp: :tangle ~/.config/doom/config.el
 :END:
 
 *** Overview
@@ -2892,7 +2892,6 @@ files; this block just makes the association explicit so it survives any future
    (renpy-mode . outline-minor-mode)))
 #+end_src
 
-*** Org Defaults
 *** Keybindings
 This section documents the custom bindings defined in this configuration.
 **** General Shortcuts
@@ -3279,7 +3278,7 @@ non-zero, or produces empty output."
 
 ** Packages
 :PROPERTIES:
-:header-args:emacs-lisp: :tangle packages.el
+:header-args:emacs-lisp: :tangle ~/.config/doom/packages.el
 :END:
 
 *** Lexical binding
