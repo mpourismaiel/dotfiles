@@ -1191,12 +1191,20 @@ Item {
 ** Launcher.qml
 KDE-style app launcher, opened by clicking the hovered pill body, the Row-2 grid
 button, or the *Meta+D* shortcut; it takes the menu pane's place below the two
-dashboard rows. A back chevron + a focused search field (matches
-name/genericName/keywords), a grid/list toggle, ★ favourites (empty query shows
-favourites if any, else all apps; a search is always a flat list), a per-app
+dashboard rows. A back chevron + a focused search field, a grid/list toggle, ★
+favourites (empty query shows favourites if any, else all apps), a per-app
 right-click menu (=DesktopEntry.actions= + favourite toggle), and a calculator (a
 safe arithmetic expression, or one prefixed with ===, shows a result row that
-=wl-copy='s on click/Enter).
+=wl-copy='s on click/Enter, thousands-grouped for display).
+
+Search is powered by *KRunner*: the query drives an =org.kde.milou= =ResultsModel=
+— the exact backend Plasma's own launcher, KRunner and the Overview use — so a
+non-empty query shows the full, category-grouped Plasma search (Applications,
+System Settings, Power, Locations, Places, Windows, web shortcuts, …), honouring
+whichever plugins the user has enabled in *System Settings → Search*. Each row
+renders the match's own icon (a themed name or a =QIcon=, both via =Kirigami.Icon=)
+with its title + subtext; click or Enter runs it back through KRunner. The resting
+(empty-query) view is still the pill's own favourites/all-apps grid or list.
 
 The list/grid is *arrow-key navigable* from the search field: up/down always move
 the selection; in grid mode left/right move a column, while in a list left/right
@@ -1217,22 +1225,28 @@ reference order) so each section has its own header and can be moved independent
 pragma ComponentBehavior: Bound
 // Launcher.qml — KDE-style application launcher.
 //
-// Layout: a search field (focused on open) + a grid/list toggle, then the app
-// list. Empty query shows favourites (if any) else all apps, in grid or list
-// per the persisted toggle; a non-empty query always shows a flat filtered
-// *list* (matching name / generic name / keywords). The search box doubles as a
-// calculator — type an arithmetic expression (or prefix with =) and the result
-// shows as the top row; click or press Enter to copy it. Right-click an app for
-// its desktop actions and a favourite toggle. Favourites + grid mode are
-// persisted by the parent (see init.qml `settings`).
+// Layout: a search field (focused on open) + a grid/list toggle, then the
+// results. Empty query shows favourites (if any) else all apps, in grid or list
+// per the persisted toggle. A non-empty query shows the full Plasma/KRunner
+// search via an org.kde.milou ResultsModel (Applications, System Settings,
+// Power, Locations, web shortcuts, … — whatever plugins are enabled in System
+// Settings → Search), grouped by category; running a row calls back into
+// KRunner. The search box also doubles as a calculator — an arithmetic
+// expression (or one prefixed with =) shows a result row that copies on
+// click/Enter. Right-click an app for its desktop actions and a favourite
+// toggle. Favourites + grid mode are persisted by the parent (see init.qml).
 //
-// The app list is supplied by the parent (built once from DesktopEntries and
-// kept alive across opens), so opening is instant after the first build.
+// The resting app list is supplied by the parent (built once from
+// DesktopEntries and kept alive across opens), so opening is instant.
 import QtQuick
 import QtQml.Models
 import Quickshell
 import Quickshell.Widgets
 import Quickshell.Io
+// KRunner search backend (same one Plasma's launcher/KRunner use) + its icon
+// renderer, which resolves both themed icon names and QIcon decorations.
+import org.kde.milou as Milou
+import org.kde.kirigami as Kirigami
 
 Item {
     id: root
@@ -1270,24 +1284,10 @@ function open() { search.text = ""; ctx.app = null; currentIndex = 0; search.for
 // WlrKeyboardFocus to None in tandem.
 function close() { search.focus = false; ctx.app = null; }
 
-// ---- query / filtering ----
+// ---- query ----
 readonly property string q: search.text.trim().toLowerCase()
 readonly property bool searching: q.length > 0
 
-function norm(s) { return (s || "").toString().toLowerCase(); }
-readonly property var filtered: {
-    if (!searching)
-        return [];
-    const out = [];
-    for (const a of apps) {
-        if (norm(a.name).indexOf(q) >= 0 || norm(a.genericName).indexOf(q) >= 0) { out.push(a); continue; }
-        const kw = a.keywords || [];
-        let hit = false;
-        for (const k of kw) if (norm(k).indexOf(q) >= 0) { hit = true; break; }
-        if (hit) out.push(a);
-    }
-    return out;
-}
 readonly property var favApps: {
     const ids = settings.favorites || [];
     if (ids.length === 0) return [];
@@ -1295,22 +1295,39 @@ readonly property var favApps: {
     for (const a of apps) byId[a.id] = a;
     return ids.map(id => byId[id]).filter(Boolean);
 }
-// searching -> filtered list; else favourites (if any) else everything
-readonly property var model: searching ? filtered : (favApps.length > 0 ? favApps : apps)
-// grid only on the resting view; searching is always a list
+// resting model: favourites (if any) else all apps. Search results don't come
+// from here — while searching we show the KRunner results list below instead.
+readonly property var model: favApps.length > 0 ? favApps : apps
+// grid only on the resting view; searching is always the results list
 readonly property bool showGrid: !searching && settings.grid
 
+// ---- KRunner search (org.kde.milou ResultsModel) ----
+// The exact backend Plasma's launcher / KRunner / Overview use: it runs every
+// search plugin the user has enabled (Applications, System Settings, Power,
+// Locations, Places, Windows, web shortcuts, calculator, …) and streams
+// grouped, ranked matches. We bind the raw query in and render the model
+// directly; running a row calls back into KRunner so each match launches/opens
+// exactly as it would there. `count` comes off the bound ListView (the model
+// itself doesn't expose one).
+Milou.ResultsModel {
+    id: krunner
+    queryString: root.searching ? search.text.trim() : ""
+}
+
 // ---- keyboard selection (arrow-key navigation) ----
-// index into `model` of the highlighted item; reset whenever the visible set
-// changes (a new query, or toggling grid/list).
+// The live view is the resting grid/list (over `model`) or, while searching,
+// the KRunner results list; navigation clamps to whichever is showing and
+// resets whenever the visible set changes (new query, or grid/list toggle).
 property int currentIndex: 0
+readonly property int navCount: searching ? resultsList.count : model.length
 onQChanged: currentIndex = 0
 onShowGridChanged: currentIndex = 0
 function setSel(i) {
-    const n = model.length;
+    const n = navCount;
     currentIndex = n === 0 ? 0 : Math.max(0, Math.min(n - 1, i));
     if (n === 0) return;
-    if (showGrid) grid.positionViewAtIndex(currentIndex, GridView.Contain);
+    if (searching) resultsList.positionViewAtIndex(currentIndex, ListView.Contain);
+    else if (showGrid) grid.positionViewAtIndex(currentIndex, GridView.Contain);
     else list.positionViewAtIndex(currentIndex, ListView.Contain);
 }
 // up/down step one row (or one grid row); left/right step one column. In the
@@ -1320,6 +1337,10 @@ function moveVert(d) { setSel(currentIndex + d * (showGrid ? grid.cols : 1)); }
 function moveHoriz(d) { setSel(currentIndex + d); }
 function activateCurrent() {
     if (calcResult !== null) { copy(calcResult); root.launched(); return; }
+    if (searching) {
+        if (navCount > 0 && krunner.run(krunner.index(currentIndex, 0))) root.launched();
+        return;
+    }
     const n = model.length;
     if (n === 0) return;
     model[Math.max(0, Math.min(n - 1, currentIndex))].execute();
@@ -1350,6 +1371,18 @@ function evalCalc(expr) {
             return Number.isInteger(r) ? r : parseFloat(r.toFixed(8));
     } catch (err) {}
     return null;
+}
+// group the integer part with thousands separators for *display* (12345.6 ->
+// "12,345.6"); the raw number is still what copy() puts on the clipboard, so a
+// pasted result stays a plain, re-computable value. Exponential forms (1e21)
+// and non-numbers pass through untouched.
+function fmtNum(n) {
+    if (typeof n !== "number" || !isFinite(n)) return String(n);
+    const s = Math.abs(n).toString();
+    if (s.indexOf("e") >= 0 || s.indexOf("E") >= 0) return (n < 0 ? "-" : "") + s;
+    const dot = s.indexOf(".");
+    const intp = (dot < 0 ? s : s.slice(0, dot)).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+    return (n < 0 ? "-" : "") + intp + (dot < 0 ? "" : s.slice(dot));
 }
 
 Process { id: copyProc }
@@ -1587,9 +1620,10 @@ Row {
 #+end_src
 
 *** Launcher.qml — body (list / grid)
-The result area: the calculator result card on top, then the =ListView= (default and
-always while searching) and the drag-to-reorder favourites =GridView=, plus the empty
-state. Which view shows is driven by =showGrid= from the logic chunk.
+The result area: the calculator result card on top, then one of three views — the
+resting app =ListView=, the drag-to-reorder favourites =GridView= (=showGrid=), or
+the KRunner results =ListView= (=searching=, bound to the Milou model and grouped by
+category) — plus the empty state.
 #+name: launcher-body
 #+begin_src qml
 // ================= body =================
@@ -1621,7 +1655,7 @@ Item {
             anchors.left: parent.left
             anchors.leftMargin: 14
             anchors.verticalCenter: parent.verticalCenter
-            text: "= " + root.calcResult
+            text: "= " + root.fmtNum(root.calcResult)
             color: root.theme.accent
             font.family: root.theme.serif
             font.pixelSize: root.theme.fsLarge + 3
@@ -1675,12 +1709,14 @@ Item {
         anchors.right: parent.right
         anchors.bottom: parent.bottom
 
-        // ---- list view (default + always while searching) ----
+        // ---- resting list view (favourites / all apps, when grid is off) ----
+        // While searching this hides and the KRunner results list below takes
+        // over; the resting list is a plain DesktopEntry list (star + context).
         ListView {
             id: list
 
             anchors.fill: parent
-            visible: !root.showGrid
+            visible: !root.showGrid && !root.searching
             model: root.model
             clip: true
             spacing: 2
@@ -1765,6 +1801,112 @@ Item {
                             root.launched();
                         }
                     }
+                }
+
+            }
+
+        }
+
+        // ---- KRunner results list (shown while searching) ----
+        // A flat, category-grouped ListView bound straight to the Milou model;
+        // the section header is the KRunner category ("Applications", "System
+        // Settings", "Locations", …). Each row shows the match's own icon (a
+        // themed name or a QIcon, both via Kirigami.Icon), its title and subtext;
+        // clicking or pressing Enter runs it back through KRunner.
+        ListView {
+            id: resultsList
+
+            anchors.fill: parent
+            visible: root.searching
+            model: krunner
+            clip: true
+            spacing: 2
+            cacheBuffer: 600
+            boundsBehavior: Flickable.StopAtBounds
+
+            section.property: "category"
+            section.criteria: ViewSection.FullString
+            section.delegate: Item {
+                id: secHeader
+
+                required property string section
+                width: resultsList.width
+                height: 30
+
+                Text {
+                    anchors.left: parent.left
+                    anchors.leftMargin: 10
+                    anchors.bottom: parent.bottom
+                    anchors.bottomMargin: 6
+                    text: secHeader.section
+                    color: root.theme.faint
+                    font.family: root.theme.mono
+                    font.pixelSize: root.theme.fsSmall
+                    font.letterSpacing: root.theme.labelSpacing
+                    font.capitalization: Font.AllUppercase
+                }
+            }
+
+            delegate: Rectangle {
+                id: resRow
+
+                required property var model
+                required property int index
+
+                width: resultsList.width
+                height: root.theme.rowHeight
+                radius: root.theme.radiusRow
+                color: resRow.index === root.currentIndex ? root.theme.accentDim : resMa.containsMouse ? root.theme.rowHi : "transparent"
+
+                Row {
+                    anchors.left: parent.left
+                    anchors.leftMargin: 8
+                    anchors.right: parent.right
+                    anchors.rightMargin: 12
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 10
+
+                    Kirigami.Icon {
+                        anchors.verticalCenter: parent.verticalCenter
+                        implicitWidth: 24
+                        implicitHeight: 24
+                        source: resRow.model.decoration
+                    }
+
+                    Column {
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: parent.width - 24 - 10
+                        spacing: 1
+
+                        Text {
+                            width: parent.width
+                            elide: Text.ElideRight
+                            text: resRow.model.display
+                            color: root.theme.text
+                            font.family: root.theme.family
+                            font.pixelSize: root.theme.fsNormal
+                        }
+                        Text {
+                            width: parent.width
+                            visible: text.length > 0
+                            height: visible ? implicitHeight : 0
+                            elide: Text.ElideRight
+                            text: resRow.model.subtext || ""
+                            color: root.theme.textDim
+                            font.family: root.theme.family
+                            font.pixelSize: root.theme.fsSmall
+                        }
+                    }
+
+                }
+
+                MouseArea {
+                    id: resMa
+
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: { if (krunner.run(krunner.index(resRow.index, 0))) root.launched(); }
                 }
 
             }
@@ -1962,7 +2104,9 @@ Item {
         // empty state
         Text {
             anchors.centerIn: parent
-            visible: root.apps.length === 0 || (root.model.length === 0 && root.calcResult === null)
+            visible: root.apps.length === 0
+                || (root.searching ? (resultsList.count === 0 && root.calcResult === null)
+                                   : root.model.length === 0)
             text: root.apps.length === 0 ? "Loading applications…" : root.searching ? "No results" : "No applications"
             color: root.theme.textDim
             font.family: root.theme.family
