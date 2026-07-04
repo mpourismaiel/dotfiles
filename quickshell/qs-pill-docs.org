@@ -395,38 +395,183 @@ Item {
 }
 #+end_src
 
-** NetworkMenu.qml
-Wi-Fi list (signal bars + a lock on secured nets, sorted active-first then by
-=signalStrength=), connect/disconnect, and a password overlay calling
-=connectWithPsk()= for secured unknown networks; toggles =Networking.wifiEnabled=
-and runs the scanner only while visible. Uses native =Quickshell.Networking=.
-VPN/WireGuard connections are *not* in that binding, so they are listed and toggled
-via =nmcli= (=Process=). A header gear opens KDE's network KCM.
-#+begin_src qml :tangle ~/.config/quickshell/pill/NetworkMenu.qml :mkdirp yes
+** BusyStripe.qml
+A subtle *barber-pole* — diagonal stripes that slide sideways behind a button/row
+to signal an in-flight action (connecting / disconnecting / pairing). Clipped to its
+parent and faded via =opacity=, so it reads as a moving texture rather than a solid
+fill. Shown only while =active=.
+#+begin_src qml :tangle ~/.config/quickshell/pill/BusyStripe.qml :mkdirp yes
 pragma ComponentBehavior: Bound
-// NetworkMenu.qml — Wi-Fi list (signal + lock + active), connect/disconnect,
-// password prompt for secured networks, Wi-Fi on/off. Uses Quickshell.Networking
-// (NetworkManager). VPN connections are NOT in the native binding, so they're
-// listed + toggled via `nmcli` (Process). A header gear opens KDE's network KCM.
+// BusyStripe.qml — a diagonal barber-pole that slides sideways behind a button to
+// signal an in-flight action (connecting/disconnecting/pairing). Clipped + faded,
+// so it reads as a moving texture, not a fill. Shown while `active`. The band holds
+// one extra period of stripes and loops a single period, so the motion is seamless.
 import QtQuick
-import Quickshell.Io
-import Quickshell.Networking
 
 Item {
     id: root
     required property var theme
-    signal closeRequested()
+    property bool active: false
+    property color stripe: root.theme.accent
 
-    // ---- wired (LAN) + VPN via nmcli (neither is in the native Wi-Fi binding) ----
-    property var vpns: []
-    property var lans: []
-    function refreshVpn() { if (!vpnList.running) vpnList.running = true; }
-    function setConn(name, up) {
-        vpnToggle.command = ["nmcli", "connection", up ? "up" : "down", "id", name];
-        vpnToggle.running = true;
+    clip: true
+    visible: opacity > 0
+    opacity: root.active ? 0.22 : 0
+    Behavior on opacity { NumberAnimation { duration: root.theme.animFast } }
+
+    readonly property int period: 24        // px between stripe starts
+
+    Row {
+        id: band
+        height: root.height
+        Repeater {
+            model: Math.ceil((root.width + root.height) / root.period) + 2
+            delegate: Item {
+                width: root.period
+                height: band.height
+                Rectangle {                 // one diagonal bar per cell
+                    width: root.period * 0.42
+                    height: parent.height * 2.2
+                    y: -parent.height * 0.6
+                    color: root.stripe
+                    rotation: 32
+                    transformOrigin: Item.Center
+                    antialiasing: true
+                }
+            }
+        }
+        // slide exactly one period, forever -> continuous motion
+        NumberAnimation on x {
+            from: -root.period
+            to: 0
+            duration: 640
+            loops: Animation.Infinite
+            running: root.active
+        }
     }
-    Process {
-        id: vpnList
+}
+#+end_src
+
+** ConnButton.qml
+The compact uppercase *Connect / Disconnect / Pair* control shared by the network
+and Bluetooth rows. Presentational by default (the whole row is the click target);
+set =interactive= to make the chip itself clickable (used by the Wi-Fi password
+field). While =busy= it fills with a [[*BusyStripe.qml][=BusyStripe=]] barber-pole
+and stops accepting clicks, so an in-flight connect/disconnect reads at a glance.
+#+begin_src qml :tangle ~/.config/quickshell/pill/ConnButton.qml :mkdirp yes
+pragma ComponentBehavior: Bound
+// ConnButton.qml — the compact uppercase Connect/Disconnect/Pair control shared by
+// the network + Bluetooth rows. Presentational by default (the row is the click
+// target); `interactive` makes the chip itself clickable (Wi-Fi password field).
+// While `busy` it fills with a BusyStripe barber-pole and ignores clicks. A disabled
+// MouseArea is transparent to events, so non-interactive clicks fall through to the
+// row behind.
+import QtQuick
+
+Item {
+    id: root
+    required property var theme
+    property string label: "Connect"
+    property bool active: false        // currently-connected styling (accent)
+    property bool busy: false
+    property bool interactive: false
+    signal clicked()
+
+    implicitWidth: Math.max(txt.implicitWidth + 22, 76)
+    implicitHeight: 26
+
+    Rectangle {
+        anchors.fill: parent
+        radius: root.theme.radiusBtn
+        clip: true
+        color: root.busy ? root.theme.row : "transparent"
+        Behavior on color { ColorAnimation { duration: root.theme.animFast } }
+        BusyStripe { anchors.fill: parent; theme: root.theme; active: root.busy }
+    }
+    Text {
+        id: txt
+        anchors.centerIn: parent
+        text: root.label
+        color: root.active ? root.theme.accent : root.theme.textDim
+        font.family: root.theme.mono
+        font.pixelSize: root.theme.fsSmall
+        font.letterSpacing: root.theme.labelSpacing
+        font.capitalization: Font.AllUppercase
+    }
+    MouseArea {
+        anchors.fill: parent
+        enabled: root.interactive && !root.busy
+        cursorShape: Qt.PointingHandCursor
+        onClicked: root.clicked()
+    }
+}
+#+end_src
+
+** NetState.qml
+Shared network state (owned once in =init.qml=, passed to =StatusIcons= and
+=NetworkMenu= — no singletons, mirroring =notifs= / =clipboard=). Wi-Fi (device,
+scanned networks, the active AP + its signal, radio on/off) comes from native
+=Quickshell.Networking=; wired (LAN) and VPN/WireGuard connections are *not* in that
+binding, so they are polled via =nmcli=. Exposes the aggregate the dashboard glyph
+needs (=lanActive= / =wifiActive= / =wifiSignal= / =vpnActive=) and drives LAN/VPN
+connect/disconnect (=setConn=), tracking the one in-flight name in =busyConn= so its
+row can show a connecting stripe.
+#+begin_src qml :tangle ~/.config/quickshell/pill/NetState.qml :mkdirp yes
+pragma ComponentBehavior: Bound
+// NetState.qml — shared network state (owned in init.qml, passed to StatusIcons +
+// NetworkMenu; no singletons). Wi-Fi comes from Quickshell.Networking; wired (LAN)
+// and VPN are NOT in that binding, so they're polled via `nmcli`. Exposes the
+// aggregate the dashboard glyph needs + drives LAN/VPN up/down (busyConn tracks the
+// one in-flight connection so its row can show a connecting stripe). nmcli up/down
+// blocks until the operation settles, so the toggle process exiting is our "done".
+import QtQuick
+import Quickshell.Io
+import Quickshell.Networking
+
+QtObject {
+    id: root
+
+    // ---- Wi-Fi (native) ----
+    readonly property bool wifiEnabled: Networking.wifiEnabled
+    readonly property var wifiDev: {
+        const ds = Networking.devices ? Networking.devices.values : [];
+        for (let i = 0; i < ds.length; i++)
+            if (ds[i].type === DeviceType.Wifi) return ds[i];
+        return null;
+    }
+    // scanned networks, active-first then by signal (shared with the menu list)
+    readonly property var nets: {
+        if (!root.wifiDev || !root.wifiDev.networks) return [];
+        const a = root.wifiDev.networks.values.slice();
+        a.sort((x, y) => (y.connected - x.connected) || (y.signalStrength - x.signalStrength));
+        return a;
+    }
+    readonly property var activeWifi: {
+        const a = root.nets;
+        for (let i = 0; i < a.length; i++) if (a[i].connected) return a[i];
+        return null;
+    }
+    readonly property bool wifiActive: root.activeWifi !== null
+    readonly property real wifiSignal: root.activeWifi ? root.activeWifi.signalStrength : 0
+
+    // ---- wired (LAN) + VPN via nmcli (neither is in the native binding) ----
+    property var lans: []
+    property var vpns: []
+    readonly property bool lanActive: root.lans.some(l => l.active)
+    readonly property bool vpnActive: root.vpns.some(v => v.active)
+
+    // the single LAN/VPN connection with an nmcli up/down in flight (its row shows a
+    // connecting stripe); cleared when the toggle process exits.
+    property string busyConn: ""
+
+    function refresh() { if (!nmcliList.running) nmcliList.running = true; }
+    function setConn(name, up) {
+        root.busyConn = name;
+        nmcliToggle.command = ["nmcli", "connection", up ? "up" : "down", "id", name];
+        nmcliToggle.running = true;
+    }
+
+    property Process nmcliList: Process {
         command: ["nmcli", "-t", "-f", "NAME,TYPE,STATE", "connection", "show"]
         stdout: StdioCollector {
             onStreamFinished: {
@@ -449,8 +594,43 @@ Item {
             }
         }
     }
-    Process { id: vpnToggle; onExited: root.refreshVpn() }
-    Timer { interval: 4000; running: true; repeat: true; onTriggered: root.refreshVpn() }
+    property Process nmcliToggle: Process {
+        onExited: { root.busyConn = ""; root.refresh(); }
+    }
+    property Timer poll: Timer {
+        interval: 4000; running: true; repeat: true
+        onTriggered: root.refresh()
+    }
+
+    Component.onCompleted: root.refresh()
+}
+#+end_src
+
+** NetworkMenu.qml
+Wi-Fi list (signal bars + a lock on secured nets, sorted active-first then by
+=signalStrength=), connect/disconnect, and a password overlay calling
+=connectWithPsk()= for secured unknown networks; toggles =Networking.wifiEnabled=
+and runs the scanner only while visible. Uses native =Quickshell.Networking=.
+VPN/WireGuard connections are *not* in that binding, so they are listed and toggled
+via =nmcli= (=Process=). A header gear opens KDE's network KCM.
+#+begin_src qml :tangle ~/.config/quickshell/pill/NetworkMenu.qml :mkdirp yes
+pragma ComponentBehavior: Bound
+// NetworkMenu.qml — Wi-Fi list (signal + lock + active), connect/disconnect, and an
+// inline password field that expands under a secured unknown network (an eye toggles
+// reveal). Wi-Fi is Quickshell.Networking (NetworkManager); wired (LAN) + VPN are NOT
+// in that binding, so they come from the shared NetState (nmcli). A header gear opens
+// KDE's network KCM. In-flight connect/disconnect fills the row's ConnButton with a
+// BusyStripe until the connection settles (a watchdog clears it if a connect silently
+// fails, e.g. a wrong password).
+import QtQuick
+import Quickshell.Io
+import Quickshell.Networking
+
+Item {
+    id: root
+    required property var theme
+    required property var netState
+    signal closeRequested()
 
     // open KDE's network settings — try Plasma 6 then older variants
     Process { id: settingsProc }
@@ -461,56 +641,46 @@ Item {
         root.closeRequested();
     }
 
-    readonly property var wifiDev: {
-        const ds = Networking.devices ? Networking.devices.values : [];
-        for (let i = 0; i < ds.length; i++)
-            if (ds[i].type === DeviceType.Wifi) return ds[i];
-        return null;
-    }
-    readonly property var nets: {
-        if (!wifiDev || !wifiDev.networks) return [];
-        const a = wifiDev.networks.values.slice();
-        a.sort((x, y) => (y.connected - x.connected) || (y.signalStrength - x.signalStrength));
-        return a;
-    }
-    property var pskTarget: null
+    // scan (and poll LAN/VPN) only while the menu is visible
+    Component.onCompleted: { if (root.netState.wifiDev) root.netState.wifiDev.scannerEnabled = true; root.netState.refresh(); }
+    Component.onDestruction: if (root.netState.wifiDev) root.netState.wifiDev.scannerEnabled = false
 
-    Component.onCompleted: { if (wifiDev) wifiDev.scannerEnabled = true; root.refreshVpn(); }
-    Component.onDestruction: if (wifiDev) wifiDev.scannerEnabled = false
-
-    // a wired/VPN connection row (name + connect/disconnect), reused by both the
-    // LAN and VPN sections (they share the nmcli up/down plumbing).
+    // a wired/VPN connection row (name + connect/disconnect), reused by both the LAN
+    // and VPN sections (they share NetState's nmcli up/down plumbing; busyConn marks
+    // the one in flight so its ConnButton shows a stripe).
     component ConnRow: Rectangle {
+        id: connRow
         required property var conn
+        readonly property bool busy: root.netState.busyConn === conn.name
         width: parent ? parent.width : 0
         height: root.theme.rowHeight
         radius: root.theme.radiusRow
         color: conn.active ? root.theme.accentDim : root.theme.row
         Text {
             anchors.left: parent.left; anchors.leftMargin: 12
-            anchors.right: st.left; anchors.rightMargin: 8
+            anchors.right: connBtn.left; anchors.rightMargin: 8
             anchors.verticalCenter: parent.verticalCenter
             elide: Text.ElideRight
-            text: conn.name
+            text: connRow.conn.name
             color: root.theme.text
             font.family: root.theme.family
             font.pixelSize: root.theme.fsNormal
         }
-        Text {
-            id: st
-            anchors.right: parent.right; anchors.rightMargin: 12
+        ConnButton {
+            id: connBtn
+            anchors.right: parent.right; anchors.rightMargin: 8
             anchors.verticalCenter: parent.verticalCenter
-            text: conn.active ? "Disconnect" : "Connect"
-            color: conn.active ? root.theme.accent : root.theme.textDim
-            font.family: root.theme.mono
-            font.pixelSize: root.theme.fsSmall
-            font.letterSpacing: root.theme.labelSpacing
-            font.capitalization: Font.AllUppercase
+            theme: root.theme
+            active: connRow.conn.active
+            busy: connRow.busy
+            label: connRow.busy ? (connRow.conn.active ? "Disconnecting" : "Connecting")
+                                : (connRow.conn.active ? "Disconnect" : "Connect")
         }
         MouseArea {
             anchors.fill: parent
+            enabled: !connRow.busy
             cursorShape: Qt.PointingHandCursor
-            onClicked: root.setConn(conn.name, !conn.active)
+            onClicked: root.netState.setConn(connRow.conn.name, !connRow.conn.active)
         }
     }
     component NetLabel: Text {
@@ -544,7 +714,7 @@ Item {
             PillToggle {
                 theme: root.theme
                 anchors.verticalCenter: parent.verticalCenter
-                checked: Networking.wifiEnabled
+                checked: root.netState.wifiEnabled
                 onToggled: v => Networking.wifiEnabled = v
             }
         }
@@ -560,155 +730,179 @@ Item {
                 spacing: 4
 
                 // ---- wired (LAN) — nmcli, shown first ----
-                NetLabel { text: "Wired"; visible: root.lans.length > 0 }
+                NetLabel { text: "Wired"; visible: root.netState.lans.length > 0 }
                 Repeater {
-                    model: root.lans
+                    model: root.netState.lans
                     delegate: ConnRow { required property var modelData; width: netCol.width; conn: modelData }
                 }
 
                 // ---- Wi-Fi ----
-                NetLabel { text: "Wi-Fi"; visible: root.nets.length > 0 }
+                NetLabel { text: "Wi-Fi"; visible: root.netState.nets.length > 0 }
                 Repeater {
-                    model: root.nets
+                    model: root.netState.nets
                     delegate: Rectangle {
                         id: netRow
                         required property var modelData
+                        // in-flight connect/disconnect; busyTarget = the connected-state
+                        // we're moving toward, so we know when we've arrived.
+                        property bool busy: false
+                        property bool busyTarget: false
+                        property bool expanded: false      // password field revealed
+                        property bool showPw: false        // eye toggle
                         width: netCol.width
-                        height: root.theme.rowHeight
+                        height: rowCol.height
                         radius: root.theme.radiusRow
                         color: modelData.connected ? root.theme.accentDim : root.theme.row
 
-                        Row {
-                            anchors.left: parent.left
-                            anchors.leftMargin: 12
-                            anchors.verticalCenter: parent.verticalCenter
-                            spacing: 9
-                            MSym {
-                                anchors.verticalCenter: parent.verticalCenter
-                                size: 18
-                                fill: 1
-                                icon: {
-                                    const s = netRow.modelData.signalStrength;
-                                    return s > 0.75 ? "network_wifi" : s > 0.5 ? "network_wifi_3_bar"
-                                         : s > 0.25 ? "network_wifi_2_bar" : "network_wifi_1_bar";
+                        function begin(target) { netRow.busy = true; netRow.busyTarget = target; wd.restart(); }
+                        function act() {
+                            const n = netRow.modelData;
+                            if (n.connected) { netRow.begin(false); n.disconnect(); return; }
+                            if (n.known || n.security === WifiSecurityType.Open) { netRow.begin(true); n.connect(); return; }
+                            netRow.expanded = !netRow.expanded;   // secured + unknown -> ask for a password
+                        }
+                        function submitPsk() {
+                            if (!pwInput.text) return;
+                            netRow.begin(true);
+                            netRow.modelData.connectWithPsk(pwInput.text);
+                            netRow.expanded = false; netRow.showPw = false; pwInput.text = "";
+                        }
+                        // clear busy once the connection settles to the target state; the
+                        // watchdog also clears it if a connect silently fails (bad psk).
+                        Timer { id: wd; interval: 25000; onTriggered: netRow.busy = false }
+                        Connections {
+                            target: netRow.modelData
+                            function onConnectedChanged() {
+                                if (netRow.modelData.connected === netRow.busyTarget) { netRow.busy = false; wd.stop(); }
+                            }
+                        }
+
+                        Column {
+                            id: rowCol
+                            width: parent.width
+
+                            // ---- info strip: signal + name + lock + connect ----
+                            Item {
+                                width: parent.width
+                                height: root.theme.rowHeight
+                                Row {
+                                    anchors.left: parent.left
+                                    anchors.leftMargin: 12
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    spacing: 9
+                                    MSym {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        size: 18
+                                        fill: 1
+                                        icon: {
+                                            const s = netRow.modelData.signalStrength;
+                                            return s > 0.75 ? "network_wifi" : s > 0.5 ? "network_wifi_3_bar"
+                                                 : s > 0.25 ? "network_wifi_2_bar" : "network_wifi_1_bar";
+                                        }
+                                        color: netRow.modelData.connected ? root.theme.accent : root.theme.textDim
+                                    }
+                                    Text {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        width: Math.max(0, netRow.width - 185)
+                                        elide: Text.ElideRight
+                                        text: netRow.modelData.name
+                                        color: root.theme.text
+                                        font.family: root.theme.family
+                                        font.pixelSize: root.theme.fsNormal
+                                    }
+                                    MSym {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        visible: netRow.modelData.security !== WifiSecurityType.Open
+                                        icon: "lock"
+                                        size: 13
+                                        color: root.theme.faint
+                                    }
                                 }
-                                color: netRow.modelData.connected ? root.theme.accent : root.theme.textDim
+                                ConnButton {
+                                    id: wifiBtn
+                                    anchors.right: parent.right
+                                    anchors.rightMargin: 8
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    theme: root.theme
+                                    active: netRow.modelData.connected
+                                    busy: netRow.busy
+                                    label: netRow.busy ? (netRow.busyTarget ? "Connecting" : "Disconnecting")
+                                         : netRow.expanded ? "Cancel"
+                                         : (netRow.modelData.connected ? "Disconnect" : "Connect")
+                                }
+                                MouseArea {
+                                    anchors.fill: parent
+                                    enabled: !netRow.busy
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: netRow.act()
+                                }
                             }
-                            Text {
-                                anchors.verticalCenter: parent.verticalCenter
-                                width: netRow.width - 200
-                                elide: Text.ElideRight
-                                text: netRow.modelData.name
-                                color: root.theme.text
-                                font.family: root.theme.family
-                                font.pixelSize: root.theme.fsNormal
-                            }
-                            MSym {
-                                anchors.verticalCenter: parent.verticalCenter
-                                visible: netRow.modelData.security !== WifiSecurityType.Open
-                                icon: "lock"
-                                size: 13
-                                color: root.theme.faint
-                            }
-                        }
-                        Text {
-                            anchors.right: parent.right
-                            anchors.rightMargin: 12
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: netRow.modelData.connected ? "Disconnect" : "Connect"
-                            color: netRow.modelData.connected ? root.theme.accent : root.theme.textDim
-                            font.family: root.theme.mono
-                            font.pixelSize: root.theme.fsSmall
-                            font.letterSpacing: root.theme.labelSpacing
-                            font.capitalization: Font.AllUppercase
-                        }
-                        MouseArea {
-                            anchors.fill: parent
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: {
-                                const n = netRow.modelData;
-                                if (n.connected) { n.disconnect(); return; }
-                                if (n.known || n.security === WifiSecurityType.Open) n.connect();
-                                else root.pskTarget = n;
+
+                            // ---- password field (expands for a secured unknown net) ----
+                            Item {
+                                width: parent.width
+                                height: netRow.expanded ? 46 : 0
+                                visible: height > 0
+                                clip: true
+                                Behavior on height { NumberAnimation { duration: root.theme.anim; easing.type: Easing.OutCubic } }
+                                Rectangle {
+                                    id: pwField
+                                    anchors.left: parent.left; anchors.leftMargin: 12
+                                    anchors.right: pskBtn.left; anchors.rightMargin: 8
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    height: 34
+                                    radius: root.theme.radiusRow
+                                    color: root.theme.row
+                                    border.color: pwInput.activeFocus ? root.theme.accent : root.theme.border
+                                    TextInput {
+                                        id: pwInput
+                                        anchors.left: parent.left; anchors.leftMargin: 10
+                                        anchors.right: eye.left; anchors.rightMargin: 6
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        verticalAlignment: TextInput.AlignVCenter
+                                        echoMode: netRow.showPw ? TextInput.Normal : TextInput.Password
+                                        color: root.theme.text
+                                        font.family: root.theme.family
+                                        font.pixelSize: root.theme.fsNormal
+                                        clip: true
+                                        focus: netRow.expanded
+                                        onAccepted: netRow.submitPsk()
+                                    }
+                                    MSym {                       // eye — toggle text/password reveal
+                                        id: eye
+                                        anchors.right: parent.right; anchors.rightMargin: 8
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        icon: netRow.showPw ? "visibility_off" : "visibility"
+                                        size: 18
+                                        color: eyeMa.containsMouse ? root.theme.text : root.theme.faint
+                                        MouseArea {
+                                            id: eyeMa
+                                            anchors.fill: parent; anchors.margins: -4
+                                            hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                                            onClicked: netRow.showPw = !netRow.showPw
+                                        }
+                                    }
+                                }
+                                ConnButton {
+                                    id: pskBtn
+                                    anchors.right: parent.right; anchors.rightMargin: 8
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    theme: root.theme
+                                    interactive: true
+                                    active: true
+                                    label: "Connect"
+                                    onClicked: netRow.submitPsk()
+                                }
                             }
                         }
                     }
                 }
 
                 // ---- VPN — nmcli, shown last ----
-                NetLabel { text: "VPN"; visible: root.vpns.length > 0 }
+                NetLabel { text: "VPN"; visible: root.netState.vpns.length > 0 }
                 Repeater {
-                    model: root.vpns
+                    model: root.netState.vpns
                     delegate: ConnRow { required property var modelData; width: netCol.width; conn: modelData }
-                }
-            }
-        }
-    }
-
-    // password prompt overlay (secured + unknown networks)
-    Rectangle {
-        anchors.fill: parent
-        visible: root.pskTarget !== null
-        color: root.theme.bg
-        radius: root.theme.radiusPanel
-        Column {
-            anchors.centerIn: parent
-            width: parent.width - 24
-            spacing: root.theme.gap
-            Text {
-                width: parent.width
-                elide: Text.ElideRight
-                text: root.pskTarget ? ("Password for " + root.pskTarget.name) : ""
-                color: root.theme.text
-                font.family: root.theme.family
-                font.pixelSize: root.theme.fsNormal
-            }
-            Rectangle {
-                width: parent.width
-                height: 36
-                radius: root.theme.radiusRow
-                color: root.theme.row
-                border.color: pskInput.activeFocus ? root.theme.accent : root.theme.border
-                TextInput {
-                    id: pskInput
-                    anchors.fill: parent
-                    anchors.leftMargin: 10
-                    anchors.rightMargin: 10
-                    verticalAlignment: TextInput.AlignVCenter
-                    echoMode: TextInput.Password
-                    color: root.theme.text
-                    font.family: root.theme.family
-                    font.pixelSize: root.theme.fsNormal
-                    clip: true
-                    focus: root.pskTarget !== null
-                    onAccepted: {
-                        if (root.pskTarget) root.pskTarget.connectWithPsk(text);
-                        root.pskTarget = null; text = "";
-                    }
-                }
-            }
-            Row {
-                anchors.right: parent.right
-                spacing: root.theme.gap
-                Text {
-                    text: "Cancel"
-                    color: root.theme.textDim
-                    font.family: root.theme.family
-                    font.pixelSize: root.theme.fsNormal
-                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor
-                        onClicked: { root.pskTarget = null; pskInput.text = ""; } }
-                }
-                Text {
-                    text: "Connect"
-                    color: root.theme.accent
-                    font.family: root.theme.family
-                    font.pixelSize: root.theme.fsNormal
-                    font.bold: true
-                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor
-                        onClicked: {
-                            if (root.pskTarget) root.pskTarget.connectWithPsk(pskInput.text);
-                            root.pskTarget = null; pskInput.text = "";
-                        } }
                 }
             }
         }
@@ -947,12 +1141,27 @@ Item {
 
     // a single device row, reused by all three sections
     component DevRow: Rectangle {
+        id: devRow
         required property var device
         property var theme: root.theme
+        // in-flight connect/disconnect/pair; busyTarget = the connected-state we're
+        // moving toward, so the stripe clears once we get there (a watchdog covers a
+        // silent failure, e.g. pairing that never completes).
+        property bool busy: false
+        property bool busyTarget: false
         width: parent ? parent.width : 0
         height: root.theme.rowHeight
         radius: root.theme.radiusRow
         color: device.connected ? root.theme.accentDim : root.theme.row
+
+        function begin(target) { devRow.busy = true; devRow.busyTarget = target; wd.restart(); }
+        Timer { id: wd; interval: 25000; onTriggered: devRow.busy = false }
+        Connections {
+            target: devRow.device
+            function onConnectedChanged() {
+                if (devRow.device.connected === devRow.busyTarget) { devRow.busy = false; wd.stop(); }
+            }
+        }
         Row {
             anchors.left: parent.left
             anchors.leftMargin: 12
@@ -982,24 +1191,25 @@ Item {
                 font.pixelSize: root.theme.fsSmall
             }
         }
-        Text {
+        ConnButton {
             anchors.right: parent.right
-            anchors.rightMargin: 12
+            anchors.rightMargin: 8
             anchors.verticalCenter: parent.verticalCenter
-            text: device.connected ? "Disconnect" : (device.paired ? "Connect" : "Pair")
-            color: device.connected ? root.theme.accent : root.theme.textDim
-            font.family: root.theme.mono
-            font.pixelSize: root.theme.fsSmall
-            font.letterSpacing: root.theme.labelSpacing
-            font.capitalization: Font.AllUppercase
+            theme: root.theme
+            active: devRow.device.connected
+            busy: devRow.busy
+            label: devRow.busy ? (devRow.busyTarget ? "Connecting" : "Disconnecting")
+                 : (devRow.device.connected ? "Disconnect" : (devRow.device.paired ? "Connect" : "Pair"))
         }
         MouseArea {
             anchors.fill: parent
+            enabled: !devRow.busy
             cursorShape: Qt.PointingHandCursor
             onClicked: {
-                if (device.connected) device.disconnect();
-                else if (device.paired) device.connect();
-                else device.pair();
+                const d = devRow.device;
+                if (d.connected) { devRow.begin(false); d.disconnect(); }
+                else if (d.paired) { devRow.begin(true); d.connect(); }
+                else { devRow.begin(true); d.pair(); }
             }
         }
     }
@@ -1823,13 +2033,14 @@ Item {
             spacing: 2
             cacheBuffer: 600
             boundsBehavior: Flickable.StopAtBounds
-
             section.property: "category"
             section.criteria: ViewSection.FullString
+
             section.delegate: Item {
                 id: secHeader
 
                 required property string section
+
                 width: resultsList.width
                 height: 30
 
@@ -1845,6 +2056,7 @@ Item {
                     font.letterSpacing: root.theme.labelSpacing
                     font.capitalization: Font.AllUppercase
                 }
+
             }
 
             delegate: Rectangle {
@@ -1886,6 +2098,7 @@ Item {
                             font.family: root.theme.family
                             font.pixelSize: root.theme.fsNormal
                         }
+
                         Text {
                             width: parent.width
                             visible: text.length > 0
@@ -1896,6 +2109,7 @@ Item {
                             font.family: root.theme.family
                             font.pixelSize: root.theme.fsSmall
                         }
+
                     }
 
                 }
@@ -1906,7 +2120,11 @@ Item {
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: { if (krunner.run(krunner.index(resRow.index, 0))) root.launched(); }
+                    onClicked: {
+                        if (krunner.run(krunner.index(resRow.index, 0)))
+                            root.launched();
+
+                    }
                 }
 
             }
@@ -2104,9 +2322,7 @@ Item {
         // empty state
         Text {
             anchors.centerIn: parent
-            visible: root.apps.length === 0
-                || (root.searching ? (resultsList.count === 0 && root.calcResult === null)
-                                   : root.model.length === 0)
+            visible: root.apps.length === 0 || (root.searching ? (resultsList.count === 0 && root.calcResult === null) : root.model.length === 0)
             text: root.apps.length === 0 ? "Loading applications…" : root.searching ? "No results" : "No applications"
             color: root.theme.textDim
             font.family: root.theme.family
@@ -3720,8 +3936,10 @@ import sys, os, re, json, subprocess, signal
 
 CACHE = os.path.join(
     os.environ.get("XDG_CACHE_HOME", os.path.expanduser("~/.cache")),
-    "quickshell-pill", "clip")
-MAX_ENTRIES = 60   # entries exposed to the menu (it shows 10; search covers these)
+    "quickshell-pill",
+    "clip",
+)
+MAX_ENTRIES = 60  # entries exposed to the menu (it shows 10; search covers these)
 
 # a cliphist image preview line: "[[ binary data 2 KiB png 600x400 ]]"
 IMG_RE = re.compile(r"^\[\[ binary data .* (\w+) (\d+)x(\d+) \]\]$")
@@ -3731,10 +3949,10 @@ DATAURI_RE = re.compile(r"data:image/[\w.+-]+;base64,[A-Za-z0-9+/=]+")
 EXT = {"jpeg": "jpg"}
 MAGIC = [
     (b"\x89PNG\r\n\x1a\n", "image/png"),
-    (b"\xff\xd8\xff",      "image/jpeg"),
-    (b"GIF8",             "image/gif"),
-    (b"RIFF",            "image/webp"),  # close enough; wl-copy re-sniffs anyway
-    (b"BM",              "image/bmp"),
+    (b"\xff\xd8\xff", "image/jpeg"),
+    (b"GIF8", "image/gif"),
+    (b"RIFF", "image/webp"),  # close enough; wl-copy re-sniffs anyway
+    (b"BM", "image/bmp"),
 ]
 
 
@@ -3757,7 +3975,7 @@ def raw_list():
         if i < 0:
             continue
         cid = line[:i].decode("utf-8", "replace")
-        preview = line[i + 1:].decode("utf-8", "replace")
+        preview = line[i + 1 :].decode("utf-8", "replace")
         out.append((cid, preview))
     return out
 
@@ -3786,9 +4004,15 @@ def cmd_list():
                     continue
                 with open(path, "wb") as f:
                     f.write(data)
-            result.append({"id": _id(cid), "kind": "image",
-                           "w": int(m.group(2)), "h": int(m.group(3)),
-                           "path": path})
+            result.append(
+                {
+                    "id": _id(cid),
+                    "kind": "image",
+                    "w": int(m.group(2)),
+                    "h": int(m.group(3)),
+                    "path": path,
+                }
+            )
         else:
             # only the full decode reliably finds/strips embedded images, so skip
             # it for the common case (a preview with no data URI) — cheap + correct.
@@ -3799,9 +4023,8 @@ def cmd_list():
             else:
                 text, n = preview, 0
             text = re.sub(r"\s+", " ", text).strip()[:300]
-            result.append({"id": _id(cid), "kind": "text",
-                           "text": text, "images": n})
-    try:                                   # prune cache files for gone entries
+            result.append({"id": _id(cid), "kind": "text", "text": text, "images": n})
+    try:  # prune cache files for gone entries
         for f in os.listdir(CACHE):
             if f not in keep:
                 os.remove(os.path.join(CACHE, f))
@@ -3819,8 +4042,9 @@ def cmd_copy(cid):
     # wl-copy forks a daemon to serve the selection; don't capture (the daemon
     # would hold the pipe open and hang us) — just let it detach.
     try:
-        subprocess.run(args, input=data,
-                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(
+            args, input=data, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        )
     except FileNotFoundError:
         pass
 
@@ -3842,8 +4066,12 @@ def cmd_wipe():
 def cmd_watch():
     try:
         watchers = [
-            subprocess.Popen(["wl-paste", "--type", "text",  "--watch", "cliphist", "store"]),
-            subprocess.Popen(["wl-paste", "--type", "image", "--watch", "cliphist", "store"]),
+            subprocess.Popen(
+                ["wl-paste", "--type", "text", "--watch", "cliphist", "store"]
+            ),
+            subprocess.Popen(
+                ["wl-paste", "--type", "image", "--watch", "cliphist", "store"]
+            ),
         ]
     except FileNotFoundError:
         return
@@ -4059,6 +4287,7 @@ Row {
     id: root
     required property var theme
     property var notifs                  // notification state (drives the badge count)
+    property var netState                // shared network state (drives the net glyph)
     property bool open: false
     property int menu: -1
     signal menuRequested(int menu)
@@ -4098,12 +4327,31 @@ Row {
         return "battery_alert";
     }
 
+    // network glyph tracks the live state: wired first (LAN beats Wi-Fi), then the
+    // connected Wi-Fi at its signal strength, then disconnected (radio on vs off).
+    // An active VPN adds a small lock badge (drawn in the delegate).
+    function netIcon() {
+        const ns = root.netState;
+        if (!ns) return "wifi_off";
+        if (ns.lanActive) return "lan";
+        if (ns.wifiActive) {
+            const s = ns.wifiSignal;
+            return s > 0.75 ? "network_wifi" : s > 0.5 ? "network_wifi_3_bar"
+                 : s > 0.25 ? "network_wifi_2_bar" : "network_wifi_1_bar";
+        }
+        return ns.wifiEnabled ? "signal_wifi_off" : "wifi_off";
+    }
+    function netFill() {
+        const ns = root.netState;
+        return (ns && (ns.lanActive || ns.wifiActive)) ? 1 : 0;
+    }
+
     readonly property int unread: root.notifs ? root.notifs.unreadCount : 0
 
     spacing: root.theme.iconSpacing + 4
     Repeater {
         model: [
-            { ic: "wifi",          fill: 0, menu: 0, warn: false, badge: 0 },
+            { ic: root.netIcon(), fill: root.netFill(), menu: 0, warn: false, badge: 0, vpn: !!(root.netState && root.netState.vpnActive) },
             { ic: root.volumeIcon(), fill: root.muted ? 0 : 1, menu: 1, warn: false, badge: 0 },
             { ic: "bluetooth",     fill: 0, menu: 2, warn: false, badge: 0 },
             { ic: root.batteryIcon(), fill: 1, menu: 3, warn: root.batteryLow, badge: 0 },
@@ -4126,6 +4374,23 @@ Row {
                 color: statusItem.selected ? root.theme.accent
                      : modelData.warn ? root.theme.danger
                      : root.theme.textDim
+            }
+            // active VPN/WireGuard -> a quarter-size lock badge tucked into the
+            // network glyph's bottom-right, on a knockout disc so it stays legible
+            // over the base icon (green = a protected tunnel is up).
+            Item {
+                visible: statusItem.modelData.vpn === true
+                width: 13; height: 13
+                anchors.right: parent.right
+                anchors.bottom: parent.bottom
+                anchors.rightMargin: 1
+                anchors.bottomMargin: 1
+                Rectangle { anchors.fill: parent; radius: width / 2; color: root.theme.bg }
+                MSym {
+                    anchors.centerIn: parent
+                    icon: "lock"; size: 11; fill: 1
+                    color: statusItem.selected ? root.theme.accent : root.theme.good
+                }
             }
             // un-cleared notifications count badge (top-right of the bell); "9+"
             // once past nine so it never outgrows the pill.
@@ -5066,6 +5331,7 @@ ShellRoot {
     <<init-privacy>>
     <<init-notifications>>
     <<init-clipboard>>
+    <<init-network>>
     <<init-virtual-desktops>>
     <<init-keyboard-layout>>
     <<init-action-bursts>>
@@ -5194,6 +5460,18 @@ Clipboard { id: clipboard }
 Process {
     running: true
     command: ["python", Quickshell.shellPath("clipbridge.py"), "watch"]
+}
+#+end_src
+
+*** init.qml — network state
+Shared network state ([[*NetState.qml][=NetState=]]) — Wi-Fi (native) plus LAN/VPN
+(nmcli) — owned once at root and handed to both the dashboard status glyph and the
+network menu (no singletons, mirroring =notifs= / =clipboard=).
+#+name: init-network
+#+begin_src qml
+// ---- network state (Wi-Fi native + LAN/VPN via nmcli), shared ----
+NetState {
+    id: netState
 }
 #+end_src
 
@@ -6262,6 +6540,7 @@ Variants {
                     StatusIcons {
                         theme: theme
                         notifs: notifs
+                        netState: netState
                         open: win.open
                         menu: win.menu
                         // close the launcher too, else both panes stack on top of each other
@@ -7236,7 +7515,7 @@ the action-burst content wrapper ([[*ActionBurstPill.qml][=ActionBurstPill=]]).
 #+begin_src qml
 
 // ---- menu components ----
-Component { id: cNet;  NetworkMenu   { theme: theme } }
+Component { id: cNet;  NetworkMenu   { theme: theme; netState: netState } }
 Component { id: cVol;  VolumeMenu    { theme: theme } }
 Component { id: cBt;   BluetoothMenu { theme: theme } }
 Component { id: cBatt; BatteryMenu   { theme: theme } }
