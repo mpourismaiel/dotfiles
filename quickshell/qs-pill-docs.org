@@ -15,7 +15,7 @@ every monitor, always on top, reserving no screen space, hidden only while a
 fullscreen window is focused. It morphs through four stages — a collapsed clock, a
 hovered dashboard (virtual-desktop dots, grouped open apps, status icons, system
 tray, date/time), a clicked-open *control panel* (network / volume / bluetooth /
-battery / notification-history menus), and an app *launcher*. It is also this
+battery / clipboard-history / notification-history menus), and an app *launcher*. It is also this
 machine's freedesktop *notification daemon* (popups morph the pill; history +
 inline reply), and flashes transient *action bursts* on desktop switches and
 keyboard-layout changes. Clicking outside only collapses it — the click is not
@@ -2893,6 +2893,347 @@ Item {
 }
 #+end_src
 
+** Clipboard.qml
+Clipboard-history *state*, instantiated once in =init.qml= as
+=Clipboard { id: clipboard }= and handed to the menu (no singletons, mirroring
+=Notifications=). It shells out to [[*clipbridge.py][=clipbridge.py=]]: =refresh()=
+reloads =entries= (a JSON array of =\{id, kind, …\}= — image rows carry =w/h/path=,
+text rows carry =text= + an =images= count), and =copy/remove/wipe= act on an entry
+and re-=refresh()=. The watchers that actually record history are started separately
+at root (see [[*init.qml — clipboard][§ init.qml — clipboard]]).
+#+begin_src qml :tangle ~/.config/quickshell/pill/Clipboard.qml :mkdirp yes
+pragma ComponentBehavior: Bound
+// Clipboard.qml — clipboard-history state over clipbridge.py (cliphist backend).
+// Instantiated once in init.qml as `Clipboard { id: clipboard }` and shared with
+// the menu. `entries` is the parsed history (newest first); refresh() reloads it,
+// copy/remove/wipe act on an entry (by id) then refresh.
+import QtQuick
+import Quickshell
+import Quickshell.Io
+
+QtObject {
+    id: root
+    // [{ id, kind:"image", w, h, path } | { id, kind:"text", text, images }]
+    property var entries: []
+
+    function refresh() { if (!listProc.running) listProc.running = true; }
+    function copy(id)  { act(["copy", String(id)]); }
+    function remove(id){ act(["delete", String(id)]); }
+    function wipe()    { act(["wipe"]); }
+    function act(args) {
+        actProc.command = ["python", Quickshell.shellPath("clipbridge.py")].concat(args);
+        actProc.running = true;
+    }
+
+    property Process listProc: Process {
+        command: ["python", Quickshell.shellPath("clipbridge.py"), "list"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try { root.entries = JSON.parse(this.text) || []; }
+                catch (e) { root.entries = []; }
+            }
+        }
+    }
+    // one shared process for copy/delete/wipe (all user-paced); refresh after so
+    // the list reflects the change (delete/wipe) or the re-store (copy).
+    property Process actProc: Process { onExited: root.refresh() }
+}
+#+end_src
+
+** ClipboardMenu.qml
+The control-panel pane (=win.menu === 5=, between battery and notifications) — a
+Klipper-style clipboard history. A =MenuHeader= (title + *Clear all*) and a fuzzy
+search field sit above a scrolling list of the recent entries (the ten newest when
+the search is empty; every fuzzy match while searching). *Image* entries (screenshots)
+render the picture up to 300px wide over a rounded, checker-patterned box (centered
+when smaller than the box, fit when larger); *text* entries show the preview, its
+right edge fading out before an always-visible *Delete* label. Text that carries
+embedded =data:image= screenshots shows a "+N images" chip with those blobs stripped
+from the preview. Clicking a row copies it (and closes the panel); *Delete* only removes.
+#+begin_src qml :tangle ~/.config/quickshell/pill/ClipboardMenu.qml :mkdirp yes
+pragma ComponentBehavior: Bound
+// ClipboardMenu.qml — clipboard history (cliphist via Clipboard/clipbridge.py).
+// Fuzzy search + Clear all at the top; a scrolling list below (ten newest at rest,
+// all matches while searching). Image entries preview the picture (<=300px wide,
+// centered on a rounded checker box when it doesn't fill it, fit when larger); text
+// entries preview the text (fading out before an always-shown Delete label) with a
+// "+N images" chip for embedded data:image screenshots. Row click copies + closes;
+// Delete only removes.
+import QtQuick
+import Quickshell.Widgets
+
+Item {
+    id: root
+    required property var theme
+    required property var clip
+    signal closeRequested()
+
+    Component.onCompleted: { root.clip.refresh(); search.forceActiveFocus(); }
+
+    readonly property string q: search.text.trim().toLowerCase()
+
+    // what a row is matched against: text preview, or a synthetic image label so
+    // "png"/"image"/dimensions still find screenshots.
+    function label(e) {
+        return e.kind === "image" ? ("image " + e.w + "x" + e.h + " png") : (e.text || "");
+    }
+    // subsequence fuzzy match: -1 no match, else a score (adjacency rewarded).
+    function fuzzy(needle, hay) {
+        hay = hay.toLowerCase();
+        if (needle.length === 0) return 0;
+        let hi = 0, score = 0, run = 0;
+        for (let ni = 0; ni < needle.length; ni++) {
+            const c = needle[ni];
+            let found = -1;
+            for (let k = hi; k < hay.length; k++) { if (hay[k] === c) { found = k; break; } }
+            if (found < 0) return -1;
+            run = (found === hi) ? run + 1 : 0;
+            score += 1 + run;
+            hi = found + 1;
+        }
+        return score;
+    }
+    readonly property var shown: {
+        const all = root.clip.entries || [];
+        if (root.q.length === 0) return all.slice(0, 10);
+        const scored = [];
+        for (const e of all) { const s = root.fuzzy(root.q, root.label(e)); if (s >= 0) scored.push({ e: e, s: s }); }
+        scored.sort((a, b) => b.s - a.s);
+        return scored.map(x => x.e);
+    }
+
+    Column {
+        anchors.fill: parent
+        spacing: root.theme.gap
+
+        MenuHeader {
+            theme: root.theme
+            title: "Clipboard"
+            onBack: root.closeRequested()
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                visible: (root.clip.entries || []).length > 0
+                text: "Clear all"
+                color: clearMa.containsMouse ? root.theme.danger : root.theme.textDim
+                font.family: root.theme.mono
+                font.pixelSize: root.theme.fsSmall
+                font.letterSpacing: root.theme.labelSpacing
+                font.capitalization: Font.AllUppercase
+                MouseArea {
+                    id: clearMa
+                    anchors.fill: parent; anchors.margins: -4
+                    hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                    onClicked: root.clip.wipe()
+                }
+            }
+        }
+
+        Rectangle {                              // fuzzy search field
+            id: searchBox
+            width: parent.width
+            height: 40
+            radius: root.theme.radiusRow
+            color: root.theme.row
+            border.color: search.activeFocus ? root.theme.accent : root.theme.border
+            border.width: 1
+            MSym {
+                id: searchIcon
+                anchors.left: parent.left; anchors.leftMargin: 12
+                anchors.verticalCenter: parent.verticalCenter
+                icon: "search"; size: 18
+                color: search.activeFocus ? root.theme.accent : root.theme.faint
+            }
+            TextInput {
+                id: search
+                anchors.left: searchIcon.right; anchors.leftMargin: 8
+                anchors.right: parent.right; anchors.rightMargin: 12
+                anchors.verticalCenter: parent.verticalCenter
+                verticalAlignment: TextInput.AlignVCenter
+                color: root.theme.text
+                font.family: root.theme.family
+                font.pixelSize: root.theme.fsNormal
+                clip: true
+                selectByMouse: true
+                selectionColor: root.theme.accentDim
+                Keys.onEscapePressed: root.closeRequested()
+                Text {
+                    anchors.fill: parent
+                    verticalAlignment: Text.AlignVCenter
+                    visible: search.text.length === 0
+                    text: "Search clipboard"
+                    color: root.theme.faint
+                    font.family: root.theme.family
+                    font.pixelSize: root.theme.fsNormal
+                    elide: Text.ElideRight
+                }
+            }
+        }
+
+        // ---- one history row: image preview, or text preview + Delete ----
+        component ClipRow: Rectangle {
+            id: clipRow
+            required property var entry
+            width: parent ? parent.width : 0
+
+            readonly property bool isImg: entry.kind === "image"
+            // never upscale; cap both dimensions at 300 so tall/wide shots stay sane
+            readonly property real imgScale: isImg ? Math.min(1, 300 / entry.w, 300 / entry.h) : 1
+            readonly property int imgW: isImg ? Math.round(entry.w * imgScale) : 0
+            readonly property int imgH: isImg ? Math.round(entry.h * imgScale) : 0
+
+            height: isImg ? (imgH + 20) : root.theme.rowHeight
+            radius: root.theme.radiusRow
+            color: rowMa.containsMouse ? root.theme.rowHi : root.theme.row
+            clip: true
+            Behavior on color { ColorAnimation { duration: root.theme.animFast } }
+
+            // click anywhere = copy + close (declared first so it sits below the
+            // Delete label's own MouseArea, which then wins over its region).
+            MouseArea {
+                id: rowMa
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: { root.clip.copy(clipRow.entry.id); root.closeRequested(); }
+            }
+
+            // image preview: rounded, checker-patterned box; image centered when it
+            // doesn't fill 300px, fit when larger (see imgScale).
+            ClippingRectangle {
+                visible: clipRow.isImg
+                anchors.left: parent.left; anchors.leftMargin: 12
+                anchors.verticalCenter: parent.verticalCenter
+                width: 300; height: clipRow.imgH
+                radius: root.theme.radiusCard
+                color: root.theme.desk
+                Canvas {                         // checkerboard, shows around small images
+                    anchors.fill: parent
+                    onPaint: {
+                        const ctx = getContext("2d");
+                        const s = 10, a = "#242019", b = "#1b1712";
+                        for (let y = 0; y < height; y += s)
+                            for (let x = 0; x < width; x += s) {
+                                ctx.fillStyle = ((Math.floor(x / s) + Math.floor(y / s)) % 2 === 0) ? a : b;
+                                ctx.fillRect(x, y, s, s);
+                            }
+                    }
+                    onWidthChanged: requestPaint()
+                    onHeightChanged: requestPaint()
+                }
+                Image {
+                    anchors.centerIn: parent
+                    width: clipRow.imgW; height: clipRow.imgH
+                    source: clipRow.isImg ? ("file://" + clipRow.entry.path) : ""
+                    fillMode: Image.PreserveAspectFit
+                    asynchronous: true
+                    cache: false
+                    sourceSize.width: clipRow.imgW
+                    sourceSize.height: clipRow.imgH
+                }
+            }
+
+            // text preview: optional "+N images" chip, then the text. The content
+            // is hard-clipped well before the Delete label (so overflow can't bleed
+            // through it), and the gradient softens that cut into the row colour so
+            // the tail fades out instead of ending in a sharp edge.
+            Item {
+                id: textClip
+                visible: !clipRow.isImg
+                anchors.left: parent.left; anchors.leftMargin: 12
+                anchors.right: delText.left; anchors.rightMargin: 12
+                anchors.top: parent.top; anchors.bottom: parent.bottom
+                clip: true
+                Row {
+                    id: textRow
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 8
+                    Rectangle {
+                        visible: (clipRow.entry.images || 0) > 0
+                        anchors.verticalCenter: parent.verticalCenter
+                        height: 20; width: chipT.implicitWidth + 14; radius: 6
+                        color: root.theme.accentSoft
+                        Text {
+                            id: chipT
+                            anchors.centerIn: parent
+                            text: "+" + clipRow.entry.images + (clipRow.entry.images === 1 ? " image" : " images")
+                            color: root.theme.accent
+                            font.family: root.theme.mono
+                            font.pixelSize: root.theme.fsSmall
+                            font.letterSpacing: root.theme.labelSpacing
+                            font.capitalization: Font.AllUppercase
+                        }
+                    }
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: (clipRow.entry.text && clipRow.entry.text.length) ? clipRow.entry.text
+                            : ((clipRow.entry.images || 0) > 0 ? "" : "(empty)")
+                        color: root.theme.text
+                        font.family: root.theme.family
+                        font.pixelSize: root.theme.fsNormal
+                        // no elide — overflow is clipped by textClip and the gradient
+                        // below fades the tail into the row colour
+                    }
+                }
+                // fade the tail into the row colour at the clip edge
+                Rectangle {
+                    anchors.right: parent.right
+                    anchors.top: parent.top; anchors.bottom: parent.bottom
+                    width: 56
+                    gradient: Gradient {
+                        orientation: Gradient.Horizontal
+                        GradientStop { position: 0.0; color: Qt.rgba(clipRow.color.r, clipRow.color.g, clipRow.color.b, 0) }
+                        GradientStop { position: 1.0; color: clipRow.color }
+                    }
+                }
+            }
+
+            // always-visible Delete (like Connect/Disconnect); removes only.
+            Text {
+                id: delText
+                anchors.right: parent.right; anchors.rightMargin: 14
+                anchors.verticalCenter: parent.verticalCenter
+                text: "Delete"
+                color: delMa.containsMouse ? root.theme.danger : root.theme.textDim
+                font.family: root.theme.mono
+                font.pixelSize: root.theme.fsSmall
+                font.letterSpacing: root.theme.labelSpacing
+                font.capitalization: Font.AllUppercase
+                MouseArea {
+                    id: delMa
+                    anchors.fill: parent; anchors.margins: -6
+                    hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                    onClicked: root.clip.remove(clipRow.entry.id)
+                }
+            }
+        }
+
+        Flickable {
+            width: parent.width
+            height: parent.height - 26 - 40 - root.theme.gap * 2
+            contentHeight: listCol.height
+            clip: true
+            Column {
+                id: listCol
+                width: parent.width
+                spacing: 8
+                Repeater {
+                    model: root.shown
+                    delegate: ClipRow { required property var modelData; width: listCol.width; entry: modelData }
+                }
+                Text {
+                    visible: root.shown.length === 0
+                    text: root.q.length > 0 ? "No matches" : "Clipboard is empty"
+                    color: root.theme.textDim
+                    font.family: root.theme.family
+                    font.pixelSize: root.theme.fsNormal
+                }
+            }
+        }
+    }
+}
+#+end_src
+
 ** winbridge.py
 Self-contained python glue that feeds the pill its window data, since KWin
 advertises no window-list protocol and no active-window over DBus. Run as =python
@@ -3205,6 +3546,197 @@ GLib.timeout_add_seconds(1, tick)
 GLib.MainLoop().run()
 #+end_src
 
+** clipbridge.py
+The clipboard-history backend. The pill has no native clipboard access, so history
+is delegated to =cliphist= (storage / dedup / persistence) fed by =wl-paste --watch=
+(the Wayland clipboard), and =wl-copy= puts a chosen entry back on the clipboard.
+This one script is the single bridge [[*ClipboardMenu.qml][=ClipboardMenu=]] shells
+out to (via the =Clipboard= state object): =watch= runs the two watchers that feed
+=cliphist= (launched once by =init.qml= so they live and die with the pill; it kills
+its children on exit), =list= prints the history as JSON (images decoded to a cache
+file; =data:image= URIs embedded in copied *text* are stripped from the preview and
+counted), and =copy=/=delete=/=wipe= act on entries. =cliphist= ids are stable per
+stored value, so decoded images are cached by id and stale files pruned on each =list=.
+#+begin_src python :tangle ~/.config/quickshell/pill/clipbridge.py :mkdirp yes
+#!/usr/bin/env python3
+# clipbridge.py — clipboard-history backend for the pill (cliphist + wl-clipboard).
+#
+# The pill can't read the clipboard itself, so:
+#   watch        run the two wl-paste watchers (text + image) that feed cliphist;
+#                launched once by init.qml (Process, running:true) so the watchers
+#                live and die with the pill — kills its children on exit.
+#   list         print a JSON array (newest first, capped) of history entries:
+#                  image -> {id,kind:"image",w,h,path}   (decoded to a cache file)
+#                  text  -> {id,kind:"text",text,images}  (embedded data:image URIs
+#                           stripped from the preview; `images` counts how many)
+#   copy <id>    decode entry <id> and put it back on the clipboard (wl-copy)
+#   delete <id>  drop entry <id> from history
+#   wipe         clear the whole history (and the decoded-image cache)
+import sys, os, re, json, subprocess, signal
+
+CACHE = os.path.join(
+    os.environ.get("XDG_CACHE_HOME", os.path.expanduser("~/.cache")),
+    "quickshell-pill", "clip")
+MAX_ENTRIES = 60   # entries exposed to the menu (it shows 10; search covers these)
+
+# a cliphist image preview line: "[[ binary data 2 KiB png 600x400 ]]"
+IMG_RE = re.compile(r"^\[\[ binary data .* (\w+) (\d+)x(\d+) \]\]$")
+# an embedded image inside copied text (a data URI)
+DATAURI_RE = re.compile(r"data:image/[\w.+-]+;base64,[A-Za-z0-9+/=]+")
+
+EXT = {"jpeg": "jpg"}
+MAGIC = [
+    (b"\x89PNG\r\n\x1a\n", "image/png"),
+    (b"\xff\xd8\xff",      "image/jpeg"),
+    (b"GIF8",             "image/gif"),
+    (b"RIFF",            "image/webp"),  # close enough; wl-copy re-sniffs anyway
+    (b"BM",              "image/bmp"),
+]
+
+
+def run(args, **kw):
+    try:
+        return subprocess.run(args, capture_output=True, **kw)
+    except FileNotFoundError:
+        return None
+
+
+def raw_list():
+    p = run(["cliphist", "list"])
+    if not p or p.returncode != 0:
+        return []
+    out = []
+    for line in p.stdout.split(b"\n"):
+        if not line:
+            continue
+        i = line.find(b"\t")
+        if i < 0:
+            continue
+        cid = line[:i].decode("utf-8", "replace")
+        preview = line[i + 1:].decode("utf-8", "replace")
+        out.append((cid, preview))
+    return out
+
+
+def decode(cid):
+    p = run(["cliphist", "decode", cid])
+    return p.stdout if (p and p.returncode == 0) else b""
+
+
+def _id(cid):
+    return int(cid) if cid.isdigit() else cid
+
+
+def cmd_list():
+    os.makedirs(CACHE, exist_ok=True)
+    keep, result = set(), []
+    for cid, preview in raw_list()[:MAX_ENTRIES]:
+        m = IMG_RE.match(preview)
+        if m:
+            typ = m.group(1).lower()
+            path = os.path.join(CACHE, cid + "." + EXT.get(typ, typ))
+            keep.add(os.path.basename(path))
+            if not os.path.exists(path):
+                data = decode(cid)
+                if not data:
+                    continue
+                with open(path, "wb") as f:
+                    f.write(data)
+            result.append({"id": _id(cid), "kind": "image",
+                           "w": int(m.group(2)), "h": int(m.group(3)),
+                           "path": path})
+        else:
+            # only the full decode reliably finds/strips embedded images, so skip
+            # it for the common case (a preview with no data URI) — cheap + correct.
+            if "data:image" in preview:
+                text = decode(cid).decode("utf-8", "replace")
+                n = len(DATAURI_RE.findall(text))
+                text = DATAURI_RE.sub("", text)
+            else:
+                text, n = preview, 0
+            text = re.sub(r"\s+", " ", text).strip()[:300]
+            result.append({"id": _id(cid), "kind": "text",
+                           "text": text, "images": n})
+    try:                                   # prune cache files for gone entries
+        for f in os.listdir(CACHE):
+            if f not in keep:
+                os.remove(os.path.join(CACHE, f))
+    except OSError:
+        pass
+    sys.stdout.write(json.dumps(result))
+
+
+def cmd_copy(cid):
+    data = decode(cid)
+    if not data:
+        return
+    typ = next((mime for magic, mime in MAGIC if data.startswith(magic)), None)
+    args = ["wl-copy"] + (["--type", typ] if typ else [])
+    # wl-copy forks a daemon to serve the selection; don't capture (the daemon
+    # would hold the pipe open and hang us) — just let it detach.
+    try:
+        subprocess.run(args, input=data,
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except FileNotFoundError:
+        pass
+
+
+def cmd_delete(cid):
+    # cliphist delete keys off the id before the tab; the preview is ignored.
+    run(["cliphist", "delete"], input=(cid + "\t.\n").encode())
+
+
+def cmd_wipe():
+    run(["cliphist", "wipe"])
+    try:
+        for f in os.listdir(CACHE):
+            os.remove(os.path.join(CACHE, f))
+    except OSError:
+        pass
+
+
+def cmd_watch():
+    try:
+        watchers = [
+            subprocess.Popen(["wl-paste", "--type", "text",  "--watch", "cliphist", "store"]),
+            subprocess.Popen(["wl-paste", "--type", "image", "--watch", "cliphist", "store"]),
+        ]
+    except FileNotFoundError:
+        return
+
+    def stop(*_):
+        for w in watchers:
+            try:
+                w.terminate()
+            except OSError:
+                pass
+        sys.exit(0)
+
+    signal.signal(signal.SIGTERM, stop)
+    signal.signal(signal.SIGINT, stop)
+    for w in watchers:
+        w.wait()
+
+
+def main():
+    cmd = sys.argv[1] if len(sys.argv) > 1 else ""
+    arg = sys.argv[2] if len(sys.argv) > 2 else None
+    if cmd == "list":
+        cmd_list()
+    elif cmd == "copy" and arg:
+        cmd_copy(arg)
+    elif cmd == "delete" and arg:
+        cmd_delete(arg)
+    elif cmd == "wipe":
+        cmd_wipe()
+    elif cmd == "watch":
+        cmd_watch()
+
+
+if __name__ == "__main__":
+    main()
+#+end_src
+
 ** DesktopDots.qml
 The virtual-desktop indicator: hollow dots (one per desktop) with a single filled
 dot that *slides* to the active one. Reused in two places — the hovered dashboard's
@@ -3357,7 +3889,7 @@ Row {
 
 ** StatusIcons.qml
 The hovered dashboard's status switcher (Row 2, right): network / volume / bluetooth
-/ battery / notifications icons. The glyphs track live state — the volume icon
+/ battery / clipboard / notifications icons. The glyphs track live state — the volume icon
 follows Pipewire mute *and* level (off / mute / down / up), the battery follows
 UPower charge/state (6-bar granularity, plus a red alert glyph when critically low),
 and the notifications bell carries a count badge for un-cleared history (=notifs=).
@@ -3371,7 +3903,8 @@ pragma ComponentBehavior: Bound
 // UPower charge/state (6-bar granularity + a red alert glyph when critically low),
 // and the notifications icon carries a count badge for un-cleared history.
 // menuRequested(menu) fires on click; when `open`, the icon for the current `menu`
-// is highlighted. Menu ids: 0 net, 1 vol, 2 bt, 3 batt, 4 notif. The hover highlight
+// is highlighted. Menu ids: 0 net, 1 vol, 2 bt, 3 batt, 5 clipboard, 4 notif (the
+// clipboard sits between battery and notifications in the row). The hover highlight
 // is NOT drawn here (only the open-menu selection): each icon reports itself via
 // itemEntered (on enter only) so the shared hover square jumps to it.
 import QtQuick
@@ -3430,6 +3963,7 @@ Row {
             { ic: root.volumeIcon(), fill: root.muted ? 0 : 1, menu: 1, warn: false, badge: 0 },
             { ic: "bluetooth",     fill: 0, menu: 2, warn: false, badge: 0 },
             { ic: root.batteryIcon(), fill: 1, menu: 3, warn: root.batteryLow, badge: 0 },
+            { ic: "content_paste", fill: 0, menu: 5, warn: false, badge: 0 },
             { ic: "notifications", fill: root.unread > 0 ? 1 : 0, menu: 4, warn: false, badge: root.unread }
         ]
         delegate: Rectangle {
@@ -4287,6 +4821,14 @@ launcher shortcut rides the KWin script in =winbridge.py= (see [[*winbridge.py][
 its =\{event:"launcher", screen\}= line becomes the =launcherShortcut(screen)= signal,
 and each monitor toggles its launcher if the screen matches.
 
+*Clipboard shortcut (IPC).* The clipboard-history menu is opened by an =IpcHandler=
+(=target: "pill"=) instead of the KWin script, so it can be bound from KDE's own
+shortcut settings: add a *Custom Shortcut* (System Settings ▸ Shortcuts) running
+=qs -p /home/<user>/.config/quickshell/pill/init.qml ipc call pill clipboard= and
+assign it e.g. *Super+V* (free it from Klipper first). The call fires
+=clipboardShortcut("")= → =openClipboard()= on every pill (an empty screen name);
+=clipboardOn(screen)= targets one monitor. Re-firing while it's up toggles it shut.
+
 *Taskbar.* =appGroups= groups =windows= (from =winbridge=) by *app class*, ordered
 by *open time* (winbridge stamps each window with a stable open-order =seq=) — one
 tile per app, a count badge for ≥2 windows, an underline that turns accent when any
@@ -4379,6 +4921,7 @@ ShellRoot {
     <<init-state>>
     <<init-privacy>>
     <<init-notifications>>
+    <<init-clipboard>>
     <<init-virtual-desktops>>
     <<init-keyboard-layout>>
     <<init-action-bursts>>
@@ -4412,6 +4955,15 @@ onActiveWindowChanged: if (activeWindow !== "") lastActiveWindow = activeWindow
 
 // requested via the Meta+D global shortcut (KWin script -> winbridge -> here)
 signal launcherShortcut(string screen)
+// requested via IPC (`qs ipc call pill clipboard`) — bind a KDE custom shortcut to
+// that command (e.g. Super+V) to open the clipboard-history menu. Empty screen ->
+// every pill responds (right for a single monitor); a name targets one monitor.
+signal clipboardShortcut(string screen)
+IpcHandler {
+    target: "pill"
+    function clipboard(): void { root.clipboardShortcut(""); }
+    function clipboardOn(screen: string): void { root.clipboardShortcut(screen); }
+}
 
 Theme { id: theme }
 // keep the default sink bound so the dashboard volume icon reflects mute live
@@ -4482,6 +5034,22 @@ Notifications {
     id: notifs
 
     theme: theme
+}
+#+end_src
+
+*** init.qml — clipboard
+The clipboard-history state ([[*Clipboard.qml][=Clipboard=]], shared with the menu)
+plus the =wl-paste= watchers that feed =cliphist=, run once at root (not per monitor)
+via [[*clipbridge.py][=clipbridge.py=]] =watch=. The watcher =Process= is =running:
+true= — not detached — so the watchers stop when the pill does (clipbridge kills its
+children on =SIGTERM=). Requires =cliphist= + =wl-clipboard= on =PATH=.
+#+name: init-clipboard
+#+begin_src qml
+// ---- clipboard history (cliphist watchers + shared state) ----
+Clipboard { id: clipboard }
+Process {
+    running: true
+    command: ["python", Quickshell.shellPath("clipbridge.py"), "watch"]
 }
 #+end_src
 
@@ -4874,7 +5442,7 @@ Variants {
         // each menu's own Loader keys off its specific state (ctxGroup / trayItem).
         readonly property bool ctxMode: ctxGroup !== null || trayItem !== null
         property bool dash: open || launcher || hover.hovered || ctxMode
-        property int menu: 4 // 0 net, 1 vol, 2 bt, 3 batt, 4 notif (default pane)
+        property int menu: 4 // 0 net, 1 vol, 2 bt, 3 batt, 5 clipboard, 4 notif (default pane)
         // open-state pill geometry, in ONE place: the control panel and the
         // launcher both lay out to these, so resizing the open/launcher pill here
         // can't leave the launcher mis-sized (the bug from the last resize).
@@ -4882,6 +5450,9 @@ Variants {
         // launcher pill width
         readonly property int openHeight: 470
         // open + launcher pill height
+        // the clipboard-history menu runs 200px taller than the other panes so more
+        // history is visible; every other open menu (and the launcher) uses openHeight.
+        readonly property int openPaneHeight: (open && menu === 5) ? openHeight + 200 : openHeight
         // hovered dashboard geometry (its own generous, HTML-scale size — distinct
         // from the open menu's 520 so the two rows can breathe).
         readonly property int hoverWidth: 640
@@ -4967,6 +5538,22 @@ Variants {
             }
         }
 
+        // open (or toggle shut) the clipboard-history menu — bound to the IPC
+        // clipboard shortcut. Mirrors toggleLauncher: re-firing while it's already
+        // showing closes it and restores focus to the previously-active window.
+        function openClipboard() {
+            if (win.open && win.menu === 5) {
+                win.open = false;
+                root.restoreFocus();
+            } else {
+                win.launcher = false;
+                win.ctxGroup = null;
+                win.trayItem = null;
+                win.menu = 5;
+                win.open = true;
+            }
+        }
+
         onDashChanged: {
             if (!win.dash)
                 win.hoverItem = null;
@@ -4981,7 +5568,10 @@ Variants {
         // *Exclusive* so it grabs the keyboard even when opened by the Meta+D
         // shortcut (no click to trigger OnDemand focus) and arrow-key nav works;
         // menus stay OnDemand so a password field focuses only when clicked.
-        WlrLayershell.keyboardFocus: win.launcher ? WlrKeyboardFocus.Exclusive : win.open ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
+        // the clipboard menu takes Exclusive focus too (like the launcher) so its
+        // search field grabs the keyboard even when opened by the IPC shortcut (no
+        // click to trigger OnDemand focus); other menus stay OnDemand.
+        WlrLayershell.keyboardFocus: (win.launcher || (win.open && win.menu === 5)) ? WlrKeyboardFocus.Exclusive : win.open ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
         exclusionMode: ExclusionMode.Ignore
         color: "transparent"
         mask: (win.open || win.launcher || win.ctxMode || win.confirmActive) ? fullRegion : (win.fsHide ? emptyRegion : pillRegion)
@@ -4998,6 +5588,14 @@ Variants {
                     return ;
 
                 win.toggleLauncher();
+            }
+
+            // same active-screen rule as the launcher shortcut
+            function onClipboardShortcut(screen) {
+                if (screen !== "" && Quickshell.screens.length > 1 && win.screen && screen !== win.screen.name)
+                    return ;
+
+                win.openClipboard();
             }
 
             target: root
@@ -5050,7 +5648,7 @@ Variants {
             width: win.showBurst ? (burstLoader.item ? burstLoader.item.implicitWidth : 96) : win.launcher ? win.launcherWidth : win.ctxMode ? 520 : (win.notifMorph ? (morphStack.item ? morphStack.item.implicitWidth : 420) : (win.open ? 520 : (win.dash ? win.hoverWidth : (56 + root.privacyCount * 20 + (notifs.grouped.length > 0 ? 14 : 0)))))
             // in ctx mode the pill sizes to whichever menu loader is active (app
             // context menu or tray menu).
-            height: win.showBurst ? 28 : (win.open || win.launcher) ? win.openHeight : win.ctxMode ? Math.min(win.openHeight, ((ctxLoader.item || trayLoader.item) ? (ctxLoader.item || trayLoader.item).implicitHeight + theme.pad * 2 : 300)) : (win.notifMorph ? morphStack.implicitHeight : (win.dash ? win.hoverHeight : 28))
+            height: win.showBurst ? 28 : (win.open || win.launcher) ? win.openPaneHeight : win.ctxMode ? Math.min(win.openHeight, ((ctxLoader.item || trayLoader.item) ? (ctxLoader.item || trayLoader.item).implicitHeight + theme.pad * 2 : 300)) : (win.notifMorph ? morphStack.implicitHeight : (win.dash ? win.hoverHeight : 28))
             // resting (collapsed, un-hovered) pill is dimmed; full opacity once
             // hovered / open / a notification is morphing it (or a camera/mic is
             // live); fully hidden while a fullscreen window is focused (fsHide)
@@ -5562,7 +6160,7 @@ Variants {
 
                     anchors.fill: parent
                     active: win.open
-                    sourceComponent: win.menu === 0 ? cNet : win.menu === 1 ? cVol : win.menu === 2 ? cBt : win.menu === 3 ? cBatt : cNotif
+                    sourceComponent: win.menu === 0 ? cNet : win.menu === 1 ? cVol : win.menu === 2 ? cBt : win.menu === 3 ? cBatt : win.menu === 5 ? cClip : cNotif
                 }
                 // chevron back -> collapse panel
 
@@ -6498,6 +7096,7 @@ Component { id: cNet;  NetworkMenu   { theme: theme } }
 Component { id: cVol;  VolumeMenu    { theme: theme } }
 Component { id: cBt;   BluetoothMenu { theme: theme } }
 Component { id: cBatt; BatteryMenu   { theme: theme } }
+Component { id: cClip; ClipboardMenu { theme: theme; clip: clipboard } }
 Component { id: cNotif; NotificationHistory { theme: theme; notifs: notifs } }
 // the active-notification deck, reused for the pill morph and the floating stack
 Component { id: cStack; NotificationStack { theme: theme; notifs: notifs } }
