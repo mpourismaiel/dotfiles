@@ -2260,10 +2260,23 @@ Item {
                 Repeater {
                     model: {
                         var items = (root.org && root.org.dayItems) ? root.org.dayItems.slice() : [];
+                        // group order: dated (scheduled/deadline) first, then the
+                        // active undated todos, then done undated todos last — a
+                        // done dated item still sorts above the undated todos.
+                        function grp(it) {
+                            if (it.dated)
+                                return 0;
+                            return it.done ? 2 : 1;
+                        }
+                        // within a group, higher priority (A > B > C > none) first
+                        function pri(p) {
+                            return p === "A" ? 3 : p === "B" ? 2 : p === "C" ? 1 : 0;
+                        }
                         items.sort(function (a, b) {
-                            var at = (a.todo && a.todo.length) ? 0 : 1;
-                            var bt = (b.todo && b.todo.length) ? 0 : 1;
-                            return at - bt;
+                            var g = grp(a) - grp(b);
+                            if (g !== 0)
+                                return g;
+                            return pri(b.priority) - pri(a.priority);
                         });
                         return items;
                     }
@@ -2273,17 +2286,15 @@ Item {
                         width: agendaCol.width
                         spacing: 8
 
-                        // Clean the raw org-agenda line for the pill: the Emacs
-                        // side already drops the category / "Deadline:" prefix,
-                        // so here we only strip the leading TODO keyword (the dot
-                        // already conveys it) and collapse any leftover padding.
-                        readonly property string heading: {
-                            var t = "" + (modelData.text || "");
-                            var kw = modelData.todo || "";
-                            if (kw.length)
-                                t = t.replace(new RegExp("^\\s*" + kw + "\\s+"), "");
-                            return t.replace(/\s{2,}/g, " ").trim();
-                        }
+                        readonly property bool isTodo: !!(modelData.todo && modelData.todo.length)
+                        // optimistic tick state: clicking sets `doneOverride` so
+                        // the row animates at once, before the Emacs round-trip
+                        // and reload land (-1 follow model, 0 active, 1 done).
+                        property int doneOverride: -1
+                        readonly property bool isDone: agendaRow.doneOverride === -1 ? !!modelData.done : (agendaRow.doneOverride === 1)
+                        // heading text is already clean from orgbridge; just
+                        // collapse any stray double spaces.
+                        readonly property string heading: ("" + (modelData.text || "")).replace(/\s{2,}/g, " ").trim()
                         // Deadline / scheduled kind, shown as the pill's own dim
                         // label instead of Emacs's inline "Deadline:" text.
                         readonly property string kind: {
@@ -2294,17 +2305,64 @@ Item {
                                 return "Scheduled";
                             return "";
                         }
+                        // #A → 3 bars, #B → 2, #C → 1, colour-coded by urgency
+                        readonly property int priCount: modelData.priority === "A" ? 3 : modelData.priority === "B" ? 2 : modelData.priority === "C" ? 1 : 0
+                        readonly property color priColor: modelData.priority === "A" ? root.theme.accent : modelData.priority === "B" ? "#d9a441" : root.theme.textDim
 
-                        Rectangle {
-                            width: 5
-                            height: 5
-                            radius: 2.5
+                        // todos get a tickable checkbox; plain timestamp entries
+                        // keep the small dot. Clicking a checkbox flips done state.
+                        Item {
+                            width: 16
+                            height: 16
                             anchors.top: parent.top
-                            anchors.topMargin: 6
-                            color: (agendaRow.modelData.todo && agendaRow.modelData.todo.length) ? root.theme.accent : root.theme.faint
+                            anchors.topMargin: 3
+                            Rectangle {
+                                visible: agendaRow.isTodo
+                                anchors.centerIn: parent
+                                width: 14
+                                height: 14
+                                radius: 4
+                                color: agendaRow.isDone ? root.theme.accent : "transparent"
+                                border.width: 1
+                                border.color: agendaRow.isDone ? root.theme.accent : root.theme.faint
+                                Behavior on color { ColorAnimation { duration: root.theme.anim } }
+                                Behavior on border.color { ColorAnimation { duration: root.theme.anim } }
+                                MSym {
+                                    anchors.centerIn: parent
+                                    icon: "check"
+                                    fill: 1
+                                    size: 11
+                                    color: root.theme.bg
+                                    // pops in when ticked, shrinks away when un-ticked
+                                    opacity: agendaRow.isDone ? 1 : 0
+                                    scale: agendaRow.isDone ? 1 : 0.4
+                                    Behavior on opacity { NumberAnimation { duration: root.theme.animFast } }
+                                    Behavior on scale { NumberAnimation { duration: root.theme.anim; easing.type: Easing.OutBack } }
+                                }
+                            }
+                            Rectangle {
+                                visible: !agendaRow.isTodo
+                                anchors.centerIn: parent
+                                width: 5
+                                height: 5
+                                radius: 2.5
+                                color: root.theme.faint
+                            }
+                            MouseArea {
+                                anchors.fill: parent
+                                enabled: agendaRow.isTodo && !!agendaRow.modelData.file
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    if (!root.org)
+                                        return;
+                                    agendaRow.doneOverride = agendaRow.isDone ? 0 : 1;
+                                    root.org.toggleDone(agendaRow.modelData.file, agendaRow.modelData.pos);
+                                }
+                            }
                         }
+
                         Column {
-                            width: agendaCol.width - 13
+                            width: agendaCol.width - 52
                             spacing: 2
                             Text {
                                 visible: agendaRow.kind.length > 0
@@ -2316,12 +2374,47 @@ Item {
                                 font.capitalization: Font.AllUppercase
                             }
                             Text {
+                                id: hd
                                 width: parent.width
                                 wrapMode: Text.WordWrap
                                 text: agendaRow.heading
-                                color: root.theme.text
+                                color: agendaRow.isDone ? root.theme.faint : root.theme.text
                                 font.family: root.theme.family
                                 font.pixelSize: root.theme.fsNormal
+                                Behavior on color { ColorAnimation { duration: root.theme.anim } }
+
+                                // strikethrough that sweeps across as it's ticked
+                                // (animated width beats the instant font.strikeout).
+                                Rectangle {
+                                    anchors.left: parent.left
+                                    y: hd.font.pixelSize * 0.62
+                                    height: 1
+                                    radius: 0.5
+                                    color: root.theme.faint
+                                    width: agendaRow.isDone ? Math.min(hd.contentWidth, hd.width) : 0
+                                    opacity: agendaRow.isDone ? 1 : 0
+                                    Behavior on width { NumberAnimation { duration: root.theme.anim; easing.type: Easing.OutCubic } }
+                                    Behavior on opacity { NumberAnimation { duration: root.theme.animFast } }
+                                }
+                            }
+                        }
+
+                        // priority marks — 1–3 stacked 4px lines (reserve the
+                        // slot even when empty so headings stay aligned).
+                        Column {
+                            width: 20
+                            spacing: 2
+                            anchors.top: parent.top
+                            anchors.topMargin: 6
+                            Repeater {
+                                model: agendaRow.priCount
+                                delegate: Rectangle {
+                                    anchors.right: parent.right
+                                    width: 14
+                                    height: 4
+                                    radius: 1
+                                    color: agendaRow.priColor
+                                }
                             }
                         }
                     }
@@ -2367,7 +2460,7 @@ import Quickshell.Io
 QtObject {
     id: root
     property string dayKey: ""            // day currently loaded ("YYYY-MM-DD")
-    property var dayItems: []             // [{ text, todo, type }] for dayKey
+    property var dayItems: []             // [{ text, todo, type, priority, done, dated, file, pos }] for dayKey
     property var rangeDays: []            // ["YYYY-MM-DD", …] within the loaded range that have entries
 
     function loadDay(key) {
@@ -2382,6 +2475,13 @@ QtObject {
     function openAgenda(key) {
         openProc.command = ["python", Quickshell.shellPath("orgbridge.py"), "open", key];
         if (!openProc.running) openProc.running = true;
+    }
+    // flip a headline's TODO/DONE state (file+pos come from the loaded item),
+    // then reload the current day so the list re-sorts (done drops to the end).
+    function toggleDone(file, pos) {
+        if (!file || toggleProc.running) return;
+        toggleProc.command = ["python", Quickshell.shellPath("orgbridge.py"), "toggle", file, "" + pos];
+        toggleProc.running = true;
     }
     function hasItems(key) { return root.rangeDays.indexOf(key) !== -1; }
 
@@ -2402,6 +2502,17 @@ QtObject {
         }
     }
     property Process openProc: Process {}
+    property Process toggleProc: Process {
+        // reload once Emacs has flipped + saved, but give the row's tick / strike
+        // animation a beat to finish before the model rebuilds and re-sorts.
+        stdout: StdioCollector {
+            onStreamFinished: reloadTimer.restart()
+        }
+    }
+    property Timer reloadTimer: Timer {
+        interval: 260
+        onTriggered: root.loadDay(root.dayKey)
+    }
 }
 #+end_src
 
@@ -5150,10 +5261,13 @@ to the *running Emacs daemon* over =emacsclient= — this uses the user's real
 =org-agenda-files= and TODO keywords, no config duplicated here. One Lisp helper (a
 =(progn …)= that defines a few =pill-…= functions) is prepended to every call, so the
 script is self-contained and needs no =.el= file on the load-path. Commands:
-=day YYYY-MM-DD= prints a JSON array of =\{text, todo, type\}= for that day's
-scheduled/deadline/timestamp entries; =range A B= prints a JSON array of the =YYYY-MM-DD=
-dates in =[A,B]= that have any entry (the calendar dots — one call per shown grid);
-=open YYYY-MM-DD= raises an existing Emacs frame (or makes one) and opens the agenda.
+=day YYYY-MM-DD= prints a JSON array of =\{text, todo, type, priority, done, dated,
+file, pos\}= — the day's scheduled/deadline/timestamp entries plus the undated TODOs
+(shown on every day; done ones only on their CLOSED day). =range A B= prints a JSON
+array of the =YYYY-MM-DD= dates in =[A,B]= that have a *dated* entry (the calendar
+dots — undated TODOs never light a dot; one call per shown grid); =open YYYY-MM-DD=
+raises an existing Emacs frame (or makes one) and opens the agenda; =toggle FILE POS=
+flips a headline's TODO/DONE state (the checkbox in the pill) and saves the file.
 =day=/=range= results are written by Emacs to a temp file whose path is returned, so
 Unicode headings survive the round-trip intact. Everything is best-effort: if the
 daemon is down (=emacsclient= fails), the data commands print =[]= and the calendar
@@ -5163,9 +5277,10 @@ just shows no agenda.
 #!/usr/bin/env python3
 # orgbridge.py — Org-agenda backend for the pill's calendar, via the Emacs daemon.
 #
-#   day YYYY-MM-DD    print JSON [{text, todo, type}, …] for that day's entries
-#   range A B         print JSON ["YYYY-MM-DD", …] of dates in [A,B] with entries
+#   day YYYY-MM-DD    print JSON [{text, todo, type, priority, done, dated, file, pos}, …]
+#   range A B         print JSON ["YYYY-MM-DD", …] of dates in [A,B] with dated entries
 #   open YYYY-MM-DD   open the Org agenda in Emacs (reuse an existing frame)
+#   toggle FILE POS   flip the TODO/DONE state of the headline at FILE:POS, save
 #
 # All calls talk to the running Emacs daemon with emacsclient, so the user's real
 # org-agenda-files / TODO keywords are used. day/range write their JSON to a temp
@@ -5178,49 +5293,123 @@ HELPERS = r"""
 (progn
   (require 'org)
   (require 'org-agenda)
+  (require 'json)
   (defun pill--parse (s)                       ; "YYYY-MM-DD" -> (month day year)
     (let ((p (mapcar #'string-to-number (split-string s "-"))))
       (list (nth 1 p) (nth 2 p) (nth 0 p))))
   (defun pill--day-entries (greg)              ; greg = (month day year)
-    ;; Format entries for the pill, not for an Emacs agenda buffer: drop the
-    ;; category + scheduling-info prefix ("inbox:  Deadline:  …") and the
-    ;; right-aligned tag padding, so `text` is just the todo keyword + a clean
-    ;; heading. The deadline/scheduled kind still rides along as the `type`
-    ;; text property, which the pill re-surfaces in its own label style.
-    ;; `org-prefix-format-compiled' is reset to nil so it recompiles from our
-    ;; local `org-agenda-prefix-format' instead of a leftover agenda build.
-    (let ((org-agenda-prefix-format '((agenda . "")))
-          (org-agenda-remove-tags t)
-          (org-prefix-format-compiled nil)
-          items)
+    (let (items)
       (dolist (f (org-agenda-files))
         (dolist (e (ignore-errors
                      (org-agenda-get-day-entries
                       f greg :scheduled :deadline :timestamp)))
           (push e items)))
       (nreverse items)))
+  ;; --- one entry, read from the source headline (point must be on it) -------
+  ;; Pulls a clean heading (no todo keyword / no [#A] cookie / no tags), the
+  ;; priority letter, the done flag, and a file+pos handle so the pill can mark
+  ;; it done later. Emacs's agenda formatting is skipped entirely — the pill
+  ;; renders these fields in its own style.
+  (defun pill--item ()
+    (let* ((comps (org-heading-components))
+           (todo (or (nth 2 comps) ""))
+           (prisym (nth 3 comps))
+           (pri (if prisym (char-to-string prisym) ""))
+           (heading (org-trim (or (nth 4 comps) "")))
+           (done (and (org-get-todo-state)
+                      (member (org-get-todo-state) org-done-keywords) t)))
+      (list (cons "text" (substring-no-properties heading))
+            (cons "todo" (substring-no-properties todo))
+            (cons "priority" pri)
+            (cons "done" (if done t :json-false))
+            (cons "file" (or (buffer-file-name (buffer-base-buffer)) ""))
+            (cons "pos" (point)))))
+  (defun pill--dated-item (e)                  ; agenda entry -> item (dated t)
+    (let ((m (or (get-text-property 0 'org-hd-marker e)
+                 (get-text-property 0 'org-marker e))))
+      (if m
+          (org-with-point-at m
+            (append (pill--item)
+                    (list (cons "type" (format "%s" (or (get-text-property 0 'type e) "")))
+                          (cons "dated" t))))
+        (list (cons "text" (org-trim (substring-no-properties e)))
+              (cons "todo" (or (get-text-property 0 'todo-state e) ""))
+              (cons "priority" "") (cons "done" :json-false)
+              (cons "file" "") (cons "pos" 0)
+              (cons "type" (format "%s" (or (get-text-property 0 'type e) "")))
+              (cons "dated" t)))))
+  ;; One scan of all agenda headings, yielding two kinds of item the dated
+  ;; agenda query doesn't cover (done handling is independent of the user's
+  ;; org-agenda-skip-*-if-done settings, which otherwise hide finished tasks):
+  ;;   • active undated TODOs (no SCHEDULED/DEADLINE) — the persistent to-do
+  ;;     list, shown on every day;
+  ;;   • any DONE heading — shown on its CLOSED day (log-mode style), so it
+  ;;     appears once, on the day it was finished, and the pill sorts it last.
+  (defun pill--extra-items (datestr)
+    (delq nil
+          (ignore-errors
+            (org-map-entries
+             (lambda ()
+               (let* ((todo (org-get-todo-state))
+                      (done (and todo (member todo org-done-keywords)))
+                      (closed (org-entry-get nil "CLOSED")))
+                 (cond
+                  ((and todo (not done)
+                        (not (org-entry-get nil "SCHEDULED"))
+                        (not (org-entry-get nil "DEADLINE")))
+                   (append (pill--item)
+                           (list (cons "type" "") (cons "dated" :json-false))))
+                  ((and done closed (string-match-p (regexp-quote datestr) closed))
+                   (append (pill--item)
+                           (list (cons "type" "") (cons "dated" :json-false)))))))
+             t 'agenda))))
   (defun pill-day (datestr)
     (json-encode
      (vconcat
-      (mapcar (lambda (e)
-                (list (cons "text" (org-trim (substring-no-properties e)))
-                      (cons "todo" (or (get-text-property 0 'todo-state e) ""))
-                      (cons "type" (format "%s" (or (get-text-property 0 'type e) "")))))
-              (pill--day-entries (pill--parse datestr))))))
+      (append
+       ;; active dated items from the agenda; done ones are dropped here and
+       ;; re-added by pill--extra-items on their CLOSED day (avoids duplicates)
+       (seq-remove (lambda (it) (eq (cdr (assoc "done" it)) t))
+                   (mapcar #'pill--dated-item
+                           (pill--day-entries (pill--parse datestr))))
+       (pill--extra-items datestr)))))
   (defun pill-range (startstr endstr)
     (let* ((sa (calendar-absolute-from-gregorian (pill--parse startstr)))
            (ea (calendar-absolute-from-gregorian (pill--parse endstr)))
            (a sa) (out '()))
       (while (<= a ea)
         (let ((g (calendar-gregorian-from-absolute a)))
-          (when (pill--day-entries g)
+          (when (pill--day-entries g)          ; dots track dated entries only
             (push (format "%04d-%02d-%02d" (nth 2 g) (nth 0 g) (nth 1 g)) out)))
         (setq a (1+ a)))
       (json-encode (vconcat (nreverse out)))))
+  ;; Toggle the TODO/DONE state of the headline at FILE:POS and save. POS is a
+  ;; fresh buffer position from the same session, so it lands on the heading;
+  ;; org-todo re-anchors to the headline before flipping the keyword.
+  (defun pill-toggle (file pos)
+    (when (and file (not (string= file "")) (file-exists-p file))
+      (with-current-buffer (find-file-noselect file)
+        (org-with-wide-buffer
+         (goto-char (min (max pos (point-min)) (point-max)))
+         (when (ignore-errors (org-back-to-heading t) t)
+           ;; force timestamp logging (never an interactive note prompt, which
+           ;; would hang the emacsclient call in the daemon)
+           (let ((org-log-done 'time))
+             (if (member (org-get-todo-state) org-done-keywords)
+                 (org-todo "TODO")
+               (org-todo 'done)))
+           (save-buffer)))))
+    nil)
   (defun pill-open ()
-    (let ((f (or (car (visible-frame-list)) (car (frame-list)) (make-frame))))
-      (select-frame-set-input-focus f)
-      (org-agenda nil "a")
+    (let ((f (or (seq-find #'frame-visible-p (frame-list))
+                 (car (frame-list))
+                 (make-frame '((name . "pill-agenda"))))))
+      (when (frame-live-p f)
+        (make-frame-visible f)
+        (raise-frame f)
+        (select-frame-set-input-focus f)
+        (with-selected-frame f
+          (org-agenda nil "a")))
       nil)))
 """
 
@@ -5277,6 +5466,10 @@ def main():
         sys.stdout.write(
             _eval_to_file("(pill-range %s %s)" % (_esc(sys.argv[2]), _esc(sys.argv[3])))
         )
+    elif cmd == "toggle" and len(sys.argv) > 3:
+        # flip a headline's TODO/DONE state; POS is a plain integer buffer pos
+        _emacs("(progn %s (pill-toggle %s %s))" % (HELPERS, _esc(sys.argv[2]), sys.argv[3]))
+        sys.stdout.write("[]")
     elif cmd == "open":
         _emacs("(progn %s (pill-open))" % HELPERS, wait=False)
     else:
@@ -7527,6 +7720,9 @@ Variants {
                 // their horizontal padding gives — they expose `hoverPadY`;
                 // everything else just reuses `pad` in both directions.
                 readonly property int padY: (target && target.hoverPadY !== undefined) ? target.hoverPadY : pad
+                // some targets (the clock) sit a hair high inside their box, so
+                // they can nudge the square down a few px via `hoverOffsetY`.
+                readonly property int offY: (target && target.hoverOffsetY !== undefined) ? target.hoverOffsetY : 0
 
                 radius: theme.radiusSmall
                 // per-target tint: the launcher exposes `hoverColor` (accent-soft);
@@ -7536,7 +7732,7 @@ Variants {
                 opacity: (win.dash && !win.open && !win.launcher && !win.notifMorph && !win.ctxMode && target) ? 1 : 0
                 visible: opacity > 0
                 x: pos.x - pad
-                y: pos.y - padY
+                y: pos.y - padY + offY
                 width: target ? target.width + pad * 2 : 0
                 height: target ? target.height + padY * 2 : 0
 
@@ -7615,7 +7811,8 @@ Variants {
                         // clock's line boxes already carry leading, so the full
                         // `hoverPad` on top/bottom makes the square look too tall.
                         readonly property int hoverPad: 6
-                        readonly property int hoverPadY: 2
+                        readonly property int hoverPadY: 0
+                        readonly property int hoverOffsetY: 2
                         implicitWidth: dtCol.implicitWidth
                         implicitHeight: dtCol.implicitHeight
                         width: implicitWidth
