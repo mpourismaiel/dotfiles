@@ -2272,6 +2272,29 @@ Item {
                         required property var modelData
                         width: agendaCol.width
                         spacing: 8
+
+                        // Clean the raw org-agenda line for the pill: the Emacs
+                        // side already drops the category / "Deadline:" prefix,
+                        // so here we only strip the leading TODO keyword (the dot
+                        // already conveys it) and collapse any leftover padding.
+                        readonly property string heading: {
+                            var t = "" + (modelData.text || "");
+                            var kw = modelData.todo || "";
+                            if (kw.length)
+                                t = t.replace(new RegExp("^\\s*" + kw + "\\s+"), "");
+                            return t.replace(/\s{2,}/g, " ").trim();
+                        }
+                        // Deadline / scheduled kind, shown as the pill's own dim
+                        // label instead of Emacs's inline "Deadline:" text.
+                        readonly property string kind: {
+                            var ty = ("" + (modelData.type || "")).toLowerCase();
+                            if (ty.indexOf("deadline") !== -1)
+                                return "Deadline";
+                            if (ty.indexOf("scheduled") !== -1)
+                                return "Scheduled";
+                            return "";
+                        }
+
                         Rectangle {
                             width: 5
                             height: 5
@@ -2280,13 +2303,26 @@ Item {
                             anchors.topMargin: 6
                             color: (agendaRow.modelData.todo && agendaRow.modelData.todo.length) ? root.theme.accent : root.theme.faint
                         }
-                        Text {
+                        Column {
                             width: agendaCol.width - 13
-                            wrapMode: Text.WordWrap
-                            text: agendaRow.modelData.text
-                            color: root.theme.text
-                            font.family: root.theme.family
-                            font.pixelSize: root.theme.fsNormal
+                            spacing: 2
+                            Text {
+                                visible: agendaRow.kind.length > 0
+                                text: agendaRow.kind
+                                color: root.theme.textDim
+                                font.family: root.theme.mono
+                                font.pixelSize: root.theme.fsSmall
+                                font.letterSpacing: root.theme.labelSpacing
+                                font.capitalization: Font.AllUppercase
+                            }
+                            Text {
+                                width: parent.width
+                                wrapMode: Text.WordWrap
+                                text: agendaRow.heading
+                                color: root.theme.text
+                                font.family: root.theme.family
+                                font.pixelSize: root.theme.fsNormal
+                            }
                         }
                     }
                 }
@@ -5146,7 +5182,17 @@ HELPERS = r"""
     (let ((p (mapcar #'string-to-number (split-string s "-"))))
       (list (nth 1 p) (nth 2 p) (nth 0 p))))
   (defun pill--day-entries (greg)              ; greg = (month day year)
-    (let (items)
+    ;; Format entries for the pill, not for an Emacs agenda buffer: drop the
+    ;; category + scheduling-info prefix ("inbox:  Deadline:  …") and the
+    ;; right-aligned tag padding, so `text` is just the todo keyword + a clean
+    ;; heading. The deadline/scheduled kind still rides along as the `type`
+    ;; text property, which the pill re-surfaces in its own label style.
+    ;; `org-prefix-format-compiled' is reset to nil so it recompiles from our
+    ;; local `org-agenda-prefix-format' instead of a leftover agenda build.
+    (let ((org-agenda-prefix-format '((agenda . "")))
+          (org-agenda-remove-tags t)
+          (org-prefix-format-compiled nil)
+          items)
       (dolist (f (org-agenda-files))
         (dolist (e (ignore-errors
                      (org-agenda-get-day-entries
@@ -7477,6 +7523,10 @@ Variants {
                 // do, since their icons are larger) so the square grows a little
                 // when it sits behind them; everything else gets a snug fit.
                 readonly property int pad: (target && target.hoverPad) ? target.hoverPad : 0
+                // some targets (the clock) want a snugger vertical fit than
+                // their horizontal padding gives — they expose `hoverPadY`;
+                // everything else just reuses `pad` in both directions.
+                readonly property int padY: (target && target.hoverPadY !== undefined) ? target.hoverPadY : pad
 
                 radius: theme.radiusSmall
                 // per-target tint: the launcher exposes `hoverColor` (accent-soft);
@@ -7486,9 +7536,9 @@ Variants {
                 opacity: (win.dash && !win.open && !win.launcher && !win.notifMorph && !win.ctxMode && target) ? 1 : 0
                 visible: opacity > 0
                 x: pos.x - pad
-                y: pos.y - pad
+                y: pos.y - padY
                 width: target ? target.width + pad * 2 : 0
-                height: target ? target.height + pad * 2 : 0
+                height: target ? target.height + padY * 2 : 0
 
                 Behavior on x {
                     NumberAnimation {
@@ -7561,7 +7611,11 @@ Variants {
                         id: dateTimeBlock
 
                         // grow the roving square a touch past the tight text box
+                        // horizontally, but keep it snugger vertically — the
+                        // clock's line boxes already carry leading, so the full
+                        // `hoverPad` on top/bottom makes the square look too tall.
                         readonly property int hoverPad: 6
+                        readonly property int hoverPadY: 2
                         implicitWidth: dtCol.implicitWidth
                         implicitHeight: dtCol.implicitHeight
                         width: implicitWidth
