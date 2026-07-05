@@ -1070,6 +1070,14 @@ z1..z9 keys, LEVEL is read from the triggering digit."
 ;;; org-basic.el --- sane Org defaults for Doom
 (setq org-directory "~/org/")
 
+;; Which files the agenda scans. Point at the whole org directory: org
+;; re-expands a directory entry to every .org file in it each time the
+;; agenda is built, so anything you drop in ~/org/ (todo.org, inbox.org,
+;; projects.org, ...) shows up automatically — no per-file bookkeeping.
+;; NOTE: this used to be pinned to a stale hardcoded list in custom.el,
+;; which is why refiled todos never appeared. That entry was removed.
+(setq org-agenda-files (list org-directory))
+
 ;; Basic TODO workflow.
 ;; TODO      = not started
 ;; NEXT      = next concrete action
@@ -1092,9 +1100,6 @@ z1..z9 keys, LEVEL is read from the triggering digit."
         ("SOMEDAY" . font-lock-doc-face)
         ("DONE" . shadow)
         ("CANCELLED" . shadow)))
-
-(setq org-todo-keywords
-      '((sequence "TODO" "|" "DONE")))
 
 ;; Use fast todo selection.
 (setq org-use-fast-todo-selection t)
