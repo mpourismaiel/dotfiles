@@ -1652,6 +1652,723 @@ Item {
 }
 #+end_src
 
+** CalendarMenu.qml
+*** Description
+The calendar pane (=win.menu === 6=), opened by clicking the dashboard date/time
+(not from the status row). A basic 7-row month grid — weekday-name column headers,
+ISO week numbers down the left rail, and the trailing/leading days of the
+adjacent months filling the first and last rows — with the month name as the
+=MenuHeader= title and a *Today* button in the header's trailing slot next to a
+*Gregorian ⇄ Shamsi* toggle. Gregorian is primary (the big figure); the Jalaali
+(Shamsi) day sits under it as dim subtext, matching Plasma's calendar. Flipping the
+toggle swaps which calendar drives the grid (month, weekday order — Sunday-start for
+Gregorian, Saturday-start for Shamsi — and the figures), the other becoming the
+subtext.
+
+Today is selected on open. Two *detached* roving squares sit behind the cells and
+slide between them exactly like the dashboard's shared hover square: a faded-gray
+=bgHover= square follows the pointer, and the launcher-hover =accentSoft= square marks
+the selection. Changing month plays a quick slide-and-fade. The right panel shows the
+selected day in both calendars (=Saturday, July 5th, 2026= over =14 Tir 1405=) and its
+*Org agenda* — TODO entries first, then everything else — pulled from the running
+Emacs daemon via [[*OrgAgenda.qml][=OrgAgenda=]]; days that have any agenda entry get a
+dot. A =+= button opposite the *Org agenda* title opens the agenda in Emacs (reusing an
+existing frame). Jalaali conversion is the compact =jalaali-js= algorithm, inlined.
+*** Code
+#+begin_src qml :tangle ~/.config/quickshell/pill/CalendarMenu.qml :mkdirp yes
+pragma ComponentBehavior: Bound
+// CalendarMenu.qml — month calendar pane (win.menu === 6), opened from the
+// dashboard date/time. 7 rows (weekday headers + 6 weeks) with ISO week numbers
+// and adjacent-month fill days; Gregorian primary + Shamsi (Jalaali) subtext, a
+// header toggle swaps which drives the grid. Today selected on open. Two detached
+// roving squares (faded-gray hover + accent-soft selection) slide between cells.
+// Right panel: the selected day in both calendars + its Org agenda (from the Emacs
+// daemon via OrgAgenda), with agenda dots on days and a + button to open the agenda.
+import QtQuick
+
+Item {
+    id: root
+    required property var theme
+    property var org                          // OrgAgenda state (may be null)
+    signal closeRequested()
+
+    // ---- view state ----
+    property string primary: "greg"           // "greg" | "shamsi" — which calendar drives the grid
+    property int gY: 2026                      // Gregorian view year / month (1-12)
+    property int gM: 1
+    property int jY: 1405                      // Jalaali view year / month (1-12)
+    property int jM: 1
+    property string selKey: ""                 // selected day, "YYYY-MM-DD" (Gregorian)
+    property string todayKey: ""
+    property int hoverIdx: -1                   // hovered cell (0..41) or -1
+
+    // ---- geometry ----
+    readonly property int detailW: 280
+    readonly property int headerH: 26          // menu header row
+    readonly property int gap: root.theme.gap
+    readonly property int leftW: root.width - detailW - gap
+    readonly property int gridTop: headerH + gap
+    readonly property int gridH: root.height - gridTop
+    readonly property int weekNumW: 30
+    readonly property int wdHeadH: 24
+    readonly property real cellW: (leftW - weekNumW) / 7
+    readonly property real cellH: (gridH - wdHeadH) / 6
+    readonly property int cellInset: 4
+
+    // ---- calendar labels ----
+    readonly property var gMonths: ["January","February","March","April","May","June","July","August","September","October","November","December"]
+    readonly property var gWeekdays: ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"]
+    readonly property var jMonths: ["Farvardin","Ordibehesht","Khordad","Tir","Mordad","Shahrivar","Mehr","Aban","Azar","Dey","Bahman","Esfand"]
+    readonly property var jWeekdays: ["Yekshanbeh","Doshanbeh","Seshanbeh","Chaharshanbeh","Panjshanbeh","Jomeh","Shanbeh"]
+    // weekday column headers, ordered per the primary calendar's week start
+    readonly property var weekLabels: root.primary === "shamsi"
+        ? ["Sat","Sun","Mon","Tue","Wed","Thu","Fri"]
+        : ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"]
+
+    // ================= Jalaali conversion (compact jalaali-js) =================
+    function _div(a, b) { return ~~(a / b); }
+    function _mod(a, b) { return a - ~~(a / b) * b; }
+    function g2d(gy, gm, gd) {
+        var d = _div((gy + _div(gm - 8, 6) + 100100) * 1461, 4)
+              + _div(153 * _mod(gm + 9, 12) + 2, 5) + gd - 34840408;
+        d = d - _div(_div(gy + 100100 + _div(gm - 8, 6), 100) * 3, 4) + 752;
+        return d;
+    }
+    function d2g(jdn) {
+        var j = 4 * jdn + 139361631;
+        j = j + _div(_div(4 * jdn + 183187720, 146097) * 3, 4) * 4 - 3908;
+        var i = _div(_mod(j, 1461), 4) * 5 + 308;
+        var gd = _div(_mod(i, 153), 5) + 1;
+        var gm = _mod(_div(i, 153), 12) + 1;
+        var gy = _div(j, 1461) - 100100 + _div(8 - gm, 6);
+        return { gy: gy, gm: gm, gd: gd };
+    }
+    function jalCal(jy) {
+        var breaks = [-61,9,38,199,426,686,756,818,1111,1181,1210,1635,2060,2097,2192,2262,2324,2394,2456,3178];
+        var bl = breaks.length, gy = jy + 621, leapJ = -14, jp = breaks[0];
+        var jm = 0, jump = 0, leap, leapG, march, n, i;
+        for (i = 1; i < bl; i += 1) {
+            jm = breaks[i];
+            jump = jm - jp;
+            if (jy < jm) break;
+            leapJ = leapJ + _div(jump, 33) * 8 + _div(_mod(jump, 33), 4);
+            jp = jm;
+        }
+        n = jy - jp;
+        leapJ = leapJ + _div(n, 33) * 8 + _div(_mod(n, 33) + 3, 4);
+        if (_mod(jump, 33) === 4 && jump - n === 4) leapJ += 1;
+        leapG = _div(gy, 4) - _div((_div(gy, 100) + 1) * 3, 4) - 150;
+        march = 20 + leapJ - leapG;
+        if (jump - n < 6) n = n - jump + _div(jump + 4, 33) * 33;
+        leap = _mod(_mod(n + 1, 33) - 1, 4);
+        if (leap === -1) leap = 4;
+        return { leap: leap, gy: gy, march: march };
+    }
+    function jIsLeap(jy) { return jalCal(jy).leap === 0; }
+    function jMonthLen(jy, jm) { return jm <= 6 ? 31 : (jm <= 11 ? 30 : (jIsLeap(jy) ? 30 : 29)); }
+    function toJalaali(gy, gm, gd) {
+        var jdn = g2d(gy, gm, gd);
+        var gyy = d2g(jdn).gy, jy = gyy - 621, r = jalCal(jy);
+        var jdn1f = g2d(gyy, 3, r.march), jd, jm, k = jdn - jdn1f;
+        if (k >= 0) {
+            if (k <= 185) return { jy: jy, jm: 1 + _div(k, 31), jd: _mod(k, 31) + 1 };
+            k -= 186;
+        } else {
+            jy -= 1; k += 179;
+            if (r.leap === 1) k += 1;
+        }
+        jm = 7 + _div(k, 30);
+        jd = _mod(k, 30) + 1;
+        return { jy: jy, jm: jm, jd: jd };
+    }
+    function toGregorian(jy, jm, jd) {
+        var r = jalCal(jy);
+        var jdn = g2d(r.gy, 3, r.march) + (jm - 1) * 31 - _div(jm, 7) * (jm - 7) + jd - 1;
+        return d2g(jdn);
+    }
+
+    // ================= helpers =================
+    function pad2(n) { return n < 10 ? "0" + n : "" + n; }
+    function dateKey(y, m, d) { return y + "-" + pad2(m) + "-" + pad2(d); }
+    function ordinal(n) {
+        var s = ["th","st","nd","rd"], v = n % 100;
+        return n + (s[(v - 20) % 10] || s[v] || s[0]);
+    }
+    function isoWeek(y, m, d) {
+        var t = new Date(Date.UTC(y, m - 1, d));
+        var day = (t.getUTCDay() + 6) % 7;             // Mon=0
+        t.setUTCDate(t.getUTCDate() - day + 3);        // to this week's Thursday
+        var firstThu = new Date(Date.UTC(t.getUTCFullYear(), 0, 4));
+        var fday = (firstThu.getUTCDay() + 6) % 7;
+        firstThu.setUTCDate(firstThu.getUTCDate() - fday + 3);
+        return 1 + Math.round((t - firstThu) / (7 * 86400000));
+    }
+    function shamsiWeek(jy, jm, jd) {
+        var doy = jd;
+        for (var m = 1; m < jm; m++) doy += jMonthLen(jy, m);
+        return Math.floor((doy - 1) / 7) + 1;
+    }
+
+    // ---- build the 42-cell grid + 6 week numbers for the current view ----
+    readonly property var view: {
+        var isSh = root.primary === "shamsi";
+        var first;                                     // first day of the shown month, as a JS Date
+        if (isSh) {
+            var g = root.toGregorian(root.jY, root.jM, 1);
+            first = new Date(g.gy, g.gm - 1, g.gd);
+        } else {
+            first = new Date(root.gY, root.gM - 1, 1);
+        }
+        var wd = first.getDay();                       // 0 Sun .. 6 Sat
+        var offset = isSh ? (wd + 1) % 7 : wd;         // Shamsi weeks start Saturday
+        var start = new Date(first);
+        start.setDate(start.getDate() - offset);
+        var cells = [];
+        for (var i = 0; i < 42; i++) {
+            var dt = new Date(start);
+            dt.setDate(dt.getDate() + i);
+            var gy = dt.getFullYear(), gm = dt.getMonth() + 1, gd = dt.getDate();
+            var j = root.toJalaali(gy, gm, gd);
+            var inMonth = isSh ? (j.jm === root.jM && j.jy === root.jY) : (gm === root.gM && gy === root.gY);
+            cells.push({
+                gy: gy, gm: gm, gd: gd, jy: j.jy, jm: j.jm, jd: j.jd,
+                key: root.dateKey(gy, gm, gd), inMonth: inMonth,
+                primaryDay: isSh ? j.jd : gd, subDay: isSh ? gd : j.jd
+            });
+        }
+        var weekNos = [];
+        for (var r = 0; r < 6; r++) {
+            var c = cells[r * 7 + 1];                  // the row's Monday / second cell
+            weekNos.push(isSh ? root.shamsiWeek(c.jy, c.jm, c.jd) : root.isoWeek(c.gy, c.gm, c.gd));
+        }
+        return { cells: cells, weekNos: weekNos };
+    }
+
+    readonly property string title: root.primary === "shamsi"
+        ? (root.jMonths[root.jM - 1] + " " + root.jY)
+        : (root.gMonths[root.gM - 1] + " " + root.gY)
+
+    // index of a "YYYY-MM-DD" key within the current 42 cells, or -1
+    function idxOf(key) {
+        var c = root.view.cells;
+        for (var i = 0; i < c.length; i++) if (c[i].key === key) return i;
+        return -1;
+    }
+    readonly property int selIdx: root.idxOf(root.selKey)
+    readonly property int todayIdx: root.idxOf(root.todayKey)
+
+    // selected day, broken out for the detail panel
+    readonly property var sel: {
+        var p = root.selKey.split("-");
+        var y = +p[0], m = +p[1], d = +p[2];
+        var dt = new Date(y, m - 1, d);
+        var j = root.toJalaali(y, m, d);
+        return { y: y, m: m, d: d, dow: dt.getDay(), jy: j.jy, jm: j.jm, jd: j.jd };
+    }
+
+    // ================= actions =================
+    function select(key) {
+        root.selKey = key;
+        if (root.org) root.org.loadDay(key);
+    }
+    function shiftMonth(delta) {
+        if (root.primary === "shamsi") {
+            var m = root.jM + delta, y = root.jY;
+            if (m > 12) { m = 1; y += 1; } else if (m < 1) { m = 12; y -= 1; }
+            root.jM = m; root.jY = y;
+        } else {
+            var gm = root.gM + delta, gy = root.gY;
+            if (gm > 12) { gm = 1; gy += 1; } else if (gm < 1) { gm = 12; gy -= 1; }
+            root.gM = gm; root.gY = gy;
+        }
+        slideT.x = delta > 0 ? 34 : -34;
+        gridWrap.opacity = 0;
+        slideAnim.restart();
+        root.loadRange();
+    }
+    function goToday() {
+        var t = new Date();
+        root.gY = t.getFullYear(); root.gM = t.getMonth() + 1;
+        var j = root.toJalaali(root.gY, root.gM, t.getDate());
+        root.jY = j.jy; root.jM = j.jm;
+        root.select(root.dateKey(root.gY, root.gM, t.getDate()));
+        root.loadRange();
+    }
+    function toggleCalendar() {
+        // keep the currently-selected day framed after the swap
+        if (root.primary === "greg") {
+            root.jY = root.sel.jy; root.jM = root.sel.jm;
+            root.primary = "shamsi";
+        } else {
+            root.gY = root.sel.y; root.gM = root.sel.m;
+            root.primary = "greg";
+        }
+    }
+    // ask Org for the set of days-with-entries across the whole shown grid
+    function loadRange() {
+        if (!root.org) return;
+        var c = root.view.cells;
+        root.org.loadRange(c[0].key, c[41].key);
+    }
+
+    Component.onCompleted: {
+        var t = new Date();
+        root.todayKey = root.dateKey(t.getFullYear(), t.getMonth() + 1, t.getDate());
+        root.gY = t.getFullYear(); root.gM = t.getMonth() + 1;
+        var j = root.toJalaali(root.gY, root.gM, t.getDate());
+        root.jY = j.jy; root.jM = j.jm;
+        root.select(root.todayKey);
+        root.loadRange();
+    }
+
+    // ================= header =================
+    MenuHeader {
+        id: header
+        theme: root.theme
+        title: root.title
+        onBack: root.closeRequested()
+
+        // Gregorian ⇄ Shamsi toggle
+        Rectangle {
+            width: calToggleTxt.implicitWidth + 20
+            height: 24
+            radius: root.theme.radiusBtn
+            anchors.verticalCenter: parent.verticalCenter
+            color: calToggleMa.containsMouse ? root.theme.rowHi : root.theme.row
+            Text {
+                id: calToggleTxt
+                anchors.centerIn: parent
+                text: root.primary === "shamsi" ? "Shamsi" : "Gregorian"
+                color: root.theme.textDim
+                font.family: root.theme.mono
+                font.pixelSize: root.theme.fsSmall
+                font.letterSpacing: root.theme.labelSpacing
+                font.capitalization: Font.AllUppercase
+            }
+            MouseArea {
+                id: calToggleMa
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.toggleCalendar()
+            }
+            Behavior on color { ColorAnimation { duration: root.theme.animFast } }
+        }
+
+        // Today
+        Rectangle {
+            width: todayTxt.implicitWidth + 20
+            height: 24
+            radius: root.theme.radiusBtn
+            anchors.verticalCenter: parent.verticalCenter
+            color: todayMa.containsMouse ? root.theme.accent : root.theme.accentSoft
+            Text {
+                id: todayTxt
+                anchors.centerIn: parent
+                text: "Today"
+                color: todayMa.containsMouse ? "#ffffff" : root.theme.accent
+                font.family: root.theme.mono
+                font.pixelSize: root.theme.fsSmall
+                font.letterSpacing: root.theme.labelSpacing
+                font.capitalization: Font.AllUppercase
+            }
+            MouseArea {
+                id: todayMa
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.goToday()
+            }
+            Behavior on color { ColorAnimation { duration: root.theme.animFast } }
+        }
+    }
+
+    // ================= left: the month grid =================
+    Item {
+        id: grid
+        x: 0
+        y: root.gridTop
+        width: root.leftW
+        height: root.gridH
+
+        // weekday column headers
+        Row {
+            x: root.weekNumW
+            width: root.leftW - root.weekNumW
+            height: root.wdHeadH
+            Repeater {
+                model: root.weekLabels
+                delegate: Item {
+                    id: wdCell
+                    required property var modelData
+                    width: root.cellW
+                    height: root.wdHeadH
+                    Text {
+                        anchors.centerIn: parent
+                        text: wdCell.modelData
+                        color: root.theme.faint
+                        font.family: root.theme.mono
+                        font.pixelSize: root.theme.fsSmall
+                        font.letterSpacing: root.theme.labelSpacing
+                        font.capitalization: Font.AllUppercase
+                    }
+                }
+            }
+        }
+
+        // wrapper for the week-numbers + day cells, slid/faded on month change
+        Item {
+            id: gridWrap
+            x: 0
+            y: root.wdHeadH
+            width: root.leftW
+            height: root.gridH - root.wdHeadH
+            transform: Translate { id: slideT }
+
+            ParallelAnimation {
+                id: slideAnim
+                NumberAnimation { target: slideT; property: "x"; to: 0; duration: root.theme.anim; easing.type: Easing.OutCubic }
+                NumberAnimation { target: gridWrap; property: "opacity"; to: 1; duration: root.theme.anim }
+            }
+
+            // week numbers (italic serif rail, like the reference)
+            Repeater {
+                model: root.view.weekNos
+                delegate: Text {
+                    id: wkNo
+                    required property int index
+                    required property var modelData
+                    x: 0
+                    y: wkNo.index * root.cellH
+                    width: root.weekNumW
+                    height: root.cellH
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
+                    text: wkNo.modelData
+                    color: root.theme.faint
+                    font.family: root.theme.serif
+                    font.italic: true
+                    font.pixelSize: root.theme.fsNormal
+                }
+            }
+
+            // detached hover square (faded gray) — mirrors the dashboard indicator
+            Rectangle {
+                id: hoverSq
+                readonly property int col: root.hoverIdx >= 0 ? root.hoverIdx % 7 : 0
+                readonly property int rw: root.hoverIdx >= 0 ? Math.floor(root.hoverIdx / 7) : 0
+                x: root.weekNumW + col * root.cellW + root.cellInset
+                y: rw * root.cellH + root.cellInset
+                width: root.cellW - root.cellInset * 2
+                height: root.cellH - root.cellInset * 2
+                radius: root.theme.radiusSmall
+                color: root.theme.bgHover
+                opacity: root.hoverIdx >= 0 ? 1 : 0
+                visible: opacity > 0
+                Behavior on x { NumberAnimation { duration: root.theme.animFast; easing.type: Easing.OutCubic } }
+                Behavior on y { NumberAnimation { duration: root.theme.animFast; easing.type: Easing.OutCubic } }
+                Behavior on opacity { NumberAnimation { duration: root.theme.animFast } }
+            }
+
+            // detached selection square (launcher-hover accent-soft)
+            Rectangle {
+                id: selSq
+                readonly property int col: root.selIdx >= 0 ? root.selIdx % 7 : 0
+                readonly property int rw: root.selIdx >= 0 ? Math.floor(root.selIdx / 7) : 0
+                x: root.weekNumW + col * root.cellW + root.cellInset
+                y: rw * root.cellH + root.cellInset
+                width: root.cellW - root.cellInset * 2
+                height: root.cellH - root.cellInset * 2
+                radius: root.theme.radiusSmall
+                color: root.theme.accentSoft
+                border.color: root.theme.accent
+                border.width: 1
+                opacity: root.selIdx >= 0 ? 1 : 0
+                visible: opacity > 0
+                Behavior on x { NumberAnimation { duration: root.theme.animFast; easing.type: Easing.OutCubic } }
+                Behavior on y { NumberAnimation { duration: root.theme.animFast; easing.type: Easing.OutCubic } }
+                Behavior on opacity { NumberAnimation { duration: root.theme.animFast } }
+            }
+
+            // today ring (only when today isn't the selected cell)
+            Rectangle {
+                visible: root.todayIdx >= 0 && root.todayIdx !== root.selIdx
+                x: root.weekNumW + (root.todayIdx >= 0 ? root.todayIdx % 7 : 0) * root.cellW + root.cellInset
+                y: (root.todayIdx >= 0 ? Math.floor(root.todayIdx / 7) : 0) * root.cellH + root.cellInset
+                width: root.cellW - root.cellInset * 2
+                height: root.cellH - root.cellInset * 2
+                radius: root.theme.radiusSmall
+                color: "transparent"
+                border.color: root.theme.borderStrong
+                border.width: 1
+            }
+
+            // day cells
+            Repeater {
+                model: root.view.cells
+                delegate: Item {
+                    id: cell
+                    required property int index
+                    required property var modelData
+                    x: root.weekNumW + (index % 7) * root.cellW
+                    y: Math.floor(index / 7) * root.cellH
+                    width: root.cellW
+                    height: root.cellH
+
+                    Column {
+                        anchors.centerIn: parent
+                        spacing: 1
+                        Text {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            text: cell.modelData.primaryDay
+                            color: cell.modelData.inMonth ? root.theme.text : root.theme.faint
+                            font.family: root.theme.serif
+                            font.pixelSize: root.theme.fsLarge + 5
+                        }
+                        Text {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            text: cell.modelData.subDay
+                            color: cell.modelData.inMonth ? root.theme.textDim : root.theme.faint
+                            font.family: root.theme.mono
+                            font.pixelSize: root.theme.fsSmall - 1
+                        }
+                    }
+
+                    // agenda dot
+                    Rectangle {
+                        visible: root.org && root.org.hasItems(cell.modelData.key)
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        anchors.bottom: parent.bottom
+                        anchors.bottomMargin: 4
+                        width: 4
+                        height: 4
+                        radius: 2
+                        color: cell.modelData.inMonth ? root.theme.accent : root.theme.faint
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onEntered: root.hoverIdx = cell.index
+                        onExited: if (root.hoverIdx === cell.index) root.hoverIdx = -1
+                        onClicked: root.select(cell.modelData.key)
+                    }
+                }
+            }
+        }
+    }
+
+    // ================= right: selected-day detail + agenda =================
+    Item {
+        id: detail
+        x: root.leftW + root.gap
+        y: root.gridTop
+        width: root.detailW
+        height: root.gridH
+
+        // primary-calendar line (weekday, month day-ordinal, year)
+        Text {
+            id: dLine1
+            anchors.top: parent.top
+            width: parent.width
+            wrapMode: Text.WordWrap
+            text: root.primary === "shamsi"
+                ? (root.jWeekdays[root.sel.dow] + "، " + root.sel.jd + " " + root.jMonths[root.sel.jm - 1] + " " + root.sel.jy)
+                : (root.gWeekdays[root.sel.dow] + ", " + root.gMonths[root.sel.m - 1] + " " + root.ordinal(root.sel.d) + ", " + root.sel.y)
+            color: root.theme.text
+            font.family: root.theme.serif
+            font.pixelSize: root.theme.fsLarge + 5
+            lineHeight: 0.95
+        }
+        // secondary-calendar line
+        Text {
+            id: dLine2
+            anchors.top: dLine1.bottom
+            anchors.topMargin: 4
+            text: root.primary === "shamsi"
+                ? (root.gWeekdays[root.sel.dow] + ", " + root.gMonths[root.sel.m - 1] + " " + root.sel.d + ", " + root.sel.y)
+                : (root.sel.jd + " " + root.jMonths[root.sel.jm - 1] + " " + root.sel.jy)
+            color: root.theme.textDim
+            font.family: root.theme.family
+            font.pixelSize: root.theme.fsNormal
+        }
+
+        Rectangle {
+            id: dRule
+            anchors.top: dLine2.bottom
+            anchors.topMargin: root.theme.gap
+            width: parent.width
+            height: 1
+            color: root.theme.divider
+        }
+
+        // Org agenda title + open-in-Emacs button
+        Item {
+            id: agendaHead
+            anchors.top: dRule.bottom
+            anchors.topMargin: root.theme.gap
+            width: parent.width
+            height: 24
+            Text {
+                anchors.left: parent.left
+                anchors.verticalCenter: parent.verticalCenter
+                text: "Org agenda"
+                color: root.theme.faint
+                font.family: root.theme.mono
+                font.pixelSize: root.theme.fsSmall
+                font.letterSpacing: root.theme.labelSpacing
+                font.capitalization: Font.AllUppercase
+            }
+            Rectangle {
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                width: 24
+                height: 24
+                radius: root.theme.radiusBtn
+                color: openMa.containsMouse ? root.theme.rowHi : "transparent"
+                MSym {
+                    anchors.centerIn: parent
+                    icon: "open_in_new"
+                    size: 16
+                    color: openMa.containsMouse ? root.theme.text : root.theme.textDim
+                }
+                MouseArea {
+                    id: openMa
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: if (root.org) root.org.openAgenda(root.selKey)
+                }
+                Behavior on color { ColorAnimation { duration: root.theme.animFast } }
+            }
+        }
+
+        // agenda entries — TODOs first, then everything else
+        Flickable {
+            anchors.top: agendaHead.bottom
+            anchors.topMargin: 6
+            anchors.bottom: parent.bottom
+            width: parent.width
+            contentHeight: agendaCol.height
+            clip: true
+            Column {
+                id: agendaCol
+                width: parent.width
+                spacing: 8
+
+                Repeater {
+                    model: {
+                        var items = (root.org && root.org.dayItems) ? root.org.dayItems.slice() : [];
+                        items.sort(function (a, b) {
+                            var at = (a.todo && a.todo.length) ? 0 : 1;
+                            var bt = (b.todo && b.todo.length) ? 0 : 1;
+                            return at - bt;
+                        });
+                        return items;
+                    }
+                    delegate: Row {
+                        id: agendaRow
+                        required property var modelData
+                        width: agendaCol.width
+                        spacing: 8
+                        Rectangle {
+                            width: 5
+                            height: 5
+                            radius: 2.5
+                            anchors.top: parent.top
+                            anchors.topMargin: 6
+                            color: (agendaRow.modelData.todo && agendaRow.modelData.todo.length) ? root.theme.accent : root.theme.faint
+                        }
+                        Text {
+                            width: agendaCol.width - 13
+                            wrapMode: Text.WordWrap
+                            text: agendaRow.modelData.text
+                            color: root.theme.text
+                            font.family: root.theme.family
+                            font.pixelSize: root.theme.fsNormal
+                        }
+                    }
+                }
+
+                Text {
+                    visible: !root.org || !root.org.dayItems || root.org.dayItems.length === 0
+                    text: "Nothing scheduled."
+                    color: root.theme.faint
+                    font.family: root.theme.family
+                    font.italic: true
+                    font.pixelSize: root.theme.fsNormal
+                }
+            }
+        }
+    }
+}
+#+end_src
+
+** OrgAgenda.qml
+*** Description
+Org-agenda *state*, instantiated once in =init.qml= as =OrgAgenda { id: orgAgenda }=
+and handed to [[*CalendarMenu.qml][=CalendarMenu=]] (no singletons, mirroring
+=Clipboard= / =Notifications=). It shells out to [[*orgbridge.py][=orgbridge.py=]],
+which talks to the running Emacs daemon over =emacsclient=: =loadDay(key)= fills
+=dayItems= (the =\{text, todo, type\}= entries for a =YYYY-MM-DD=), =loadRange(a, b)=
+fills =rangeDays= (the set of dates in =[a,b]= that have any entry — drives the
+calendar dots, queried once per shown month grid), and =openAgenda(key)= opens the Org
+agenda in Emacs (reusing an existing frame). All are best-effort: if Emacs isn't
+reachable the parses fall back to empty, so the calendar still works.
+*** Code
+#+begin_src qml :tangle ~/.config/quickshell/pill/OrgAgenda.qml :mkdirp yes
+pragma ComponentBehavior: Bound
+// OrgAgenda.qml — Org-agenda state over orgbridge.py (Emacs daemon via emacsclient).
+// Instantiated once in init.qml as `OrgAgenda { id: orgAgenda }` and shared with the
+// calendar menu. loadDay(key) fills dayItems for a day; loadRange(a,b) fills rangeDays
+// with the dates in [a,b] that have entries (calendar dots); openAgenda(key) opens the
+// agenda in Emacs. Best-effort — empty if Emacs is unreachable.
+import QtQuick
+import Quickshell
+import Quickshell.Io
+
+QtObject {
+    id: root
+    property string dayKey: ""            // day currently loaded ("YYYY-MM-DD")
+    property var dayItems: []             // [{ text, todo, type }] for dayKey
+    property var rangeDays: []            // ["YYYY-MM-DD", …] within the loaded range that have entries
+
+    function loadDay(key) {
+        root.dayKey = key;
+        dayProc.command = ["python", Quickshell.shellPath("orgbridge.py"), "day", key];
+        if (!dayProc.running) dayProc.running = true;
+    }
+    function loadRange(a, b) {
+        rangeProc.command = ["python", Quickshell.shellPath("orgbridge.py"), "range", a, b];
+        if (!rangeProc.running) rangeProc.running = true;
+    }
+    function openAgenda(key) {
+        openProc.command = ["python", Quickshell.shellPath("orgbridge.py"), "open", key];
+        if (!openProc.running) openProc.running = true;
+    }
+    function hasItems(key) { return root.rangeDays.indexOf(key) !== -1; }
+
+    property Process dayProc: Process {
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try { root.dayItems = JSON.parse(this.text) || []; }
+                catch (e) { root.dayItems = []; }
+            }
+        }
+    }
+    property Process rangeProc: Process {
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try { root.rangeDays = JSON.parse(this.text) || []; }
+                catch (e) { root.rangeDays = []; }
+            }
+        }
+    }
+    property Process openProc: Process {}
+}
+#+end_src
+
 ** Launcher.qml
 *** Description
 KDE-style app launcher, opened by clicking the hovered pill body, the Row-2 grid
@@ -4389,6 +5106,141 @@ if __name__ == "__main__":
     main()
 #+end_src
 
+** orgbridge.py
+*** Description
+The Org-agenda backend for [[*CalendarMenu.qml][=CalendarMenu=]] (via
+[[*OrgAgenda.qml][=OrgAgenda=]]). The pill has no Org parser of its own, so it defers
+to the *running Emacs daemon* over =emacsclient= — this uses the user's real
+=org-agenda-files= and TODO keywords, no config duplicated here. One Lisp helper (a
+=(progn …)= that defines a few =pill-…= functions) is prepended to every call, so the
+script is self-contained and needs no =.el= file on the load-path. Commands:
+=day YYYY-MM-DD= prints a JSON array of =\{text, todo, type\}= for that day's
+scheduled/deadline/timestamp entries; =range A B= prints a JSON array of the =YYYY-MM-DD=
+dates in =[A,B]= that have any entry (the calendar dots — one call per shown grid);
+=open YYYY-MM-DD= raises an existing Emacs frame (or makes one) and opens the agenda.
+=day=/=range= results are written by Emacs to a temp file whose path is returned, so
+Unicode headings survive the round-trip intact. Everything is best-effort: if the
+daemon is down (=emacsclient= fails), the data commands print =[]= and the calendar
+just shows no agenda.
+*** Code
+#+begin_src python :tangle ~/.config/quickshell/pill/orgbridge.py :mkdirp yes
+#!/usr/bin/env python3
+# orgbridge.py — Org-agenda backend for the pill's calendar, via the Emacs daemon.
+#
+#   day YYYY-MM-DD    print JSON [{text, todo, type}, …] for that day's entries
+#   range A B         print JSON ["YYYY-MM-DD", …] of dates in [A,B] with entries
+#   open YYYY-MM-DD   open the Org agenda in Emacs (reuse an existing frame)
+#
+# All calls talk to the running Emacs daemon with emacsclient, so the user's real
+# org-agenda-files / TODO keywords are used. day/range write their JSON to a temp
+# file (path returned by emacsclient) so Unicode survives; best-effort — if the
+# daemon is unreachable the data commands print "[]".
+import sys, os, subprocess
+
+# Lisp helpers, prepended to every eval so the script needs no separate .el file.
+HELPERS = r"""
+(progn
+  (require 'org)
+  (require 'org-agenda)
+  (defun pill--parse (s)                       ; "YYYY-MM-DD" -> (month day year)
+    (let ((p (mapcar #'string-to-number (split-string s "-"))))
+      (list (nth 1 p) (nth 2 p) (nth 0 p))))
+  (defun pill--day-entries (greg)              ; greg = (month day year)
+    (let (items)
+      (dolist (f (org-agenda-files))
+        (dolist (e (ignore-errors
+                     (org-agenda-get-day-entries
+                      f greg :scheduled :deadline :timestamp)))
+          (push e items)))
+      (nreverse items)))
+  (defun pill-day (datestr)
+    (json-encode
+     (vconcat
+      (mapcar (lambda (e)
+                (list (cons "text" (org-trim (substring-no-properties e)))
+                      (cons "todo" (or (get-text-property 0 'todo-state e) ""))
+                      (cons "type" (format "%s" (or (get-text-property 0 'type e) "")))))
+              (pill--day-entries (pill--parse datestr))))))
+  (defun pill-range (startstr endstr)
+    (let* ((sa (calendar-absolute-from-gregorian (pill--parse startstr)))
+           (ea (calendar-absolute-from-gregorian (pill--parse endstr)))
+           (a sa) (out '()))
+      (while (<= a ea)
+        (let ((g (calendar-gregorian-from-absolute a)))
+          (when (pill--day-entries g)
+            (push (format "%04d-%02d-%02d" (nth 2 g) (nth 0 g) (nth 1 g)) out)))
+        (setq a (1+ a)))
+      (json-encode (vconcat (nreverse out)))))
+  (defun pill-open ()
+    (let ((f (or (car (visible-frame-list)) (car (frame-list)) (make-frame))))
+      (select-frame-set-input-focus f)
+      (org-agenda nil "a")
+      nil)))
+"""
+
+
+def _esc(s):
+    return '"' + s.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def _emacs(form, wait=True):
+    try:
+        r = subprocess.run(
+            ["emacsclient", "-e", form],
+            capture_output=True,
+            timeout=(12 if wait else 6),
+        )
+    except Exception:
+        return None
+    if r.returncode != 0:
+        return None
+    return r.stdout.decode("utf-8", "replace").strip()
+
+
+def _eval_to_file(call):
+    # Emacs writes the JSON to a temp file and returns its (quoted) path; we read
+    # and delete it. Keeps Unicode headings intact vs. parsing Lisp string syntax.
+    form = (
+        "(progn %s (let ((f (make-temp-file \"pill-agenda-\"))) "
+        "(with-temp-file f (insert %s)) f))" % (HELPERS, call)
+    )
+    out = _emacs(form)
+    if not out:
+        return "[]"
+    path = out.strip().strip('"')
+    if not path or not os.path.exists(path):
+        return "[]"
+    try:
+        with open(path, encoding="utf-8") as fh:
+            data = fh.read()
+    except OSError:
+        return "[]"
+    finally:
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+    return data or "[]"
+
+
+def main():
+    cmd = sys.argv[1] if len(sys.argv) > 1 else ""
+    if cmd == "day" and len(sys.argv) > 2:
+        sys.stdout.write(_eval_to_file("(pill-day %s)" % _esc(sys.argv[2])))
+    elif cmd == "range" and len(sys.argv) > 3:
+        sys.stdout.write(
+            _eval_to_file("(pill-range %s %s)" % (_esc(sys.argv[2]), _esc(sys.argv[3])))
+        )
+    elif cmd == "open":
+        _emacs("(progn %s (pill-open))" % HELPERS, wait=False)
+    else:
+        sys.stdout.write("[]")
+
+
+if __name__ == "__main__":
+    main()
+#+end_src
+
 ** DesktopDots.qml
 *** Description
 The virtual-desktop indicator: hollow dots (one per desktop) with a single filled
@@ -5642,6 +6494,7 @@ ShellRoot {
     <<init-privacy>>
     <<init-notifications>>
     <<init-clipboard>>
+    <<init-org>>
     <<init-network>>
     <<init-brightness>>
     <<init-virtual-desktops>>
@@ -5782,6 +6635,16 @@ Process {
     running: true
     command: ["python", Quickshell.shellPath("clipbridge.py"), "watch"]
 }
+#+end_src
+
+**** init.qml — org agenda
+Shared Org-agenda state ([[*OrgAgenda.qml][=OrgAgenda=]], over [[*orgbridge.py][=orgbridge.py=]]
+→ the Emacs daemon) — owned once at root and handed to the calendar menu, mirroring
+=clipboard= / =netState=.
+#+name: init-org
+#+begin_src qml
+// ---- org agenda state (Emacs daemon via orgbridge.py), shared with the calendar ----
+OrgAgenda { id: orgAgenda }
 #+end_src
 
 **** init.qml — network state
@@ -6198,12 +7061,15 @@ Variants {
         // each menu's own Loader keys off its specific state (ctxGroup / trayItem).
         readonly property bool ctxMode: ctxGroup !== null || trayItem !== null
         property bool dash: open || launcher || hover.hovered || ctxMode
-        property int menu: 4 // 0 net, 1 vol, 2 bt, 3 batt, 5 clipboard, 4 notif (default pane)
+        property int menu: 4 // 0 net, 1 vol, 2 bt, 3 batt, 5 clipboard, 6 calendar, 4 notif (default pane)
         // open-state pill geometry, in ONE place: the control panel and the
         // launcher both lay out to these, so resizing the open/launcher pill here
         // can't leave the launcher mis-sized (the bug from the last resize).
         readonly property int launcherWidth: 600
         // launcher pill width
+        // the calendar menu is wider than the other panes — it puts the month grid
+        // next to a selected-day / Org-agenda detail column.
+        readonly property int calWidth: 760
         readonly property int openHeight: 470
         // open + launcher pill height
         // the clipboard-history menu runs 200px taller than the other panes so more
@@ -6310,6 +7176,21 @@ Variants {
             }
         }
 
+        // open (or toggle shut) the calendar pane — fired by clicking the dashboard
+        // date/time. Mirrors openClipboard: re-firing while it's showing closes it.
+        function openCalendar() {
+            if (win.open && win.menu === 6) {
+                win.open = false;
+                root.restoreFocus();
+            } else {
+                win.launcher = false;
+                win.ctxGroup = null;
+                win.trayItem = null;
+                win.menu = 6;
+                win.open = true;
+            }
+        }
+
         onDashChanged: {
             if (!win.dash)
                 win.hoverItem = null;
@@ -6401,7 +7282,7 @@ Variants {
 
             anchors.horizontalCenter: parent.horizontalCenter
             y: 6
-            width: win.showBurst ? (burstLoader.item ? burstLoader.item.implicitWidth : 96) : win.launcher ? win.launcherWidth : win.ctxMode ? 520 : (win.notifMorph ? (morphStack.item ? morphStack.item.implicitWidth : 420) : (win.open ? 520 : (win.dash ? win.hoverWidth : (56 + root.privacyCount * 20 + (notifs.grouped.length > 0 ? 14 : 0)))))
+            width: win.showBurst ? (burstLoader.item ? burstLoader.item.implicitWidth : 96) : win.launcher ? win.launcherWidth : win.ctxMode ? 520 : (win.notifMorph ? (morphStack.item ? morphStack.item.implicitWidth : 420) : (win.open ? (win.menu === 6 ? win.calWidth : 520) : (win.dash ? win.hoverWidth : (56 + root.privacyCount * 20 + (notifs.grouped.length > 0 ? 14 : 0)))))
             // in ctx mode the pill sizes to whichever menu loader is active (app
             // context menu or tray menu).
             height: win.showBurst ? 28 : (win.open || win.launcher) ? win.openPaneHeight : win.ctxMode ? Math.min(win.openHeight, ((ctxLoader.item || trayLoader.item) ? (ctxLoader.item || trayLoader.item).implicitHeight + theme.pad * 2 : 300)) : (win.notifMorph ? morphStack.implicitHeight : (win.dash ? win.hoverHeight : 28))
@@ -6583,8 +7464,10 @@ Variants {
             Rectangle {
                 id: hoverInd
 
-                // the roving square only appears over app tiles / tray / status
-                // icons; the launcher is its own accent-soft button (no default rest).
+                // the roving square appears over app tiles / tray / status icons,
+                // the date/time block and the launcher icon. Most report a plain
+                // faded-gray square; the launcher asks for the accent-soft launcher
+                // colour via `hoverColor`, so the same square recolours as it lands.
                 readonly property var target: win.hoverItem
                 readonly property point pos: {
                     const _dep = [win.dash, win.open, win.launcher, pill.width, pill.height];
@@ -6596,7 +7479,10 @@ Variants {
                 readonly property int pad: (target && target.hoverPad) ? target.hoverPad : 0
 
                 radius: theme.radiusSmall
-                color: theme.bgHover
+                // per-target tint: the launcher exposes `hoverColor` (accent-soft);
+                // everything else falls back to the shared faded-gray hover.
+                color: (target && target.hoverColor) ? target.hoverColor : theme.bgHover
+                Behavior on color { ColorAnimation { duration: theme.animFast } }
                 opacity: (win.dash && !win.open && !win.launcher && !win.notifMorph && !win.ctxMode && target) ? 1 : 0
                 visible: opacity > 0
                 x: pos.x - pad
@@ -6667,30 +7553,52 @@ Variants {
                     anchors.topMargin: -10
                     spacing: 9
 
-                    // time over date (unchanged style)
-                    Column {
-                        spacing: 1
+                    // time over date — clicking it opens the calendar pane, and the
+                    // shared hover square jumps here (a plain faded-gray square, so
+                    // no `hoverColor`). Wrapped in an Item so the MouseArea overlays
+                    // the text instead of taking a slot in the Column.
+                    Item {
+                        id: dateTimeBlock
 
-                        // big time, prominent — set in the serif display face
-                        Text {
-                            text: root.clockShort
-                            color: theme.text
-                            font.family: theme.serif
-                            font.pixelSize: 34
-                            lineHeight: 0.9
+                        // grow the roving square a touch past the tight text box
+                        readonly property int hoverPad: 6
+                        implicitWidth: dtCol.implicitWidth
+                        implicitHeight: dtCol.implicitHeight
+                        width: implicitWidth
+                        height: implicitHeight
+
+                        Column {
+                            id: dtCol
+                            spacing: 1
+
+                            // big time, prominent — set in the serif display face
+                            Text {
+                                text: root.clockShort
+                                color: theme.text
+                                font.family: theme.serif
+                                font.pixelSize: 34
+                                lineHeight: 0.9
+                            }
+
+                            // date, dim underneath — uppercase mono label
+                            Text {
+                                text: root.clockDate
+                                color: theme.textDim
+                                font.family: theme.mono
+                                font.pixelSize: theme.fsSmall
+                                font.letterSpacing: theme.labelSpacing
+                                font.capitalization: Font.AllUppercase
+                                lineHeight: 0.95
+                            }
                         }
 
-                        // date, dim underneath — uppercase mono label
-                        Text {
-                            text: root.clockDate
-                            color: theme.textDim
-                            font.family: theme.mono
-                            font.pixelSize: theme.fsSmall
-                            font.letterSpacing: theme.labelSpacing
-                            font.capitalization: Font.AllUppercase
-                            lineHeight: 0.95
+                        MouseArea {
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onContainsMouseChanged: if (containsMouse) win.hoverEnter(dateTimeBlock)
+                            onClicked: win.openCalendar()
                         }
-
                     }
 
                     // hollow dots (click to switch) + one filled dot that slides
@@ -6766,19 +7674,23 @@ Variants {
                 opacity: (win.dash && !win.open && !win.launcher && !win.notifMorph && !win.ctxMode) ? 1 : 0
                 visible: opacity > 0
 
-                // open the app launcher — an accent grid glyph that only picks up
-                // the accent-soft background on hover (transparent at rest, so it
-                // doesn't read as permanently highlighted). It has its own hover
-                // feedback and so doesn't share the roving hover square.
+                // open the app launcher — an accent grid glyph. It now shares the
+                // roving hover square like the other dashboard items, but exposes
+                // `hoverColor` so the square recolours to the accent-soft launcher
+                // tint (instead of the faded gray) as it lands here. Transparent at
+                // rest, so it doesn't read as permanently highlighted.
                 Rectangle {
                     id: launcherIcon
+
+                    // the roving square asks for this tint when it sits behind us
+                    readonly property color hoverColor: theme.accentSoft
 
                     anchors.left: parent.left
                     anchors.verticalCenter: parent.verticalCenter
                     width: 42
                     height: 42
                     radius: 12
-                    color: launchMa.containsMouse ? theme.accentSoft : "transparent"
+                    color: "transparent"
 
                     MSym {
                         anchors.centerIn: parent
@@ -6795,17 +7707,11 @@ Variants {
                         anchors.fill: parent
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
+                        onContainsMouseChanged: if (launchMa.containsMouse) win.hoverEnter(launcherIcon)
                         onClicked: {
                             win.open = false;
                             win.launcher = true;
                         }
-                    }
-
-                    Behavior on color {
-                        ColorAnimation {
-                            duration: theme.animFast
-                        }
-
                     }
 
                 }
@@ -6917,7 +7823,7 @@ Variants {
 
                     anchors.fill: parent
                     active: win.open
-                    sourceComponent: win.menu === 0 ? cNet : win.menu === 1 ? cVol : win.menu === 2 ? cBt : win.menu === 3 ? cBatt : win.menu === 5 ? cClip : cNotif
+                    sourceComponent: win.menu === 0 ? cNet : win.menu === 1 ? cVol : win.menu === 2 ? cBt : win.menu === 3 ? cBatt : win.menu === 5 ? cClip : win.menu === 6 ? cCal : cNotif
                 }
                 // chevron back -> collapse panel
 
@@ -7854,6 +8760,7 @@ Component { id: cVol;  VolumeMenu    { theme: theme } }
 Component { id: cBt;   BluetoothMenu { theme: theme } }
 Component { id: cBatt; BatteryMenu   { theme: theme; brightness: brightness } }
 Component { id: cClip; ClipboardMenu { theme: theme; clip: clipboard } }
+Component { id: cCal;  CalendarMenu  { theme: theme; org: orgAgenda } }
 Component { id: cNotif; NotificationHistory { theme: theme; notifs: notifs } }
 // the active-notification deck, reused for the pill morph and the floating stack
 Component { id: cStack; NotificationStack { theme: theme; notifs: notifs } }
