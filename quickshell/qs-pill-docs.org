@@ -338,7 +338,9 @@ Shared header for every control-panel menu: a back chevron *and title* (both
 clickable) plus a trailing slot for the menu's own toggles. The chevron emits
 =closeRequested()=, which =init.qml='s =Connections= on the menu loader turns into
 =win.open = false=. Children declared inside a =MenuHeader= land in its
-right-aligned trailing row.
+right-aligned trailing row. With =navArrows: true= a =← →= stepper sits right
+after the title (emitting =prev()= / =next()=) — used by the calendar to page
+between months.
 *** Code
 #+begin_src qml :tangle ~/.config/quickshell/pill/MenuHeader.qml :mkdirp yes
 pragma ComponentBehavior: Bound
@@ -354,7 +356,10 @@ Item {
     required property var theme
     property string title: ""
     default property alias trailing: trailingRow.data
+    property bool navArrows: false          // show ← → stepper right after the title
     signal back()
+    signal prev()
+    signal next()
 
     width: parent ? parent.width : 0
     implicitHeight: 26
@@ -391,6 +396,56 @@ Item {
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
             onClicked: root.back()
+        }
+    }
+
+    Row {                                   // optional ← → stepper, right after the title
+        id: navRow
+        visible: root.navArrows
+        anchors.left: backArea.right
+        anchors.leftMargin: 8
+        anchors.verticalCenter: parent.verticalCenter
+        spacing: 2
+
+        Rectangle {
+            width: 22
+            height: 22
+            radius: root.theme.radiusBtn
+            color: prevMa.containsMouse ? root.theme.row : "transparent"
+            MSym {
+                anchors.centerIn: parent
+                icon: "arrow_back"
+                size: 18
+                color: prevMa.containsMouse ? root.theme.text : root.theme.faint
+            }
+            MouseArea {
+                id: prevMa
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.prev()
+            }
+            Behavior on color { ColorAnimation { duration: root.theme.animFast } }
+        }
+        Rectangle {
+            width: 22
+            height: 22
+            radius: root.theme.radiusBtn
+            color: nextMa.containsMouse ? root.theme.row : "transparent"
+            MSym {
+                anchors.centerIn: parent
+                icon: "arrow_forward"
+                size: 18
+                color: nextMa.containsMouse ? root.theme.text : root.theme.faint
+            }
+            MouseArea {
+                id: nextMa
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.next()
+            }
+            Behavior on color { ColorAnimation { duration: root.theme.animFast } }
         }
     }
 
@@ -1658,8 +1713,10 @@ The calendar pane (=win.menu === 6=), opened by clicking the dashboard date/time
 (not from the status row). A basic 7-row month grid — weekday-name column headers,
 ISO week numbers down the left rail, and the trailing/leading days of the
 adjacent months filling the first and last rows — with the month name as the
-=MenuHeader= title and a *Today* button in the header's trailing slot next to a
-*Gregorian ⇄ Shamsi* toggle. Gregorian is primary (the big figure); the Jalaali
+=MenuHeader= title, a =← →= stepper right after it to page months, and a *Today*
+button in the header's trailing slot next to a *Gregorian ⇄ Shamsi* toggle.
+Clicking a leading/trailing day (one from an adjacent month) pages to that month
+and selects it. Gregorian is primary (the big figure); the Jalaali
 (Shamsi) day sits under it as dim subtext, matching Plasma's calendar. Flipping the
 toggle swaps which calendar drives the grid (month, weekday order — Sunday-start for
 Gregorian, Saturday-start for Shamsi — and the figures), the other becoming the
@@ -1871,6 +1928,16 @@ Item {
         root.selKey = key;
         if (root.org) root.org.loadDay(key);
     }
+    // select a grid cell; if it's a leading/trailing day of an adjacent month,
+    // page to that month (with the slide animation) so the selection stays framed
+    function pickCell(c) {
+        root.select(c.key);
+        if (c.inMonth) return;
+        var delta = root.primary === "shamsi"
+            ? ((c.jy * 12 + c.jm) < (root.jY * 12 + root.jM) ? -1 : 1)
+            : ((c.gy * 12 + c.gm) < (root.gY * 12 + root.gM) ? -1 : 1);
+        root.shiftMonth(delta);
+    }
     function shiftMonth(delta) {
         if (root.primary === "shamsi") {
             var m = root.jM + delta, y = root.jY;
@@ -1926,7 +1993,10 @@ Item {
         id: header
         theme: root.theme
         title: root.title
+        navArrows: true
         onBack: root.closeRequested()
+        onPrev: root.shiftMonth(-1)
+        onNext: root.shiftMonth(1)
 
         // Gregorian ⇄ Shamsi toggle
         Rectangle {
@@ -2152,7 +2222,7 @@ Item {
                         cursorShape: Qt.PointingHandCursor
                         onEntered: root.hoverIdx = cell.index
                         onExited: if (root.hoverIdx === cell.index) root.hoverIdx = -1
-                        onClicked: root.select(cell.modelData.key)
+                        onClicked: root.pickCell(cell.modelData)
                     }
                 }
             }
