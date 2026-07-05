@@ -209,7 +209,9 @@
        ;;(rss +org)        ; emacs as an RSS reader
 
        :config
-       literate
+       ;;literate          ; disabled: config.org is tangled manually, not via a
+                           ; ~/.config/doom/config.org symlink. Leaving this on
+                           ; makes `doom sync` complain there's nothing to tangle.
        (default +bindings +smartparens))
 #+end_src
 
@@ -1068,14 +1070,6 @@ z1..z9 keys, LEVEL is read from the triggering digit."
 ;;; org-basic.el --- sane Org defaults for Doom
 (setq org-directory "~/org/")
 
-;; Files scanned by org-agenda.
-;; Only put actionable/date-based files here.
-(setq org-agenda-files
-      '("~/org/inbox.org"
-        "~/org/tasks.org"
-        "~/org/projects.org"
-        "~/org/calendar.org"))
-
 ;; Basic TODO workflow.
 ;; TODO      = not started
 ;; NEXT      = next concrete action
@@ -1104,16 +1098,6 @@ z1..z9 keys, LEVEL is read from the triggering digit."
 
 ;; Use fast todo selection.
 (setq org-use-fast-todo-selection t)
-
-;; Hide completed scheduled/deadline tasks from agenda after done.
-(setq org-agenda-skip-scheduled-if-done t)
-(setq org-agenda-skip-deadline-if-done t)
-
-;; Show agenda starting today.
-;; (setq org-agenda-start-on-weekday nil)
-
-;; Show 14 days by default.
-(setq org-agenda-span 14)
 
 ;; Warn about deadlines 7 days in advance.
 (setq org-deadline-warning-days 7)
@@ -1174,53 +1158,7 @@ z1..z9 keys, LEVEL is read from the triggering digit."
         ("n" "Note" entry
          (file "~/org/notes.org")
          "* %?\nCREATED: %U\n")))
-
-;; Custom agenda views.
-(setq org-agenda-custom-commands
-      '(("d" "Dashboard"
-         ((agenda "" ((org-agenda-span 14)))
-          (todo "NEXT"
-                ((org-agenda-overriding-header "Next actions")))
-          (todo "WAIT"
-                ((org-agenda-overriding-header "Waiting")))
-          (todo "TODO"
-                ((org-agenda-overriding-header "Unprocessed todos")))))
-
-        ("i" "Inbox"
-         ((tags "REFILE|TODO"
-                ((org-agenda-files '("~/org/inbox.org"))
-                 (org-agenda-overriding-header "Inbox")))))
-
-        ("p" "Projects"
-         ((tags "project"
-                ((org-agenda-overriding-header "Projects")))))))
 #+end_src
-***** Auto-Tangle On Save
-When this exact file is saved, Emacs immediately regenerates =config.el=. That keeps the literate source and the generated file synchronized without manual copying.
-
-#+begin_src emacs-lisp
-(after! org
-  (defun mp/doom-config-org-file-p (&optional file)
-    "Return non-nil when FILE is the Doom literate config."
-    (let ((file (or file buffer-file-name)))
-      (and file
-           (file-equal-p (file-truename file)
-                         (file-truename (expand-file-name "config.org" doom-user-dir))))))
-
-  (defun mp/org-babel-tangle-doom-config-h ()
-    "Tangle the Doom literate config after saving `config.org'."
-    (when (mp/doom-config-org-file-p)
-      (let ((org-confirm-babel-evaluate nil))
-        (org-babel-tangle))))
-
-  (defun mp/enable-doom-config-auto-tangle-h ()
-    "Enable local auto-tangling for the Doom literate config buffer."
-    (when (mp/doom-config-org-file-p)
-      (add-hook 'after-save-hook #'mp/org-babel-tangle-doom-config-h nil t)))
-
-  (add-hook 'org-mode-hook #'mp/enable-doom-config-auto-tangle-h))
-#+end_src
-
 ***** Org mode specifics
 #+begin_src  emacs-lisp
 (add-hook 'org-mode-hook 'visual-line-mode)
@@ -1274,7 +1212,6 @@ When this exact file is saved, Emacs immediately regenerates =config.el=. That k
         org-insert-heading-respect-content t
         org-hide-emphasis-markers t
         org-pretty-entities t
-        org-agenda-tags-column 0
         org-ellipsis "…"))
 
 (after! org-modern
