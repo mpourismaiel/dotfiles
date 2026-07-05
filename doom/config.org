@@ -95,7 +95,8 @@
        eshell            ; the elisp shell that works everywhere
        ;;shell             ; simple shell REPL for Emacs
        ;;term              ; basic terminal emulator for Emacs
-       vterm             ; the best terminal emulation in Emacs
+       ;; Terminal is provided by the `ghostel' package (see packages.el),
+       ;; not the built-in :term vterm module.
 
        :checkers
        syntax              ; tasing you for every semicolon you forget
@@ -643,12 +644,13 @@ Use Doom Dashboard as buffer for the new split.
 Also focus the new split immediately.
 #+begin_src emacs-lisp
 (defun mp/split-target-buffer ()
-  "Populate a newly-created split."
-  (if (derived-mode-p 'vterm-mode)
-      ;; If we're currently in vterm, create a fresh vterm.
-      (mp/vterm-new)
-
-    ;; Otherwise show the Doom dashboard.
+  "Populate a newly-created split.
+Splitting from a Ghostel terminal opens a fresh terminal in the new
+split; otherwise show the Doom dashboard."
+  (if (derived-mode-p 'ghostel-mode)
+      ;; Point is still on the terminal we split from, so `mp/ghostel-open'
+      ;; spawns a fresh Ghostel (project-scoped when in a project).
+      (mp/ghostel-open)
     (cond
      ;; Reuse existing dashboard buffer.
      ((get-buffer "*doom*")
@@ -1610,16 +1612,16 @@ heading (e.g. press ~b SPC~ to narrow to buffers).
   special ~*buffers*~. Workspace-scoped when inside a Projectile project,
   global otherwise.
 - ~[A]gent Shell~ :: agent-shell / Codex agent buffers.
-- ~[V]Term~ :: vterm terminal buffers.
+- ~Ghos[t]el~ :: Ghostel terminal buffers (narrow key ~t~).
 
 *When the active buffer visits a file:*
 - ~[D]irectory~ :: the files and sub-directories of that file's directory.
   Selecting a directory (or the ~../~ entry) browses into it and re-opens the
   menu rooted there, so the tree is navigable up and down; selecting a file
   opens it. File names are colour-coded by git status.
-- ~[X] Actions~ :: rename the current file, delete it, or open a terminal in the
-  directory currently being browsed. The path each action affects is shown on
-  the right.
+- ~[X] Actions~ :: rename the current file, delete it, or open a Ghostel
+  terminal in the directory currently being browsed. The path each action
+  affects is shown on the right.
 
 *When in a projectile project:*
 - ~[F]ile~ :: every file in the project (listed via ~fd~), colour-coded by git
@@ -1651,10 +1653,14 @@ unmerged is red. A dim status letter follows the name — ~U~ created/untracked,
   "Return non-nil if BUF belongs to current Doom workspace."
   (memq buf (mp/workspace-buffers)))
 
-(defun mp/vterm-buffer-p (buf)
-  "Return non-nil if BUF is a vterm buffer."
+(defun mp/ghostel-buffer-p (buf)
+  "Return non-nil if BUF is a Ghostel terminal buffer.
+Ghostel renames buffers to their OSC 2 title (see
+`ghostel-buffer-name-function'), which usually drops the leading
+`*', so a mode check is needed to keep terminals out of the plain
+buffer list."
   (with-current-buffer buf
-    (derived-mode-p 'vterm-mode)))
+    (derived-mode-p 'ghostel-mode)))
 
 (defun mp/agent-shell-buffer-p (buf)
   "Return non-nil if BUF is an agent-shell/Codex agent buffer."
@@ -1674,7 +1680,7 @@ unmerged is red. A dim status letter follows the name — ~U~ created/untracked,
   (and (buffer-live-p buf)
        (not (mp/special-buffer-p buf))
        (not (mp/agent-shell-buffer-p buf))
-       (not (mp/vterm-buffer-p buf))))
+       (not (mp/ghostel-buffer-p buf))))
 
 (defun mp/history-index (item history)
   "Return ITEM position in HISTORY, or a large number."
@@ -1753,9 +1759,9 @@ unmerged is red. A dim status letter follows the name — ~U~ created/untracked,
                        (mp/agent-shell-buffer-p buf))))
                buffer-name-history))))
 
-(defvar mp/consult-source-vterm-buffer
-  `(:name "[V]Term"
-    :narrow (?v . "VTerm")
+(defvar mp/consult-source-ghostel-buffer
+  `(:name "Ghos[t]el"
+    :narrow (?t . "Ghostel")
     :category buffer
     :face consult-buffer
     :history buffer-name-history
@@ -1771,7 +1777,7 @@ unmerged is red. A dim status letter follows the name — ~U~ created/untracked,
                   (and (if (mp/project-workspace-p)
                            (mp/current-workspace-buffer-p buf)
                          t)
-                       (mp/vterm-buffer-p buf))))
+                       (mp/ghostel-buffer-p buf))))
                buffer-name-history))))
 
 (defun mp/live-project-files (root)
@@ -2001,7 +2007,8 @@ filesystem root."
     ('delete   (mp/super-menu--with-origin-buffer #'doom/delete-this-file))
     ('terminal (let ((default-directory (or (mp/super-menu-directory)
                                             default-directory)))
-                 (+vterm/here t)))))
+                 ;; Fresh Ghostel rooted in the browsed directory.
+                 (ghostel '(4))))))
 
 (defun mp/super-menu-action-annotation (action)
   "Marginalia annotation: the path super-menu ACTION will affect, right-aligned."
@@ -2056,7 +2063,7 @@ sources have something to anchor to."
         '(mp/consult-source-workspace-buffer
           mp/consult-source-all-buffer
           mp/consult-source-agent-shell-buffer
-          mp/consult-source-vterm-buffer
+          mp/consult-source-ghostel-buffer
           mp/consult-source-current-dir-file
           mp/consult-source-current-dir-action
           mp/consult-source-live-project-file
@@ -2847,6 +2854,45 @@ files; this block just makes the association explicit so it survives any future
    (renpy-mode . outline-minor-mode)))
 #+end_src
 
+*** Terminal (Ghostel)
+[[https://github.com/dakra/ghostel][Ghostel]] is the terminal emulator, replacing the built-in =vterm= module. It is
+a libvterm-style, in-buffer terminal (not a popup) backed by libghostty-vt, with
+shell integration, true colour and the Kitty keyboard/graphics protocols. The
+native module is a prebuilt binary that auto-downloads on first use (run =M-x
+ghostel-download-module= if it doesn't), so no toolchain is required.
+
+- =C-`= opens a terminal for the current window (see *Custom Shortcuts* →
+  ~mp/ghostel-open~): it reuses the project's terminal when one exists, and
+  spawns a fresh one when a terminal is already focused.
+- Evil users get [[https://github.com/dakra/ghostel][evil-ghostel]], which starts terminals in insert state and keeps
+  motions/operators working against the shell's line editor.
+#+begin_src emacs-lisp
+(use-package! ghostel
+  :defer t
+  ;; Mark terminals as "real" buffers (as Doom does for term/eshell/etc.) so
+  ;; `doom-switch-buffer-hook' registers them into the current workspace's
+  ;; perspective. Without this, Ghostel buffers stay "unreal", never join the
+  ;; workspace, and the workspace-scoped `Ghos[t]el' super-menu source is empty.
+  :hook (ghostel-mode . doom-mark-buffer-as-real-h)
+  :config
+  ;; Scope project terminals by both buffer identity and `default-directory' so
+  ;; `ghostel-project' reliably finds an existing terminal for the project.
+  ;; (This is already the default; set explicitly for documentation.)
+  (setq ghostel-project-buffer-scope 'both)
+
+  ;; Let `C-`' reach Emacs (our `mp/ghostel-open') from *inside* a Ghostel
+  ;; buffer instead of being forwarded to the shell, so "spawn a new terminal
+  ;; when one is already focused" works. The semi-char keymap is rebuilt from
+  ;; this list by the defcustom setter, hence `customize-set-variable'.
+  (unless (member "C-`" ghostel-keymap-exceptions)
+    (customize-set-variable 'ghostel-keymap-exceptions
+                            (cons "C-`" ghostel-keymap-exceptions))))
+
+(use-package! evil-ghostel
+  :after (ghostel evil)
+  :hook (ghostel-mode . evil-ghostel-mode))
+#+end_src
+
 *** Keybindings
 This section documents the custom bindings defined in this configuration.
 **** General Shortcuts
@@ -2927,23 +2973,26 @@ prefix), then jumps in and focuses the new split.
               (expand-file-name (doom-project-root dir)))))
          dir))))
 
-(defun mp/vterm-toggle ()
-  "Toggle the vterm popup from the current project root."
-  (interactive)
-  (let ((default-directory (mp/project-root-default-directory)))
-    (+vterm/toggle nil)))
+(defun mp/ghostel-open ()
+  "Open a Ghostel terminal in the current window (never a popup).
 
-(defun mp/vterm-new ()
-  "Open a fresh vterm buffer in the current window at project root."
+Dispatch, using Ghostel's own project scoping:
+- If the current buffer is already a Ghostel, always spawn a fresh one
+  (project-scoped when inside a project, so its name stays grouped).
+- Otherwise, in a project, reuse the project's Ghostel if one is already
+  open, else create a new project-scoped Ghostel — this is exactly what
+  `ghostel-project' does.
+- Outside any project, open (or reuse) the default Ghostel.
+
+The `\\='(4)' prefix is Ghostel's \"force a brand-new buffer\" argument."
   (interactive)
-  (require 'vterm)
-  (let* ((default-directory (mp/project-root-default-directory))
-         (buffer-name (format "*vterm:%s*" (format-time-string "%Y%m%d-%H%M%S")))
-         (buffer (generate-new-buffer buffer-name))
-         (display-buffer-alist nil))
-    (with-current-buffer buffer
-      (vterm-mode))
-    (switch-to-buffer buffer)))
+  (cond
+   ((derived-mode-p 'ghostel-mode)
+    (if (project-current nil)
+        (ghostel-project '(4))
+      (ghostel '(4))))
+   ((project-current nil) (ghostel-project))
+   (t (ghostel))))
 
 (defun mp/line-move-bounds ()
   "Return the line-aligned bounds for the current line or active region."
@@ -2999,8 +3048,7 @@ prefix), then jumps in and focuses the new split.
 ;; Global GUI-style bindings.
 ;; Keeps a terminal toggle, line commenting, and line movement available
 ;; through familiar keys.
-(map! :g "C-`" #'mp/vterm-toggle
-      :g "C-\\" #'mp/vterm-new
+(map! :g "C-`" #'mp/ghostel-open
       :g "C-/" #'comment-line
       :g "M-<up>" #'mp/move-lines-up
       :g "M-<down>" #'mp/move-lines-down)
@@ -3021,7 +3069,6 @@ prefix), then jumps in and focuses the new split.
                            evil-visual-state-map))
     (define-key state-map (kbd "C-S-c") #'mp/clipboard-copy)
     (define-key state-map (kbd "C-S-v") #'clipboard-yank)
-    (define-key state-map (kbd "C-\\") #'mp/vterm-new)
     (define-key state-map (kbd "C-/") #'comment-line)
     (define-key state-map (kbd "M-d") #'er/expand-region)
     (define-key state-map (kbd "M-D") #'er/contract-region)
@@ -3115,6 +3162,11 @@ Some Doom prefix maps are still present but may show up as generic =+prefix= ent
 #+end_src
 *** Should be plugins (My own code (with llm help))
 **** Project Scripts runner
+Pick a shell script from =__ignore__/scripts/= in the current project and run it
+in a Ghostel terminal via =SPC p S=. Each project+script pair reuses its own
+named terminal (=*project:NAME*=), so re-running a script sends the command to
+the same buffer; scripts that have been launched this session are prefixed with
+a ~✓~ in the picker.
 #+begin_src emacs-lisp
 (defvar my/project-running-scripts (make-hash-table :test 'equal))
 
@@ -3135,7 +3187,7 @@ Some Doom prefix maps are still present but may show up as generic =+prefix= ent
       name)))
 
 (defun my/run-project-script ()
-  "Pick a project script and run it in a vterm buffer."
+  "Pick a project script and run it in a Ghostel terminal."
   (interactive)
   (let* ((project (projectile-project-root))
          (files (my/project-script-files)))
@@ -3154,10 +3206,12 @@ Some Doom prefix maps are still present but may show up as generic =+prefix= ent
 
       (puthash key t my/project-running-scripts)
 
-      (let ((default-directory project))
-        (vterm buf-name)
-        (vterm-send-string (shell-quote-argument file))
-        (vterm-send-return)
+      ;; Open (or reuse, by buffer identity) a Ghostel named after the script
+      ;; rooted at the project, then send the script path to its shell.
+      (let ((default-directory project)
+            (ghostel-buffer-name buf-name))
+        (ghostel)
+        (ghostel-send-string (concat (shell-quote-argument file) "\n"))
         (delete-other-windows)))))
 
 (map! :leader
@@ -3272,6 +3326,21 @@ non-zero, or produces empty output."
 (package! prescient)
 (package! corfu-prescient)
 (package! vertico-prescient)
+#+end_src
+
+*** Terminal
+[[https://github.com/dakra/ghostel][Ghostel]] replaces the built-in =vterm= module as the terminal emulator, plus its
+=evil-ghostel= extension for Evil integration. Both live in the same repository
+and are published on MELPA; the recipes mirror the upstream MELPA recipes so the
+shell-integration/terminfo assets under =etc/= are bundled.
+#+begin_src emacs-lisp
+(package! ghostel
+  :recipe (:host github :repo "dakra/ghostel"
+           :files (:defaults "etc" "src" "vendor"
+                   "build.zig" "build.zig.zon" "symbols.map")))
+(package! evil-ghostel
+  :recipe (:host github :repo "dakra/ghostel"
+           :files ("extensions/evil-ghostel/evil-ghostel.el")))
 #+end_src
 
 *** AI
