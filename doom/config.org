@@ -1068,7 +1068,20 @@ z1..z9 keys, LEVEL is read from the triggering digit."
 ***** Org defaults
 #+begin_src emacs-lisp
 ;;; org-basic.el --- sane Org defaults for Doom
+
+;; org-directory must be set BEFORE Org loads (Doom derives agenda/roam
+;; paths from it), so it stays OUTSIDE the `after!' block below.
 (setq org-directory "~/org/")
+
+;; IMPORTANT: everything else here must live inside `(after! org ...)'.
+;; Doom's own org module sets org-capture-templates / org-todo-keywords /
+;; org-agenda-files when Org loads — which happens AFTER this config file.
+;; A bare top-level `setq' runs too early and Doom then overwrites it: that
+;; is why capture kept using Doom's default "* [ ] %?...%a" template (the
+;; checkbox + the link to whatever buffer was open) instead of ours, and
+;; why the TODO keywords/agenda files didn't stick. `after!' defers our
+;; settings until Org has loaded, so ours win.
+(after! org
 
 ;; Which files the agenda scans. Point at the whole org directory: org
 ;; re-expands a directory entry to every .org file in it each time the
@@ -1162,7 +1175,7 @@ z1..z9 keys, LEVEL is read from the triggering digit."
 
         ("n" "Note" entry
          (file "~/org/notes.org")
-         "* %?\nCREATED: %U\n")))
+         "* %?\nCREATED: %U\n"))))
 #+end_src
 ***** Org mode specifics
 #+begin_src  emacs-lisp

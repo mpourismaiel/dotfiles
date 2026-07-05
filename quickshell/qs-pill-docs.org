@@ -113,6 +113,7 @@ QtObject {
     readonly property color accentDim:   "#3a271c"   // selected / active background tint (= rowHi)
     readonly property color danger:      "#d95435"   // vermillion-light (destructive)
     readonly property color good:        "#3ecf8e"   // green (privacy/live cue)
+    readonly property color success:     "#a8d5a4"   // pastel green (all-done calendar dot / completed cue)
     readonly property color track:       Qt.rgba(0xec / 255.0, 0xe4 / 255.0, 0xd6 / 255.0, 0.14)  // toggle / slider track
 
     // resting (collapsed, un-hovered) pill: translucent + dimmed (see init.qml).
@@ -2213,7 +2214,11 @@ Item {
                         width: 4
                         height: 4
                         radius: 2
-                        color: cell.modelData.inMonth ? root.theme.accent : root.theme.faint
+                        // pastel-green when every dated todo that day is done,
+                        // else the accent dot; adjacent-month days stay faint.
+                        color: !cell.modelData.inMonth ? root.theme.faint
+                             : (root.org && root.org.allDone(cell.modelData.key)) ? root.theme.success
+                             : root.theme.accent
                     }
 
                     MouseArea {
@@ -2346,6 +2351,11 @@ Item {
                             var g = grp(a) - grp(b);
                             if (g !== 0)
                                 return g;
+                            // active before done within a group (a done dated
+                            // item sinks below its still-open siblings)
+                            var d = (a.done ? 1 : 0) - (b.done ? 1 : 0);
+                            if (d !== 0)
+                                return d;
                             return pri(b.priority) - pri(a.priority);
                         });
                         return items;
@@ -2531,7 +2541,8 @@ QtObject {
     id: root
     property string dayKey: ""            // day currently loaded ("YYYY-MM-DD")
     property var dayItems: []             // [{ text, todo, type, priority, done, dated, file, pos }] for dayKey
-    property var rangeDays: []            // ["YYYY-MM-DD", …] within the loaded range that have entries
+    property var rangeDays: []            // [{ date, done }, …] within the loaded range that have dated entries
+    property var rangeMap: ({})           // date -> allDone (every dated entry that day is done)
 
     function loadDay(key) {
         root.dayKey = key;
@@ -2553,7 +2564,9 @@ QtObject {
         toggleProc.command = ["python", Quickshell.shellPath("orgbridge.py"), "toggle", file, "" + pos];
         toggleProc.running = true;
     }
-    function hasItems(key) { return root.rangeDays.indexOf(key) !== -1; }
+    function hasItems(key) { return root.rangeMap.hasOwnProperty(key); }
+    // true only when the day has dated entries and they are all done
+    function allDone(key) { return root.rangeMap[key] === true; }
 
     property Process dayProc: Process {
         stdout: StdioCollector {
@@ -2566,8 +2579,14 @@ QtObject {
     property Process rangeProc: Process {
         stdout: StdioCollector {
             onStreamFinished: {
-                try { root.rangeDays = JSON.parse(this.text) || []; }
-                catch (e) { root.rangeDays = []; }
+                var arr = [];
+                try { arr = JSON.parse(this.text) || []; }
+                catch (e) { arr = []; }
+                var m = {};
+                for (var i = 0; i < arr.length; i++)
+                    m[arr[i].date] = (arr[i].done === true);
+                root.rangeMap = m;
+                root.rangeDays = arr;
             }
         }
     }
@@ -5368,7 +5387,20 @@ HELPERS = r"""
     (let ((p (mapcar #'string-to-number (split-string s "-"))))
       (list (nth 1 p) (nth 2 p) (nth 0 p))))
   (defun pill--day-entries (greg)              ; greg = (month day year)
-    (let (items)
+    ;; Bind org-deadline-warning-days to 0 so a DEADLINE lands ONLY on its due
+    ;; date in the calendar grid. With the normal warning window (default 14)
+    ;; org-agenda-get-day-entries returns a future deadline on every day inside
+    ;; the window too — as an "In N d.:" reminder — which, once the pill strips
+    ;; the agenda prefix, looks like the same todo duplicated on today AND its
+    ;; due date. Past-days defaults are left untouched, so genuinely overdue
+    ;; deadlines/scheduled items still carry forward onto today.
+    ;; skip-*-if-done bound nil so DONE dated items are still returned — the
+    ;; pill wants them (struck through) on their own date, not hidden.
+    (let ((org-deadline-warning-days 0)
+          (org-agenda-skip-deadline-if-done nil)
+          (org-agenda-skip-scheduled-if-done nil)
+          (org-agenda-skip-timestamp-if-done nil)
+          items)
       (dolist (f (org-agenda-files))
         (dolist (e (ignore-errors
                      (org-agenda-get-day-entries
@@ -5408,13 +5440,21 @@ HELPERS = r"""
               (cons "file" "") (cons "pos" 0)
               (cons "type" (format "%s" (or (get-text-property 0 'type e) "")))
               (cons "dated" t)))))
-  ;; One scan of all agenda headings, yielding two kinds of item the dated
-  ;; agenda query doesn't cover (done handling is independent of the user's
-  ;; org-agenda-skip-*-if-done settings, which otherwise hide finished tasks):
+  ;; DONE-ness of one agenda-day entry `e' (marker -> todo state).
+  (defun pill--entry-done-p (e)
+    (let ((m (or (get-text-property 0 'org-hd-marker e)
+                 (get-text-property 0 'org-marker e))))
+      (and m (org-with-point-at m
+               (let ((s (org-get-todo-state)))
+                 (and s (member s org-done-keywords) t))))))
+  ;; One scan of all agenda headings for the UNDATED items the dated agenda
+  ;; query doesn't cover (dated items — active or done — come from
+  ;; pill--day-entries and show on their own date, so they are excluded here to
+  ;; avoid duplicates):
   ;;   • active undated TODOs (no SCHEDULED/DEADLINE) — the persistent to-do
   ;;     list, shown on every day;
-  ;;   • any DONE heading — shown on its CLOSED day (log-mode style), so it
-  ;;     appears once, on the day it was finished, and the pill sorts it last.
+  ;;   • undated DONE headings — shown on their CLOSED day (log-mode style), so
+  ;;     a finished note-to-self still surfaces once, on the day it was closed.
   (defun pill--extra-items (datestr)
     (delq nil
           (ignore-errors
@@ -5422,14 +5462,15 @@ HELPERS = r"""
              (lambda ()
                (let* ((todo (org-get-todo-state))
                       (done (and todo (member todo org-done-keywords)))
+                      (dated (or (org-entry-get nil "SCHEDULED")
+                                 (org-entry-get nil "DEADLINE")))
                       (closed (org-entry-get nil "CLOSED")))
                  (cond
-                  ((and todo (not done)
-                        (not (org-entry-get nil "SCHEDULED"))
-                        (not (org-entry-get nil "DEADLINE")))
+                  ((and todo (not done) (not dated))
                    (append (pill--item)
                            (list (cons "type" "") (cons "dated" :json-false))))
-                  ((and done closed (string-match-p (regexp-quote datestr) closed))
+                  ((and done (not dated) closed
+                        (string-match-p (regexp-quote datestr) closed))
                    (append (pill--item)
                            (list (cons "type" "") (cons "dated" :json-false)))))))
              t 'agenda))))
@@ -5437,20 +5478,27 @@ HELPERS = r"""
     (json-encode
      (vconcat
       (append
-       ;; active dated items from the agenda; done ones are dropped here and
-       ;; re-added by pill--extra-items on their CLOSED day (avoids duplicates)
-       (seq-remove (lambda (it) (eq (cdr (assoc "done" it)) t))
-                   (mapcar #'pill--dated-item
-                           (pill--day-entries (pill--parse datestr))))
+       ;; dated items on this day — active AND done. Done ones stay on their own
+       ;; deadline/scheduled date (struck through), not moved elsewhere.
+       (mapcar #'pill--dated-item
+               (pill--day-entries (pill--parse datestr)))
        (pill--extra-items datestr)))))
+  ;; Each date with dated entries lights a dot; `done' is t when EVERY dated
+  ;; entry on that date is finished (all todos for the day complete) — the pill
+  ;; paints those dots in the success colour.
   (defun pill-range (startstr endstr)
     (let* ((sa (calendar-absolute-from-gregorian (pill--parse startstr)))
            (ea (calendar-absolute-from-gregorian (pill--parse endstr)))
            (a sa) (out '()))
       (while (<= a ea)
-        (let ((g (calendar-gregorian-from-absolute a)))
-          (when (pill--day-entries g)          ; dots track dated entries only
-            (push (format "%04d-%02d-%02d" (nth 2 g) (nth 0 g) (nth 1 g)) out)))
+        (let* ((g (calendar-gregorian-from-absolute a))
+               (entries (pill--day-entries g)))   ; dots track dated entries only
+          (when entries
+            (push (list (cons "date" (format "%04d-%02d-%02d"
+                                             (nth 2 g) (nth 0 g) (nth 1 g)))
+                        (cons "done" (if (seq-every-p #'pill--entry-done-p entries)
+                                         t :json-false)))
+                  out)))
         (setq a (1+ a)))
       (json-encode (vconcat (nreverse out)))))
   ;; Toggle the TODO/DONE state of the headline at FILE:POS and save. POS is a
