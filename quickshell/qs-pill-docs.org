@@ -2676,6 +2676,10 @@ Item {
     required property var notifs      // notification state (the DND toggle drives it)
     signal launched()
     signal closeRequested()
+    // right-click on an app row/tile/result: ask the parent to show the app
+    // context menu (AppMenu) at (x, y) — in *this* Launcher's coordinates — so it
+    // can render above the pill and drop out of it without being clipped.
+    signal appMenuRequested(var app, bool fav, real x, real y)
     // shutdown / reboot / logout ask for a full-screen confirmation first; the
     // parent shows it and only runs `cmd` if the user picks "yes".
     signal confirmPower(string action, var cmd)
@@ -2684,7 +2688,6 @@ Item {
     <<launcher-toggles>>
     <<launcher-power>>
     <<launcher-body>>
-    <<launcher-context>>
 }
 #+end_src
 
@@ -2697,12 +2700,12 @@ arithmetic =evalCalc= calculator, and the =wl-copy= / power =Process= helpers.
 #+begin_src qml
 
 // called by the parent when the launcher opens: clear + focus the search
-function open() { search.text = ""; ctx.app = null; currentIndex = 0; search.forceActiveFocus(); }
+function open() { search.text = ""; currentIndex = 0; search.forceActiveFocus(); }
 // called when the launcher closes: drop the search field's active focus so the
 // (kept-instantiated) launcher stops holding the layer surface's keyboard grab,
 // letting the focused window get the keyboard back. The parent sets the window's
 // WlrKeyboardFocus to None in tandem.
-function close() { search.focus = false; ctx.app = null; }
+function close() { search.focus = false; }
 
 // ---- query ----
 readonly property string q: search.text.trim().toLowerCase()
@@ -2773,6 +2776,20 @@ function toggleFav(a) {
     const i = f.indexOf(a.id);
     if (i >= 0) f.splice(i, 1); else f.push(a.id);
     settings.favorites = f;
+}
+
+// resolve a KRunner search result row to one of our DesktopEntries so its
+// right-click gets the same app menu as the resting list/grid. KRunner results
+// aren't DesktopEntry objects; the Applications runner uses the entry's name, so
+// match by display name against `apps`. Non-app results (settings, calculator,
+// locations, …) don't match → no menu.
+function entryForResult(m) {
+    if (!m) return null;
+    const name = m.display;
+    const list = apps || [];
+    for (let i = 0; i < list.length; i++)
+        if (list[i].name === name) return list[i];
+    return null;
 }
 
 // ---- calculator: evaluate a safe arithmetic expression ----
@@ -3215,7 +3232,7 @@ Item {
                     onClicked: (mouse) => {
                         if (mouse.button === Qt.RightButton) {
                             const p = mapToItem(root, mouse.x, mouse.y);
-                            ctx.openFor(appRow.modelData, p.x, p.y);
+                            root.appMenuRequested(appRow.modelData, root.isFav(appRow.modelData), p.x, p.y);
                         } else {
                             appRow.modelData.execute();
                             root.launched();
@@ -3330,7 +3347,17 @@ Item {
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: {
+                    acceptedButtons: Qt.LeftButton | Qt.RightButton
+                    onClicked: (mouse) => {
+                        if (mouse.button === Qt.RightButton) {
+                            // only app results resolve to a DesktopEntry; others get no menu
+                            const e = root.entryForResult(resRow.model);
+                            if (e) {
+                                const p = mapToItem(root, mouse.x, mouse.y);
+                                root.appMenuRequested(e, root.isFav(e), p.x, p.y);
+                            }
+                            return ;
+                        }
                         if (krunner.run(krunner.index(resRow.index, 0)))
                             root.launched();
 
@@ -3415,7 +3442,7 @@ Item {
                     onClicked: (mouse) => {
                         if (mouse.button === Qt.RightButton) {
                             const p = mapToItem(root, mouse.x, mouse.y);
-                            ctx.openFor(tile.modelData, p.x, p.y);
+                            root.appMenuRequested(tile.modelData, root.isFav(tile.modelData), p.x, p.y);
                         } else {
                             tile.modelData.execute();
                             root.launched();
@@ -3544,95 +3571,170 @@ Item {
 }
 #+end_src
 
-**** Launcher.qml — app right-click menu
-The per-app right-click menu (=DesktopEntry.actions= + a favourite toggle) with an
-outside-click backdrop; positioned at the click via =openFor=.
-#+name: launcher-context
-#+begin_src qml
+** AppMenu.qml
+*** Description
+A reusable right-click *app context menu* for a =DesktopEntry=, styled like the
+taskbar's [[*AppContextMenu.qml][=AppContextMenu=]] (a mono app-name header, then the
+entry's =DesktopEntry.actions= — New Window, … — as glyph rows, and, optionally, a
+separator + an Add/Remove favourite toggle) but *without* the window actions.
 
-// ================= right-click context menu =================
-MouseArea {                                  // backdrop: outside click dismisses
-    anchors.fill: parent
-    visible: ctx.app !== null
-    acceptedButtons: Qt.LeftButton | Qt.RightButton
-    onClicked: ctx.app = null
-}
-Rectangle {
-    id: ctx
-    property var app: null
-    property real px: 0
+Unlike the taskbar menu it renders as a *floating popup*: the component is a
+full-size overlay (=anchors.fill= its host) with an outside-click backdrop, and the
+menu itself is positioned at the requested point and clamped to stay inside the
+overlay. Hosting it *above the pill* (at the full-screen =win= level, not inside the
+launcher's clipped body) is what lets it *drop out of the pill without being
+clipped* — the launcher only emits a request; the parent maps the point into the
+overlay and calls =openFor=. Favourites are optional and driven by the host
+(=showFavourite= / =isFavourite= in, =favouriteToggled(entry)= out) so the component
+stays independent of the launcher's settings; running an action or toggling the
+favourite closes the menu.
+
+Signals: =launched()= (an action ran), =favouriteToggled(entry)= (the favourite row
+was clicked), =dismissed()= (backdrop click / any action closed it). =openFor(entry,
+x, y, fav, showFav)= shows it; =close()= hides it. A reusable =CtxRow= draws each row.
+*** Code
+#+begin_src qml :tangle ~/.config/quickshell/pill/AppMenu.qml :mkdirp yes
+pragma ComponentBehavior: Bound
+// AppMenu.qml — a floating right-click context menu for a DesktopEntry, styled
+// like the taskbar app menu (glyph rows) but without window actions. It's a
+// full-size overlay (anchors.fill your host) with an outside-click backdrop; the
+// menu itself is positioned at (px,py) and clamped to stay inside the overlay, so
+// hosting it above the pill (full-screen win level, not the launcher's clipped
+// body) lets it drop out of the pill without clipping. Lists entry.actions (New
+// Window, …) and, when showFavourite is set, an Add/Remove favourite row driven by
+// the host (isFavourite in, favouriteToggled(entry) out). openFor(entry,x,y,fav,
+// showFav) shows it; running an action or toggling favourite closes it.
+import QtQuick
+
+Item {
+    id: root
+    required property var theme
+    property var entry: null            // DesktopEntry (null → hidden)
+    property bool showFavourite: false
+    property bool isFavourite: false
+    property real px: 0                 // requested point, in this overlay's coords
     property real py: 0
-    function openFor(a, x, y) {
-        app = a;
-        px = Math.max(0, Math.min(x, root.width - width));
-        py = Math.max(0, Math.min(y, root.height - height));
+    // the entry's launcher/desktop actions (empty for entries that define none)
+    readonly property var entryActions: entry && entry.actions ? entry.actions : []
+    signal launched()                   // an action was run
+    signal favouriteToggled(var entry)  // the favourite row was clicked
+    signal dismissed()                  // backdrop / after any action
+
+    anchors.fill: parent                // full overlay so the menu can sit anywhere
+    visible: entry !== null
+    z: 1000
+
+    function openFor(e, x, y, fav, showFav) {
+        entry = e;
+        isFavourite = fav === undefined ? false : fav;
+        showFavourite = showFav === undefined ? false : showFav;
+        px = x;
+        py = y;
     }
-    visible: app !== null
-    x: px; y: py
-    width: 210
-    height: ctxCol.height + 8
-    radius: root.theme.radiusCard
-    color: root.theme.bgElevated
-    border.color: root.theme.border
-    border.width: 1
+    function close() { entry = null; root.dismissed(); }
 
-    Column {
-        id: ctxCol
-        x: 4; y: 4
-        width: parent.width - 8
-        spacing: 1
+    MouseArea {                          // backdrop: outside click dismisses
+        anchors.fill: parent
+        acceptedButtons: Qt.LeftButton | Qt.RightButton
+        onClicked: root.close()
+    }
 
+    // one clickable menu row (leading glyph + label), matching the taskbar app
+    // menu's Row0. `fill`/`glyphColor` let the favourite row draw a filled accent
+    // star when the entry is already a favourite.
+    component CtxRow: Rectangle {
+        id: cr
+        property string glyph: ""
+        property string label: ""
+        property int fill: 0
+        property color glyphColor: root.theme.textDim
+        signal act()
+        width: menuCol.width
+        height: 34
+        radius: root.theme.radiusBtn
+        color: crMa.containsMouse ? root.theme.rowHi : "transparent"
+        MSym {
+            id: crIc
+            visible: cr.glyph !== ""
+            anchors.left: parent.left; anchors.leftMargin: 10
+            anchors.verticalCenter: parent.verticalCenter
+            icon: cr.glyph; size: 18; fill: cr.fill; weight: 500
+            color: cr.glyphColor
+        }
         Text {
-            width: parent.width; elide: Text.ElideRight
-            leftPadding: 8; bottomPadding: 5; topPadding: 3
-            text: ctx.app ? ctx.app.name : ""
-            color: root.theme.faint
-            font.family: root.theme.mono
-            font.pixelSize: root.theme.fsSmall
-            font.letterSpacing: root.theme.labelSpacing
-            font.capitalization: Font.AllUppercase
+            anchors.left: crIc.right; anchors.leftMargin: 12
+            anchors.right: parent.right; anchors.rightMargin: 12
+            anchors.verticalCenter: parent.verticalCenter
+            elide: Text.ElideRight
+            text: cr.label
+            color: root.theme.text
+            font.family: root.theme.family; font.pixelSize: root.theme.fsNormal
         }
-        Repeater {                            // desktop actions (New Window, …)
-            model: ctx.app ? ctx.app.actions : []
-            delegate: Rectangle {
-                required property var modelData
-                width: ctxCol.width; height: 30; radius: root.theme.radiusBtn
-                color: actMa.containsMouse ? root.theme.rowHi : "transparent"
-                Text {
-                    anchors.verticalCenter: parent.verticalCenter; x: 10
-                    font.family: root.theme.family
-                    text: modelData.name; color: root.theme.text; font.pixelSize: root.theme.fsNormal
-                }
-                MouseArea {
-                    id: actMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
-                    onClicked: { modelData.execute(); ctx.app = null; root.launched(); }
+        MouseArea {
+            id: crMa
+            anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+            onClicked: cr.act()
+        }
+    }
+
+    Rectangle {
+        id: menu
+        // clamp reactively so the menu stays fully inside the overlay even as its
+        // height settles after `entry` changes (drops downward from the cursor).
+        x: Math.max(0, Math.min(root.px, root.width - width))
+        y: Math.max(0, Math.min(root.py, root.height - height))
+        width: 230
+        height: menuCol.implicitHeight + 8
+        radius: root.theme.radiusCard
+        color: root.theme.bgElevated
+        border.color: root.theme.border
+        border.width: 1
+
+        Column {
+            id: menuCol
+            x: 4; y: 4
+            width: parent.width - 8
+            spacing: 1
+
+            Text {
+                width: parent.width; elide: Text.ElideRight
+                leftPadding: 10; bottomPadding: 5; topPadding: 4
+                text: root.entry ? root.entry.name : ""
+                color: root.theme.faint
+                font.family: root.theme.mono
+                font.pixelSize: root.theme.fsSmall
+                font.letterSpacing: root.theme.labelSpacing
+                font.capitalization: Font.AllUppercase
+            }
+            // ---- the entry's own launcher actions (New Window, …) ----
+            Repeater {
+                model: root.entryActions
+                delegate: CtxRow {
+                    required property var modelData
+                    glyph: "open_in_new"
+                    label: modelData.name
+                    onAct: { modelData.execute(); root.launched(); root.close(); }
                 }
             }
-        }
-        Rectangle {                           // favourite toggle
-            width: ctxCol.width; height: 30; radius: root.theme.radiusBtn
-            color: favMa.containsMouse ? root.theme.rowHi : "transparent"
-            Row {
-                anchors.verticalCenter: parent.verticalCenter; x: 10
-                spacing: 8
-                MSym {
+            // separator before the favourite toggle (only when actions sit above it)
+            Item {
+                visible: root.showFavourite && root.entryActions.length > 0
+                width: menuCol.width; height: 9
+                Rectangle {
                     anchors.verticalCenter: parent.verticalCenter
-                    icon: "star"
-                    size: 16
-                    fill: (ctx.app && root.isFav(ctx.app)) ? 1 : 0
-                    weight: 500
-                    color: (ctx.app && root.isFav(ctx.app)) ? root.theme.accent : root.theme.faint
-                }
-                Text {
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: (ctx.app && root.isFav(ctx.app)) ? "Remove favourite" : "Add favourite"
-                    font.family: root.theme.family
-                    color: root.theme.text; font.pixelSize: root.theme.fsNormal
+                    anchors.left: parent.left; anchors.right: parent.right
+                    anchors.leftMargin: 4; anchors.rightMargin: 4
+                    height: 1; color: root.theme.divider
                 }
             }
-            MouseArea {
-                id: favMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor
-                onClicked: { if (ctx.app) root.toggleFav(ctx.app); ctx.app = null; }
+            // ---- favourite toggle (host-driven) ----
+            CtxRow {
+                visible: root.showFavourite
+                glyph: "star"
+                fill: root.isFavourite ? 1 : 0
+                glyphColor: root.isFavourite ? root.theme.accent : root.theme.faint
+                label: root.isFavourite ? "Remove favourite" : "Add favourite"
+                onAct: { root.favouriteToggled(root.entry); root.close(); }
             }
         }
     }
@@ -8249,6 +8351,13 @@ Variants {
                         win.launcher = false;
                         root.restoreFocus();
                     }
+                    // right-click on an app: show the floating AppMenu at the click.
+                    // The point arrives in the Launcher's coordinates; map it into
+                    // the full-screen menu overlay so it can drop out of the pill.
+                    onAppMenuRequested: (app, fav, x, y) => {
+                        const p = launcherItem.mapToItem(launcherMenu, x, y);
+                        launcherMenu.openFor(app, p.x, p.y, fav, true);
+                    }
                     onConfirmPower: (action, cmd) => {
                         return win.requestConfirm(action, cmd);
                     }
@@ -8258,10 +8367,12 @@ Variants {
                 // pill drops the keyboard grab and the active window gets it back
                 Connections {
                     function onLauncherChanged() {
-                        if (win.launcher)
+                        if (win.launcher) {
                             launcherItem.open();
-                        else
+                        } else {
                             launcherItem.close();
+                            launcherMenu.close();   // a right-click menu never outlives the launcher
+                        }
                     }
 
                     target: win
@@ -8386,6 +8497,25 @@ Variants {
 
             }
 
+        }
+
+        // ================= launcher app right-click menu (floating) =================
+        // The launcher's per-app context menu (AppMenu), hosted here at the
+        // full-screen `win` level — NOT inside the launcher's clipped body — so it
+        // renders above the pill and can drop out of it without being clipped. The
+        // Launcher emits appMenuRequested with the point in its own coordinates;
+        // launcherItem.onAppMenuRequested maps that into this overlay and opens the
+        // menu. Favourites are toggled back into the launcher's settings; the menu
+        // closes with the launcher (see the launcher Connections above). z keeps it
+        // above the pill and the floating notifications.
+        AppMenu {
+            id: launcherMenu
+
+            anchors.fill: parent
+            z: 1000
+            theme: theme
+            onFavouriteToggled: (e) => launcherItem.toggleFav(e)
+            onLaunched: win.launcher = false
         }
 
         // ===================== notifications below an open pill =====================
