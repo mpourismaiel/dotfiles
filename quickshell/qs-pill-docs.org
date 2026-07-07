@@ -2679,7 +2679,7 @@ Item {
     // right-click on an app row/tile/result: ask the parent to show the app
     // context menu (AppMenu) at (x, y) — in *this* Launcher's coordinates — so it
     // can render above the pill and drop out of it without being clipped.
-    signal appMenuRequested(var app, bool fav, real x, real y)
+    signal appMenuRequested(var app, bool fav, bool pinned, real x, real y)
     // shutdown / reboot / logout ask for a full-screen confirmation first; the
     // parent shows it and only runs `cmd` if the user picks "yes".
     signal confirmPower(string action, var cmd)
@@ -2776,6 +2776,16 @@ function toggleFav(a) {
     const i = f.indexOf(a.id);
     if (i >= 0) f.splice(i, 1); else f.push(a.id);
     settings.favorites = f;
+}
+
+// taskbar pin state + toggle (shared settings.pinned; offered from the app menu).
+function isPinned(a) { return a ? (settings.pinned || []).indexOf(a.id) >= 0 : false; }
+function togglePin(a) {
+    if (!a) return;
+    const f = (settings.pinned || []).slice();
+    const i = f.indexOf(a.id);
+    if (i >= 0) f.splice(i, 1); else f.push(a.id);
+    settings.pinned = f;
 }
 
 // resolve a KRunner search result row to one of our DesktopEntries so its
@@ -3232,7 +3242,7 @@ Item {
                     onClicked: (mouse) => {
                         if (mouse.button === Qt.RightButton) {
                             const p = mapToItem(root, mouse.x, mouse.y);
-                            root.appMenuRequested(appRow.modelData, root.isFav(appRow.modelData), p.x, p.y);
+                            root.appMenuRequested(appRow.modelData, root.isFav(appRow.modelData), root.isPinned(appRow.modelData), p.x, p.y);
                         } else {
                             appRow.modelData.execute();
                             root.launched();
@@ -3354,7 +3364,7 @@ Item {
                             const e = root.entryForResult(resRow.model);
                             if (e) {
                                 const p = mapToItem(root, mouse.x, mouse.y);
-                                root.appMenuRequested(e, root.isFav(e), p.x, p.y);
+                                root.appMenuRequested(e, root.isFav(e), root.isPinned(e), p.x, p.y);
                             }
                             return ;
                         }
@@ -3442,7 +3452,7 @@ Item {
                     onClicked: (mouse) => {
                         if (mouse.button === Qt.RightButton) {
                             const p = mapToItem(root, mouse.x, mouse.y);
-                            root.appMenuRequested(tile.modelData, root.isFav(tile.modelData), p.x, p.y);
+                            root.appMenuRequested(tile.modelData, root.isFav(tile.modelData), root.isPinned(tile.modelData), p.x, p.y);
                         } else {
                             tile.modelData.execute();
                             root.launched();
@@ -3576,7 +3586,8 @@ Item {
 A reusable right-click *app context menu* for a =DesktopEntry=, styled like the
 taskbar's [[*AppContextMenu.qml][=AppContextMenu=]] (a mono app-name header, then the
 entry's =DesktopEntry.actions= — New Window, … — as glyph rows, and, optionally, a
-separator + an Add/Remove favourite toggle) but *without* the window actions.
+separator + an Add/Remove *favourite* toggle and a *Pin/Unpin to taskbar* toggle) but
+*without* the window actions.
 
 Unlike the taskbar menu it renders as a *floating popup*: the component is a
 full-size overlay (=anchors.fill= its host) with an outside-click backdrop, and the
@@ -3584,14 +3595,15 @@ menu itself is positioned at the requested point and clamped to stay inside the
 overlay. Hosting it *above the pill* (at the full-screen =win= level, not inside the
 launcher's clipped body) is what lets it *drop out of the pill without being
 clipped* — the launcher only emits a request; the parent maps the point into the
-overlay and calls =openFor=. Favourites are optional and driven by the host
-(=showFavourite= / =isFavourite= in, =favouriteToggled(entry)= out) so the component
-stays independent of the launcher's settings; running an action or toggling the
-favourite closes the menu.
+overlay and calls =openFor=. The favourite and pin rows are optional and driven by the
+host (=showFavourite=/=isFavourite= and =showPin=/=isPinned= in, =favouriteToggled(entry)=
+/ =pinToggled(entry)= out) so the component stays independent of the launcher's
+settings; running an action or toggling favourite/pin closes the menu.
 
-Signals: =launched()= (an action ran), =favouriteToggled(entry)= (the favourite row
-was clicked), =dismissed()= (backdrop click / any action closed it). =openFor(entry,
-x, y, fav, showFav)= shows it; =close()= hides it. A reusable =CtxRow= draws each row.
+Signals: =launched()= (an action ran), =favouriteToggled(entry)= / =pinToggled(entry)=
+(a manage row was clicked), =dismissed()= (backdrop click / any action closed it).
+=openFor(entry, x, y, opts)= shows it (=opts={ fav, showFav, pinned, showPin }=);
+=close()= hides it. A reusable =CtxRow= draws each row.
 *** Code
 #+begin_src qml :tangle ~/.config/quickshell/pill/AppMenu.qml :mkdirp yes
 pragma ComponentBehavior: Bound
@@ -3612,22 +3624,31 @@ Item {
     property var entry: null            // DesktopEntry (null → hidden)
     property bool showFavourite: false
     property bool isFavourite: false
+    property bool showPin: false        // offer a Pin/Unpin to taskbar row
+    property bool isPinned: false
     property real px: 0                 // requested point, in this overlay's coords
     property real py: 0
     // the entry's launcher/desktop actions (empty for entries that define none)
     readonly property var entryActions: entry && entry.actions ? entry.actions : []
+    // whether the app-management section (favourite / pin rows) is shown at all
+    readonly property bool hasManageRows: showFavourite || showPin
     signal launched()                   // an action was run
     signal favouriteToggled(var entry)  // the favourite row was clicked
+    signal pinToggled(var entry)        // the pin/unpin row was clicked
     signal dismissed()                  // backdrop / after any action
 
     anchors.fill: parent                // full overlay so the menu can sit anywhere
     visible: entry !== null
     z: 1000
 
-    function openFor(e, x, y, fav, showFav) {
+    // opts: { fav, showFav, pinned, showPin } — all optional.
+    function openFor(e, x, y, opts) {
+        opts = opts || {};
         entry = e;
-        isFavourite = fav === undefined ? false : fav;
-        showFavourite = showFav === undefined ? false : showFav;
+        isFavourite = !!opts.fav;
+        showFavourite = opts.showFav !== undefined ? opts.showFav : false;
+        isPinned = !!opts.pinned;
+        showPin = opts.showPin !== undefined ? opts.showPin : false;
         px = x;
         py = y;
     }
@@ -3716,9 +3737,9 @@ Item {
                     onAct: { modelData.execute(); root.launched(); root.close(); }
                 }
             }
-            // separator before the favourite toggle (only when actions sit above it)
+            // separator before the manage rows (only when actions sit above them)
             Item {
-                visible: root.showFavourite && root.entryActions.length > 0
+                visible: root.hasManageRows && root.entryActions.length > 0
                 width: menuCol.width; height: 9
                 Rectangle {
                     anchors.verticalCenter: parent.verticalCenter
@@ -3735,6 +3756,15 @@ Item {
                 glyphColor: root.isFavourite ? root.theme.accent : root.theme.faint
                 label: root.isFavourite ? "Remove favourite" : "Add favourite"
                 onAct: { root.favouriteToggled(root.entry); root.close(); }
+            }
+            // ---- pin to taskbar toggle (host-driven) ----
+            CtxRow {
+                visible: root.showPin
+                glyph: root.isPinned ? "keep_off" : "keep"
+                fill: root.isPinned ? 1 : 0
+                glyphColor: root.isPinned ? root.theme.accent : root.theme.textDim
+                label: root.isPinned ? "Unpin from taskbar" : "Pin to taskbar"
+                onAct: { root.pinToggled(root.entry); root.close(); }
             }
         }
     }
@@ -5760,93 +5790,204 @@ Item {
 
 ** Taskbar.qml
 *** Description
-The hovered dashboard's grouped app icons (Row 1, right): one tile per app (windows
-grouped by icon upstream), a count badge for ≥2 windows, and an underline that turns
-accent when any of the app's windows is active. Left-click =activated(group)= cycles
-the app's windows; right-click =contextRequested(group)= opens its menu.
+The hovered dashboard's app icons (Row 1, right): pinned apps first (in their saved
+order, whether or not they're running), then the remaining open apps. One tile per
+app (=group=: ={ key, icon, entry, wins, pinned }=), a count badge for ≥2 windows,
+and an underline that shows only while the app is *running* (accent when one of its
+windows is active). A pinned-but-unopened tile has no windows and reads dimmed with
+no underline; left-clicking it *launches* the app (like the launcher), while
+left-clicking a running app cycles its windows. Right-click =contextRequested(group)=
+opens the app menu (where Pin/Unpin lives).
+
+Tiles are *drag-to-reorder* within their own section (pinned among pinned, open
+among open — dragging never crosses the boundary, so it can't pin/unpin): the drag
+reorders the =DelegateModel='s items live and, on release, emits =reordered(keys)=
+with the new full key order. The parent persists the pinned order and keeps the
+unpinned order for the session. Left-click =activated(group)=; the hover highlight is
+drawn by the dashboard's shared square (each tile reports itself via =itemEntered=).
 *** Code
 #+begin_src qml :tangle ~/.config/quickshell/pill/Taskbar.qml :mkdirp yes
 pragma ComponentBehavior: Bound
-// Taskbar.qml — grouped app icons for the hovered dashboard (Row 1). One tile per
-// app group ({ icon, wins }); a count badge for 2+ windows and an active underline.
-// activated(group) = left-click (cycle the app's windows); contextRequested(group)
-// = right-click (open the app menu). activeWindow drives the active underline.
-// The hover highlight is NOT drawn here: each tile reports itself via itemEntered
-// (on enter only) so the dashboard's single shared hover square jumps to it.
+// Taskbar.qml — app icons for the hovered dashboard (Row 1). Pinned apps first (in
+// saved order, running or not), then the remaining open apps. Each tile is a group
+// { key, icon, entry, wins, pinned }; a count badge for 2+ windows and an underline
+// shown only while running (accent when active). A pinned-but-unopened tile (wins
+// empty) reads dimmed with no underline; activated(group) launches it (parent does
+// the launch-vs-cycle split). contextRequested(group) = right-click (app menu, where
+// Pin/Unpin lives). Tiles drag-reorder within their section (pinned<->pinned or
+// open<->open only — never across, so a drag can't pin/unpin); on release,
+// reordered(keys) hands the parent the new full key order. The hover highlight is
+// the dashboard's shared square (tiles report themselves via itemEntered).
 import QtQuick
+import QtQml.Models
 import Quickshell
 import Quickshell.Widgets
 
-Row {
+Item {
     id: root
     required property var theme
-    required property var groups         // [{ icon, wins: [{ uuid, ... }] }]
+    required property var groups         // [{ key, icon, entry, wins, pinned }]
     required property string activeWindow
     signal activated(var group)
     signal contextRequested(var group)
+    signal reordered(var keys)           // new full tile-key order after a drag
     signal itemEntered(var item)         // tile hovered -> move the shared indicator
 
-    // app icons are bigger than the menu/tray glyphs, so the app row is spaced
-    // 1.5x the base icon spacing to keep the tiles from crowding.
-    spacing: Math.round(root.theme.iconSpacing * 1.5)
-    Repeater {
-        model: root.groups
-        delegate: Item {
-            id: appItem
-            required property var modelData
-            readonly property bool active: appItem.modelData.wins.some(w => w.uuid === root.activeWindow)
-            width: root.theme.appCell; height: root.theme.appCell
-            // ask the shared hover square for a little extra padding around app
-            // tiles (their icons run larger than the menu/tray glyphs).
-            readonly property int hoverPad: 5
-            IconImage {
-                id: appIcon
-                anchors.top: parent.top
-                anchors.horizontalCenter: parent.horizontalCenter
-                implicitSize: root.theme.appIcon
-                // some icon names resolve to a path that still fails to decode;
-                // when that happens fall back to the generic app glyph so a tile
-                // never renders blank.
-                property bool failed: false
-                source: appIcon.failed
-                        ? Quickshell.iconPath("application-x-executable")
-                        : Quickshell.iconPath(appItem.modelData.icon, "application-x-executable")
-                onStatusChanged: if (status === Image.Error) appIcon.failed = true;
-            }
-            Rectangle {                  // window-count badge (2+ windows)
-                visible: appItem.modelData.wins.length > 1
-                anchors.top: parent.top
-                anchors.right: parent.right
-                anchors.topMargin: -3
-                anchors.rightMargin: -3
-                width: 15; height: 15; radius: 7.5
-                color: root.theme.accent
-                Text {
-                    anchors.centerIn: parent
-                    text: appItem.modelData.wins.length
-                    font.family: root.theme.family
-                    color: "#ffffff"; font.pixelSize: 9; font.bold: true
-                }
-            }
-            Rectangle {                  // active / running indicator
-                anchors.bottom: parent.bottom
-                anchors.horizontalCenter: parent.horizontalCenter
-                height: 2
-                radius: 1
-                width: appItem.active ? 20 : 7
-                color: appItem.active ? root.theme.accent : root.theme.faint
-                Behavior on width { NumberAnimation { duration: root.theme.animFast } }
-            }
-            MouseArea {
+    // during-drag scratch: the live key order + whether any move actually happened
+    // (so a plain click doesn't emit a spurious reorder).
+    property var dragOrder: []
+    property bool didReorder: false
+
+    // app icons are bigger than the menu/tray glyphs, so the app row is spaced 1.5x
+    // the base icon spacing to keep the tiles from crowding.
+    readonly property real tileSpacing: Math.round(root.theme.iconSpacing * 1.5)
+    // size deterministically from the tile count (tiles are fixed appCell-wide) so
+    // the ListView always has a real width to lay out in — binding to contentWidth
+    // can deadlock at width 0 (no width → no delegates → contentWidth 0 → …).
+    implicitWidth: {
+        const n = root.groups.length;
+        return n > 0 ? n * root.theme.appCell + (n - 1) * root.tileSpacing : 0;
+    }
+    implicitHeight: root.theme.appCell
+
+    ListView {
+        id: taskList
+        anchors.fill: parent
+        orientation: ListView.Horizontal
+        interactive: false               // no flicking; it's sized to its content
+        spacing: root.tileSpacing
+        // keep every tile realised (small set; live delegates are needed so a drag
+        // can reparent them and so the count/order stays exact).
+        cacheBuffer: 100000
+
+        // tiles slide out of the way as one is dragged across them.
+        displaced: Transition {
+            NumberAnimation { properties: "x,y"; duration: root.theme.animFast }
+        }
+
+        model: DelegateModel {
+            id: tbModel
+            model: root.groups
+
+            delegate: MouseArea {
                 id: appMa
-                anchors.fill: parent
+                required property var modelData
+                required property int index
+                readonly property int visualIndex: DelegateModel.itemsIndex
+                readonly property bool active: appMa.modelData.wins.some(w => w.uuid === root.activeWindow)
+                readonly property bool running: appMa.modelData.wins.length > 0
+                // the shared hover square wants a little extra padding around app
+                // tiles (their icons run larger than the menu/tray glyphs).
+                readonly property int hoverPad: 5
+
+                width: root.theme.appCell
+                height: root.theme.appCell
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
                 acceptedButtons: Qt.LeftButton | Qt.RightButton
-                onContainsMouseChanged: if (appMa.containsMouse) root.itemEntered(appItem);
-                onClicked: mouse => {
-                    if (mouse.button === Qt.LeftButton) root.activated(appItem.modelData);
-                    else root.contextRequested(appItem.modelData);
+                drag.target: tileBg
+                drag.axis: Drag.XAndYAxis
+                onContainsMouseChanged: if (appMa.containsMouse) root.itemEntered(appMa);
+                onPressed: {
+                    root.dragOrder = root.groups.map(g => g.key);
+                    root.didReorder = false;
+                }
+                onReleased: {
+                    if (root.didReorder) root.reordered(root.dragOrder);
+                }
+                onClicked: (mouse) => {
+                    if (mouse.button === Qt.LeftButton) root.activated(appMa.modelData);
+                    else root.contextRequested(appMa.modelData);
+                }
+
+                // reorder as a tile is dragged over — but only within the same
+                // section (pinned stays with pinned, open with open), so a drag can
+                // never move an app across the pinned boundary (i.e. never pins or
+                // unpins — that's the menu's job).
+                DropArea {
+                    anchors.fill: parent
+                    onEntered: (drag) => {
+                        const from = drag.source.visualIndex;
+                        const to = appMa.visualIndex;
+                        if (from === to)
+                            return ;
+                        if (drag.source.modelData.pinned !== appMa.modelData.pinned)
+                            return ;
+
+                        tbModel.items.move(from, to);
+                        const o = root.dragOrder.slice();
+                        o.splice(to, 0, o.splice(from, 1)[0]);
+                        root.dragOrder = o;
+                        root.didReorder = true;
+                    }
+                }
+
+                Item {
+                    id: tileBg
+                    width: appMa.width
+                    height: appMa.height
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    anchors.verticalCenter: parent.verticalCenter
+                    z: tileBg.Drag.active ? 2 : 0
+                    Drag.active: appMa.drag.active
+                    Drag.source: appMa
+                    Drag.hotSpot.x: width / 2
+                    Drag.hotSpot.y: height / 2
+
+                    IconImage {
+                        id: appIcon
+                        anchors.top: parent.top
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        implicitSize: root.theme.appIcon
+                        // a pinned app that isn't running reads dimmed so it's clearly
+                        // "pinned, not open" rather than just another running tile.
+                        opacity: appMa.running ? 1 : 0.6
+                        // some icon names resolve to a path that still fails to decode;
+                        // when that happens fall back to the generic app glyph so a tile
+                        // never renders blank.
+                        property bool failed: false
+                        source: appIcon.failed
+                                ? Quickshell.iconPath("application-x-executable")
+                                : Quickshell.iconPath(appMa.modelData.icon, "application-x-executable")
+                        onStatusChanged: if (status === Image.Error) appIcon.failed = true;
+                    }
+                    Rectangle {                  // window-count badge (2+ windows)
+                        visible: appMa.modelData.wins.length > 1
+                        anchors.top: parent.top
+                        anchors.right: parent.right
+                        anchors.topMargin: -3
+                        anchors.rightMargin: -3
+                        width: 15; height: 15; radius: 7.5
+                        color: root.theme.accent
+                        Text {
+                            anchors.centerIn: parent
+                            text: appMa.modelData.wins.length
+                            font.family: root.theme.family
+                            color: "#ffffff"; font.pixelSize: 9; font.bold: true
+                        }
+                    }
+                    Rectangle {                  // running / active indicator (running only)
+                        visible: appMa.running
+                        anchors.bottom: parent.bottom
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        height: 2
+                        radius: 1
+                        width: appMa.active ? 20 : 7
+                        color: appMa.active ? root.theme.accent : root.theme.faint
+                        Behavior on width { NumberAnimation { duration: root.theme.animFast } }
+                    }
+
+                    // while dragging, lift the tile out of the row so it floats and
+                    // follows the cursor (the row's other tiles reflow underneath).
+                    states: State {
+                        when: tileBg.Drag.active
+                        ParentChange { target: tileBg; parent: taskList }
+                        AnchorChanges {
+                            target: tileBg
+                            anchors.horizontalCenter: undefined
+                            anchors.verticalCenter: undefined
+                        }
+                    }
                 }
             }
         }
@@ -6181,20 +6322,28 @@ dot sliding to =dotIdx=.
 #+begin_src qml :tangle ~/.config/quickshell/pill/ActionBurstPill.qml :mkdirp yes
 pragma ComponentBehavior: Bound
 // ActionBurstPill.qml — action-burst overlay content. One mini-pill per kind in
-// `kinds` (["desktops"], ["language"], or both), each with the hovered-pill surface;
-// two live kinds pop apart on entry. language: fromLabel -> (flashing arrow during
-// phase 2) -> toLabel. desktops: a DesktopDots row with the dot sliding to dotIdx.
+// `kinds` (["desktops"], ["language"], ["level"], or a combination), each with the
+// hovered-pill surface; two live kinds pop apart on entry. language: fromLabel ->
+// (flashing arrow during phase 2) -> toLabel. desktops: a DesktopDots row with the
+// dot sliding to dotIdx. level (volume / brightness): an icon in the left column,
+// a title over a progress bar in the right column; the bar animates from levelFrom
+// to levelTo across phase 2.
 import QtQuick
 
 Row {
     id: root
     required property var theme
-    required property var kinds         // canonical order: "desktops" then "language"
+    required property var kinds         // canonical order: "desktops", "language", "level"
     required property var desktops
     property int phase: 0              // 0 idle, 1 pre, 2 animate, 3 post
     property string fromLabel: ""
     property string toLabel: ""
     property int dotIdx: 0
+    // level (volume / brightness) burst: glyph + title over a from->to progress bar
+    property string levelIcon: ""
+    property string levelTitle: ""
+    property real   levelFrom: 0
+    property real   levelTo: 0
 
     spacing: 8                          // the gap between two pills
     Repeater {
@@ -6204,9 +6353,10 @@ Row {
             required property int index
             required property string modelData
             readonly property bool isLang: modelData === "language"
-            height: 28
+            readonly property bool isLevel: modelData === "level"
+            height: isLevel ? 44 : 28
             width: cellBody.implicitWidth + 24
-            radius: 12
+            radius: isLevel ? 16 : 12
             color: root.theme.bg            // same surface as the hovered pill
             border.color: root.theme.border
             border.width: 1
@@ -6224,8 +6374,9 @@ Row {
             Item {
                 id: cellBody
                 anchors.centerIn: parent
-                implicitWidth: cell.isLang ? langRow.implicitWidth : dots.implicitWidth
-                implicitHeight: 28
+                implicitWidth: cell.isLevel ? levelRow.implicitWidth
+                             : cell.isLang ? langRow.implicitWidth : dots.implicitWidth
+                implicitHeight: cell.height
 
                 Row {                            // language: EN -> FA
                     id: langRow
@@ -6260,10 +6411,47 @@ Row {
                 DesktopDots {                    // desktops: dots with a sliding active dot
                     id: dots
                     anchors.centerIn: parent
-                    visible: !cell.isLang
+                    visible: !cell.isLang && !cell.isLevel
                     theme: root.theme
                     desktops: root.desktops
                     activeIdx: root.dotIdx
+                }
+
+                Row {                            // level: [icon] | [title / progress bar]
+                    id: levelRow
+                    anchors.centerIn: parent
+                    visible: cell.isLevel
+                    spacing: 10
+                    MSym {
+                        anchors.verticalCenter: parent.verticalCenter
+                        icon: root.levelIcon; size: 22; color: root.theme.accent
+                    }
+                    Column {
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: 5
+                        Text {
+                            text: root.levelTitle; color: root.theme.textDim
+                            font.family: root.theme.mono; font.pixelSize: root.theme.fsSmall
+                            font.letterSpacing: root.theme.labelSpacing
+                            font.capitalization: Font.AllUppercase
+                        }
+                        Rectangle {              // progress track + fill (from -> to)
+                            id: barTrack
+                            width: 130; height: 6; radius: 3
+                            color: root.theme.track
+                            // the fill sits at levelFrom until the animate phase, then
+                            // eases to levelTo — same phase-2 cue as the other bursts.
+                            property real prog: root.phase >= 2 ? root.levelTo : root.levelFrom
+                            Behavior on prog {
+                                NumberAnimation { duration: 300; easing.type: Easing.OutCubic }
+                            }
+                            Rectangle {
+                                width: Math.max(0, Math.min(1, barTrack.prog)) * parent.width
+                                height: parent.height; radius: parent.radius
+                                color: root.theme.accent
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -6281,18 +6469,21 @@ chevron to expand the same actions as a single-app menu, targeting just that win
 plus a separator, the app's own launcher actions (New Window, … from
 =DesktopEntries.heuristicLookup(icon).actions=) + separator, an "All windows" section,
 then the KWin window actions — *Move to Desktop* (an inline accordion listing
-=desktops=), *Minimize*, *Maximize*, *Keep Above/Below Others* — a separator, and a
-*Close* row (these act on the whole group). The per-window actions and the whole-group
-actions share one reusable =ActionBlock= sub-component.
+=desktops=), *Minimize*, *Maximize*, *Keep Above/Below Others* — then a *Pin/Unpin to
+taskbar* row, a separator, and a *Close* row (these act on the whole group). The
+per-window actions and the whole-group actions share one reusable =ActionBlock=
+sub-component (=showPin= adds the pin row to the whole-group block only, since pinning
+is per-app; =windowRows= hides the KWin actions for a not-running pinned app, leaving
+just the pin row).
 
 =launchRequested(execString)= runs a launcher action; =activateRequested(id)= focuses
 one window (a title row's body); =windowAction(verb, uuids)= asks the host to drive KWin
 (=minimize/maximize/above/below/close/desktop:<id>=, =desktop:all=) against the passed
-uuids (a single window, or the whole group); =closeRequested()= backs out (host clears
-=win.ctxGroup=). The host also clears =ctxGroup= after any window/launch action, so
-acting closes the menu (Plasma behaviour). Content scrolls in a =Flickable=;
-=implicitHeight= (header + rows, independent of the given height) drives the pill's
-ctx-mode size.
+uuids (a single window, or the whole group); =pinToggled(entry)= toggles the app's
+taskbar pin (=isPinned= in); =closeRequested()= backs out (host clears =win.ctxGroup=).
+The host also clears =ctxGroup= after any window/launch/pin action, so acting closes
+the menu (Plasma behaviour). Content scrolls in a =Flickable=; =implicitHeight= (header
++ rows, independent of the given height) drives the pill's ctx-mode size.
 *** Code
 #+begin_src qml :tangle ~/.config/quickshell/pill/AppContextMenu.qml :mkdirp yes
 pragma ComponentBehavior: Bound
@@ -6317,10 +6508,12 @@ Item {
     // which desktops the group's windows occupy (radio-marked in the list)
     readonly property var winDesks: root.group && root.group.desks ? root.group.desks : []
     readonly property bool winOnAll: !!(root.group && root.group.onAll)
+    property bool isPinned: false        // whether this app is pinned to the taskbar
     signal launchRequested(string execString)
     signal activateRequested(string id)  // focus one window (a grouped app's title row)
     // act on the given window uuids: minimize|maximize|above|below|close|desktop:<id>
     signal windowAction(string verb, var uuids)
+    signal pinToggled(var entry)         // the Pin/Unpin row was clicked (resolved entry)
     signal closeRequested()
 
     // the host (init.qml appGroups) already resolved the best DesktopEntry; fall
@@ -6434,24 +6627,30 @@ Item {
         property bool markAll: false
         property real indent: 0
         property bool deskExpanded: false
+        // `windowRows` shows the KWin per-window actions (Move/Minimize/…/Close);
+        // a not-running pinned app has no windows, so its whole-group block hides
+        // them and shows only the pin row. `showPin` adds the app-level Pin/Unpin
+        // row (whole-group block only — pinning is per-app, not per-window).
+        property bool windowRows: true
+        property bool showPin: false
         width: parent ? parent.width : 0
         spacing: 2
 
         Row0 {
-            visible: root.desktops.length > 0
+            visible: ab.windowRows && root.desktops.length > 0
             indent: ab.indent
             glyph: "dashboard"; label: "Move to Desktop"
             chev: true; expanded: ab.deskExpanded
             onAct: ab.deskExpanded = !ab.deskExpanded
         }
         Row0 {
-            visible: root.desktops.length > 0 && ab.deskExpanded
+            visible: ab.windowRows && root.desktops.length > 0 && ab.deskExpanded
             indent: ab.indent + 26; label: "All Desktops"
             glyph: ab.markAll ? "radio_button_checked" : "radio_button_unchecked"
             onAct: root.windowAction("desktop:all", ab.targets)
         }
         Repeater {
-            model: ab.deskExpanded ? root.desktops : []
+            model: (ab.windowRows && ab.deskExpanded) ? root.desktops : []
             delegate: Row0 {
                 required property var modelData
                 indent: ab.indent + 26
@@ -6460,12 +6659,20 @@ Item {
                 onAct: root.windowAction("desktop:" + modelData.id, ab.targets)
             }
         }
-        Row0 { indent: ab.indent; glyph: "minimize";                   label: "Minimize";          onAct: root.windowAction("minimize", ab.targets) }
-        Row0 { indent: ab.indent; glyph: "crop_square";                label: "Maximize";          onAct: root.windowAction("maximize", ab.targets) }
-        Row0 { indent: ab.indent; glyph: "keyboard_double_arrow_up";   label: "Keep Above Others"; onAct: root.windowAction("above", ab.targets) }
-        Row0 { indent: ab.indent; glyph: "keyboard_double_arrow_down"; label: "Keep Below Others"; onAct: root.windowAction("below", ab.targets) }
-        Sep {}
-        Row0 { indent: ab.indent; glyph: "close"; label: "Close"; danger: true; onAct: root.windowAction("close", ab.targets) }
+        Row0 { visible: ab.windowRows; indent: ab.indent; glyph: "minimize";                   label: "Minimize";          onAct: root.windowAction("minimize", ab.targets) }
+        Row0 { visible: ab.windowRows; indent: ab.indent; glyph: "crop_square";                label: "Maximize";          onAct: root.windowAction("maximize", ab.targets) }
+        Row0 { visible: ab.windowRows; indent: ab.indent; glyph: "keyboard_double_arrow_up";   label: "Keep Above Others"; onAct: root.windowAction("above", ab.targets) }
+        Row0 { visible: ab.windowRows; indent: ab.indent; glyph: "keyboard_double_arrow_down"; label: "Keep Below Others"; onAct: root.windowAction("below", ab.targets) }
+        // Pin/Unpin — after the window actions, before the Close separator.
+        Row0 {
+            visible: ab.showPin
+            indent: ab.indent
+            glyph: root.isPinned ? "keep_off" : "keep"
+            label: root.isPinned ? "Unpin from taskbar" : "Pin to taskbar"
+            onAct: root.pinToggled(root.entry)
+        }
+        Sep { visible: ab.windowRows }
+        Row0 { visible: ab.windowRows; indent: ab.indent; glyph: "close"; label: "Close"; danger: true; onAct: root.windowAction("close", ab.targets) }
     }
 
     Column {
@@ -6541,11 +6748,16 @@ Item {
                 Sep { visible: root.actions.length > 0 }
 
                 // ---- window actions for the whole group (or the single window) ----
+                // + the app-level Pin/Unpin row. A not-running pinned app (no
+                // windows) shows only the pin row; a running app shows the full
+                // window actions with pin inserted before Close.
                 Label0 { visible: root.grouped; text: "All windows" }
                 ActionBlock {
                     targets: root.allUuids
                     markAll: root.winOnAll
                     deskMark: root.winDesks
+                    windowRows: root.allUuids.length > 0
+                    showPin: root.entry !== null
                 }
             }
         }
@@ -6856,18 +7068,45 @@ Shortcuts* (System Settings ▸ Shortcuts) running
 =… brightnessDown= — assign e.g. the =Monitor Brightness Up/Down= keys (free them
 from Plasma's built-in brightness action first, since that one drives all displays
 at once). =brightnessUpOn(screen)= / =brightnessDownOn(screen)= target a named output
-explicitly. KDE shows its usual brightness OSD on the change.
+explicitly. Each step also flashes a *level burst* (see below).
 
-*Taskbar.* =appGroups= groups =windows= (from =winbridge=) by *app class*, ordered
-by *open time* (winbridge stamps each window with a stable open-order =seq=) — one
-tile per app, a count badge for ≥2 windows, an underline that turns accent when any
-of the app's windows is active. Each group's icon is resolved through
-=DesktopEntries.heuristicLookup= (desktop-file name → class → KRunner icon name), so
-tiles get a real icon instead of the generic fallback. Left-click =cycleGroup= focuses the app's next window;
-right-click opens the [[*AppContextMenu.qml][=AppContextMenu=]] *inside the pill*
-(like the control-panel menus, not a floating popup): the app name, its
-=DesktopEntries.heuristicLookup(icon).actions=, then the KWin window actions (Move to
-Desktop / Minimize / Maximize / Keep Above/Below / Close). Selecting a window action
+*Volume shortcut (IPC).* The same =IpcHandler= exposes =volumeUp= / =volumeDown= /
+=volumeMute=, which step or mute the *active speaker* — the default Pipewire sink,
+i.e. the device with the check in the [[*VolumeMenu.qml][volume menu]] — by ≈5% via
+=Quickshell.Services.Pipewire= (=Pipewire.defaultAudioSink.audio=), and flash a level
+burst. Bind three *Custom Shortcuts* (System Settings ▸ Shortcuts) running
+=qs -p …/init.qml ipc call pill volumeUp= / =… volumeDown= / =… volumeMute= to the
+=Volume Up/Down/Mute= keys — *free those keys from Plasma's built-in Audio Volume
+actions first*, so only our burst shows (no double OSD) and nothing else moves the
+volume.
+
+*Level burst.* Both the brightness and volume shortcuts render through one *level*
+burst kind ([[*ActionBurstPill.qml][=ActionBurstPill=]]): a two-column mini-pill —
+glyph on the left, title (=Brightness= / =Volume= / =Muted=) over a progress bar on
+the right — whose fill animates from the old value to the new across the burst's
+animate phase (=startLevelBurst(icon, title, from, to)= sets the payload; the bar
+sits at =levelFrom= until =phase === 2=, then eases to =levelTo=).
+
+*Taskbar.* =appGroups= builds the taskbar model: *pinned* apps first (in
+=settings.pinned= order, running or not), then the remaining *open* apps grouped by
+*app class* and ordered by *open time* (winbridge stamps each window with a stable
+open-order =seq=). A pinned app that's also open merges its windows into its pinned
+tile. Each tile carries ={ key, icon, entry, wins, pinned }=; a count badge for ≥2
+windows and an underline that shows only while the app is *running* (accent when a
+window is active). A *pinned-but-unopened* tile has no windows, reads dimmed, and
+left-clicking it *launches* the app (=taskbarActivate=: launch if not running, else
+=cycleGroup=). Icons resolve through =DesktopEntries.heuristicLookup= (desktop-file
+name → class → KRunner icon name). Tiles *drag-to-reorder within their own section*
+(pinned among pinned, open among open — a drag never crosses the boundary, so it
+can't pin/unpin); on release =taskbarReorder= persists the pinned order to
+=settings.pinned= and keeps the unpinned order for the session (=root.unpinnedOrder=).
+*Pinning is only offered from the app menus* — the launcher's [[*AppMenu.qml][=AppMenu=]]
+(Pin/Unpin to taskbar, alongside the favourite toggle) and, for open apps, the
+taskbar's own menu. Right-click opens the [[*AppContextMenu.qml][=AppContextMenu=]]
+*inside the pill* (like the control-panel menus, not a floating popup): the app name,
+its =DesktopEntries.heuristicLookup(icon).actions=, then the KWin window actions (Move
+to Desktop / Minimize / Maximize / Keep Above/Below), a *Pin/Unpin to taskbar* row,
+and Close (a not-running pinned app shows only the Pin row). Selecting a window action
 calls =root.windowAction(group, verb)=, which asks =winbridge='s =org.kde.pill Action=
 method to run a one-shot KWin script against *every* window in the group. The pill
 sizes to the menu's =implicitHeight= in ctx mode and the =mask= expands full-screen
@@ -6901,6 +7140,9 @@ Two events fire bursts, each guarding its initial value on startup:
 - *layout change* (=onKbIndexChanged=) — shows =from → to= (e.g. =US → FA=) with the
   arrow flashing. Layouts come from KWin's =org.kde.keyboard /Layouts= (custom label
   if set in System Settings, else the uppercased code).
+- *volume / brightness* (=startLevelBurst=, fired by the volume/brightness IPC
+  shortcuts) — the =level= kind: an icon + title over a progress bar that animates
+  from the old value to the new (see the shortcut notes above).
 
 *Notifications & launcher hosting.* The =Notifications= object (=notifs=) and the
 shared =appList= (=DesktopEntries.applications=, =noDisplay= filtered, name-sorted)
@@ -6998,14 +7240,55 @@ IpcHandler {
     target: "pill"
     function clipboard(): void { root.clipboardShortcut(""); }
     function clipboardOn(screen: string): void { root.clipboardShortcut(screen); }
-    // step the *active monitor's* brightness up/down by ~5%. Bind these to KDE
-    // custom-command shortcuts (see the brightness-shortcut note below); the active
-    // monitor is the focused window's output (activeScreen, from winbridge).
-    function brightnessUp(): void   { brightness.stepActive(root.activeScreen, 1); }
-    function brightnessDown(): void { brightness.stepActive(root.activeScreen, -1); }
+    // step the *active monitor's* brightness up/down by ~5% and flash a level burst
+    // (icon + Brightness title + from->to bar). Bind these to KDE custom-command
+    // shortcuts; the active monitor is the focused window's output (activeScreen).
+    function brightnessUp(): void   { root.brightnessStep(root.activeScreen, 1); }
+    function brightnessDown(): void { root.brightnessStep(root.activeScreen, -1); }
     // target a named monitor explicitly (skip the active-window lookup)
-    function brightnessUpOn(screen: string): void   { brightness.stepActive(screen, 1); }
-    function brightnessDownOn(screen: string): void { brightness.stepActive(screen, -1); }
+    function brightnessUpOn(screen: string): void   { root.brightnessStep(screen, 1); }
+    function brightnessDownOn(screen: string): void { root.brightnessStep(screen, -1); }
+    // step the *active speaker* (the default sink — the one checked in the volume
+    // menu) up/down by ~5%, or toggle its mute, each flashing a level burst. Bind
+    // these to KDE custom-command shortcuts on the volume keys (free the keys from
+    // Plasma's own volume actions first, so only our burst shows — no double OSD).
+    function volumeUp(): void   { root.volumeStep(1); }
+    function volumeDown(): void { root.volumeStep(-1); }
+    function volumeMute(): void { root.volumeToggleMute(); }
+}
+// pick the volume glyph for a level/mute state (matches the dashboard status icon).
+function volumeGlyph(v, muted) {
+    if (muted) return "volume_off";
+    if (v <= 0.001) return "volume_mute";
+    if (v < 0.5) return "volume_down";
+    return "volume_up";
+}
+// step the default sink's volume by ~5% and flash a level burst (from -> to).
+function volumeStep(sign) {
+    const sink = Pipewire.defaultAudioSink;
+    if (!sink || !sink.audio) return;
+    const from = sink.audio.volume;
+    const to = Math.max(0, Math.min(1, from + sign * 0.05));
+    sink.audio.volume = to;
+    root.startLevelBurst(root.volumeGlyph(to, sink.audio.muted), "Volume", from, to);
+}
+// toggle the default sink's mute and flash a level burst at the current level.
+function volumeToggleMute() {
+    const sink = Pipewire.defaultAudioSink;
+    if (!sink || !sink.audio) return;
+    const m = !sink.audio.muted;
+    sink.audio.muted = m;
+    const v = sink.audio.volume;
+    root.startLevelBurst(root.volumeGlyph(v, m), m ? "Muted" : "Volume", v, v);
+}
+// step the active monitor's brightness by ~5% (via the shared Brightness state) and
+// flash a level burst from the last-known ratio to the clamped target.
+function brightnessStep(screen, sign) {
+    const d = brightness.displayForScreen(screen);
+    const from = d ? d.value : 0;
+    const to = Math.max(0, Math.min(1, from + sign * 0.05));
+    brightness.stepActive(screen, sign);
+    root.startLevelBurst("brightness_high", "Brightness", from, to);
 }
 
 Theme { id: theme }
@@ -7277,11 +7560,13 @@ fire a burst on a *real* change. The visuals live in [[*ActionBurstPill.qml][=Ac
 // window) — then *two* pills show side by side and pop apart on entry.
 property bool   burstDesk: false
 property bool   burstLang: false
-readonly property bool burstActive: burstDesk || burstLang
-readonly property var  burstKinds: {       // canonical order: desktops then language
+property bool   burstLevel: false        // volume / brightness level burst
+readonly property bool burstActive: burstDesk || burstLang || burstLevel
+readonly property var  burstKinds: {       // canonical order: desktops, language, level
     const a = [];
     if (burstDesk) a.push("desktops");
     if (burstLang) a.push("language");
+    if (burstLevel) a.push("level");
     return a;
 }
 property int    burstPhase: 0      // 0 idle, 1 pre, 2 animate, 3 post
@@ -7289,6 +7574,11 @@ property string burstFromDesktop: ""
 property string burstToDesktop: ""
 property string burstFromLabel: ""
 property string burstToLabel: ""
+// level burst payload (volume / brightness): glyph + title + from->to fill
+property string burstLevelIcon: ""
+property string burstLevelTitle: ""
+property real   burstLevelFrom: 0
+property real   burstLevelTo: 0
 // index of the active desktop (also drives the sliding dot in the hovered Row 1)
 readonly property int deskActiveIdx: desktops.findIndex(d => d.id === currentDesktop)
 readonly property int burstFromIdx: desktops.findIndex(d => d.id === burstFromDesktop)
@@ -7299,8 +7589,19 @@ readonly property int burstDotIdx: burstPhase >= 2 ? Math.max(0, burstToIdx)
 function startBurst(kind) {
     if (kind === "desktops") burstDesk = true;
     else if (kind === "language") burstLang = true;
+    else if (kind === "level") burstLevel = true;
     burstPhase = 1;                // (re)start the shared timeline from the top
     burstTimer.restart();
+}
+// fire a volume/brightness level burst: glyph + title over a bar that animates
+// from `from` to `to` (both ratios in [0,1]). Reused by the volume IPC handlers
+// and the brightness step below.
+function startLevelBurst(icon, title, from, to) {
+    burstLevelIcon = icon;
+    burstLevelTitle = title;
+    burstLevelFrom = Math.max(0, Math.min(1, from));
+    burstLevelTo = Math.max(0, Math.min(1, to));
+    startBurst("level");
 }
 Timer {
     id: burstTimer
@@ -7308,7 +7609,7 @@ Timer {
     repeat: false
     onTriggered: {
         if (root.burstPhase < 3) { root.burstPhase++; burstTimer.restart(); }
-        else { root.burstPhase = 0; root.burstDesk = false; root.burstLang = false; }
+        else { root.burstPhase = 0; root.burstDesk = false; root.burstLang = false; root.burstLevel = false; }
     }
 }
 // fire the bursts on a *real* change (skip the initial value on startup; QML
@@ -7379,6 +7680,8 @@ function restoreFocus() {
 }
 Process { id: launchProc }
 function launch(execString) { launchProc.command = ["sh", "-c", execString]; launchProc.startDetached(); }
+// run a pre-split argv detached (no shell) — safe for paths/args with spaces.
+function launchArgs(argv) { launchProc.command = argv; launchProc.startDetached(); }
 
 // KWin window actions for the taskbar right-click menu. winbridge.py owns the
 // org.kde.pill service and turns this into a one-shot KWin script that finds the
@@ -7408,10 +7711,20 @@ function winEntry(w) {
     }
     return null;
 }
-// group windows by app class (falling back to icon name, then uuid), ordered by
-// open time. `windows` already arrives in open order (winbridge sorts by seq), so
-// the first-seen group order is open order — keep it.
+// session-only (non-persisted) order for the *unpinned* taskbar tiles: a list of
+// their keys ("win:"+class). Dragging an open, unpinned app in the taskbar sets a
+// temporary order here; it resets on restart. Pinned order lives in settings.pinned.
+property var unpinnedOrder: []
+
+// the taskbar model: pinned apps first (in settings.pinned order, whether or not
+// they're running), then the remaining open apps (unpinned). Open windows are
+// grouped by app class; a pinned app that's also open merges its windows into its
+// pinned tile. Each tile: { key, icon, entry, wins, desks, onAll, pinned }. A
+// pinned-but-unopened tile has wins: [] (clicking it launches the app).
 readonly property var appGroups: {
+    // ---- 1. group open windows by app class, in open order ----
+    // `windows` already arrives in open order (winbridge sorts by seq), so the
+    // first-seen group order is open order — keep it.
     const g = {}, order = [];
     for (const w of windows) {
         const key = (w.cls && w.cls.length) ? w.cls.toLowerCase()
@@ -7421,6 +7734,7 @@ readonly property var appGroups: {
             // icon: prefer the resolved entry's icon, else the KRunner name, else
             // the class / desktop file. `entry` is reused by the context menu.
             g[key] = {
+                classKey: key,
                 icon: (e && e.icon) ? e.icon : (w.icon || w.cls || w.dfile || ""),
                 entry: e,
                 wins: []
@@ -7433,7 +7747,8 @@ readonly property var appGroups: {
     // marker): `desks` = the unique desktop ids the group's windows sit on,
     // `onAll` = any window is on all desktops. `desk` per window comes from
     // winbridge (the KWin script).
-    return order.map(k => {
+    const byEntryId = {};
+    for (const k of order) {
         const grp = g[k];
         const desks = [];
         let onAll = false;
@@ -7443,13 +7758,94 @@ readonly property var appGroups: {
         }
         grp.desks = desks;
         grp.onAll = onAll;
-        return grp;
+        if (grp.entry && grp.entry.id) byEntryId[grp.entry.id] = grp;   // for pin merging
+    }
+    // ---- 2. pinned tiles first (settings.pinned order) ----
+    const appById = {};
+    for (const a of appList) appById[a.id] = a;
+    const tiles = [], usedClass = {};
+    for (const id of (settings.pinned || [])) {
+        const entry = appById[id];
+        if (!entry) continue;                          // pinned app no longer installed
+        const og = byEntryId[id];                      // its open windows, if running
+        if (og) usedClass[og.classKey] = true;         // don't list it again as unpinned
+        tiles.push({
+            key: "pin:" + id,
+            appId: id,                                 // plain id → re-resolve to launch
+            icon: entry.icon ? entry.icon : (og ? og.icon : ""),
+            entry: entry,
+            wins: og ? og.wins : [],
+            desks: og ? og.desks : [],
+            onAll: og ? og.onAll : false,
+            pinned: true
+        });
+    }
+    // ---- 3. remaining open apps (unpinned), in the temporary order else open order ----
+    const unpinned = order.filter(k => !usedClass[k]).map(k => {
+        const grp = g[k];
+        return { key: "win:" + k, appId: (grp.entry && grp.entry.id) ? grp.entry.id : "",
+                 icon: grp.icon, entry: grp.entry, wins: grp.wins,
+                 desks: grp.desks, onAll: grp.onAll, pinned: false };
     });
+    const ord = root.unpinnedOrder || [];
+    unpinned.sort((a, b) => {                           // stable: unknown keys keep open order
+        const ia = ord.indexOf(a.key), ib = ord.indexOf(b.key);
+        if (ia < 0 && ib < 0) return 0;
+        if (ia < 0) return 1;
+        if (ib < 0) return -1;
+        return ia - ib;
+    });
+    return tiles.concat(unpinned);
 }
 // (Taskbar computes per-group "active" itself from `activeWindow`.)
 function cycleGroup(grp) {
     const i = grp.wins.findIndex(w => w.uuid === root.activeWindow);
     root.activateWindow(grp.wins[i >= 0 ? (i + 1) % grp.wins.length : 0].id);
+}
+// left-click a taskbar tile: cycle its windows if running, else launch the app
+// (a pinned-but-unopened tile behaves like clicking the app in the launcher). We
+// re-resolve a *live* DesktopEntry from appList by id (the entry nested in the tile
+// object doesn't survive the model/signal round-trip, but the id string does), then
+// launch it by running its Exec line detached via the shell — DesktopEntry.execute()
+// proved unreliable from the dashboard, whereas root.launch (used by the context
+// menu's launcher actions) works. Field codes (%U/%F/%i/…) are stripped first.
+function taskbarActivate(grp) {
+    if (grp.wins && grp.wins.length > 0) { root.cycleGroup(grp); return; }
+    const e = grp.appId ? root.appList.find(a => a.id === grp.appId) : null;
+    if (!e) return;
+    // prefer the parsed argv (`command`, field codes already handled by Quickshell),
+    // run detached without a shell; strip any stray "%x" field-code args just in case.
+    if (e.command && e.command.length) {
+        root.launchArgs(e.command.filter(a => a && a.charAt(0) !== "%"));
+    } else if (e.execString) {
+        root.launch(e.execString.replace(/%[a-zA-Z]/g, " ").replace(/\s+/g, " ").trim());
+    } else if (e.execute) {
+        e.execute();                        // last resort
+    }
+}
+// commit a taskbar drag: `keys` is the new full tile order. Split it back into the
+// persisted pinned order (entry ids) and the temporary unpinned order (keys).
+function taskbarReorder(keys) {
+    const byKey = {};
+    for (const gr of root.appGroups) byKey[gr.key] = gr;
+    const pins = [], unpins = [];
+    for (const k of keys) {
+        const gr = byKey[k];
+        if (!gr) continue;
+        if (gr.pinned && gr.entry) pins.push(gr.entry.id);
+        else if (!gr.pinned) unpins.push(k);
+    }
+    settings.pinned = pins;
+    root.unpinnedOrder = unpins;
+}
+// taskbar pin state + toggle (pinning is only offered from the app menus).
+function isPinned(a) { return a ? (settings.pinned || []).indexOf(a.id) >= 0 : false; }
+function togglePin(a) {
+    if (!a) return;
+    const f = (settings.pinned || []).slice();
+    const i = f.indexOf(a.id);
+    if (i >= 0) f.splice(i, 1); else f.push(a.id);
+    settings.pinned = f;
 }
 #+end_src
 
@@ -7487,7 +7883,8 @@ FileView {
     JsonAdapter {
         id: settings
         property bool grid: false
-        property var favorites: []      // [DesktopEntry.id]
+        property var favorites: []      // [DesktopEntry.id] — launcher favourites
+        property var pinned: []         // [DesktopEntry.id] — taskbar pins, in order
     }
 }
 #+end_src
@@ -7744,7 +8141,7 @@ Variants {
             width: win.showBurst ? (burstLoader.item ? burstLoader.item.implicitWidth : 96) : win.launcher ? win.launcherWidth : win.ctxMode ? 520 : (win.notifMorph ? (morphStack.item ? morphStack.item.implicitWidth : 420) : (win.open ? (win.menu === 6 ? win.calWidth : 520) : (win.dash ? win.hoverWidth : (56 + root.privacyCount * 20 + (notifs.grouped.length > 0 ? 14 : 0)))))
             // in ctx mode the pill sizes to whichever menu loader is active (app
             // context menu or tray menu).
-            height: win.showBurst ? 28 : (win.open || win.launcher) ? win.openPaneHeight : win.ctxMode ? Math.min(win.openHeight, ((ctxLoader.item || trayLoader.item) ? (ctxLoader.item || trayLoader.item).implicitHeight + theme.pad * 2 : 300)) : (win.notifMorph ? morphStack.implicitHeight : (win.dash ? win.hoverHeight : 28))
+            height: win.showBurst ? (burstLoader.item ? burstLoader.item.implicitHeight : 28) : (win.open || win.launcher) ? win.openPaneHeight : win.ctxMode ? Math.min(win.openHeight, ((ctxLoader.item || trayLoader.item) ? (ctxLoader.item || trayLoader.item).implicitHeight + theme.pad * 2 : 300)) : (win.notifMorph ? morphStack.implicitHeight : (win.dash ? win.hoverHeight : 28))
             // resting (collapsed, un-hovered) pill is dimmed; full opacity once
             // hovered / open / a notification is morphing it (or a camera/mic is
             // live); fully hidden while a fullscreen window is focused (fsHide)
@@ -8096,10 +8493,13 @@ Variants {
                     groups: root.appGroups
                     activeWindow: root.activeWindow
                     onActivated: (grp) => {
-                        return root.cycleGroup(grp);
+                        return root.taskbarActivate(grp);
                     }
                     onContextRequested: (grp) => {
                         return win.ctxGroup = grp;
+                    }
+                    onReordered: (keys) => {
+                        return root.taskbarReorder(keys);
                     }
                     onItemEntered: (it) => {
                         return win.hoverEnter(it);
@@ -8354,9 +8754,10 @@ Variants {
                     // right-click on an app: show the floating AppMenu at the click.
                     // The point arrives in the Launcher's coordinates; map it into
                     // the full-screen menu overlay so it can drop out of the pill.
-                    onAppMenuRequested: (app, fav, x, y) => {
+                    onAppMenuRequested: (app, fav, pinned, x, y) => {
                         const p = launcherItem.mapToItem(launcherMenu, x, y);
-                        launcherMenu.openFor(app, p.x, p.y, fav, true);
+                        launcherMenu.openFor(app, p.x, p.y,
+                            { fav: fav, showFav: true, pinned: pinned, showPin: true });
                     }
                     onConfirmPower: (action, cmd) => {
                         return win.requestConfirm(action, cmd);
@@ -8412,6 +8813,9 @@ Variants {
                         theme: theme
                         group: win.ctxGroup
                         desktops: root.desktops
+                        isPinned: win.ctxGroup
+                            ? root.isPinned(win.ctxGroup.entry || DesktopEntries.heuristicLookup(win.ctxGroup.icon))
+                            : false
                         onLaunchRequested: (s) => {
                             root.launch(s);
                             win.ctxGroup = null;
@@ -8422,6 +8826,11 @@ Variants {
                         }
                         onWindowAction: (verb, uuids) => {
                             root.windowAction(uuids, verb);
+                            win.ctxGroup = null;
+                        }
+                        onPinToggled: (e) => {
+                            if (e)
+                                root.togglePin(e);
                             win.ctxGroup = null;
                         }
                         onCloseRequested: win.ctxGroup = null
@@ -8515,6 +8924,7 @@ Variants {
             z: 1000
             theme: theme
             onFavouriteToggled: (e) => launcherItem.toggleFav(e)
+            onPinToggled: (e) => launcherItem.togglePin(e)
             onLaunched: win.launcher = false
         }
 
@@ -9277,6 +9687,10 @@ Component {
         fromLabel: root.burstFromLabel
         toLabel: root.burstToLabel
         dotIdx: root.burstDotIdx
+        levelIcon: root.burstLevelIcon
+        levelTitle: root.burstLevelTitle
+        levelFrom: root.burstLevelFrom
+        levelTo: root.burstLevelTo
     }
 }
 #+end_src
