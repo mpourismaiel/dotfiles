@@ -6162,18 +6162,18 @@ Row {
 ** CollapsedPill.qml
 *** Description
 The collapsed pill's content: the =hh:mm= clock, plus the privacy indicators —
-a camera icon while any process holds a =/dev/video*= node, a mic icon while the
-default source is unmuted, and a pulsing red dot while the screen is being
-shared/recorded (=recordingOn=; the dot emits a fading ring once every 5s). The
-icons *pop in* / *shrink out* (scale overshoot via =OutBack=, an animated slot
-width so the clock slides over). =solid= (a live camera/mic/recording) shows the
-clock at full opacity; otherwise it is slightly translucent.
+a camera icon while any process holds a =/dev/video*= node, and a pulsing red dot
+while the screen is being shared/recorded (=recordingOn=; the dot emits a fading
+ring once every 5s). The icons *pop in* / *shrink out* (scale overshoot via
+=OutBack=, an animated slot width so the clock slides over). =solid= (a live
+camera/recording) shows the clock at full opacity; otherwise it is slightly
+translucent.
 *** Code
 #+begin_src qml :tangle ~/.config/quickshell/pill/CollapsedPill.qml :mkdirp yes
 pragma ComponentBehavior: Bound
-// CollapsedPill.qml — the collapsed pill: the hh:mm clock plus camera/mic/screen
+// CollapsedPill.qml — the collapsed pill: the hh:mm clock plus camera/screen
 // privacy indicators that pop in (OutBack scale + animated slot width so the clock
-// slides over) while live. `solid` (a live camera/mic/recording) shows the clock at
+// slides over) while live. `solid` (a live camera/recording) shows the clock at
 // full opacity. Screen recording is a bold red dot that emits a fading ring once
 // every 5s (a recording "pulse").
 import QtQuick
@@ -6186,7 +6186,6 @@ Row {
     property string clock: ""
     property bool solid: false          // privacy-rest: clock at full opacity
     property bool cameraOn: false
-    property bool micOn: false
     property bool recordingOn: false    // screen being shared/recorded
     property bool hasUnread: false      // un-cleared notifications waiting in history
 
@@ -6217,7 +6216,7 @@ Row {
     Text {
         anchors.verticalCenter: parent.verticalCenter
         text: root.clock
-        // full opacity while a camera/mic is live (the pill is solid then);
+        // full opacity while a camera/recording is live (the pill is solid then);
         // otherwise slightly translucent so the floating pill reveals a hint of
         // what's behind it (readable on any backdrop)
         color: root.solid ? root.theme.text
@@ -6227,7 +6226,7 @@ Row {
     }
     // screen-recording indicator — a bold red dot that pulses (emits a fading,
     // expanding ring) once every 5s while the screen is being shared/recorded.
-    // Same pop-in / shrink-out slot behaviour as the camera/mic glyphs so the
+    // Same pop-in / shrink-out slot behaviour as the camera glyph so the
     // clock slides over when it appears/disappears.
     Item {
         id: recSlot
@@ -6275,18 +6274,17 @@ Row {
             Behavior on scale  { NumberAnimation { duration: root.theme.anim; easing.type: Easing.OutBack } }
         }
     }
-    // camera / mic indicators — static model so the delegates persist (a reactive
-    // model would rebuild and skip the animation); each reads its live state by index.
+    // camera indicator — static model so the delegate persists (a reactive
+    // model would rebuild and skip the animation); it reads its live state directly.
     Repeater {
         model: [
-            { ic: "videocam", col: root.theme.good },
-            { ic: "mic",      col: root.theme.textDim }
+            { ic: "videocam", col: root.theme.good }
         ]
         delegate: Item {
             id: privIcon
             required property int index
             required property var modelData
-            readonly property bool on: index === 0 ? root.cameraOn : root.micOn
+            readonly property bool on: root.cameraOn
             anchors.verticalCenter: parent.verticalCenter
             width: privIcon.on ? 15 : 0
             height: 15
@@ -7153,17 +7151,18 @@ hides and =pill.height= tracks the deck); while open/launcher/app-menu the deck 
 dropped on close (so the pill releases the keyboard).
 
 *Privacy indicators.* At rest the pill also flags a live *camera* (any process
-holding a =/dev/video*= node open, polled every 2s with =fuser=), an *unmuted mic*
-(the default Pipewire source), or an active *screen capture* (a =Stream/Output/Video=
-PipeWire node published by xdg-desktop-portal / KWin while the screen is shared or
-recorded). Any of these drops the idle translucency — the collapsed pill goes solid
-(real surface + border, no gradient, full-opacity clock) — and shows an indicator
-next to the clock: camera/mic as glyphs, screen recording as a *big red dot that
-pulses (emits a fading ring) once every 5s*; they sit side by side when several are
-live, widening the pill. The glyphs *pop in* and *shrink out* like the action bursts
-(scale overshoots on appear via =OutBack=, the slot width animates so the clock
-slides over). It also keeps the pill visible over a fullscreen window, where it would
-otherwise hide.
+holding a =/dev/video*= node open, polled every 2s with =fuser=) or an active
+*screen capture* (a =Stream/Output/Video= PipeWire node published by
+xdg-desktop-portal / KWin while the screen is shared or recorded). A hot mic is
+intentionally *not* flagged (an unmuted mic is a routine resting state, so it was
+more noise than signal). Either drops the idle translucency — the collapsed pill
+goes solid (real surface + border, no gradient, full-opacity clock) — and shows an
+indicator next to the clock: the camera as a glyph, screen recording as a *big red
+dot that pulses (emits a fading ring) once every 5s*; they sit side by side when
+both are live, widening the pill. The glyphs *pop in* and *shrink out* like the
+action bursts (scale overshoots on appear via =OutBack=, the slot width animates so
+the clock slides over). A live camera or an active screen capture also keeps the
+pill visible over a fullscreen window, where it would otherwise hide.
 Edit these chunks; they assemble (via org's =noweb=) into the single =init.qml=
 below — the order is fixed by the =<<...>>= references, so a chunk's subtree can
 be moved freely. Each chunk's own header + notes are in the =*** init.qml — …=
@@ -7212,8 +7211,8 @@ ShellRoot {
 **** init.qml — root state & shared services
 Top-level shared state: the window / desktop / active-window properties fed by the
 services below (=lastActiveWindow= caches the last real focus so it can be restored),
-the Meta+D =launcherShortcut= signal, the single =Theme=, and =PwObjectTracker=s that
-keep the default audio sink/source live so the volume + mic indicators update.
+the Meta+D =launcherShortcut= signal, the single =Theme=, and a =PwObjectTracker=
+that keeps the default audio sink live so the volume indicator updates.
 #+name: init-state
 #+begin_src qml
 property var desktops: []
@@ -7294,36 +7293,30 @@ function brightnessStep(screen, sign) {
 Theme { id: theme }
 // keep the default sink bound so the dashboard volume icon reflects mute live
 PwObjectTracker { objects: Pipewire.defaultAudioSink ? [Pipewire.defaultAudioSink] : [] }
-// keep the default source bound too, so the mic-active indicator updates live
-PwObjectTracker { objects: Pipewire.defaultAudioSource ? [Pipewire.defaultAudioSource] : [] }
 #+end_src
 
 **** init.qml — privacy indicators
 Privacy indicators for the resting pill — a camera in use (any process holding a
-=/dev/video*= node, polled with =fuser=), an unmuted default mic, and an active
-*screen capture* (a =Stream/Output/Video= PipeWire node published by
-xdg-desktop-portal / KWin while the screen is shared or recorded). Any of the three
-makes the collapsed pill solid and shows an indicator (rendered by
-[[*CollapsedPill.qml][=CollapsedPill=]]) — camera/mic as glyphs, screen recording
-as a pulsing red dot.
+=/dev/video*= node, polled with =fuser=) and an active *screen capture* (a
+=Stream/Output/Video= PipeWire node published by xdg-desktop-portal / KWin while
+the screen is shared or recorded). Either one makes the collapsed pill solid and
+shows an indicator (rendered by [[*CollapsedPill.qml][=CollapsedPill=]]) — camera
+as a glyph, screen recording as a pulsing red dot. A hot mic is intentionally *not*
+flagged (an unmuted mic is a routine resting state, so it was more noise than signal).
 #+name: init-privacy
 #+begin_src qml
 
 // ---- privacy indicators (resting pill) ----
-// camera + mic + screen-capture in use show an icon next to the collapsed clock
-// and make the resting pill opaque (drops the idle translucency) so it can't be
-// missed.
+// camera + screen-capture in use show an icon next to the collapsed clock and make
+// the resting pill opaque (drops the idle translucency) so it can't be missed. A
+// hot mic is deliberately ignored (see privacyActive below).
 //   camera — poll for any process holding a /dev/video* node open (fuser).
-//   mic    — the default Pipewire source being unmuted.
 //   screen — a live screencast: xdg-desktop-portal / KWin exposes the captured
 //            frames as a "Stream/Output/Video" PipeWire node while the screen is
 //            shared or recorded (cameras are "Video/Source" and consumers are
 //            "Stream/Input/Video", so a video *output* stream uniquely means the
 //            screen itself is being captured). Shown as a pulsing red dot.
 property bool cameraInUse: false
-readonly property bool micActive: Pipewire.defaultAudioSource
-                                  && Pipewire.defaultAudioSource.audio
-                                  && !Pipewire.defaultAudioSource.audio.muted
 // keep every PipeWire node bound so a screencast node's media.class is readable
 // the moment it appears (and disappears) — this drives screenRecording below.
 PwObjectTracker { objects: Pipewire.nodes ? Pipewire.nodes.values : [] }
@@ -7335,8 +7328,13 @@ readonly property bool screenRecording: {
     }
     return false;
 }
-readonly property bool privacyActive: cameraInUse || micActive || screenRecording
-readonly property int  privacyCount: (cameraInUse ? 1 : 0) + (micActive ? 1 : 0) + (screenRecording ? 1 : 0)
+// only a live camera or an active screencast count as privacy indicators — a hot
+// mic is deliberately ignored (an unmuted mic is a routine resting state, and
+// flagging it was more noise than signal). These drive the indicator glyphs, the
+// solid resting surface (privacyRest), and staying visible over a fullscreen
+// window (fsHide).
+readonly property bool privacyActive: cameraInUse || screenRecording
+readonly property int  privacyCount: (cameraInUse ? 1 : 0) + (screenRecording ? 1 : 0)
 Process {
     id: cameraProc
     command: ["sh", "-c", "fuser /dev/video* >/dev/null 2>&1 && echo busy || echo idle"]
@@ -7947,9 +7945,10 @@ Variants {
         // hide the resting pill while a fullscreen window is focused (games,
         // video, etc.) — only at true rest: hovering, opening, or a morphing
         // notification all override it, so notifications still appear normally.
-        // A live camera/mic keeps it visible regardless (privacy indicator).
+        // A live camera or an active screencast keeps it visible regardless
+        // (privacy indicator); a hot mic is not treated as a privacy indicator.
         property bool fsHide: root.activeFullscreen && !dash && !notifMorph && !root.privacyActive
-        // resting pill with a live camera/mic: solid (no idle translucency),
+        // resting pill with a live camera/recording: solid (no idle translucency),
         // clock paired with the privacy icon(s).
         property bool privacyRest: root.privacyActive && !dash && !notifMorph && !showBurst
         // ---- shared hover indicator ----
@@ -8143,8 +8142,8 @@ Variants {
             // context menu or tray menu).
             height: win.showBurst ? (burstLoader.item ? burstLoader.item.implicitHeight : 28) : (win.open || win.launcher) ? win.openPaneHeight : win.ctxMode ? Math.min(win.openHeight, ((ctxLoader.item || trayLoader.item) ? (ctxLoader.item || trayLoader.item).implicitHeight + theme.pad * 2 : 300)) : (win.notifMorph ? morphStack.implicitHeight : (win.dash ? win.hoverHeight : 28))
             // resting (collapsed, un-hovered) pill is dimmed; full opacity once
-            // hovered / open / a notification is morphing it (or a camera/mic is
-            // live); fully hidden while a fullscreen window is focused (fsHide)
+            // hovered / open / a notification is morphing it (or a camera/recording
+            // is live); fully hidden while a fullscreen window is focused (fsHide)
             opacity: win.showBurst ? 1 : (win.fsHide ? 0 : ((win.dash || win.notifMorph || win.privacyRest) ? 1 : theme.idleOpacity))
 
             HoverHandler {
@@ -8193,7 +8192,7 @@ Variants {
                 // backdrop. The morph drops the background entirely (cards only);
                 // so does a burst — its own pill(s) carry the surface, and the
                 // transparent gap shows through when two of them are side by side.
-                // a live camera/mic makes the resting pill solid too (no gradient,
+                // a live camera/recording makes the resting pill solid too (no gradient,
                 // a real surface + border) so the privacy state reads at a glance.
                 color: win.notifMorph ? "transparent" : ((win.dash || win.privacyRest) ? theme.bg : "transparent")
                 gradient: (win.dash || win.notifMorph || win.showBurst || win.privacyRest) ? null : restGrad
@@ -8248,7 +8247,7 @@ Variants {
                 }
             }
 
-            // ---- collapsed: clock (hh:mm) + privacy icons (camera / mic) ----
+            // ---- collapsed: clock (hh:mm) + privacy icons (camera / screen) ----
             CollapsedPill {
                 anchors.centerIn: parent
                 visible: !win.dash && !win.notifMorph && !win.showBurst
@@ -8256,7 +8255,6 @@ Variants {
                 clock: root.clockShort
                 solid: win.privacyRest
                 cameraOn: root.cameraInUse
-                micOn: root.micActive
                 recordingOn: root.screenRecording
                 hasUnread: notifs.unreadCount > 0
             }
