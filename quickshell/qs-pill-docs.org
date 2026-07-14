@@ -224,6 +224,77 @@ Text {
 }
 #+end_src
 
+** PillSurface.qml
+*** Description
+The *expanded* pill's background as a =Shape= (not a plain rounded =Rectangle=), so
+the dashboard / open panel can sit *flush against the screen's top edge* with
+*"rounded out" corners*: the free (bottom) corners are convex, while the two corners at
+the top edge are *concave wings* that flare outward into the edge (the caelestia look).
+Only the *expanded* states use this — the resting/collapsed pill stays the floating
+rounded =Rectangle=; =init.qml= cross-fades between the two. =radius= is the convex
+free-edge corner, =wing= the concave edge flare; both animate. Borderless by default
+(pass a =strokeColor=/=strokeWidth= only if a hairline is wanted). Mirrors emaqs's
+=PillSurface= but attaches to the *top* edge instead of the bottom.
+*** Code
+#+begin_src qml :tangle ~/.config/quickshell/pill/PillSurface.qml :mkdirp yes
+pragma ComponentBehavior: Bound
+// PillSurface.qml — top-attached panel background: convex rounded BOTTOM (free)
+// corners, concave "wing" TOP corners that flare into the screen edge (caelestia
+// style), straight flush top. radius = free corner, wing = edge flare; both animate.
+import QtQuick
+import QtQuick.Shapes
+
+Item {
+    id: root
+    required property var theme
+    property real radius: 16          // convex free-edge (bottom) corner radius
+    property real wing: 12            // concave top-edge flare radius
+    property color fillColor: "transparent"
+    property color strokeColor: "transparent"
+    property real strokeWidth: 0
+
+    Behavior on radius { NumberAnimation { duration: root.theme.anim; easing.type: Easing.OutCubic } }
+    Behavior on wing   { NumberAnimation { duration: root.theme.anim; easing.type: Easing.OutCubic } }
+
+    Shape {
+        anchors.fill: parent
+        preferredRendererType: Shape.CurveRenderer
+
+        ShapePath {
+            id: sp
+            fillColor: root.fillColor
+            strokeColor: root.strokeColor
+            strokeWidth: root.strokeWidth
+            joinStyle: ShapePath.RoundJoin
+
+            readonly property real w: root.width
+            readonly property real h: root.height
+            readonly property real r: Math.max(0, Math.min(root.radius, root.height - root.wing, root.width / 2 - root.wing))
+            readonly property real wr: Math.max(0, Math.min(root.wing, root.width / 2 - sp.r, root.height - sp.r))
+
+            startX: sp.wr
+            startY: sp.h - sp.r
+            // bottom-left convex corner (free edge)
+            PathArc { x: sp.wr + sp.r; y: sp.h; radiusX: sp.r; radiusY: sp.r; direction: PathArc.Counterclockwise }
+            // bottom edge
+            PathLine { x: sp.w - sp.wr - sp.r; y: sp.h }
+            // bottom-right convex corner
+            PathArc { x: sp.w - sp.wr; y: sp.h - sp.r; radiusX: sp.r; radiusY: sp.r; direction: PathArc.Counterclockwise }
+            // right wall up
+            PathLine { x: sp.w - sp.wr; y: sp.wr }
+            // top-right concave wing — flare out to the top edge
+            PathArc { x: sp.w; y: 0; radiusX: sp.wr; radiusY: sp.wr; direction: PathArc.Clockwise }
+            // straight flush top edge
+            PathLine { x: 0; y: 0 }
+            // top-left concave wing
+            PathArc { x: sp.wr; y: sp.wr; radiusX: sp.wr; radiusY: sp.wr; direction: PathArc.Clockwise }
+            // left wall down, close
+            PathLine { x: sp.wr; y: sp.h - sp.r }
+        }
+    }
+}
+#+end_src
+
 ** PillToggle.qml
 *** Description
 A small themed on/off switch, reused across menus (Wi-Fi enable, Bluetooth
@@ -7174,8 +7245,9 @@ pragma ComponentBehavior: Bound
 // ----------------------------------------------------------------------------
 // init.qml — morphing "pill" overlay for KDE Plasma 6 / KWin / Wayland.
 //
-// Stages: collapsed (hh:mm) -> hovered (dashboard, two balanced rows) -> clicked
-// (control panel). See qs-pill-docs.org "How the pill works" for the full notes.
+// Stages: collapsed (hh:mm) -> focused (click to reveal the dashboard, two balanced
+// rows; attaches flush to the top edge, "rounded out", and holds until a click
+// elsewhere) -> clicked (control panel). See qs-pill-docs.org for the full notes.
 //
 // Run with:  qs -p quickshell/init.qml
 // ----------------------------------------------------------------------------
@@ -7914,7 +7986,11 @@ Variants {
         // backdrop go full-screen — so mode/size/fade bindings key off this, while
         // each menu's own Loader keys off its specific state (ctxGroup / trayItem).
         readonly property bool ctxMode: ctxGroup !== null || trayItem !== null
-        property bool dash: open || launcher || hover.hovered || ctxMode
+        // "focus mode": clicking the collapsed pill reveals the dashboard and holds
+        // it (no hover reveal); it stays until a click elsewhere (backdrop) moves
+        // focus away. Set true by the collapsed-pill click, cleared by the backdrop.
+        property bool focused: false
+        property bool dash: open || launcher || focused || ctxMode
         property int menu: 4 // 0 net, 1 vol, 2 bt, 3 batt, 5 clipboard, 6 calendar, 4 notif (default pane)
         // open-state pill geometry, in ONE place: the control panel and the
         // launcher both lay out to these, so resizing the open/launcher pill here
@@ -8066,7 +8142,7 @@ Variants {
         WlrLayershell.keyboardFocus: (win.launcher || (win.open && win.menu === 5)) ? WlrKeyboardFocus.Exclusive : win.open ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
         exclusionMode: ExclusionMode.Ignore
         color: "transparent"
-        mask: (win.open || win.launcher || win.ctxMode || win.confirmActive) ? fullRegion : (win.fsHide ? emptyRegion : pillRegion)
+        mask: (win.open || win.launcher || win.ctxMode || win.confirmActive || win.focused) ? fullRegion : (win.fsHide ? emptyRegion : pillRegion)
 
         Process {
             id: confirmProc
@@ -8121,13 +8197,14 @@ Variants {
             id: backdrop
 
             anchors.fill: parent
-            enabled: win.open || win.launcher || win.ctxMode
+            enabled: win.open || win.launcher || win.ctxMode || win.focused
             // dismiss without launching -> hand focus back to the active window
             onClicked: {
                 win.open = false;
                 win.launcher = false;
                 win.ctxGroup = null;
                 win.trayItem = null;
+                win.focused = false;
                 root.restoreFocus();
             }
         }
@@ -8136,7 +8213,12 @@ Variants {
             id: pill
 
             anchors.horizontalCenter: parent.horizontalCenter
-            y: 6
+            // attached flush to the top edge in every stage — the resting clock pill
+            // AND the expanded dashboard / panel — growing downward, "rounded out"
+            // via the PillSurface background below. Only a notification card or an
+            // action burst floats 6px below the edge (those aren't "the pill").
+            y: (win.notifMorph || win.showBurst) ? 6 : 0
+            Behavior on y { NumberAnimation { duration: theme.anim; easing.type: Easing.OutCubic } }
             width: win.showBurst ? (burstLoader.item ? burstLoader.item.implicitWidth : 96) : win.launcher ? win.launcherWidth : win.ctxMode ? 520 : (win.notifMorph ? (morphStack.item ? morphStack.item.implicitWidth : 420) : (win.open ? (win.menu === 6 ? win.calWidth : 520) : (win.dash ? win.hoverWidth : (56 + root.privacyCount * 20 + (notifs.grouped.length > 0 ? 14 : 0)))))
             // in ctx mode the pill sizes to whichever menu loader is active (app
             // context menu or tray menu).
@@ -8182,52 +8264,31 @@ Variants {
                 }
             }
 
-            Rectangle {
+            // background: attached to the top edge in every non-notification stage
+            // (resting clock pill AND the expanded dashboard / panel), borderless,
+            // with convex free (bottom) corners and concave "wing" top corners that
+            // melt into the edge. The wings flare OUTWARD via negative horizontal
+            // margins — the surface is 2*wing wider than the pill — so the content
+            // keeps its full width and never spills over the wings. Transparent
+            // (hidden) only while a notification or action-burst owns the pill.
+            PillSurface {
+                id: surface
+                // small flare on the narrow resting pill, a big one on the wide
+                // dashboard so the "rounded out" reads at 640px.
+                readonly property int wingW: win.dash ? 34 : 12
                 anchors.fill: parent
-                // collapsed pill is fully round; the dashboard / open panel uses
-                // the Broadsheet panel radius.
+                anchors.leftMargin: -wingW
+                anchors.rightMargin: -wingW
+                theme: theme
                 radius: win.dash ? theme.radiusPanel : Math.min(theme.radiusPanel, height / 2)
-                // hovered/open is a solid surface; at rest it's a borderless
-                // translucent *gradient* so the floating pill blends with the
-                // backdrop. The morph drops the background entirely (cards only);
-                // so does a burst — its own pill(s) carry the surface, and the
-                // transparent gap shows through when two of them are side by side.
-                // a live camera/recording makes the resting pill solid too (no gradient,
-                // a real surface + border) so the privacy state reads at a glance.
-                color: win.notifMorph ? "transparent" : ((win.dash || win.privacyRest) ? theme.bg : "transparent")
-                gradient: (win.dash || win.notifMorph || win.showBurst || win.privacyRest) ? null : restGrad
-                border.color: theme.border
-                border.width: (!win.notifMorph && (win.dash || win.privacyRest)) ? 1 : 0
-
-                Gradient {
-                    id: restGrad
-
-                    GradientStop {
-                        position: 0
-                        color: theme.bgGradTop
-                    }
-
-                    GradientStop {
-                        position: 1
-                        color: theme.bgGradBottom
-                    }
-
-                }
-
-                Behavior on radius {
-                    NumberAnimation {
-                        duration: theme.anim
-                    }
-
-                }
-
-                Behavior on color {
-                    ColorAnimation {
-                        duration: theme.animFast
-                    }
-
-                }
-
+                wing: wingW
+                // solid when expanded or a camera/recording is live; translucent at rest.
+                fillColor: (win.dash || win.privacyRest) ? theme.bg : theme.bgTranslucent
+                visible: !win.notifMorph && !win.showBurst
+                opacity: visible ? 1 : 0
+                Behavior on opacity { NumberAnimation { duration: theme.animFast } }
+                Behavior on anchors.leftMargin { NumberAnimation { duration: theme.anim; easing.type: Easing.OutCubic } }
+                Behavior on anchors.rightMargin { NumberAnimation { duration: theme.anim; easing.type: Easing.OutCubic } }
             }
 
             // clicking the hovered pill body (empty area) opens the launcher;
@@ -8257,6 +8318,16 @@ Variants {
                 cameraOn: root.cameraInUse
                 recordingOn: root.screenRecording
                 hasUnread: notifs.unreadCount > 0
+            }
+
+            // focus mode: click the collapsed pill to reveal + hold the dashboard.
+            // Disabled once expanded / morphing so the dashboard's own icons, the
+            // notification cards and the burst keep their clicks.
+            MouseArea {
+                anchors.fill: parent
+                enabled: !win.dash && !win.notifMorph && !win.showBurst
+                cursorShape: Qt.PointingHandCursor
+                onClicked: win.focused = true
             }
 
             // ---- notification morph: the collapsed pill becomes a stack ----

@@ -1,0 +1,1327 @@
+#+title: emaqs — an Emacs-workspace pill for Quickshell
+
+* What this is
+=emaqs= is a second, small Quickshell overlay — a sibling of the =pill= (see
+[[file:qs-pill-docs.org][=qs-pill-docs.org=]]) — that surfaces the running *Emacs
+daemon's Doom workspaces* at the bottom of the screen. Like the pill, this org file
+*owns the code*: its code blocks tangle to the =.qml= / =.py= / =.sh= files under
+=~/.config/quickshell/emaqs/=. Edit the blocks here, tangle, run.
+
+At rest it is a single up-chevron tab attached to the bottom edge (translucent,
+dimmed). Hovering it opens a horizontally-centred bar of *workspace names*; a hover
+highlight slides between names and a focus highlight marks the *current* workspace,
+both animating between positions exactly like the pill's shared hover square.
+
+- *Left-click* a workspace name → switch Emacs to that workspace *and* raise/focus
+  the Emacs frame.
+- *Right-click* a workspace name → the bar grows into a rectangular menu (a
+  [[file:qs-pill-docs.org::*MenuHeader.qml][=MenuHeader=]]-style header with a back
+  chevron and the workspace name as title) listing that workspace's *buffers*,
+  grouped and sorted *exactly like the ~SPC SPC~ super-menu* (Buffers / Agent Shell /
+  Ghostel — files, directories and actions are intentionally left out). Clicking a
+  buffer switches to that workspace + buffer and focuses Emacs. Opposite the header
+  sit two icons: *magit* (opens =magit-status= for the workspace's project root) and
+  *close* (a confirmation sub-panel, then deletes the workspace).
+
+Everything is driven over =emacsclient= through [[*emaqsbridge.py][=emaqsbridge.py=]],
+reusing the *user's own* super-menu predicates (=mp/normal-buffer-p=,
+=mp/agent-shell-buffer-p=, =mp/ghostel-buffer-p=) and =buffer-name-history= ordering,
+so the buffer list matches Emacs 1:1 with no logic duplicated here. If the daemon is
+down every query returns empty and the bar simply shows nothing — best-effort, never
+blocks.
+
+* Environment (verified, not assumed)
+Confirmed against the running daemon on this machine (2026-07):
+- =(+workspace-list-names)= / =(+workspace-current-name)= — workspace enumeration.
+- =(+workspace-switch NAME)= — switch (=name &optional auto-create-p=).
+- =(+workspace-buffer-list &optional PERSP)= — a *specific* workspace's buffers
+  without switching to it (so right-clicking a name lists its buffers in place).
+- =(+workspace-delete WORKSPACE)= — close a workspace.
+- =(magit-status ROOT)=, =(projectile-project-root)=, =(vc-root-dir)= — magit entry.
+- =mp/normal-buffer-p=, =mp/agent-shell-buffer-p=, =mp/ghostel-buffer-p=,
+  =consult--buffer-query=, =buffer-name-history= — the super-menu grouping/sorting.
+
+*Known limitations (same as the pill, documented so they aren't surprises):*
+- *Blur*: this is *alpha translucency + a gradient*, not true backdrop blur — the KWin
+  blur protocol is not exposed to Quickshell (identical to the pill's resting state).
+- *Focusing the Emacs frame* mirrors the pill's =pill-open= (=make-frame-visible= +
+  =raise-frame= + =select-frame-set-input-focus=); it is subject to KWin's
+  focus-stealing prevention just as the pill's agenda-open is.
+- *Live updates* are *polled* (=emacsclient= every 1.2 s) and *only while the bar is
+  expanded or a menu is open* — at rest (the collapsed chevron) nothing is polled, so
+  it is idle-cheap. A switch you make from the bar is applied optimistically so the
+  focus highlight moves immediately; external switches (from inside Emacs) catch up on
+  the next poll.
+
+* Source
+Each =*** Code= block tangles to its own file under =~/.config/quickshell/emaqs/=.
+=Theme.qml=, =MSym.qml= and =MenuHeader.qml= are self-contained copies of the pill's
+(so emaqs can be restyled independently); everything else is emaqs-specific.
+
+** Theme.qml
+*** Description
+The palette / metrics / timings, one place to restyle emaqs. A trimmed copy of the
+pill's Broadsheet theme — same tokens so the two overlays read as a set.
+*** Code
+#+begin_src qml :tangle ~/.config/quickshell/emaqs/Theme.qml :mkdirp yes
+pragma ComponentBehavior: Bound
+// Theme.qml — colours, metrics and timings for emaqs (Broadsheet palette, shared
+// with the pill). Instantiated once in init.qml as `Theme { id: theme }`.
+import QtQuick
+
+QtObject {
+    // ---- palette ----
+    readonly property color bg:          "#1b1712"   // panel / bar base
+    readonly property color bgElevated:  "#221d16"   // menu surface
+    readonly property color row:         "#231e17"   // resting rows / hovered chrome
+    readonly property color rowHi:       "#3a271c"   // selected / active tint
+    readonly property color bgHover:     "#3a271c"   // hover square (= rowHi)
+    readonly property color border:      Qt.rgba(0xec / 255.0, 0xe4 / 255.0, 0xd6 / 255.0, 0.12)
+    readonly property color borderStrong: Qt.rgba(0xec / 255.0, 0xe4 / 255.0, 0xd6 / 255.0, 0.22)
+    readonly property color divider:     Qt.rgba(0xec / 255.0, 0xe4 / 255.0, 0xd6 / 255.0, 0.12)
+    readonly property color text:        "#efe9dd"   // primary cream
+    readonly property color textDim:     "#a89e8c"   // secondary
+    readonly property color faint:       "#7a7060"   // tertiary / idle glyphs
+    readonly property color accent:      "#cf4636"   // vermillion
+    readonly property color accentSoft:  Qt.rgba(0xcf / 255.0, 0x46 / 255.0, 0x36 / 255.0, 0.15)
+    readonly property color accentDim:   "#3a271c"   // active-workspace tint (= rowHi)
+    readonly property color danger:      "#d95435"   // destructive
+    readonly property color track:       Qt.rgba(0xec / 255.0, 0xe4 / 255.0, 0xd6 / 255.0, 0.14)
+
+    // resting (collapsed, un-hovered) tab: translucent + a soft gradient so the
+    // floating tab blends with whatever is behind it (alpha only, not real blur).
+    readonly property color bgTranslucent: Qt.rgba(0x1b / 255.0, 0x17 / 255.0, 0x12 / 255.0, 0.72)
+    readonly property color bgGradTop:     Qt.rgba(0x2a / 255.0, 0x24 / 255.0, 0x1b / 255.0, 0.82)
+    readonly property color bgGradBottom:  Qt.rgba(0x15 / 255.0, 0x11 / 255.0, 0x0c / 255.0, 0.66)
+    readonly property real  idleOpacity:   0.86
+
+    // ---- metrics ----
+    readonly property int radiusPanel:   20
+    readonly property int radiusRow:     14
+    readonly property int radiusBtn:     10
+    readonly property int pad:           14
+    readonly property int gap:           10
+    readonly property int rowHeight:     32
+
+    // ---- fonts ----
+    readonly property string family:     "IBM Plex Sans"
+    readonly property string serif:      "DM Serif Display"
+    readonly property string mono:       "IBM Plex Mono"
+    readonly property string icon:       "Material Symbols Rounded"
+    readonly property real   labelSpacing: 1.4
+
+    // Icon theme for Qt-themed glyphs (unused by emaqs itself, kept so run-emaqs.sh
+    // has the same knob as run-pill.sh). "" = follow KDE.
+    readonly property string iconTheme:   ""
+
+    readonly property int fsSmall:       11
+    readonly property int fsNormal:      13
+    readonly property int fsLarge:       15
+
+    // ---- animation ----
+    readonly property int anim:          210
+    readonly property int animFast:      130
+}
+#+end_src
+
+** MSym.qml
+*** Description
+One *Material Symbols Rounded* glyph, verbatim from the pill: =icon= is the ligature
+name, =fill=/=weight=/=grade= map to the font's variable axes, =size= sets pixel and
+optical size. Every chrome glyph (chevron, magit, close, buffer icons) is an =MSym=.
+*** Code
+#+begin_src qml :tangle ~/.config/quickshell/emaqs/MSym.qml :mkdirp yes
+pragma ComponentBehavior: Bound
+// MSym.qml — one Material Symbols Rounded glyph (see pill's MSym.qml).
+import QtQuick
+
+Text {
+    id: sym
+    property string icon: ""
+    property real fill: 0
+    property int weight: 400
+    property real grade: 0
+    property int size: 20
+
+    text: sym.icon
+    font.family: "Material Symbols Rounded"
+    font.pixelSize: sym.size
+    font.variableAxes: ({ "FILL": sym.fill, "wght": sym.weight, "GRAD": sym.grade, "opsz": sym.size })
+    verticalAlignment: Text.AlignVCenter
+    horizontalAlignment: Text.AlignHCenter
+    color: "#efe9dd"
+    renderType: Text.QtRendering
+}
+#+end_src
+
+** MenuHeader.qml
+*** Description
+The shared menu header — back chevron + title (left, clickable together) and a
+right-aligned trailing slot for menu controls. A trimmed copy of the pill's (the
+nav-arrow stepper is dropped; emaqs doesn't page). Children declared inside land in
+the trailing Row: =MenuHeader { title: ws; onBack: … ; MSym {} MSym {} }=.
+*** Code
+#+begin_src qml :tangle ~/.config/quickshell/emaqs/MenuHeader.qml :mkdirp yes
+pragma ComponentBehavior: Bound
+// MenuHeader.qml — back chevron + title + trailing controls slot (see pill).
+import QtQuick
+
+Item {
+    id: root
+    required property var theme
+    property string title: ""
+    default property alias trailing: trailingRow.data
+    signal back()
+
+    width: parent ? parent.width : 0
+    implicitHeight: 26
+    height: 26
+
+    Item {                                  // back chevron + title, clickable together
+        id: backArea
+        anchors.left: parent.left
+        anchors.verticalCenter: parent.verticalCenter
+        height: parent.height
+        width: backRow.width
+        Row {
+            id: backRow
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: 7
+            MSym {
+                anchors.verticalCenter: parent.verticalCenter
+                icon: "chevron_left"
+                size: 20
+                color: backMa.containsMouse ? root.theme.text : root.theme.faint
+            }
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                text: root.title
+                color: root.theme.text
+                font.family: root.theme.serif
+                font.pixelSize: root.theme.fsLarge + 4
+            }
+        }
+        MouseArea {
+            id: backMa
+            anchors.fill: parent
+            anchors.margins: -4
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: root.back()
+        }
+    }
+
+    Row {                                   // trailing controls (right)
+        id: trailingRow
+        anchors.right: parent.right
+        anchors.verticalCenter: parent.verticalCenter
+        spacing: root.theme.gap
+    }
+}
+#+end_src
+
+** EmaqsBridge.qml
+*** Description
+The Emacs-daemon state object (the analogue of the pill's [[file:qs-pill-docs.org::*OrgAgenda.qml][=OrgAgenda=]]).
+Instantiated once in init.qml as =EmaqsBridge { id: emacs }=. Holds the workspace
+=names= + =current= (so =currentIdx= drives the focus highlight) and the grouped
+=bufferGroups= for the menu; every method shells out to [[*emaqsbridge.py][=emaqsbridge.py=]].
+=switchTo= updates =current= optimistically so the focus highlight moves at once, then
+=reloadTimer= re-syncs from Emacs a beat later (also after a close).
+*** Code
+#+begin_src qml :tangle ~/.config/quickshell/emaqs/EmaqsBridge.qml :mkdirp yes
+pragma ComponentBehavior: Bound
+// EmaqsBridge.qml — Doom-workspace + buffer state over emaqsbridge.py (Emacs daemon
+// via emacsclient). Best-effort: empty if Emacs is unreachable.
+import QtQuick
+import Quickshell
+import Quickshell.Io
+
+QtObject {
+    id: root
+    property var names: []                 // ["awesome", "elvou-app", …]
+    property string current: ""            // current workspace name
+    readonly property int currentIdx: names.indexOf(current)
+    property var bufferGroups: []          // [{ group, items:[name,…] }, …]
+
+    function loadWorkspaces() {
+        if (wsProc.running) return;
+        wsProc.command = ["python", Quickshell.shellPath("emaqsbridge.py"), "workspaces"];
+        wsProc.running = true;
+    }
+    function loadBuffers(ws) {
+        root.bufferGroups = [];
+        bufProc.command = ["python", Quickshell.shellPath("emaqsbridge.py"), "buffers", ws || ""];
+        if (!bufProc.running) bufProc.running = true;
+    }
+    function switchTo(ws) {
+        root.current = ws;                 // optimistic — focus highlight moves now
+        act(["switch", ws]);
+        reloadTimer.restart();
+    }
+    function openBuffer(name, ws) { act(["openbuf", name, ws || ""]); }
+    function magit(ws) { act(["magit", ws || ""]); }
+    function closeWorkspace(ws) { act(["close", ws || ""]); reloadTimer.restart(); }
+
+    function act(args) {
+        if (actProc.running) return;       // drop overlapping user actions
+        actProc.command = ["python", Quickshell.shellPath("emaqsbridge.py")].concat(args);
+        actProc.running = true;
+    }
+
+    property Process wsProc: Process {
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try {
+                    var o = JSON.parse(this.text) || {};
+                    root.names = o.names || [];
+                    root.current = o.current || "";
+                } catch (e) {}
+            }
+        }
+    }
+    property Process bufProc: Process {
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try { root.bufferGroups = JSON.parse(this.text) || []; }
+                catch (e) { root.bufferGroups = []; }
+            }
+        }
+    }
+    property Process actProc: Process {}
+    // re-sync workspaces shortly after a switch/close so external state agrees.
+    property Timer reloadTimer: Timer {
+        interval: 320
+        onTriggered: root.loadWorkspaces()
+    }
+}
+#+end_src
+
+** emaqsbridge.py
+*** Description
+The Emacs backend, one Lisp =(progn …)= of =emaqs-…= helpers prepended to every call
+(so no =.el= on the load-path), talking to the running daemon over =emacsclient= —
+mirrors [[file:qs-pill-docs.org::*orgbridge.py][=orgbridge.py=]]. Commands:
+- =workspaces= → JSON ={ "names": […], "current": "…" }=.
+- =buffers [WS]= → JSON =[{ "group": "Buffers"|"Agent Shell"|"Ghostel", "items": […] }]=
+  for workspace =WS= (default current), grouped/sorted like the =SPC SPC= super-menu.
+- =switch NAME= → switch to workspace =NAME=, raise + focus the Emacs frame.
+- =openbuf NAME WS= → (switch to =WS= if needed then) show buffer =NAME=, raise + focus.
+- =magit WS= → =magit-status= at =WS='s project root, raise + focus.
+- =close WS= → delete workspace =WS=.
+
+The buffer grouping *reuses the user's own super-menu predicates* when present
+(=mp/normal-buffer-p= etc.) and falls back to simple checks otherwise, so the list
+matches Emacs with nothing duplicated. =workspaces=/=buffers= write their JSON to a
+temp file whose path Emacs returns (Unicode-safe, as in orgbridge). Best-effort — if
+the daemon is unreachable the data commands print empty JSON.
+*** Code
+#+begin_src python :tangle ~/.config/quickshell/emaqs/emaqsbridge.py :mkdirp yes
+#!/usr/bin/env python3
+# emaqsbridge.py — Doom-workspace / buffer backend for emaqs, via the Emacs daemon.
+#
+#   workspaces        print JSON {"names":[…], "current":"…"}
+#   buffers [WS]      print JSON [{"group":…, "items":[…]}, …] for workspace WS
+#   switch NAME       switch to workspace NAME, raise + focus Emacs
+#   openbuf NAME WS   show buffer NAME (switching to WS first), raise + focus
+#   magit WS          magit-status at WS's project root, raise + focus
+#   close WS          delete workspace WS
+#
+# All calls talk to the running Emacs daemon with emacsclient. Buffer grouping reuses
+# the user's own super-menu predicates (mp/normal-buffer-p, mp/agent-shell-buffer-p,
+# mp/ghostel-buffer-p) and buffer-name-history ordering when present. Data commands
+# write JSON to a temp file (path returned by emacsclient) so Unicode survives; if the
+# daemon is unreachable they print empty JSON.
+import sys, os, subprocess
+
+# Lisp helpers, prepended to every eval so the script needs no separate .el file.
+HELPERS = r"""
+(progn
+  (require 'json)
+  (require 'cl-lib)
+  (defun emaqs--ws-names ()
+    (if (fboundp '+workspace-list-names) (+workspace-list-names) '()))
+  (defun emaqs--ws-current ()
+    (if (fboundp '+workspace-current-name) (+workspace-current-name) ""))
+  (defun emaqs-workspaces ()
+    (json-encode (list (cons "names" (vconcat (emaqs--ws-names)))
+                       (cons "current" (emaqs--ws-current)))))
+  ;; buffers of workspace NAME ("" = current) WITHOUT switching to it.
+  (defun emaqs--ws-buffers (name)
+    (let ((persp (and name (not (string= name "")) (fboundp '+workspace-get)
+                      (ignore-errors (+workspace-get name t)))))
+      (cond
+       ((and persp (fboundp '+workspace-buffer-list)) (+workspace-buffer-list persp))
+       ((fboundp '+workspace-buffer-list) (+workspace-buffer-list))
+       (t (buffer-list)))))
+  ;; group predicates — prefer the user's own super-menu helpers, else fall back.
+  (defun emaqs--normal-p (b)
+    (if (fboundp 'mp/normal-buffer-p)
+        (mp/normal-buffer-p b)
+      (and (buffer-live-p b) (not (string-prefix-p "*" (buffer-name b))))))
+  (defun emaqs--agent-p (b)
+    (and (fboundp 'mp/agent-shell-buffer-p) (mp/agent-shell-buffer-p b)))
+  (defun emaqs--ghostel-p (b)
+    (and (fboundp 'mp/ghostel-buffer-p) (mp/ghostel-buffer-p b)))
+  ;; sort buffer NAMES by their position in buffer-name-history (super-menu order).
+  (defun emaqs--sort-hist (names)
+    (let ((hist (and (boundp 'buffer-name-history) buffer-name-history)))
+      (sort (copy-sequence names)
+            (lambda (a b)
+              (< (or (cl-position a hist :test #'equal) most-positive-fixnum)
+                 (or (cl-position b hist :test #'equal) most-positive-fixnum))))))
+  (defun emaqs--names (bufs pred)
+    (emaqs--sort-hist
+     (delq nil (mapcar (lambda (b) (and (funcall pred b) (buffer-name b))) bufs))))
+  (defun emaqs-buffers (name)
+    (let* ((bufs (emaqs--ws-buffers name))
+           (buffers (emaqs--names bufs #'emaqs--normal-p))
+           (agents  (emaqs--names bufs #'emaqs--agent-p))
+           (ghostel (emaqs--names bufs #'emaqs--ghostel-p))
+           (groups '()))
+      ;; pushed reverse so the JSON order is Buffers, Agent Shell, Ghostel.
+      (when ghostel
+        (push (list (cons "group" "Ghostel") (cons "items" (vconcat ghostel))) groups))
+      (when agents
+        (push (list (cons "group" "Agent Shell") (cons "items" (vconcat agents))) groups))
+      (when buffers
+        (push (list (cons "group" "Buffers") (cons "items" (vconcat buffers))) groups))
+      (json-encode (vconcat groups))))
+  ;; raise + focus an Emacs frame, mirrored from the pill's pill-open.
+  (defun emaqs--raise ()
+    (let ((f (or (seq-find #'frame-visible-p (frame-list)) (car (frame-list)))))
+      (when (frame-live-p f)
+        (make-frame-visible f)
+        (raise-frame f)
+        (select-frame-set-input-focus f))
+      f))
+  (defun emaqs--goto-ws (name)
+    (when (and name (not (string= name "")) (fboundp '+workspace-switch)
+               (not (string= name (emaqs--ws-current))))
+      (ignore-errors (+workspace-switch name))))
+  (defun emaqs-switch (name)
+    (emaqs--goto-ws name)
+    (emaqs--raise)
+    nil)
+  (defun emaqs-open-buffer (name wsname)
+    (emaqs--goto-ws wsname)
+    (let ((buf (get-buffer name)))
+      (emaqs--raise)
+      (when (buffer-live-p buf)
+        (with-selected-frame (selected-frame) (switch-to-buffer buf))))
+    nil)
+  (defun emaqs--project-root (name)
+    (let ((bufs (emaqs--ws-buffers name)))
+      (seq-some (lambda (b)
+                  (with-current-buffer b
+                    (when (buffer-file-name)
+                      (or (and (fboundp 'projectile-project-root)
+                               (ignore-errors (projectile-project-root)))
+                          (and (fboundp 'vc-root-dir)
+                               (ignore-errors (vc-root-dir)))
+                          (file-name-directory (buffer-file-name))))))
+                bufs)))
+  (defun emaqs-magit (name)
+    (let ((root (emaqs--project-root name)))
+      (emaqs--goto-ws name)
+      (emaqs--raise)
+      (cond
+       ((and root (fboundp 'magit-status))
+        (with-selected-frame (selected-frame) (magit-status root)))
+       ((fboundp 'magit-status)
+        (with-selected-frame (selected-frame) (call-interactively #'magit-status)))))
+    nil)
+  (defun emaqs-close (name)
+    (when (and name (not (string= name "")) (fboundp '+workspace-delete))
+      (ignore-errors (+workspace-delete name)))
+    nil))
+"""
+
+
+def _esc(s):
+    return '"' + s.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def _emacs(form, wait=True):
+    try:
+        r = subprocess.run(
+            ["emacsclient", "-e", form],
+            capture_output=True,
+            timeout=(12 if wait else 6),
+        )
+    except Exception:
+        return None
+    if r.returncode != 0:
+        return None
+    return r.stdout.decode("utf-8", "replace").strip()
+
+
+def _eval_to_file(call, empty="[]"):
+    # Emacs writes the JSON to a temp file and returns its (quoted) path; we read and
+    # delete it. Keeps Unicode intact vs. parsing Lisp string syntax.
+    form = (
+        "(progn %s (let ((f (make-temp-file \"emaqs-\"))) "
+        "(with-temp-file f (insert %s)) f))" % (HELPERS, call)
+    )
+    out = _emacs(form)
+    if not out:
+        return empty
+    path = out.strip().strip('"')
+    if not path or not os.path.exists(path):
+        return empty
+    try:
+        with open(path, encoding="utf-8") as fh:
+            data = fh.read()
+    except OSError:
+        return empty
+    finally:
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+    return data or empty
+
+
+def main():
+    argv = sys.argv
+    cmd = argv[1] if len(argv) > 1 else ""
+    if cmd == "workspaces":
+        sys.stdout.write(_eval_to_file("(emaqs-workspaces)", empty="{}"))
+    elif cmd == "buffers":
+        ws = argv[2] if len(argv) > 2 else ""
+        sys.stdout.write(_eval_to_file("(emaqs-buffers %s)" % _esc(ws)))
+    elif cmd == "switch" and len(argv) > 2:
+        _emacs("(progn %s (emaqs-switch %s))" % (HELPERS, _esc(argv[2])), wait=False)
+    elif cmd == "openbuf" and len(argv) > 3:
+        _emacs("(progn %s (emaqs-open-buffer %s %s))"
+               % (HELPERS, _esc(argv[2]), _esc(argv[3])), wait=False)
+    elif cmd == "magit":
+        ws = argv[2] if len(argv) > 2 else ""
+        _emacs("(progn %s (emaqs-magit %s))" % (HELPERS, _esc(ws)), wait=False)
+    elif cmd == "close":
+        ws = argv[2] if len(argv) > 2 else ""
+        _emacs("(progn %s (emaqs-close %s))" % (HELPERS, _esc(ws)), wait=False)
+    else:
+        sys.stdout.write("{}")
+
+
+if __name__ == "__main__":
+    main()
+#+end_src
+
+** PillSurface.qml
+*** Description
+The bar/tab background as a =Shape= instead of a plain rounded =Rectangle=, so it can
+sit *flush against the screen's bottom edge* with *"rounded out" corners*: the top
+corners are convex (normal rounding) while the two bottom corners are *concave wings*
+that flare outward into the screen edge (the caelestia look from the reference). The
+bottom edge itself is straight. =radius= is the top convex corner; =wing= is the
+bottom concave flare; both animate (=Behavior=) so the tab→bar→menu morph stays
+smooth. Resting vs. active look is just =fillColor= / =strokeColor= / =strokeWidth=
+passed in (a translucent fill at rest, a solid fill + hairline border when active) —
+no gradient, so it needs no shape-gradient type.
+*** Code
+#+begin_src qml :tangle ~/.config/quickshell/emaqs/PillSurface.qml :mkdirp yes
+pragma ComponentBehavior: Bound
+// PillSurface.qml — bottom-attached panel background: convex rounded TOP corners,
+// concave "wing" BOTTOM corners that flare into the screen edge (caelestia style),
+// straight flush bottom. radius = top corner, wing = bottom flare; both animate.
+import QtQuick
+import QtQuick.Shapes
+
+Item {
+    id: root
+    required property var theme
+    property real radius: 14          // top convex corner radius
+    property real wing: 12            // bottom concave flare radius
+    property color fillColor: "transparent"
+    property color strokeColor: "transparent"
+    property real strokeWidth: 0
+
+    Behavior on radius { NumberAnimation { duration: root.theme.anim; easing.type: Easing.OutCubic } }
+    Behavior on wing   { NumberAnimation { duration: root.theme.anim; easing.type: Easing.OutCubic } }
+
+    Shape {
+        anchors.fill: parent
+        preferredRendererType: Shape.CurveRenderer
+
+        ShapePath {
+            id: sp
+            fillColor: root.fillColor
+            strokeColor: root.strokeColor
+            strokeWidth: root.strokeWidth
+            joinStyle: ShapePath.RoundJoin
+
+            // clamp so the corners never overrun a small tab
+            readonly property real w: root.width
+            readonly property real h: root.height
+            readonly property real r: Math.max(0, Math.min(root.radius, root.height - root.wing, root.width / 2 - root.wing))
+            readonly property real wr: Math.max(0, Math.min(root.wing, root.width / 2 - sp.r, root.height - sp.r))
+
+            startX: sp.wr
+            startY: sp.r
+            // top-left convex corner
+            PathArc { x: sp.wr + sp.r; y: 0; radiusX: sp.r; radiusY: sp.r; direction: PathArc.Clockwise }
+            // top edge
+            PathLine { x: sp.w - sp.wr - sp.r; y: 0 }
+            // top-right convex corner
+            PathArc { x: sp.w - sp.wr; y: sp.r; radiusX: sp.r; radiusY: sp.r; direction: PathArc.Clockwise }
+            // right wall down
+            PathLine { x: sp.w - sp.wr; y: sp.h - sp.wr }
+            // bottom-right concave wing — flare out to the base
+            PathArc { x: sp.w; y: sp.h; radiusX: sp.wr; radiusY: sp.wr; direction: PathArc.Counterclockwise }
+            // straight flush bottom edge
+            PathLine { x: 0; y: sp.h }
+            // bottom-left concave wing
+            PathArc { x: sp.wr; y: sp.h - sp.wr; radiusX: sp.wr; radiusY: sp.wr; direction: PathArc.Counterclockwise }
+            // left wall up, close
+            PathLine { x: sp.wr; y: sp.r }
+        }
+    }
+}
+#+end_src
+
+** fswatch.py
+*** Description
+A minimal fullscreen watcher — emaqs's own tiny slice of the pill's
+[[file:qs-pill-docs.org::*winbridge.py][=winbridge.py=]], reporting *only* whether the
+focused window is fullscreen so the resting tab can auto-hide (games / video), exactly
+like the pill's =fsHide=. KWin (Wayland) exposes no active-window / fullscreen state
+over DBus, so a 6-line KWin script calls back into our own service on
+=windowActivated= and =fullScreenChanged=. It uses *emaqs-specific* names — DBus name
+=org.kde.emaqs=, KWin plugin =quickshell-emaqs-active= — so it never collides with the
+pill's =org.kde.pill= / =quickshell-pill-active= when both run at once. Prints one JSON
+line =\{ "fullscreen": bool \}= per change on stdout; the script is unloaded on exit.
+*** Code
+#+begin_src python :tangle ~/.config/quickshell/emaqs/fswatch.py :mkdirp yes
+#!/usr/bin/env python
+# fswatch.py — reports whether the focused window is fullscreen, for emaqs.
+#
+# KWin (Wayland) exposes no active-window / fullscreen state over DBus to clients,
+# so we load a tiny KWin script that calls back into our own org.kde.emaqs service
+# on activation and fullScreen changes. Prints one JSON line {"fullscreen": bool}
+# per change on stdout; emaqs reads it and hides the resting tab while fullscreen.
+# Own DBus/script names so it never clashes with the pill's winbridge.
+import sys, os, json, atexit, tempfile
+from gi.repository import Gio, GLib
+
+bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+state = {"fullscreen": None}
+PLUGIN = "quickshell-emaqs-active"
+
+NODE = (
+    '<node><interface name="org.kde.emaqs">'
+    '<method name="Set"><arg type="s" direction="in"/></method>'
+    "</interface></node>"
+)
+IFACE = Gio.DBusNodeInfo.new_for_xml(NODE).interfaces[0]
+
+
+def emit():
+    sys.stdout.write(json.dumps({"fullscreen": bool(state["fullscreen"])}) + "\n")
+    sys.stdout.flush()
+
+
+def on_call(conn, sender, path, ifc, method, params, inv):
+    if method == "Set":
+        (fs,) = params.unpack()
+        val = fs == "1"
+        if val != state["fullscreen"]:
+            state["fullscreen"] = val
+            emit()
+    inv.return_value(None)
+
+
+def on_bus_acquired(conn, name):
+    conn.register_object("/Active", IFACE, on_call, None, None)
+    load_kwin_script()
+
+
+# report the active window's fullScreen on activation, and when *its* fullScreen
+# toggles (e.g. a video going fullscreen without re-activating the window).
+KWIN_JS = (
+    'function setActive(w){ callDBus("org.kde.emaqs","/Active","org.kde.emaqs","Set",'
+    ' (w && w.fullScreen) ? "1" : "0"); }\n'
+    "function watch(w){ if (!w || !w.fullScreenChanged) return;\n"
+    "  w.fullScreenChanged.connect(function(){\n"
+    "    if (w === workspace.activeWindow) setActive(w); }); }\n"
+    "workspace.windowActivated.connect(setActive);\n"
+    "workspace.windowAdded.connect(function(w){ watch(w); });\n"
+    "var all=workspace.windowList(); for (var i=0;i<all.length;i++) watch(all[i]);\n"
+    "setActive(workspace.activeWindow);\n"
+)
+
+
+def kwin(method, variant):
+    try:
+        bus.call_sync(
+            "org.kde.KWin",
+            "/Scripting",
+            "org.kde.kwin.Scripting",
+            method,
+            variant,
+            None,
+            Gio.DBusCallFlags.NONE,
+            2000,
+            None,
+        )
+    except Exception as e:
+        sys.stderr.write("fswatch: %s failed: %s\n" % (method, e))
+
+
+def load_kwin_script():
+    path = os.path.join(tempfile.gettempdir(), "quickshell_emaqs_active.js")
+    with open(path, "w") as f:
+        f.write(KWIN_JS)
+    kwin("unloadScript", GLib.Variant("(s)", (PLUGIN,)))  # clear a stale copy
+    kwin("loadScript", GLib.Variant("(ss)", (path, PLUGIN)))
+    kwin("start", None)
+
+
+@atexit.register
+def _cleanup():
+    kwin("unloadScript", GLib.Variant("(s)", (PLUGIN,)))
+
+
+Gio.bus_own_name(
+    Gio.BusType.SESSION,
+    "org.kde.emaqs",
+    Gio.BusNameOwnerFlags.ALLOW_REPLACEMENT | Gio.BusNameOwnerFlags.REPLACE,
+    on_bus_acquired,
+    None,
+    None,
+)
+emit()  # initial line so emaqs has a value before the first change
+GLib.MainLoop().run()
+#+end_src
+
+** init.qml
+*** Description
+The overlay itself: one full-screen layer-shell =PanelWindow= per monitor (reserving
+no space, click-through except over the tab), morphing through three stages —
+*collapsed* (an up-chevron tab flush at the bottom), *expanded* (the workspace bar,
+opened by *clicking* the tab — "focus mode": it stays open until a click elsewhere
+moves focus away), *menu* (the right-click buffer menu). It composes [[*Theme.qml][=Theme=]],
+[[*MSym.qml][=MSym=]], [[*MenuHeader.qml][=MenuHeader=]] and [[*EmaqsBridge.qml][=EmaqsBridge=]].
+
+*Hover / focus highlights.* The workspace names are a =Row= of labels; two rounded
+rectangles are drawn *behind* them — a *focus* highlight bound to the current
+workspace's label geometry and a *hover* highlight bound to the pointed-at label —
+each with =Behavior on x/width= so they glide between labels exactly like the pill's
+shared hover square.
+
+*Polling.* A single root =Timer= polls =emaqsbridge.py workspaces= every 1.2 s, but
+only while at least one window is expanded/menu-open (=root.activeCount=), so the
+collapsed tab is idle-cheap.
+*** Code
+#+begin_src qml :tangle ~/.config/quickshell/emaqs/init.qml :mkdirp yes
+pragma ComponentBehavior: Bound
+// ----------------------------------------------------------------------------
+// init.qml — emaqs: an Emacs-workspace pill for KDE Plasma 6 / KWin / Wayland.
+//
+// Stages: collapsed (up-chevron tab) -> expanded (workspace bar; click the tab to
+// focus it, stays open until a click elsewhere) -> menu (right-click buffer menu).
+// See qs-emaqs-docs.org for the full notes.
+//
+// Run with:  ./run-emaqs.sh   (or: qs -p ~/.config/quickshell/emaqs/init.qml)
+// ----------------------------------------------------------------------------
+import QtQuick
+import Quickshell
+import Quickshell.Wayland
+import Quickshell.Io
+
+ShellRoot {
+    id: root
+
+    Theme { id: theme }
+    EmaqsBridge { id: emacs }
+
+    // number of overlay windows currently expanded / menu-open; drives the poll.
+    property int activeCount: 0
+
+    // is the currently-focused window fullscreen? Fed by fswatch.py (a minimal
+    // KWin-script watcher, emaqs's own DBus name so it never clashes with the
+    // pill's winbridge). The resting tab hides while a window is fullscreen — same
+    // behaviour as the pill's fsHide.
+    property bool activeFullscreen: false
+    Process {
+        running: true
+        command: ["python", Quickshell.shellPath("fswatch.py")]
+        stdout: SplitParser {
+            onRead: line => {
+                try { root.activeFullscreen = !!JSON.parse(line).fullscreen; }
+                catch (e) {}
+            }
+        }
+    }
+
+    // poll workspaces while any bar is active; fires immediately on activation.
+    Timer {
+        id: wsPoll
+        interval: 1200
+        repeat: true
+        running: root.activeCount > 0
+        triggeredOnStart: true
+        onTriggered: emacs.loadWorkspaces()
+    }
+
+    Variants {
+        model: Quickshell.screens
+
+        PanelWindow {
+            id: win
+            required property var modelData
+
+            // ---- stage state ----
+            property bool focused: false     // bar expanded & held (focus mode)
+            property bool menuOpen: false
+            property string menuWs: ""       // workspace the buffer menu is about
+            property bool confirmClose: false
+            property int hoverIdx: -1        // hovered workspace label, -1 none
+
+            // "focus mode": clicking the tab expands the bar, which stays open until a
+            // click elsewhere (backdrop) — or a workspace switch — moves focus away.
+            // No hover: the tab never expands just by passing the pointer over it.
+            readonly property bool expanded: focused || menuOpen
+            readonly property bool dash: expanded   // any non-collapsed stage
+            // hide the resting tab while a fullscreen window is focused (games,
+            // video…); hovering / an open menu overrides it, like the pill.
+            readonly property bool fsHide: root.activeFullscreen && !dash
+
+            function openMenu(ws) {
+                win.menuWs = ws;
+                win.confirmClose = false;
+                emacs.loadBuffers(ws);
+                win.menuOpen = true;
+            }
+            function closeMenu() {          // back button: return to the bar
+                win.menuOpen = false;
+                win.confirmClose = false;
+            }
+            function collapseAll() {        // an action moved focus to Emacs: fully collapse
+                win.menuOpen = false;
+                win.confirmClose = false;
+                win.focused = false;
+            }
+
+            // keep the shared poll counter in sync with this window's activity.
+            onDashChanged: {
+                root.activeCount += win.dash ? 1 : -1;
+                if (win.dash)
+                    emacs.loadWorkspaces();
+                if (!win.dash)
+                    win.hoverIdx = -1;
+            }
+
+            screen: modelData
+            WlrLayershell.layer: WlrLayer.Overlay
+            WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
+            exclusionMode: ExclusionMode.Ignore
+            color: "transparent"
+            // click-through everywhere except the tab; once expanded (bar or menu)
+            // the window grabs the whole screen (backdrop) so a click elsewhere
+            // collapses it; while a fullscreen window is focused the tab is hidden
+            // and the whole window is click-through.
+            mask: win.expanded ? fullRegion : (win.fsHide ? emptyRegion : tabRegion)
+
+            anchors {
+                top: true
+                bottom: true
+                left: true
+                right: true
+            }
+
+            Region { id: tabRegion; item: pill }
+            Region { id: fullRegion; item: backdrop }
+            Region { id: emptyRegion }
+
+            // a click anywhere outside the pill collapses it (focus moved away).
+            MouseArea {
+                id: backdrop
+                anchors.fill: parent
+                enabled: win.expanded
+                onClicked: { win.focused = false; win.closeMenu(); }
+            }
+
+            // ---------------------------------------------------------------
+            // the morphing tab / bar / menu, bottom-anchored & horizontally centred
+            // ---------------------------------------------------------------
+            Item {
+                id: pill
+
+                // flush with the screen's bottom edge in every stage: the tab, the
+                // bar and the menu all grow *upward* only, attached to the edge.
+                anchors.bottom: parent.bottom
+                anchors.horizontalCenter: parent.horizontalCenter
+                anchors.bottomMargin: 0
+
+                readonly property int collapsedW: 44
+                readonly property int collapsedH: 20
+                readonly property int barH: 44
+                readonly property int menuW: 520
+                readonly property int menuH: 420
+
+                width: win.menuOpen ? menuW
+                     : win.expanded ? Math.max(120, wsRow.implicitWidth + theme.pad * 2)
+                     : collapsedW
+                height: win.menuOpen ? menuH : win.expanded ? barH : collapsedH
+                opacity: win.fsHide ? 0 : (win.dash ? 1 : theme.idleOpacity)
+
+                Behavior on width  { NumberAnimation { duration: theme.anim; easing.type: Easing.OutCubic } }
+                Behavior on height { NumberAnimation { duration: theme.anim; easing.type: Easing.OutCubic } }
+                Behavior on opacity { NumberAnimation { duration: theme.animFast } }
+
+                // ---- surface: flush bottom, convex top corners, "rounded out"
+                //      (concave wing) bottom corners melting into the screen edge.
+                //      Borderless in every stage (tab, bar and menu). ----
+                PillSurface {
+                    id: surface
+                    anchors.fill: parent
+                    theme: theme
+                    radius: win.menuOpen ? theme.radiusPanel : win.expanded ? 14 : 9
+                    wing: win.menuOpen ? 14 : win.expanded ? 11 : 7
+                    fillColor: win.dash ? theme.bg : theme.bgTranslucent
+                    strokeColor: "transparent"
+                    strokeWidth: 0
+                    Behavior on fillColor { ColorAnimation { duration: theme.animFast } }
+                }
+
+                // click the collapsed tab to expand (focus mode). Disabled once
+                // expanded so the bar's own labels / the backdrop handle clicks.
+                MouseArea {
+                    anchors.fill: parent
+                    enabled: !win.expanded
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: win.focused = true
+                }
+
+                // ================= COLLAPSED: up-chevron tab =================
+                MSym {
+                    id: chevron
+                    anchors.centerIn: parent
+                    visible: !win.expanded && !win.menuOpen && opacity > 0
+                    opacity: (!win.expanded && !win.menuOpen) ? 1 : 0
+                    icon: "expand_less"
+                    size: 16
+                    weight: 500
+                    color: Qt.rgba(theme.text.r, theme.text.g, theme.text.b, 0.82)
+                    Behavior on opacity { NumberAnimation { duration: theme.animFast } }
+                }
+
+                // ================= EXPANDED: workspace bar ==================
+                Item {
+                    id: bar
+                    anchors.fill: parent
+                    visible: win.expanded && !win.menuOpen && opacity > 0
+                    opacity: (win.expanded && !win.menuOpen) ? 1 : 0
+                    Behavior on opacity { NumberAnimation { duration: theme.animFast } }
+
+                    // focus highlight — glides to the current workspace's label.
+                    // `anim` is primed one tick AFTER the highlight first appears, so
+                    // it *snaps* into place on expand (no slide-in from the left) and
+                    // only animates when moving between labels afterwards.
+                    Rectangle {
+                        id: focusHi
+                        property Item t: (emacs.currentIdx >= 0 && emacs.currentIdx < wsRep.count)
+                                         ? wsRep.itemAt(emacs.currentIdx) : null
+                        property bool anim: false
+                        visible: t !== null
+                        onVisibleChanged: { if (visible) Qt.callLater(() => focusHi.anim = true); else focusHi.anim = false; }
+                        height: 30
+                        anchors.verticalCenter: parent.verticalCenter
+                        x: wsRow.x + (t ? t.x : 0)
+                        width: t ? t.width : 0
+                        radius: theme.radiusBtn
+                        color: theme.accentDim
+                        Behavior on x { enabled: focusHi.anim; NumberAnimation { duration: theme.anim; easing.type: Easing.OutCubic } }
+                        Behavior on width { enabled: focusHi.anim; NumberAnimation { duration: theme.anim; easing.type: Easing.OutCubic } }
+                    }
+
+                    // hover highlight — glides to the pointed-at label (like the pill).
+                    Rectangle {
+                        id: hoverHi
+                        property Item t: (win.hoverIdx >= 0 && win.hoverIdx < wsRep.count)
+                                         ? wsRep.itemAt(win.hoverIdx) : null
+                        property bool anim: false
+                        visible: t !== null
+                        onVisibleChanged: { if (visible) Qt.callLater(() => hoverHi.anim = true); else hoverHi.anim = false; }
+                        height: 30
+                        anchors.verticalCenter: parent.verticalCenter
+                        x: wsRow.x + (t ? t.x : 0)
+                        width: t ? t.width : 0
+                        radius: theme.radiusBtn
+                        color: theme.bgHover
+                        opacity: 0.55
+                        Behavior on x { enabled: hoverHi.anim; NumberAnimation { duration: theme.animFast; easing.type: Easing.OutCubic } }
+                        Behavior on width { enabled: hoverHi.anim; NumberAnimation { duration: theme.animFast; easing.type: Easing.OutCubic } }
+                    }
+
+                    Row {
+                        id: wsRow
+                        // left-anchored (not centred) so wsRow.x is a constant `pad`;
+                        // centreIn would shift x while the bar's width animates, which
+                        // dragged the highlights sideways during the expand.
+                        anchors.left: parent.left
+                        anchors.leftMargin: theme.pad
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: 4
+
+                        Repeater {
+                            id: wsRep
+                            model: emacs.names
+                            delegate: Item {
+                                id: del
+                                required property int index
+                                required property var modelData
+                                width: lbl.implicitWidth + 22
+                                height: 30
+
+                                Text {
+                                    id: lbl
+                                    anchors.centerIn: parent
+                                    text: del.modelData
+                                    color: (win.hoverIdx === del.index || emacs.currentIdx === del.index)
+                                           ? theme.text : theme.textDim
+                                    font.family: theme.mono
+                                    font.pixelSize: theme.fsNormal - 2
+                                    font.letterSpacing: theme.labelSpacing
+                                    font.capitalization: Font.AllUppercase
+                                    Behavior on color { ColorAnimation { duration: theme.animFast } }
+                                }
+                                MouseArea {
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    acceptedButtons: Qt.LeftButton | Qt.RightButton
+                                    onEntered: win.hoverIdx = del.index
+                                    onExited: if (win.hoverIdx === del.index) win.hoverIdx = -1
+                                    onClicked: (m) => {
+                                        if (m.button === Qt.RightButton) {
+                                            win.openMenu(del.modelData);
+                                        } else {
+                                            // switching focuses the Emacs frame — focus
+                                            // moved away, so collapse emaqs.
+                                            emacs.switchTo(del.modelData);
+                                            win.collapseAll();
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // fallback hint when Emacs is unreachable / has no workspaces
+                    Text {
+                        anchors.centerIn: parent
+                        visible: wsRep.count === 0
+                        text: "emacs?"
+                        color: theme.faint
+                        font.family: theme.mono
+                        font.pixelSize: theme.fsSmall
+                        font.letterSpacing: theme.labelSpacing
+                        font.capitalization: Font.AllUppercase
+                    }
+                }
+
+                // ================= MENU: buffer list ========================
+                Item {
+                    id: menu
+                    anchors.fill: parent
+                    anchors.topMargin: theme.pad
+                    anchors.bottomMargin: theme.pad
+                    anchors.leftMargin: theme.pad + 6
+                    anchors.rightMargin: theme.pad + 6
+                    visible: win.menuOpen && opacity > 0
+                    opacity: win.menuOpen ? 1 : 0
+                    Behavior on opacity { NumberAnimation { duration: theme.animFast } }
+
+                    MenuHeader {
+                        id: header
+                        theme: theme
+                        title: win.menuWs
+                        onBack: win.closeMenu()
+
+                        // trailing: magit + close (opposite the header)
+                        Rectangle {
+                            width: 28; height: 28; radius: theme.radiusBtn
+                            color: magitMa.containsMouse ? theme.row : "transparent"
+                            MSym {
+                                anchors.centerIn: parent
+                                icon: "account_tree"; size: 19
+                                color: magitMa.containsMouse ? theme.text : theme.faint
+                            }
+                            MouseArea {
+                                id: magitMa
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: { emacs.magit(win.menuWs); win.collapseAll(); }
+                            }
+                            Behavior on color { ColorAnimation { duration: theme.animFast } }
+                        }
+                        Rectangle {
+                            width: 28; height: 28; radius: theme.radiusBtn
+                            color: closeMa.containsMouse ? theme.accentSoft : "transparent"
+                            MSym {
+                                anchors.centerIn: parent
+                                icon: "close"; size: 19
+                                color: closeMa.containsMouse ? theme.danger : theme.faint
+                            }
+                            MouseArea {
+                                id: closeMa
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: win.confirmClose = true
+                            }
+                            Behavior on color { ColorAnimation { duration: theme.animFast } }
+                        }
+                    }
+
+                    // scrollable grouped buffer list
+                    Flickable {
+                        id: flick
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.top: header.bottom
+                        anchors.topMargin: theme.gap
+                        anchors.bottom: parent.bottom
+                        clip: true
+                        contentWidth: width
+                        contentHeight: groupsCol.height
+                        boundsBehavior: Flickable.StopAtBounds
+
+                        Column {
+                            id: groupsCol
+                            width: flick.width
+                            spacing: theme.gap
+
+                            Repeater {
+                                model: emacs.bufferGroups
+                                delegate: Column {
+                                    id: grp
+                                    required property var modelData
+                                    width: groupsCol.width
+                                    spacing: 2
+
+                                    readonly property string groupIcon:
+                                        modelData.group === "Ghostel" ? "terminal"
+                                      : modelData.group === "Agent Shell" ? "smart_toy"
+                                      : "description"
+
+                                    Text {                      // group label
+                                        text: grp.modelData.group
+                                        color: theme.faint
+                                        font.family: theme.mono
+                                        font.pixelSize: theme.fsSmall
+                                        font.letterSpacing: theme.labelSpacing
+                                        font.capitalization: Font.AllUppercase
+                                        leftPadding: 10        // align with the buffer rows below
+                                        topPadding: 4
+                                        bottomPadding: 2
+                                    }
+
+                                    Repeater {
+                                        model: grp.modelData.items
+                                        delegate: Rectangle {
+                                            id: bufRow
+                                            required property var modelData
+                                            width: grp.width
+                                            height: theme.rowHeight
+                                            radius: theme.radiusRow
+                                            color: bufMa.containsMouse ? theme.row : "transparent"
+                                            Behavior on color { ColorAnimation { duration: theme.animFast } }
+
+                                            Row {
+                                                anchors.left: parent.left
+                                                anchors.leftMargin: 10
+                                                anchors.right: parent.right
+                                                anchors.rightMargin: 10
+                                                anchors.verticalCenter: parent.verticalCenter
+                                                spacing: 9
+                                                MSym {
+                                                    anchors.verticalCenter: parent.verticalCenter
+                                                    icon: grp.groupIcon
+                                                    size: 16
+                                                    color: bufMa.containsMouse ? theme.text : theme.faint
+                                                }
+                                                Text {
+                                                    anchors.verticalCenter: parent.verticalCenter
+                                                    width: bufRow.width - 40
+                                                    text: bufRow.modelData
+                                                    elide: Text.ElideRight
+                                                    color: theme.text
+                                                    font.family: theme.family
+                                                    font.pixelSize: theme.fsNormal
+                                                }
+                                            }
+                                            MouseArea {
+                                                id: bufMa
+                                                anchors.fill: parent
+                                                hoverEnabled: true
+                                                cursorShape: Qt.PointingHandCursor
+                                                onClicked: {
+                                                    emacs.openBuffer(bufRow.modelData, win.menuWs);
+                                                    win.collapseAll();
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            Text {                              // empty state
+                                visible: emacs.bufferGroups.length === 0
+                                text: "No buffers"
+                                color: theme.faint
+                                font.family: theme.family
+                                font.pixelSize: theme.fsNormal
+                                topPadding: 6
+                            }
+                        }
+                    }
+
+                    // ---- close-workspace confirmation, overlaying the buffer list ----
+                    Rectangle {
+                        anchors.fill: parent
+                        visible: win.confirmClose
+                        color: theme.bg
+                        radius: theme.radiusRow
+
+                        Column {
+                            anchors.centerIn: parent
+                            spacing: theme.gap
+                            width: parent.width - theme.pad * 2
+
+                            Text {
+                                width: parent.width
+                                horizontalAlignment: Text.AlignHCenter
+                                wrapMode: Text.WordWrap
+                                text: "Close workspace “" + win.menuWs + "”?"
+                                color: theme.text
+                                font.family: theme.serif
+                                font.pixelSize: theme.fsLarge + 2
+                            }
+                            Row {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                spacing: theme.gap
+
+                                Rectangle {
+                                    width: 120; height: 38; radius: theme.radiusBtn
+                                    color: cancelMa.containsMouse ? theme.row : "transparent"
+                                    border.color: theme.border; border.width: 1
+                                    Text {
+                                        anchors.centerIn: parent; text: "Cancel"
+                                        color: theme.text; font.family: theme.family
+                                        font.pixelSize: theme.fsNormal
+                                    }
+                                    MouseArea {
+                                        id: cancelMa
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: win.confirmClose = false
+                                    }
+                                    Behavior on color { ColorAnimation { duration: theme.animFast } }
+                                }
+                                Rectangle {
+                                    width: 120; height: 38; radius: theme.radiusBtn
+                                    color: closeConfMa.containsMouse ? theme.danger : theme.accentSoft
+                                    Text {
+                                        anchors.centerIn: parent; text: "Close"
+                                        color: closeConfMa.containsMouse ? "white" : theme.danger
+                                        font.family: theme.family; font.pixelSize: theme.fsNormal
+                                    }
+                                    MouseArea {
+                                        id: closeConfMa
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: {
+                                            emacs.closeWorkspace(win.menuWs);
+                                            win.closeMenu();
+                                        }
+                                    }
+                                    Behavior on color { ColorAnimation { duration: theme.animFast } }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+#+end_src
+
+** run-emaqs.sh
+*** Description
+The launcher (=./run-emaqs.sh=). Identical in spirit to the pill's =run-pill.sh=: Qt
+picks its platform plugin before any QML loads, so the Wayland socket and icon theme
+are resolved here, then =qs= is pointed at =init.qml= next to this script.
+*** Code
+#+begin_src sh :tangle ~/.config/quickshell/emaqs/run-emaqs.sh :mkdirp yes :tangle-mode (identity #o755)
+#!/bin/sh
+# run-emaqs.sh — launch emaqs with a Wayland environment resolved at runtime.
+# (See run-pill.sh in qs-pill-docs.org for the full rationale.)
+#
+# Usage:  ./run-emaqs.sh            (runs init.qml next to this script)
+#         ./run-emaqs.sh <args>     (extra args are forwarded to qs)
+
+set -eu
+
+dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+
+: "${XDG_RUNTIME_DIR:=/run/user/$(id -u)}"
+export XDG_RUNTIME_DIR
+
+if [ -z "${WAYLAND_DISPLAY:-}" ]; then
+    if [ -S "$XDG_RUNTIME_DIR/wayland-0" ]; then
+        WAYLAND_DISPLAY=wayland-0
+    else
+        for sock in "$XDG_RUNTIME_DIR"/wayland-*; do
+            case "$sock" in
+                *.lock) continue ;;
+            esac
+            [ -S "$sock" ] || continue
+            WAYLAND_DISPLAY=$(basename "$sock")
+            break
+        done
+    fi
+fi
+
+if [ -z "${WAYLAND_DISPLAY:-}" ]; then
+    echo "run-emaqs.sh: no wayland socket found in $XDG_RUNTIME_DIR" >&2
+    exit 1
+fi
+export WAYLAND_DISPLAY
+export QT_QPA_PLATFORM=wayland
+
+icon_theme=$(sed -n 's/.*property[[:space:]][[:space:]]*string[[:space:]][[:space:]]*iconTheme:[[:space:]]*"\([^"]*\)".*/\1/p' "$dir/Theme.qml" 2>/dev/null | head -n1)
+if [ -n "${icon_theme:-}" ]; then
+    cfg="${XDG_STATE_HOME:-$HOME/.local/state}/quickshell-emaqs"
+    mkdir -p "$cfg/gtk-3.0"
+    printf '[Settings]\ngtk-icon-theme-name=%s\n' "$icon_theme" >"$cfg/gtk-3.0/settings.ini"
+    export XDG_CONFIG_HOME="$cfg:${XDG_CONFIG_HOME:-$HOME/.config}"
+    export QT_QPA_PLATFORMTHEME=gtk3
+else
+    export QT_QPA_PLATFORMTHEME=kde
+fi
+
+exec qs -p "$dir/init.qml" "$@"
+#+end_src
+
+* Tangling (how to regenerate the files)
+This file owns the code; the =.qml=, =emaqsbridge.py= and =run-emaqs.sh= under
+=~/.config/quickshell/emaqs/= are *generated*. In Emacs with this file open:
+=C-c C-v t= (=org-babel-tangle=). Or from a shell:
+=emacs --batch -l org -eval '(org-babel-tangle-file "quickshell/qs-emaqs-docs.org")'=
+
+Then validate headlessly (offscreen, no live changes):
+=QT_QPA_PLATFORM=offscreen qs -p ~/.config/quickshell/emaqs/init.qml= — a clean load
+prints "Configuration Loaded" with no WARN lines (Ctrl-C to stop). Run for real with
+=~/.config/quickshell/emaqs/run-emaqs.sh=.
+
+# Local Variables:
+# eval: (add-hook 'before-save-hook #'my/org-format-src-blocks nil t)
+# End:
