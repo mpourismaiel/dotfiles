@@ -2650,9 +2650,80 @@ Agent shell is a core part of this setup, so related integrations live together 
 ***** Desktop Notifications
 Enable desktop notifications for agent-shell buffers so turns that need attention can surface even when the shell is out of focus.
 
+By default =agent-shell-notifications= ships a single "Switch to shell" action. The pill notification server already renders action buttons (and advertises the =actions= capability), so we enrich permission-request notifications with *Allow* / *Deny* buttons that answer the agent right from the notification.
+
+The permission event itself doesn't carry the ACP option-ids needed to respond, and the package builds the action list internally. So we hook =agent-shell-permission-responder-function= — the one place that exposes both the option-ids and a ready-made =respond= closure — to stash them by request-id (returning nil so the normal in-buffer dialog still shows), then advise the plist builder to add the two extra actions and dispatch clicks to the stashed closure. A =:before= advice on the response sender forgets the entry once any path (buttons, in-buffer dialog, or interrupt) answers.
+
 #+begin_src emacs-lisp
 (use-package! agent-shell-notifications
-  :hook (agent-shell-mode . agent-shell-notifications-mode))
+  :hook (agent-shell-mode . agent-shell-notifications-mode)
+  :config
+  (defvar mp/agent-shell--permission-registry (make-hash-table :test 'equal)
+    "Map a permission request-id to a plist of (:respond FN :options OPTS).")
+
+  (defvar mp/agent-shell--prev-permission-responder nil
+    "Responder in effect before we installed our capturing one.")
+
+  (defun mp/agent-shell--capture-permission (permission)
+    "Record PERMISSION's respond fn/options for the notification, then delegate.
+Always records; returns whatever a previously configured responder returns so
+an existing auto-approve responder keeps working (nil means show the dialog)."
+    (when-let* ((request-id (map-nested-elt permission '(:tool-call :permission-request-id))))
+      (puthash request-id
+               (list :respond (map-elt permission :respond)
+                     :options (map-elt permission :options))
+               mp/agent-shell--permission-registry))
+    (when (functionp mp/agent-shell--prev-permission-responder)
+      (funcall mp/agent-shell--prev-permission-responder permission)))
+
+  (unless (eq agent-shell-permission-responder-function
+              #'mp/agent-shell--capture-permission)
+    (setq mp/agent-shell--prev-permission-responder
+          agent-shell-permission-responder-function
+          agent-shell-permission-responder-function
+          #'mp/agent-shell--capture-permission))
+
+  (defun mp/agent-shell--forget-permission (&rest args)
+    "Drop the registry entry once a request is answered (:before advice)."
+    (when-let* ((request-id (plist-get args :request-id)))
+      (remhash request-id mp/agent-shell--permission-registry)))
+  (advice-add 'agent-shell--send-permission-response :before
+              #'mp/agent-shell--forget-permission)
+
+  (defun mp/agent-shell--option-id (options &rest kinds)
+    "Return the :option-id of the first OPTION in OPTIONS matching a kind in KINDS."
+    (seq-some (lambda (kind)
+                (when-let* ((opt (seq-find (lambda (o) (equal (map-elt o :kind) kind))
+                                           options)))
+                  (map-elt opt :option-id)))
+              kinds))
+
+  (defun mp/agent-shell--enrich-plist (orig-fn type shell-buffer event)
+    "Add Allow/Deny actions to permission-request notifications (:around advice).
+The pill renders the first action as the accent button, so Allow leads."
+    (let ((plist (funcall orig-fn type shell-buffer event)))
+      (if-let* (((eq type 'permission-request))
+                (request-id (map-nested-elt event '(:data :request-id)))
+                (entry (gethash request-id mp/agent-shell--permission-registry))
+                (respond (plist-get entry :respond))
+                (options (plist-get entry :options))
+                (allow-id (mp/agent-shell--option-id options "allow_once" "allow_always"))
+                (deny-id (mp/agent-shell--option-id options "reject_once" "reject_always"))
+                (switch (plist-get plist :on-action)))
+          (progn
+            (plist-put plist :actions
+                       (list "allow" "Allow" "reject" "Deny" "default" "Switch to shell"))
+            (plist-put plist :on-action
+                       (lambda (id key)
+                         (with-demoted-errors "agent-shell allow/deny: %s"
+                           (pcase key
+                             ("allow" (funcall respond allow-id))
+                             ("reject" (funcall respond deny-id))
+                             (_ (when (functionp switch) (funcall switch id key)))))))
+            plist)
+        plist)))
+  (advice-add 'agent-shell-notifications--make-notification-plist :around
+              #'mp/agent-shell--enrich-plist))
 #+end_src
 
 **** Copilot Auto suggestions
