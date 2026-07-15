@@ -226,8 +226,11 @@ The Emacs-daemon state object (the analogue of the pill's [[file:qs-pill-docs.or
 Instantiated once in init.qml as =EmaqsBridge { id: emacs }=. Holds the workspace
 =names= + =current= (so =currentIdx= drives the focus highlight) and the grouped
 =bufferGroups= for the menu; every method shells out to [[*emaqsbridge.py][=emaqsbridge.py=]].
-=switchTo= updates =current= optimistically so the focus highlight moves at once, then
-=reloadTimer= re-syncs from Emacs a beat later (also after a close).
+Loading is lazy — =loadWorkspaces= runs when the bar opens (and after a close),
+=loadBuffers= when a workspace is right-clicked; nothing polls. =switchTo= updates
+=current= optimistically so the focus highlight moves at once. After a =closeWorkspace=,
+=Reloadtimer= re-syncs the workspace list a beat later, once Emacs has processed the
+delete.
 *** Code
 #+begin_src qml :tangle ~/.config/quickshell/emaqs/EmaqsBridge.qml :mkdirp yes
 pragma ComponentBehavior: Bound
@@ -256,8 +259,7 @@ QtObject {
     }
     function switchTo(ws) {
         root.current = ws;                 // optimistic — focus highlight moves now
-        act(["switch", ws]);
-        reloadTimer.restart();
+        act(["switch", ws]);               // switching collapses emaqs, so no re-sync
     }
     function openBuffer(name, ws) { act(["openbuf", name, ws || ""]); }
     function magit(ws) { act(["magit", ws || ""]); }
@@ -289,7 +291,7 @@ QtObject {
         }
     }
     property Process actProc: Process {}
-    // re-sync workspaces shortly after a switch/close so external state agrees.
+    // re-sync workspaces shortly after a close so the closed one drops off the bar.
     property Timer reloadTimer: Timer {
         interval: 320
         onTriggered: root.loadWorkspaces()
@@ -308,7 +310,7 @@ mirrors [[file:qs-pill-docs.org::*orgbridge.py][=orgbridge.py=]]. Commands:
 - =switch NAME= → switch to workspace =NAME=, raise + focus the Emacs frame.
 - =openbuf NAME WS= → (switch to =WS= if needed then) show buffer =NAME=, raise + focus.
 - =magit WS= → =magit-status= at =WS='s project root, raise + focus.
-- =close WS= → delete workspace =WS=.
+- =close WS= → kill workspace =WS= (=+workspace/kill=, killing its buffers too).
 
 The buffer grouping *reuses the user's own super-menu predicates* when present
 (=mp/normal-buffer-p= etc.) and falls back to simple checks otherwise, so the list
@@ -325,7 +327,7 @@ the daemon is unreachable the data commands print empty JSON.
 #   switch NAME       switch to workspace NAME, raise + focus Emacs
 #   openbuf NAME WS   show buffer NAME (switching to WS first), raise + focus
 #   magit WS          magit-status at WS's project root, raise + focus
-#   close WS          delete workspace WS
+#   close WS          kill workspace WS (+workspace/kill, buffers included)
 #
 # All calls talk to the running Emacs daemon with emacsclient. Buffer grouping reuses
 # the user's own super-menu predicates (mp/normal-buffer-p, mp/agent-shell-buffer-p,
@@ -432,8 +434,9 @@ HELPERS = r"""
         (with-selected-frame (selected-frame) (call-interactively #'magit-status)))))
     nil)
   (defun emaqs-close (name)
-    (when (and name (not (string= name "")) (fboundp '+workspace-delete))
-      (ignore-errors (+workspace-delete name)))
+    (when (and name (not (string= name "")))
+      (cond ((fboundp '+workspace/kill) (ignore-errors (+workspace/kill name)))
+            ((fboundp '+workspace-delete) (ignore-errors (+workspace-delete name)))))
     nil))
 """
 
@@ -710,9 +713,12 @@ workspace's label geometry and a *hover* highlight bound to the pointed-at label
 each with =Behavior on x/width= so they glide between labels exactly like the pill's
 shared hover square.
 
-*Polling.* A single root =Timer= polls =emaqsbridge.py workspaces= every 1.2 s, but
-only while at least one window is expanded/menu-open (=root.activeCount=), so the
-collapsed tab is idle-cheap.
+*Loading is lazy, not polled.* Nothing is fetched at startup, and there is no
+timer. Workspaces are pulled *when the bar opens* (=onDashChanged= → =loadWorkspaces=)
+and again *after a workspace is closed* (=reloadTimer= re-syncs a beat later, once
+Emacs has processed the delete). Buffers are pulled *when a workspace is right-clicked*
+(=openMenu= → =loadBuffers=). So the collapsed tab — and Emacs — stay untouched until
+you actually interact.
 *** Code
 #+begin_src qml :tangle ~/.config/quickshell/emaqs/init.qml :mkdirp yes
 pragma ComponentBehavior: Bound
@@ -736,9 +742,6 @@ ShellRoot {
     Theme { id: theme }
     EmaqsBridge { id: emacs }
 
-    // number of overlay windows currently expanded / menu-open; drives the poll.
-    property int activeCount: 0
-
     // is the currently-focused window fullscreen? Fed by fswatch.py (a minimal
     // KWin-script watcher, emaqs's own DBus name so it never clashes with the
     // pill's winbridge). The resting tab hides while a window is fullscreen — same
@@ -753,16 +756,6 @@ ShellRoot {
                 catch (e) {}
             }
         }
-    }
-
-    // poll workspaces while any bar is active; fires immediately on activation.
-    Timer {
-        id: wsPoll
-        interval: 1200
-        repeat: true
-        running: root.activeCount > 0
-        triggeredOnStart: true
-        onTriggered: emacs.loadWorkspaces()
     }
 
     Variants {
@@ -804,12 +797,12 @@ ShellRoot {
                 win.focused = false;
             }
 
-            // keep the shared poll counter in sync with this window's activity.
+            // lazy load: grab the workspace list the moment the bar opens; reset
+            // the hover highlight when it collapses.
             onDashChanged: {
-                root.activeCount += win.dash ? 1 : -1;
                 if (win.dash)
                     emacs.loadWorkspaces();
-                if (!win.dash)
+                else
                     win.hoverIdx = -1;
             }
 
