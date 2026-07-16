@@ -3356,6 +3356,20 @@ non-zero, or produces empty output."
                     (unless (bolp) (insert "\n"))))))))))))
 #+end_src
 
+*** Teamwork timesheet
+Log time to Teamwork.com from an editable org buffer. The sidecar, setup script
+and command definitions live in [[file:teamwork.org]], which tangles them into
+=~/.config/doom/teamwork/=. This block just loads the tangled commands
+(=mp/teamwork-timesheet= / =mp/teamwork-submit=), guarded so a missing tangle
+can never break config load.
+
+#+begin_src emacs-lisp
+(let ((mp/teamwork-el (expand-file-name "teamwork/teamwork.el" doom-user-dir)))
+  (if (file-exists-p mp/teamwork-el)
+      (load mp/teamwork-el nil 'nomessage)
+    (message "teamwork.el not tangled yet; run `org-babel-tangle' on teamwork.org")))
+#+end_src
+
 ** Packages
 :PROPERTIES:
 :header-args:emacs-lisp: :tangle ~/.config/doom/packages.el
