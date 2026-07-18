@@ -355,6 +355,9 @@ class Client:
         return self._req("PUT", f"/tasks/{task_id}.json",
                          body={"todo-item": {"content": title}})
 
+    def complete_task(self, task_id: int):
+        return self._req("PUT", f"/tasks/{task_id}/complete.json")
+
     def create_timelog(self, task_id: int, body: dict) -> int:
         d = self._req("POST", f"/tasks/{task_id}/time_entries.json",
                       body={"time-entry": body})
@@ -474,6 +477,8 @@ def _header(frm, to, user, hidden=None, hidden_names=None) -> list[str]:
         "#+TEAMWORK_BILLABLE: 1",
         "# Log lines:  - [ID] DATE START END description   (edit if ID present, create if not)",
         "#             - [ID] DATE =H:MM description        (duration form, no start time)",
+        "# Times take HH:MM or HHMM (09:00 or 0900). Add [d] after the times to mark the",
+        "# task complete on submit, e.g.  - 2026-06-01 0900 1300 [d] wrapped it up.",
         "# Remove a log line to delete it. Add a heading with no ID to create a task/list.",
         "# Rename a task/list by editing its heading text (keep its :TW_*_ID:).",
         "# Delete a whole project heading to stop fetching it (moves to TEAMWORK_HIDDEN,",
@@ -600,15 +605,26 @@ _LOG_RE = re.compile(
     r"(?P<date>\d{4}-\d{2}-\d{2})\s+"
     r"(?:"
     r"=(?P<dur>\d{1,2}:\d{2})"
-    r"|(?P<start>\d{1,2}:\d{2})\s+(?P<end>\d{1,2}:\d{2})"
+    r"|(?P<start>\d{1,2}:\d{2}|\d{3,4})\s+(?P<end>\d{1,2}:\d{2}|\d{3,4})"
     r")"
-    r"\s*(?P<desc>.*)$"
+    r"\s*(?:\[(?P<done>[dD])\]\s*)?(?P<desc>.*)$"
 )
 
 
 def _to_minutes(hm: str) -> int:
-    h, m = map(int, hm.split(":"))
-    return h * 60 + m
+    """Minutes for a time token in 'H:MM' or 'HHMM'/'HMM' form."""
+    if ":" in hm:
+        h, m = hm.split(":")
+    else:
+        hm = hm.zfill(4)  # '900' -> '0900'
+        h, m = hm[:-2], hm[-2:]
+    return int(h) * 60 + int(m)
+
+
+def _norm_hm(hm: str) -> str:
+    """Normalise a time token ('HHMM' or 'H:MM') to canonical 'HH:MM'."""
+    total = _to_minutes(hm)
+    return f"{total // 60:02d}:{total % 60:02d}"
 
 
 def parse_org(text: str) -> dict:
@@ -690,7 +706,7 @@ def parse_org(text: str) -> dict:
                     problems.append(f"line {lineno}: end time is not after start time")
                     close_log()
                     continue
-                start = f"{int(start.split(':')[0]):02d}:{start.split(':')[1]}"
+                start = _norm_hm(start)
             cur_log = {
                 "id": int(lm.group("id")) if lm.group("id") else None,
                 "task_id": cur_tk["id"],
@@ -699,6 +715,7 @@ def parse_org(text: str) -> dict:
                 "start": start,
                 "minutes": minutes,
                 "description": lm.group("desc").strip(),
+                "done": bool(lm.group("done")),
                 "line": lineno,
             }
             cur_tk["logs"].append(cur_log)
@@ -739,8 +756,8 @@ def _summary(lg: dict, tk: dict, kind: str) -> str:
 
 
 def compute_plan(parsed: dict, snapshot: dict, user_id: int) -> dict:
-    """Ordered plan: create lists -> create tasks -> renames -> log writes -> deletes."""
-    creates_tl, creates_tk, renames, log_writes, deletes = [], [], [], [], []
+    """Ordered plan: create lists -> create tasks -> renames -> log writes -> completes -> deletes."""
+    creates_tl, creates_tk, renames, log_writes, completes, deletes = [], [], [], [], [], []
     problems = list(parsed["problems"])
     billable = parsed["meta"].get("billable_default", True)
     snap_logs = dict(snapshot.get("logs", {}))
@@ -796,6 +813,10 @@ def compute_plan(parsed: dict, snapshot: dict, user_id: int) -> dict:
                         if prev is None or _log_signature(prev) != _log_signature(lg):
                             log_writes.append({"type": "update_timelog", "id": lg["id"], "body": body,
                                                "summary": _summary(lg, tk, "edit"), "_obj": lg})
+                # A [d] marker on any of the task's logs completes the parent task.
+                if any(lg.get("done") for lg in tk["logs"]):
+                    completes.append({"type": "complete_task", "task": tk_target,
+                                      "summary": f"mark task {tk['title'][:40]!r} complete", "_obj": tk})
     for sid, prev in snap_logs.items():
         if sid in seen:
             continue
@@ -805,7 +826,8 @@ def compute_plan(parsed: dict, snapshot: dict, user_id: int) -> dict:
         deletes.append({"type": "delete_timelog", "id": int(sid),
                         "summary": f"delete log {sid} ({prev['date']} {_fmt_hm(prev['minutes'])})"})
 
-    return {"actions": creates_tl + creates_tk + renames + log_writes + deletes, "problems": problems}
+    return {"actions": creates_tl + creates_tk + renames + log_writes + completes + deletes,
+            "problems": problems}
 
 
 def public_action(a: dict) -> dict:
@@ -832,6 +854,8 @@ def _execute(a: dict, client: "Client", created: dict):
         created[a["ref"]] = client.create_task(int(_resolve(a["tasklist"], created)), a["title"])
     elif t == "update_task":
         client.update_task(a["id"], a["title"])
+    elif t == "complete_task":
+        client.complete_task(int(_resolve(a["task"], created)))
     elif t == "create_timelog":
         a["_new_id"] = client.create_timelog(int(_resolve(a["task"], created)), a["body"])
     elif t == "update_timelog":
@@ -1165,16 +1189,29 @@ Loaded from config.org via =(load! "teamwork/teamwork")=.
 
 (defconst teamwork--log-line-re
   (concat "^[ \t]*-[ \t]+\\(?:[0-9]+[ \t]+\\)?"           ; optional id
-          "\\([0-9]\\{4\\}-[0-9]\\{2\\}-[0-9]\\{2\\}\\)[ \t]+"  ; date
-          "\\(?:=\\([0-9]\\{1,2\\}:[0-9]\\{2\\}\\)"       ; =duration
-          "\\|\\([0-9]\\{1,2\\}:[0-9]\\{2\\}\\)[ \t]+\\([0-9]\\{1,2\\}:[0-9]\\{2\\}\\)\\)"  ; start end
-          "[ \t]*\\(.*\\)$")                              ; first desc line
-  "Match a log line, capturing date, dur, start, end, first description.")
+          "\\(?1:[0-9]\\{4\\}-[0-9]\\{2\\}-[0-9]\\{2\\}\\)[ \t]+"  ; 1 date
+          "\\(?:=\\(?2:[0-9]\\{1,2\\}:[0-9]\\{2\\}\\)"    ; 2 =duration
+          ;; 3 start  4 end — each either H:MM or HHMM
+          "\\|\\(?3:[0-9]\\{1,2\\}:[0-9]\\{2\\}\\|[0-9]\\{3,4\\}\\)[ \t]+"
+          "\\(?4:[0-9]\\{1,2\\}:[0-9]\\{2\\}\\|[0-9]\\{3,4\\}\\)\\)"
+          "[ \t]*\\(?:\\(?6:\\[[dD]\\]\\)[ \t]*\\)?"      ; 6 optional [d] done marker
+          "\\(?5:.*\\)$")                                 ; 5 first desc line
+  "Match a log line, capturing date, dur, start, end, first description, done.")
 
 (defun teamwork--hhmm (s)
-  "Minutes for \"H:MM\" S, or nil."
-  (when (and s (string-match "\\([0-9]+\\):\\([0-9]+\\)" s))
-    (+ (* 60 (string-to-number (match-string 1 s))) (string-to-number (match-string 2 s)))))
+  "Minutes for a time token S in \"H:MM\" or \"HHMM\" form, or nil."
+  (when s
+    (cond
+     ((string-match "\\`\\([0-9]+\\):\\([0-9]\\{2\\}\\)\\'" s)
+      (+ (* 60 (string-to-number (match-string 1 s))) (string-to-number (match-string 2 s))))
+     ((string-match "\\`\\([0-9]\\{3,4\\}\\)\\'" s)
+      (let ((p (string-to-number (match-string 1 s))))
+        (+ (* 60 (/ p 100)) (% p 100)))))))
+
+(defun teamwork--norm-hm (s)
+  "Normalise a time token S (\"HHMM\" or \"H:MM\") to \"HH:MM\", or S if unparseable."
+  (let ((m (teamwork--hhmm s)))
+    (if m (format "%02d:%02d" (/ m 60) (% m 60)) s)))
 
 (defun teamwork--parse-buffer-logs ()
   "Parse the timesheet buffer into a chronological list of log plists."
@@ -1191,6 +1228,7 @@ Loaded from config.org via =(load! "teamwork/teamwork")=.
                   (dur (match-string 2 line))
                   (start (match-string 3 line))
                   (end (match-string 4 line))
+                  (done (match-string 6 line))
                   (desc (list (string-trim (or (match-string 5 line) "")))))
               (save-excursion
                 (forward-line 1)
@@ -1205,6 +1243,7 @@ Loaded from config.org via =(load! "teamwork/teamwork")=.
                         desc)
                   (forward-line 1)))
               (push (list :date date :start start :end end :dur dur :task task
+                          :done (and done t)
                           :desc (string-join (nreverse desc) "\n") :overlap nil)
                     logs))))
           (forward-line 1))))
@@ -1220,6 +1259,13 @@ Loaded from config.org via =(load! "teamwork/teamwork")=.
     (cond (dur (or (teamwork--hhmm dur) 0))
           ((and start end) (max 0 (- (teamwork--hhmm end) (teamwork--hhmm start))))
           (t 0))))
+
+(defun teamwork--fmt-hours (minutes)
+  "Format MINUTES as a compact decimal-hours string, e.g. 270 -> \"4.5h\"."
+  (let ((h (/ minutes 60.0)))
+    (if (= h (ftruncate h))
+        (format "%dh" (truncate h))
+      (format "%sh" (string-trim-right (format "%.2f" h) "0+")))))
 
 (defun teamwork--log-interval (lg)
   "Return (START . END) in minutes if LG has both times, else nil."
@@ -1338,8 +1384,12 @@ non-committable action preview sits between separators above the totals."
          (wstart (and win (window-start win)))
          (wpt (and win (window-point win)))
          (rule (propertize (make-string 30 ?─) 'face 'shadow))
+         (day-totals (make-hash-table :test 'equal))
          (total 0) (cur nil))
     (teamwork--mark-overlaps logs)
+    (dolist (lg logs)
+      (let ((d (plist-get lg :date)))
+        (puthash d (+ (gethash d day-totals 0) (teamwork--log-minutes lg)) day-totals)))
     (with-current-buffer buf
       (let ((inhibit-read-only t) (buffer-read-only nil))
         (erase-buffer)
@@ -1351,16 +1401,20 @@ non-committable action preview sits between separators above the totals."
           (let ((date (plist-get lg :date)))
             (unless (equal date cur)
               (setq cur date)
-              (insert (propertize (format "%s\n" date) 'face 'font-lock-comment-face)))
+              (insert (propertize (format "%s (%s)\n" date
+                                          (teamwork--fmt-hours (gethash date day-totals 0)))
+                                  'face 'font-lock-comment-face)))
             (let* ((over (plist-get lg :overlap))
                    (span (if (plist-get lg :dur)
                              (format "=%s" (plist-get lg :dur))
-                           (format "%s-%s" (plist-get lg :start) (plist-get lg :end)))))
+                           (format "%s-%s" (teamwork--norm-hm (plist-get lg :start))
+                                   (teamwork--norm-hm (plist-get lg :end))))))
               (setq total (+ total (teamwork--log-minutes lg)))
               (insert "  "
                       (propertize (format "%-11s " span)
                                   'face (if over 'error 'font-lock-keyword-face))
                       (propertize (plist-get lg :task) 'face 'font-lock-function-name-face)
+                      (if (plist-get lg :done) (propertize "  ✔ done" 'face 'success) "")
                       (if over (propertize "  ⟂ overlap" 'face 'error) "")
                       "\n")
               (dolist (dl (split-string (or (plist-get lg :desc) "") "\n" t))
@@ -1815,6 +1869,31 @@ class ParseBasics(unittest.TestCase):
         p = T.parse_org(_tree("- 2026-06-11 15:00 13:00 bad\n"))
         self.assertTrue(any("not after start" in x for x in p["problems"]))
 
+    def test_hhmm_times_parse_and_normalise(self):
+        p = T.parse_org(_tree("- 2026-06-10 0900 1330 [d] compact\n"))
+        log = p["projects"][0]["tasklists"][0]["tasks"][0]["logs"][0]
+        self.assertEqual(log["start"], "09:00")       # HHMM normalised to HH:MM
+        self.assertEqual(log["minutes"], 270)          # 09:00 -> 13:30
+        self.assertEqual(log["description"], "compact")
+        self.assertTrue(log["done"])                   # [d] flag captured
+
+    def test_done_flag_defaults_false(self):
+        p = T.parse_org(_tree("- 2026-06-10 09:00 10:00 plain\n"))
+        self.assertFalse(p["projects"][0]["tasklists"][0]["tasks"][0]["logs"][0]["done"])
+
+
+class TimeToken(unittest.TestCase):
+    def test_to_minutes_both_forms(self):
+        self.assertEqual(T._to_minutes("09:00"), 540)
+        self.assertEqual(T._to_minutes("0900"), 540)
+        self.assertEqual(T._to_minutes("900"), 540)   # 3-digit HMM
+        self.assertEqual(T._to_minutes("1345"), 825)
+
+    def test_norm_hm(self):
+        self.assertEqual(T._norm_hm("900"), "09:00")
+        self.assertEqual(T._norm_hm("1345"), "13:45")
+        self.assertEqual(T._norm_hm("9:05"), "09:05")
+
 
 class RoundTrip(unittest.TestCase):
     def test_render_then_parse(self):
@@ -1871,6 +1950,27 @@ class Plan(unittest.TestCase):
         plan = self._plan(_tree("- 42 2026-06-10 13:00 16:00 new\n"), snap)
         self.assertEqual([a["type"] for a in plan["actions"]], ["update_timelog"])
         self.assertEqual(plan["actions"][0]["body"]["hours"], 3)
+
+    def test_done_marker_completes_task_on_create(self):
+        plan = self._plan(_tree("- 2026-06-10 13:00 15:00 [d] wrap up\n"), {"logs": {}})
+        self.assertEqual([a["type"] for a in plan["actions"]],
+                         ["create_timelog", "complete_task"])
+        self.assertEqual(plan["actions"][1]["task"], 300)   # existing task id
+
+    def test_done_marker_on_new_task_targets_ref(self):
+        # brand-new task (no TW_TASK_ID) + a [d] log: complete must target the new ref
+        plan = self._plan(_tree("- 2026-06-10 13:00 15:00 [d] x\n", task_prop=""), {"logs": {}})
+        types = [a["type"] for a in plan["actions"]]
+        self.assertEqual(types, ["create_task", "create_timelog", "complete_task"])
+        newtask = next(a for a in plan["actions"] if a["type"] == "create_task")
+        self.assertEqual(plan["actions"][-1]["task"], {"ref": newtask["ref"]})
+
+    def test_done_marker_completes_even_when_log_unchanged(self):
+        # only [d] was added to an otherwise-identical log: no update, still complete
+        snap = {"logs": {"42": {"date": "2026-06-10", "start": "13:00", "minutes": 120,
+                                "description": "same"}}}
+        plan = self._plan(_tree("- 42 2026-06-10 13:00 15:00 [d] same\n"), snap)
+        self.assertEqual([a["type"] for a in plan["actions"]], ["complete_task"])
 
     def test_removed_deletes(self):
         snap = {"logs": {"42": {"date": "2026-06-10", "start": "13:00", "minutes": 120,
@@ -2050,6 +2150,7 @@ class _FakeClient:
     def __init__(self, fail_task=0, fail_log=0):
         self.fail_task, self.fail_log = fail_task, fail_log
         self._tid, self._lid = 1000, 5000
+        self.completed = []
 
     def create_tasklist(self, pid, name):
         self._tid += 1
@@ -2071,6 +2172,9 @@ class _FakeClient:
 
     def update_task(self, *a):
         pass
+
+    def complete_task(self, task_id):
+        self.completed.append(task_id)
 
     def update_tasklist(self, *a):
         pass
@@ -2125,6 +2229,15 @@ class ApplyStream(unittest.TestCase):
         tk = re["projects"][0]["tasklists"][0]["tasks"][0]
         self.assertIsNone(tk["id"])
         self.assertIsNone(tk["logs"][0]["id"])
+
+    def test_done_marker_completes_and_is_consumed(self):
+        client = _FakeClient()
+        text = _tree("- 2026-06-10 13:00 14:00 [d] finish\n")  # existing task 300
+        events, re = self._run(text, {"logs": {}}, client)
+        self.assertEqual(client.completed, [300])              # task completed via API
+        self.assertEqual(events[-1]["applied"], 2)             # create log + complete
+        # [d] is a one-shot instruction: it does not survive into the applied buffer
+        self.assertFalse(re["projects"][0]["tasklists"][0]["tasks"][0]["logs"][0]["done"])
 
 
 if __name__ == "__main__":

@@ -1234,16 +1234,18 @@ z1..z9 keys, LEVEL is read from the triggering digit."
         org-pretty-entities t
         org-ellipsis "…"))
 
-(after! org-modern
-  (setq org-modern-symbol 'caskaydia)
+;; Hide window dividers by painting them the background colour. This used to
+;; ride along inside `after! org-modern' (org-modern is no longer enabled), so
+;; it now lives on its own: re-run on every theme load so the colour tracks the
+;; active theme, and apply once now for the theme already loaded.
+(defun mp/hide-window-dividers (&rest _)
   (dolist (face '(window-divider
                   window-divider-first-pixel
                   window-divider-last-pixel))
     (face-spec-reset-face face)
-    (set-face-foreground face (face-attribute 'default :background)))
-  ;; (set-face-background 'fringe (face-attribute 'default :background))
-  (setq org-modern-block-fringe t)
-  (global-org-modern-mode))
+    (set-face-foreground face (face-attribute 'default :background))))
+(add-hook 'doom-load-theme-hook #'mp/hide-window-dividers)
+(mp/hide-window-dividers)
 #+end_src
 
 **** Mode Line
@@ -3354,6 +3356,64 @@ non-zero, or produces empty output."
                     (goto-char body-start)
                     (insert formatted)
                     (unless (bolp) (insert "\n"))))))))))))
+#+end_src
+
+**** Org sort todos by state and priority
+Reorder a TODO list so remaining work floats to the top: entries are grouped
+by TODO state in the order they are defined in =org-todo-keywords= (TODO, NEXT,
+WAIT, SOMEDAY, DONE, CANCELLED — headings with no keyword sort last), and within
+each group by priority (=#A=, =#B=, =#C=, ..., then unprioritised). It builds a
+single sort key like =00-A= per heading and hands it to =org-sort-entries=, so
+one stable pass gives the state-then-priority ordering.
+
+Scope is DWIM, in order of preference: an active region; the children of the
+heading at point when it has any (put point on a list's parent heading); the
+siblings of the heading at point (its parent's children — put point on any item
+of a nested list); or every top-level heading when point is above the first one.
+Bound to =SPC m s t=, next to Doom's generic =SPC m s S= (=org-sort=).
+#+begin_src emacs-lisp
+(defun mp/org-sort-todos ()
+  "Sort a TODO list by TODO state, then by priority.
+
+State order follows the definition in `org-todo-keywords'; headings with
+no keyword sort last.  Within a state, higher priority first (#A, #B,
+#C, ...), then unprioritised entries.
+
+Scope, in order of preference: an active region; the children of the
+heading at point when it has any; the siblings of the heading at point
+\(its parent's children); or every top-level heading when point is above
+the first one."
+  (interactive)
+  (let* ((getkey
+          (lambda ()
+            (let* ((comps (org-heading-components))
+                   (todo  (nth 2 comps))
+                   (prio  (nth 3 comps))
+                   (state (or (seq-position org-todo-keywords-1 todo) 99)))
+              (format "%02d-%s" state (if prio (char-to-string prio) "~")))))
+         (do-sort (lambda () (org-sort-entries nil ?f getkey #'string<))))
+    (cond
+     ((org-region-active-p) (funcall do-sort))
+     ((and (org-at-heading-p) (save-excursion (org-goto-first-child)))
+      (funcall do-sort))
+     ((save-excursion (and (org-at-heading-p) (org-up-heading-safe)))
+      (save-excursion (org-up-heading-safe) (funcall do-sort)))
+     (t
+      ;; No parent to hang the sort on: select the whole buffer so
+      ;; `org-sort-entries' takes its region branch and orders the
+      ;; top-level headings.  Bind `transient-mark-mode' so the region
+      ;; registers even when it is otherwise off.
+      (let ((transient-mark-mode t))
+        (save-mark-and-excursion
+          (goto-char (point-min))
+          (push-mark (point-max) t t)
+          (funcall do-sort)))))))
+
+(map! :after org
+      :map org-mode-map
+      :localleader
+      (:prefix ("s" . "tree/subtree")
+       :desc "Sort todos by state/priority" "t" #'mp/org-sort-todos))
 #+end_src
 
 *** Teamwork timesheet
