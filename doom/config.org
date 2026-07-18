@@ -2650,19 +2650,38 @@ Magit can refine diff hunks to show the exact changed characters inside a line i
 Agent shell is a core part of this setup, so related integrations live together here.
 
 ***** Desktop Notifications
-Enable desktop notifications for agent-shell buffers so turns that need attention can surface even when the shell is out of focus.
+Agent-shell turns are surfaced by the *emaqs* overlay (see =quickshell/qs-emaqs-docs.org=), not the freedesktop notification daemon: permission requests, "agent finished" turns and the per-workspace "working" pulse all render *in the emaqs pill*, and are therefore *completely absent* from the pill's notification popups/history.
 
-By default =agent-shell-notifications= ships a single "Switch to shell" action. The pill notification server already renders action buttons (and advertises the =actions= capability), so we enrich permission-request notifications with *Allow* / *Deny* buttons that answer the agent right from the notification.
+Wiring: =agent-shell-notifications= already handles subscriptions, visibility gating and idle timers; we only swap its *transport*. Instead of libnotify we set =agent-shell-notifications-send/close-function= to push over DBus to emaqs's =agentbridge.py= (which owns =org.kde.emaqs.agent=). Calls are async and best-effort — if emaqs is down the name is unowned and the reply error is ignored.
 
-The permission event itself doesn't carry the ACP option-ids needed to respond, and the package builds the action list internally. So we hook =agent-shell-permission-responder-function= — the one place that exposes both the option-ids and a ready-made =respond= closure — to stash them by request-id (returning nil so the normal in-buffer dialog still shows), then advise the plist builder to add the two extra actions and dispatch clicks to the stashed closure. A =:before= advice on the response sender forgets the entry once any path (buttons, in-buffer dialog, or interrupt) answers.
+- *Permission requests.* The event doesn't carry the ACP option-ids needed to respond, and the package builds the action list internally. So we hook =agent-shell-permission-responder-function= — the one place exposing both the option-ids and a ready-made =respond= closure — to stash them by request-id (returning nil so the in-buffer dialog still shows), then advise the plist builder (=…--make-notification-plist=) to attach the emaqs payload (buffer name as title, the tool-call description as body) plus *Allow*/*Deny* wired to that closure. A =:before= advice on the response sender forgets the entry once any path answers. emaqs dispatches a button/click back through =emaqsbridge.py agent-action= → =mp/agent-shell-emaqs-action=, which runs the stashed =:on-action=.
+- *Working state* (drives the three-dots chevron + the per-workspace pulse) is independent of the visibility-gated notifications: a =:before= advice on =agent-shell--send-command= marks the shell working; an =:after= advice on =…--on-turn-complete= clears it.
 
 #+begin_src emacs-lisp
 (use-package! agent-shell-notifications
   :hook (agent-shell-mode . agent-shell-notifications-mode)
   :config
+  (require 'dbus nil t)
+  (require 'json)
+
+  ;; ---- emaqs transport (DBus) ----------------------------------------------
+  (defconst mp/agent-shell--emaqs-service "org.kde.emaqs.agent")
+  (defconst mp/agent-shell--emaqs-path "/Agent")
+  (defconst mp/agent-shell--emaqs-iface "org.kde.emaqs.agent")
+
+  (defun mp/agent-shell--emaqs-call (method &rest args)
+    "Fire METHOD on the emaqs agent bridge with string ARGS (async, best-effort)."
+    (when (fboundp 'dbus-call-method-asynchronously)
+      (with-demoted-errors "emaqs agent bridge: %s"
+        (apply #'dbus-call-method-asynchronously
+               :session mp/agent-shell--emaqs-service mp/agent-shell--emaqs-path
+               mp/agent-shell--emaqs-iface method nil args))))
+
+  ;; ---- permission capture: stash respond fn/options by request-id -----------
   (defvar mp/agent-shell--permission-registry (make-hash-table :test 'equal)
     "Map a permission request-id to a plist of (:respond FN :options OPTS).")
-
+  (defvar mp/agent-shell--emaqs-onaction (make-hash-table :test 'equal)
+    "Map an emaqs notification id to its :on-action closure.")
   (defvar mp/agent-shell--prev-permission-responder nil
     "Responder in effect before we installed our capturing one.")
 
@@ -2700,32 +2719,121 @@ an existing auto-approve responder keeps working (nil means show the dialog)."
                   (map-elt opt :option-id)))
               kinds))
 
+  ;; ---- which Doom workspace owns a shell buffer (for the per-workspace pulse) -
+  (defun mp/agent-shell--buffer-workspace (buf)
+    "Return the Doom workspace name that owns BUF, else the current workspace."
+    (or (and (fboundp '+workspace-list-names) (fboundp '+workspace-get)
+             (seq-find
+              (lambda (name)
+                (when-let* ((p (ignore-errors (+workspace-get name t))))
+                  (and (fboundp 'persp-buffers) (memq buf (persp-buffers p)))))
+              (+workspace-list-names)))
+        (and (fboundp '+workspace-current-name) (+workspace-current-name))
+        ""))
+
+  ;; ---- build the emaqs payload (title/body/actions) for both event types -----
   (defun mp/agent-shell--enrich-plist (orig-fn type shell-buffer event)
-    "Add Allow/Deny actions to permission-request notifications (:around advice).
-The pill renders the first action as the accent button, so Allow leads."
-    (let ((plist (funcall orig-fn type shell-buffer event)))
-      (if-let* (((eq type 'permission-request))
-                (request-id (map-nested-elt event '(:data :request-id)))
-                (entry (gethash request-id mp/agent-shell--permission-registry))
+    "Attach emaqs metadata (id/kind/buffer/workspace/actions) to the plist.
+For permission-request, wire Allow/Deny to the captured respond closure."
+    (let* ((plist (funcall orig-fn type shell-buffer event))
+           (bufname (buffer-name shell-buffer))
+           (ws (mp/agent-shell--buffer-workspace shell-buffer)))
+      (plist-put plist :emaqs-buffer bufname)
+      (plist-put plist :emaqs-workspace ws)
+      (pcase type
+        ('permission-request
+         (let* ((request-id (map-nested-elt event '(:data :request-id)))
+                (entry (and request-id (gethash request-id mp/agent-shell--permission-registry)))
                 (respond (plist-get entry :respond))
                 (options (plist-get entry :options))
-                (allow-id (mp/agent-shell--option-id options "allow_once" "allow_always"))
-                (deny-id (mp/agent-shell--option-id options "reject_once" "reject_always"))
-                (switch (plist-get plist :on-action)))
-          (progn
-            (plist-put plist :actions
-                       (list "allow" "Allow" "reject" "Deny" "default" "Switch to shell"))
-            (plist-put plist :on-action
-                       (lambda (id key)
-                         (with-demoted-errors "agent-shell allow/deny: %s"
-                           (pcase key
-                             ("allow" (funcall respond allow-id))
-                             ("reject" (funcall respond deny-id))
-                             (_ (when (functionp switch) (funcall switch id key)))))))
-            plist)
-        plist)))
+                (allow-id (and options (mp/agent-shell--option-id options "allow_once" "allow_always")))
+                (deny-id (and options (mp/agent-shell--option-id options "reject_once" "reject_always")))
+                (switch (plist-get plist :on-action))
+                (msg (ignore-errors
+                       (agent-shell-notifications--format-permission-message
+                        (map-nested-elt event '(:data :tool-call))))))
+           (plist-put plist :title bufname)
+           (plist-put plist :body (or msg ""))
+           (plist-put plist :emaqs-id (format "perm:%s" (or request-id "")))
+           (plist-put plist :emaqs-kind "permission")
+           (if (and respond allow-id deny-id)
+               (progn
+                 (plist-put plist :emaqs-actions
+                            (list (list "allow" "Allow") (list "reject" "Deny")))
+                 (plist-put plist :on-action
+                            (lambda (id key)
+                              (with-demoted-errors "agent-shell allow/deny: %s"
+                                (pcase key
+                                  ("allow" (funcall respond allow-id))
+                                  ("reject" (funcall respond deny-id))
+                                  (_ (when (functionp switch) (funcall switch id key))))))))
+             (plist-put plist :emaqs-actions '()))
+           plist))
+        ('turn-complete
+         (plist-put plist :title bufname)
+         (plist-put plist :body "Agent finished!")
+         (plist-put plist :emaqs-id (format "fin:%s" bufname))
+         (plist-put plist :emaqs-kind "finished")
+         (plist-put plist :emaqs-actions '())
+         plist)
+        (_ plist))))
   (advice-add 'agent-shell-notifications--make-notification-plist :around
-              #'mp/agent-shell--enrich-plist))
+              #'mp/agent-shell--enrich-plist)
+
+  ;; ---- send/close: push to emaqs instead of freedesktop ----------------------
+  (defun mp/agent-shell--emaqs-send (plist)
+    "Send PLIST to emaqs, stash its :on-action by id, and return the id."
+    (let ((id (or (plist-get plist :emaqs-id) "")))
+      (when-let* ((fn (plist-get plist :on-action)))
+        (puthash id fn mp/agent-shell--emaqs-onaction))
+      (mp/agent-shell--emaqs-call
+       "Notify" id
+       (or (plist-get plist :emaqs-kind) "permission")
+       (or (plist-get plist :emaqs-buffer) "")
+       (or (plist-get plist :emaqs-workspace) "")
+       (or (plist-get plist :title) "")
+       (or (plist-get plist :body) "")
+       (json-encode (vconcat (mapcar #'vconcat (or (plist-get plist :emaqs-actions) '())))))
+      id))
+
+  (defun mp/agent-shell--emaqs-close (id)
+    "Tell emaqs to drop notification ID and forget its closure."
+    (remhash id mp/agent-shell--emaqs-onaction)
+    (mp/agent-shell--emaqs-call "Close" (or id "")))
+
+  (setq agent-shell-notifications-send-function #'mp/agent-shell--emaqs-send
+        agent-shell-notifications-close-function #'mp/agent-shell--emaqs-close)
+
+  ;; ---- dispatch an emaqs button/click back into Emacs ------------------------
+  (defun mp/agent-shell-emaqs-action (id key)
+    "Run the stashed :on-action for emaqs notification ID with KEY.
+KEY is \"allow\", \"reject\" or \"default\" (a body click = switch to shell)."
+    (when-let* ((fn (gethash id mp/agent-shell--emaqs-onaction)))
+      (with-demoted-errors "agent-shell emaqs action: %s"
+        (funcall fn id key))
+      (remhash id mp/agent-shell--emaqs-onaction))
+    nil)
+
+  ;; ---- working state: three-dots chevron & per-workspace pulse ---------------
+  (defun mp/agent-shell--emaqs-working (buf active)
+    "Tell emaqs whether BUF's agent is ACTIVE (working)."
+    (when (buffer-live-p buf)
+      (mp/agent-shell--emaqs-call
+       "Working" (buffer-name buf) (mp/agent-shell--buffer-workspace buf)
+       (if active "1" "0"))))
+
+  (defun mp/agent-shell--emaqs-working-start (&rest args)
+    "Mark the shell working when a command is sent (:before advice)."
+    (when-let* ((buf (plist-get args :shell-buffer)))
+      (mp/agent-shell--emaqs-working buf t)))
+  (advice-add 'agent-shell--send-command :before
+              #'mp/agent-shell--emaqs-working-start)
+
+  (defun mp/agent-shell--emaqs-working-stop (&rest _)
+    "Clear the shell working state when its turn completes (:after advice)."
+    (mp/agent-shell--emaqs-working (current-buffer) nil))
+  (advice-add 'agent-shell-notifications--on-turn-complete :after
+              #'mp/agent-shell--emaqs-working-stop))
 #+end_src
 
 **** Copilot Auto suggestions
