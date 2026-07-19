@@ -925,6 +925,13 @@ opened by *clicking* the tab — "focus mode": it stays open until a click elsew
 moves focus away), *menu* (the right-click buffer menu). It composes [[*Theme.qml][=Theme=]],
 [[*MSym.qml][=MSym=]], [[*MenuHeader.qml][=MenuHeader=]] and [[*EmaqsBridge.qml][=EmaqsBridge=]].
 
+*Screen-share DND indicator.* emaqs detects a live screencast independently of the
+pill (its own =PipeWire= scan for a =Stream/Output/Video= node → =screenRecording=)
+and shows its DND bell as "on" while sharing, mirroring the pill's auto-DND. This is
+*indicator only*: agent-shell turns still surface as usual mid-share (they remain
+gated by =agent.dnd= alone, which the screencast does *not* set), so a permission
+request is never silently swallowed while presenting.
+
 *Hover / focus highlights.* The workspace names are a =Row= of labels; two rounded
 rectangles are drawn *behind* them — a *focus* highlight bound to the current
 workspace's label geometry and a *hover* highlight bound to the pointed-at label —
@@ -965,6 +972,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Wayland
 import Quickshell.Io
+import Quickshell.Services.Pipewire
 
 ShellRoot {
     id: root
@@ -972,6 +980,25 @@ ShellRoot {
     Theme { id: theme }
     EmaqsBridge { id: emacs }
     AgentBridge { id: agent }
+
+    // ---- screen-share detection (for the DND indicator) ----
+    // emaqs mirrors the pill's DND-while-sharing: when a screencast is live it shows
+    // its DND bell as "on". Detected independently of the pill (no cross-process
+    // coupling) via PipeWire — a live screencast publishes a "Stream/Output/Video"
+    // node (cameras are "Video/Source", consumers "Stream/Input/Video", so a video
+    // *output* stream uniquely means the screen itself is being captured). Note this
+    // only drives the *indicator*: agent-shell turns still surface as usual while
+    // sharing (they're gated by agent.dnd alone, which this does NOT set) — a
+    // permission request must never be silently swallowed mid-share.
+    PwObjectTracker { objects: Pipewire.nodes ? Pipewire.nodes.values : [] }
+    readonly property bool screenRecording: {
+        const ns = Pipewire.nodes ? Pipewire.nodes.values : [];
+        for (let i = 0; i < ns.length; i++) {
+            const p = ns[i].properties;
+            if (p && p["media.class"] === "Stream/Output/Video") return true;
+        }
+        return false;
+    }
 
     // is the currently-focused window fullscreen? Fed by fswatch.py (a minimal
     // KWin-script watcher, emaqs's own DBus name so it never clashes with the
@@ -1627,11 +1654,16 @@ ShellRoot {
                             anchors.verticalCenter: parent.verticalCenter
                             width: 30; height: 30; radius: theme.radiusBtn
                             color: dndMa.containsMouse ? theme.row : "transparent"
+                            // "on" when DND is toggled manually OR a screencast is
+                            // live (screen-share auto-DND, indicator only — agent
+                            // turns still surface). Click still toggles the manual
+                            // agent.dnd; while sharing the bell reads on regardless.
+                            readonly property bool dndActive: agent.dnd || root.screenRecording
                             MSym {
                                 anchors.centerIn: parent
-                                icon: agent.dnd ? "notifications_off" : "notifications"
+                                icon: parent.dndActive ? "notifications_off" : "notifications"
                                 size: 18
-                                color: agent.dnd ? theme.accent
+                                color: parent.dndActive ? theme.accent
                                      : (dndMa.containsMouse ? theme.text : theme.faint)
                             }
                             MouseArea {

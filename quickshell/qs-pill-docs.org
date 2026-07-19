@@ -999,6 +999,7 @@ Item {
                                     border.color: pwInput.activeFocus ? root.theme.accent : root.theme.border
                                     TextInput {
                                         id: pwInput
+                                        objectName: "pillKbInput"
                                         anchors.left: parent.left; anchors.leftMargin: 10
                                         anchors.right: eye.left; anchors.rightMargin: 6
                                         anchors.verticalCenter: parent.verticalCenter
@@ -2954,6 +2955,7 @@ Rectangle {
     }
     TextInput {
         id: search
+        objectName: "pillKbInput"
         anchors.left: searchIcon.right
         anchors.leftMargin: 8
         anchors.right: gridToggle.left
@@ -3860,6 +3862,11 @@ Closing a popup or letting it time out
 only drops it from =active= and *keeps* it in history; we avoid =dismiss()/expire()=
 because Quickshell would *destroy* the notification (wiping the history copy too),
 so only =forget()= / =clearAll()= remove from history.
+
+While a screencast is live (=screenShare=, bound by =init.qml= to =screenRecording=)
+the server auto-enters DND so nothing pops over the shared screen; it tallies what it
+silenced and, when sharing stops, restores the *prior* DND state and posts a single
+"you missed N notifications" summary (via =notify-send= back to our own server).
 *** Code
 #+begin_src qml :tangle ~/.config/quickshell/pill/Notifications.qml :mkdirp yes
 pragma ComponentBehavior: Bound
@@ -3883,6 +3890,7 @@ pragma ComponentBehavior: Bound
 import QtQuick
 import QtQml
 import Quickshell
+import Quickshell.Io
 import Quickshell.Services.Notifications
 
 QtObject {
@@ -3917,6 +3925,42 @@ QtObject {
     // do-not-disturb: when on, arrivals are still kept for history but never
     // popped (no morph, no floating card). Toggled from the launcher's toggle row.
     property bool dnd: false
+
+    // ---- screen-share auto-DND -----------------------------------------------
+    // While a screencast is live (init binds `screenShare` to root.screenRecording)
+    // the pill auto-enters DND so notifications don't pop over whatever is being
+    // shared. It counts what it silenced and — when sharing ends — restores the DND
+    // state from before the share and posts a single "you missed N" summary. The
+    // prior state is remembered so a manually-set DND survives a share untouched.
+    // (Agent-shell turns live on emaqs, not here, so nothing important is swallowed.)
+    property bool screenShare: false
+    property int  missedDuringShare: 0
+    property bool dndBeforeShare: false
+    onScreenShareChanged: {
+        if (root.screenShare) {
+            root.dndBeforeShare = root.dnd;
+            root.missedDuringShare = 0;
+            root.dnd = true;
+        } else {
+            const n = root.missedDuringShare;
+            root.missedDuringShare = 0;
+            root.dnd = root.dndBeforeShare;
+            if (n > 0) root.postMissedSummary(n);
+        }
+    }
+    // post a single freedesktop notification summarising what was silenced during a
+    // share. Routed through notify-send to our OWN server (we own the name), so it
+    // arrives via onArrived like any other app's — and pops now that DND is lifted.
+    readonly property Process missedProc: Process { }
+    function postMissedSummary(n) {
+        const body = (n === 1)
+            ? "You missed 1 notification while sharing your screen."
+            : ("You missed " + n + " notifications while sharing your screen.");
+        root.missedProc.command = ["notify-send", "-a", "Screen Share",
+            "-i", "notifications", "Screen sharing ended", body];
+        root.missedProc.running = true;
+    }
+
     property var remaining: ({})              // id -> ms left
     property int tick: 0                       // bumped each step to refresh progress bindings
     readonly property bool anyReply: {
@@ -3966,8 +4010,10 @@ QtObject {
         root.rebuild();
         if (n.lastGeneration)                 // restored on reload: history only, don't re-pop
             return;
-        if (root.dnd)                         // do-not-disturb: history only, no popup
+        if (root.dnd) {                       // do-not-disturb: history only, no popup
+            if (root.screenShare) root.missedDuringShare++;   // tally for the end-of-share summary
             return;
+        }
         // de-dupe (apps reuse ids to replace): drop any copy, push to the front
         const a = root.active.filter(x => x.id !== n.id);
         a.unshift(n);
@@ -4365,6 +4411,7 @@ Rectangle {
             border.color: reply.activeFocus ? root.theme.accent : root.theme.border
             TextInput {
                 id: reply
+                objectName: "pillKbInput"
                 anchors.fill: parent
                 anchors.leftMargin: 10; anchors.rightMargin: 10
                 verticalAlignment: TextInput.AlignVCenter
@@ -4734,6 +4781,10 @@ when smaller than the box, fit when larger); *text* entries show the preview, it
 right edge fading out before an always-visible *Delete* label. Text that carries
 embedded =data:image= screenshots shows a "+N images" chip with those blobs stripped
 from the preview. Clicking a row copies it (and closes the panel); *Delete* only removes.
+Keyboard nav mirrors the launcher on a vertical list: *↑/↓* move the row highlight,
+*Enter* copies the highlighted entry, and *←/→* stay with the search field's text
+cursor. The list is a =ListView= (over =shown=) so =setSel= can scroll the selection
+into view; =currentIndex= resets to the top on a new query.
 *** Code
 #+begin_src qml :tangle ~/.config/quickshell/pill/ClipboardMenu.qml :mkdirp yes
 pragma ComponentBehavior: Bound
@@ -4787,6 +4838,26 @@ Item {
         return scored.map(x => x.e);
     }
 
+    // ---- keyboard selection (arrow-key navigation) ----
+    // The list is vertical, so up/down move the row highlight while left/right stay
+    // with the search field's text cursor (see the field's Keys handlers). Enter
+    // copies the highlighted entry; a row click still copies directly. The selection
+    // resets to the top on a new query and clamps if the shown set shrinks.
+    property int currentIndex: 0
+    onQChanged: root.currentIndex = 0
+    onShownChanged: if (root.currentIndex > root.shown.length - 1) root.currentIndex = Math.max(0, root.shown.length - 1)
+    function setSel(i) {
+        const n = root.shown.length;
+        root.currentIndex = n === 0 ? 0 : Math.max(0, Math.min(n - 1, i));
+        if (n > 0) listView.positionViewAtIndex(root.currentIndex, ListView.Contain);
+    }
+    function activateCurrent() {
+        const n = root.shown.length;
+        if (n === 0) return;
+        root.clip.copy(root.shown[Math.max(0, Math.min(n - 1, root.currentIndex))].id);
+        root.closeRequested();
+    }
+
     Column {
         anchors.fill: parent
         spacing: root.theme.gap
@@ -4830,6 +4901,7 @@ Item {
             }
             TextInput {
                 id: search
+                objectName: "pillKbInput"
                 anchors.left: searchIcon.right; anchors.leftMargin: 8
                 anchors.right: parent.right; anchors.rightMargin: 12
                 anchors.verticalCenter: parent.verticalCenter
@@ -4841,6 +4913,13 @@ Item {
                 selectByMouse: true
                 selectionColor: root.theme.accentDim
                 Keys.onEscapePressed: root.closeRequested()
+                // vertical list: up/down move the row highlight; left/right fall
+                // through to the text cursor. Enter copies the highlighted entry
+                // (a row click still copies directly).
+                Keys.onUpPressed: root.setSel(root.currentIndex - 1)
+                Keys.onDownPressed: root.setSel(root.currentIndex + 1)
+                Keys.onReturnPressed: root.activateCurrent()
+                Keys.onEnterPressed: root.activateCurrent()
                 Text {
                     anchors.fill: parent
                     verticalAlignment: Text.AlignVCenter
@@ -4858,6 +4937,7 @@ Item {
         component ClipRow: Rectangle {
             id: clipRow
             required property var entry
+            property bool selected: false
             width: parent ? parent.width : 0
 
             readonly property bool isImg: entry.kind === "image"
@@ -4868,7 +4948,7 @@ Item {
 
             height: isImg ? (imgH + 20) : root.theme.rowHeight
             radius: root.theme.radiusRow
-            color: rowMa.containsMouse ? root.theme.rowHi : root.theme.row
+            color: (clipRow.selected || rowMa.containsMouse) ? root.theme.rowHi : root.theme.row
             clip: true
             Behavior on color { ColorAnimation { duration: root.theme.animFast } }
 
@@ -4993,26 +5073,32 @@ Item {
             }
         }
 
-        Flickable {
+        Item {
             width: parent.width
             height: parent.height - 26 - 40 - root.theme.gap * 2
-            contentHeight: listCol.height
-            clip: true
-            Column {
-                id: listCol
-                width: parent.width
+            ListView {
+                id: listView
+                anchors.fill: parent
+                clip: true
                 spacing: 8
-                Repeater {
-                    model: root.shown
-                    delegate: ClipRow { required property var modelData; width: listCol.width; entry: modelData }
+                model: root.shown
+                currentIndex: root.currentIndex
+                boundsBehavior: Flickable.StopAtBounds
+                delegate: ClipRow {
+                    required property var modelData
+                    required property int index
+                    width: ListView.view.width
+                    entry: modelData
+                    selected: index === root.currentIndex
                 }
-                Text {
-                    visible: root.shown.length === 0
-                    text: root.q.length > 0 ? "No matches" : "Clipboard is empty"
-                    color: root.theme.textDim
-                    font.family: root.theme.family
-                    font.pixelSize: root.theme.fsNormal
-                }
+            }
+            Text {
+                anchors.top: parent.top
+                visible: root.shown.length === 0
+                text: root.q.length > 0 ? "No matches" : "Clipboard is empty"
+                color: root.theme.textDim
+                font.family: root.theme.family
+                font.pixelSize: root.theme.fsNormal
             }
         }
     }
@@ -5757,7 +5843,7 @@ def _eval_to_file(call):
     # Emacs writes the JSON to a temp file and returns its (quoted) path; we read
     # and delete it. Keeps Unicode headings intact vs. parsing Lisp string syntax.
     form = (
-        "(progn %s (let ((f (make-temp-file \"pill-agenda-\"))) "
+        '(progn %s (let ((f (make-temp-file "pill-agenda-"))) '
         "(with-temp-file f (insert %s)) f))" % (HELPERS, call)
     )
     out = _emacs(form)
@@ -5789,7 +5875,9 @@ def main():
         )
     elif cmd == "toggle" and len(sys.argv) > 3:
         # flip a headline's TODO/DONE state; POS is a plain integer buffer pos
-        _emacs("(progn %s (pill-toggle %s %s))" % (HELPERS, _esc(sys.argv[2]), sys.argv[3]))
+        _emacs(
+            "(progn %s (pill-toggle %s %s))" % (HELPERS, _esc(sys.argv[2]), sys.argv[3])
+        )
         sys.stdout.write("[]")
     elif cmd == "open":
         _emacs("(progn %s (pill-open))" % HELPERS, wait=False)
@@ -6376,6 +6464,96 @@ Row {
             }
         }
     }
+}
+#+end_src
+
+** OnAirWave.qml
+*** Description
+The "on-air" equalizer drawn across the vertical middle of the *collapsed* pill
+while a camera or screencast is live (=active=). It sits behind the clock so the
+time stays legible.
+
+- *Mic open* (=micOn=): a lively wavy line — two summed sines scrolling via an
+  animated =phase=, tapered to fade into both ends — whose amplitude tracks the live
+  mic peak (=level=, from [[*init.qml — privacy indicators][=PwNodePeakMonitor=]]).
+  Accent-tinted and a bit translucent so the clock reads through it.
+- *Mic muted*: the amplitude falls to zero, so the same path renders as a single
+  flat horizontal line, recoloured to the clock's colour and fainter still.
+
+Drawn on a =Canvas=; the phase timer only runs while live *and* unmuted (a muted
+line is static), and any state change (=amp=/colour/size/visibility) requests one
+repaint. =level= is smoothed by a =Behavior on amp= so the line breathes rather
+than jitters between peak samples.
+*** Code
+#+begin_src qml :tangle ~/.config/quickshell/pill/OnAirWave.qml :mkdirp yes
+pragma ComponentBehavior: Bound
+// OnAirWave.qml — a horizontal "on-air" waveform across the vertical middle of the
+// collapsed pill while a camera / screencast is live. Mic open => a wavy equalizer
+// line whose amplitude tracks live voice input (accent, translucent); mic muted =>
+// a flat straight line in the clock's colour, fainter still. See qs-pill-docs.org.
+import QtQuick
+
+Item {
+    id: root
+    required property var theme
+    property bool active: false     // a camera or screencast is live
+    property bool micOn: false      // default source not muted
+    property real level: 0          // live mic peak, 0..1
+
+    visible: active
+    opacity: active ? 1 : 0
+    Behavior on opacity { NumberAnimation { duration: root.theme.animFast } }
+
+    // smoothed amplitude: 0 (=> flat line) when muted, else grows with the voice
+    // level with a small floor so it keeps a gentle idle ripple even in near-silence.
+    property real amp: micOn ? Math.max(0.12, Math.min(1, level * 1.6)) : 0
+    Behavior on amp { NumberAnimation { duration: 90; easing.type: Easing.OutCubic } }
+
+    // accent while live, the clock's own colour when muted; kept only lightly
+    // transparent so the thin (1px) line still reads, the muted line a touch softer.
+    property color waveColor: micOn
+        ? Qt.rgba(root.theme.accent.r, root.theme.accent.g, root.theme.accent.b, 0.25)
+        : Qt.rgba(root.theme.text.r,   root.theme.text.g,   root.theme.text.b,   0.05)
+    Behavior on waveColor { ColorAnimation { duration: root.theme.anim } }
+
+    property real phase: 0
+
+    Canvas {
+        id: cv
+        anchors.fill: parent
+        onPaint: {
+            const ctx = getContext("2d");
+            ctx.reset();
+            const w = width, h = height, mid = h / 2;
+            const maxA = Math.max(0, mid - 3);       // stay inside the pill
+            ctx.lineWidth = 1;
+            ctx.lineCap = "round";
+            ctx.strokeStyle = root.waveColor;
+            ctx.beginPath();
+            for (let x = 0; x <= w; x += 2) {
+                const t = w > 0 ? x / w : 0;
+                const taper = Math.sin(Math.PI * t);  // fade the wave into both ends
+                const y = mid
+                    + Math.sin(t * 18 + root.phase)        * 0.6 * maxA * root.amp * taper
+                    + Math.sin(t *  7 - root.phase * 1.7)  * 0.4 * maxA * root.amp * taper;
+                if (x === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+            }
+            ctx.stroke();
+        }
+    }
+
+    // scroll the wave only while live + unmuted; a muted (flat) line is static.
+    Timer {
+        running: root.visible && root.micOn
+        interval: 33; repeat: true
+        onTriggered: { root.phase += 0.35; cv.requestPaint(); }
+    }
+    // repaint on any state change so the muted/idle line is always current.
+    onAmpChanged:       cv.requestPaint()
+    onWaveColorChanged: cv.requestPaint()
+    onWidthChanged:     cv.requestPaint()
+    onHeightChanged:    cv.requestPaint()
+    onVisibleChanged:   cv.requestPaint()
 }
 #+end_src
 
@@ -7106,13 +7284,20 @@ fades to opacity 0. A notification still morphs through (=notifMorph= overrides
 4. *launcher* (600×470): the launcher takes the menu pane's place — the rows fade
    out here too (see [[*Launcher.qml][§ Launcher.qml]]).
 
-*Keyboard focus.* The surface grabs the keyboard only while a panel is open:
-launcher → =Exclusive= (focuses even when opened by the shortcut; arrow nav works),
-open menu → =OnDemand= (a password field focuses on click), else =None=. KWin does
-*not* restore focus when a layer surface releases the keyboard, so the pill remembers
-the last real active window (=lastActiveWindow=, from =winbridge=) and =restoreFocus()=
-re-activates it via the KRunner =Run= whenever the pill is dismissed *without*
-launching; launching an app skips the restore.
+*Keyboard focus.* The surface grabs the keyboard only when it genuinely needs it
+(=win.grabsKeyboard=): the launcher or clipboard menu is up (both auto-focus a search
+field and want arrow-key nav), or *some* editable field inside the pill currently has
+focus (wifi password, notification reply) — detected by =kbInputFocused=, which reads
+the window's active-focus item via a small =kbProbe= =Item= (=Window.activeFocusItem=)
+and checks its =objectName === "pillKbInput"=. In all those cases the surface takes
+=Exclusive=; otherwise it stays =None=. So a menu you're only clicking toggles in never
+steals focus from the active window, and a field pulls the keyboard the moment it takes
+focus (its own =focus:= or a click) with no stray grab. KWin does *not* restore focus
+when a layer surface releases the keyboard, so the pill remembers the last real active
+window (=lastActiveWindow=, from =winbridge=) and =restoreFocus()= re-activates it via
+the KRunner =Run= when the pill is dismissed *without* launching — but *only* if it was
+actually grabbing (=wasGrabbing=), so dismissing a focus-less menu doesn't disrupt the
+active window; launching an app skips the restore.
 
 *Global shortcut (Meta+D).* Quickshell's =GlobalShortcut= is Hyprland-only, so the
 launcher shortcut rides the KWin script in =winbridge.py= (see [[*winbridge.py][§ winbridge.py]]):
@@ -7252,6 +7437,7 @@ pragma ComponentBehavior: Bound
 // Run with:  qs -p quickshell/init.qml
 // ----------------------------------------------------------------------------
 import QtQuick
+import QtQuick.Window
 import Quickshell
 import Quickshell.Wayland
 import Quickshell.Io
@@ -7374,7 +7560,13 @@ Privacy indicators for the resting pill — a camera in use (any process holding
 the screen is shared or recorded). Either one makes the collapsed pill solid and
 shows an indicator (rendered by [[*CollapsedPill.qml][=CollapsedPill=]]) — camera
 as a glyph, screen recording as a pulsing red dot. A hot mic is intentionally *not*
-flagged (an unmuted mic is a routine resting state, so it was more noise than signal).
+flagged as its own resting indicator (an unmuted mic is a routine state) — but it
+*is* read here to drive the on-air equalizer: while a camera or screencast is live
+the mic's mute state (=micUnmuted=) and live input level (=PwNodePeakMonitor.peak=,
+enabled only on-air + unmuted) feed [[*OnAirWave.qml][=OnAirWave=]]. Separately, an
+active screencast auto-enters DND on the pill (and shows the DND bell on emaqs) —
+see [[*Notifications.qml][§ Notifications.qml]]'s =screenShare= handling, bound to
+=screenRecording= where [[*init.qml — notification server][=notifs=]] is built.
 #+name: init-privacy
 #+begin_src qml
 
@@ -7407,6 +7599,22 @@ readonly property bool screenRecording: {
 // window (fsHide).
 readonly property bool privacyActive: cameraInUse || screenRecording
 readonly property int  privacyCount: (cameraInUse ? 1 : 0) + (screenRecording ? 1 : 0)
+
+// ---- microphone state for the "on-air" equalizer (OnAirWave) ----
+// Only meaningful while a camera or screencast is live. `micUnmuted` decides the
+// wavy-vs-flat line; `micPeak.peak` is the live input level driving the amplitude.
+// Bind the default source into a tracker so its `audio` (hence `muted`) populates,
+// and only run the peak monitor while on-air + unmuted so it isn't metering for
+// nothing.
+readonly property bool micUnmuted: (Pipewire.defaultAudioSource && Pipewire.defaultAudioSource.audio)
+                                   ? !Pipewire.defaultAudioSource.audio.muted : false
+PwObjectTracker { objects: Pipewire.defaultAudioSource ? [Pipewire.defaultAudioSource] : [] }
+PwNodePeakMonitor {
+    id: micPeak
+    node: Pipewire.defaultAudioSource
+    enabled: root.privacyActive && root.micUnmuted
+}
+
 Process {
     id: cameraProc
     command: ["sh", "-c", "fuser /dev/video* >/dev/null 2>&1 && echo busy || echo idle"]
@@ -7430,6 +7638,9 @@ Notifications {
     id: notifs
 
     theme: theme
+    // auto-enter DND while a screencast is live; on stop it restores the prior DND
+    // state and posts a "you missed N" summary (see Notifications.qml).
+    screenShare: root.screenRecording
 }
 #+end_src
 
@@ -7456,7 +7667,9 @@ Shared Org-agenda state ([[*OrgAgenda.qml][=OrgAgenda=]], over [[*orgbridge.py][
 #+name: init-org
 #+begin_src qml
 // ---- org agenda state (Emacs daemon via orgbridge.py), shared with the calendar ----
-OrgAgenda { id: orgAgenda }
+OrgAgenda {
+    id: orgAgenda
+}
 #+end_src
 
 **** init.qml — network state
@@ -7992,6 +8205,19 @@ Variants {
         property bool focused: false
         property bool dash: open || launcher || focused || ctxMode
         property int menu: 4 // 0 net, 1 vol, 2 bt, 3 batt, 5 clipboard, 6 calendar, 4 notif (default pane)
+        // keyboard-focus gating. The pill grabs the compositor keyboard ONLY while
+        // it actually needs it: the launcher or clipboard menu is up (both auto-focus
+        // a search field and want arrow-key nav), or *some* editable field inside the
+        // pill currently has focus (wifi password, notification reply). Otherwise it
+        // stays hands-off (KeyboardFocus.None), so browsing menus/toggles never steals
+        // focus from the active window — and there's nothing to "restore" on dismiss.
+        // `kbProbe` (below) reports the window's current focus item; our editable
+        // fields tag themselves with objectName "pillKbInput".
+        readonly property bool kbInputFocused: {
+            const it = kbProbe.focusItem;
+            return !!it && it.objectName === "pillKbInput";
+        }
+        readonly property bool grabsKeyboard: win.launcher || (win.open && win.menu === 5) || win.kbInputFocused
         // open-state pill geometry, in ONE place: the control panel and the
         // launcher both lay out to these, so resizing the open/launcher pill here
         // can't leave the launcher mis-sized (the bug from the last resize).
@@ -8111,8 +8337,11 @@ Variants {
         // date/time. Mirrors openClipboard: re-firing while it's showing closes it.
         function openCalendar() {
             if (win.open && win.menu === 6) {
+                const wasGrabbing = win.grabsKeyboard;
                 win.open = false;
-                root.restoreFocus();
+                if (wasGrabbing)
+                    root.restoreFocus();
+
             } else {
                 win.launcher = false;
                 win.ctxGroup = null;
@@ -8129,17 +8358,16 @@ Variants {
         }
         screen: modelData
         WlrLayershell.layer: WlrLayer.Overlay
-        // grab keyboard only while a panel is explicitly open (launcher search /
-        // menus), so the collapsed/hovered pill — and an appearing notification —
-        // never steal focus from the active window. Inline reply works from the
-        // floating cards under an open pill (which has focus). The launcher uses
-        // *Exclusive* so it grabs the keyboard even when opened by the Meta+D
-        // shortcut (no click to trigger OnDemand focus) and arrow-key nav works;
-        // menus stay OnDemand so a password field focuses only when clicked.
-        // the clipboard menu takes Exclusive focus too (like the launcher) so its
-        // search field grabs the keyboard even when opened by the IPC shortcut (no
-        // click to trigger OnDemand focus); other menus stay OnDemand.
-        WlrLayershell.keyboardFocus: (win.launcher || (win.open && win.menu === 5)) ? WlrKeyboardFocus.Exclusive : win.open ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
+        // grab the keyboard only when the pill genuinely needs it (see
+        // `grabsKeyboard`): the launcher/clipboard is up, or an editable field has
+        // focus. Everything else — collapsed/hovered pill, an appearing notification,
+        // a menu you're only clicking toggles in — stays KeyboardFocus.None and never
+        // touches the active window's focus. The launcher and clipboard need
+        // *Exclusive* so their search field grabs the keyboard even when opened by a
+        // shortcut/IPC (no click to trigger focus) and arrow-key nav works from the
+        // first keystroke; a wifi-password / reply field pulls Exclusive the moment it
+        // takes focus (its own `focus:`/click), so typing works without a stray grab.
+        WlrLayershell.keyboardFocus: win.grabsKeyboard ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
         exclusionMode: ExclusionMode.Ignore
         color: "transparent"
         mask: (win.open || win.launcher || win.ctxMode || win.confirmActive || win.focused) ? fullRegion : (win.fsHide ? emptyRegion : pillRegion)
@@ -8176,6 +8404,15 @@ Variants {
             right: true
         }
 
+        // reports the window's current active-focus item (reactive via
+        // Window.activeFocusItemChanged) so `kbInputFocused` can tell whether one of
+        // our editable fields (objectName "pillKbInput") holds focus.
+        Item {
+            id: kbProbe
+
+            readonly property var focusItem: Window.activeFocusItem
+        }
+
         Region {
             id: pillRegion
 
@@ -8198,14 +8435,19 @@ Variants {
 
             anchors.fill: parent
             enabled: win.open || win.launcher || win.ctxMode || win.focused
-            // dismiss without launching -> hand focus back to the active window
+            // dismiss without launching -> hand focus back to the active window, but
+            // only if the pill actually held the keyboard (otherwise there's nothing
+            // to restore and re-activating the last window is just disruptive).
             onClicked: {
+                const wasGrabbing = win.grabsKeyboard;
                 win.open = false;
                 win.launcher = false;
                 win.ctxGroup = null;
                 win.trayItem = null;
                 win.focused = false;
-                root.restoreFocus();
+                if (wasGrabbing)
+                    root.restoreFocus();
+
             }
         }
 
@@ -8218,7 +8460,6 @@ Variants {
             // via the PillSurface background below. Only a notification card or an
             // action burst floats 6px below the edge (those aren't "the pill").
             y: (win.notifMorph || win.showBurst) ? 6 : 0
-            Behavior on y { NumberAnimation { duration: theme.anim; easing.type: Easing.OutCubic } }
             width: win.showBurst ? (burstLoader.item ? burstLoader.item.implicitWidth : 96) : win.launcher ? win.launcherWidth : win.ctxMode ? 520 : (win.notifMorph ? (morphStack.item ? morphStack.item.implicitWidth : 420) : (win.open ? (win.menu === 6 ? win.calWidth : 520) : (win.dash ? win.hoverWidth : (56 + root.privacyCount * 20 + (notifs.grouped.length > 0 ? 14 : 0)))))
             // in ctx mode the pill sizes to whichever menu loader is active (app
             // context menu or tray menu).
@@ -8273,9 +8514,11 @@ Variants {
             // (hidden) only while a notification or action-burst owns the pill.
             PillSurface {
                 id: surface
+
                 // small flare on the narrow resting pill, a big one on the wide
                 // dashboard so the "rounded out" reads at 640px.
                 readonly property int wingW: win.dash ? 34 : 12
+
                 anchors.fill: parent
                 anchors.leftMargin: -wingW
                 anchors.rightMargin: -wingW
@@ -8286,9 +8529,30 @@ Variants {
                 fillColor: (win.dash || win.privacyRest) ? theme.bg : theme.bgTranslucent
                 visible: !win.notifMorph && !win.showBurst
                 opacity: visible ? 1 : 0
-                Behavior on opacity { NumberAnimation { duration: theme.animFast } }
-                Behavior on anchors.leftMargin { NumberAnimation { duration: theme.anim; easing.type: Easing.OutCubic } }
-                Behavior on anchors.rightMargin { NumberAnimation { duration: theme.anim; easing.type: Easing.OutCubic } }
+
+                Behavior on opacity {
+                    NumberAnimation {
+                        duration: theme.animFast
+                    }
+
+                }
+
+                Behavior on anchors.leftMargin {
+                    NumberAnimation {
+                        duration: theme.anim
+                        easing.type: Easing.OutCubic
+                    }
+
+                }
+
+                Behavior on anchors.rightMargin {
+                    NumberAnimation {
+                        duration: theme.anim
+                        easing.type: Easing.OutCubic
+                    }
+
+                }
+
             }
 
             // clicking the hovered pill body (empty area) opens the launcher;
@@ -8306,6 +8570,20 @@ Variants {
                 enabled: win.open || win.launcher
                 onClicked: {
                 }
+            }
+
+            // ---- on-air equalizer: a wavy (mic open) / flat (muted) line across the
+            // vertical middle of the collapsed pill while a camera / screencast is
+            // live. Drawn BEFORE the clock (below it in the stack) and filling the pill
+            // edge-to-edge (its amplitude tapers to the centre-line at both ends, which
+            // sits at the pill's widest point, so it reaches the edges without spilling
+            // past the rounded corners / wings). The time stays legible through it.
+            OnAirWave {
+                anchors.fill: parent
+                theme: theme
+                active: !win.dash && !win.notifMorph && !win.showBurst && root.privacyActive
+                micOn: root.micUnmuted
+                level: micPeak.peak
             }
 
             // ---- collapsed: clock (hh:mm) + privacy icons (camera / screen) ----
@@ -8414,13 +8692,19 @@ Variants {
                 // per-target tint: the launcher exposes `hoverColor` (accent-soft);
                 // everything else falls back to the shared faded-gray hover.
                 color: (target && target.hoverColor) ? target.hoverColor : theme.bgHover
-                Behavior on color { ColorAnimation { duration: theme.animFast } }
                 opacity: (win.dash && !win.open && !win.launcher && !win.notifMorph && !win.ctxMode && target) ? 1 : 0
                 visible: opacity > 0
                 x: pos.x - pad
                 y: pos.y - padY + offY
                 width: target ? target.width + pad * 2 : 0
                 height: target ? target.height + padY * 2 : 0
+
+                Behavior on color {
+                    ColorAnimation {
+                        duration: theme.animFast
+                    }
+
+                }
 
                 Behavior on x {
                     NumberAnimation {
@@ -8499,6 +8783,7 @@ Variants {
                         readonly property int hoverPad: 6
                         readonly property int hoverPadY: 0
                         readonly property int hoverOffsetY: 2
+
                         implicitWidth: dtCol.implicitWidth
                         implicitHeight: dtCol.implicitHeight
                         width: implicitWidth
@@ -8506,6 +8791,7 @@ Variants {
 
                         Column {
                             id: dtCol
+
                             spacing: 1
 
                             // big time, prominent — set in the serif display face
@@ -8527,15 +8813,21 @@ Variants {
                                 font.capitalization: Font.AllUppercase
                                 lineHeight: 0.95
                             }
+
                         }
 
                         MouseArea {
                             anchors.fill: parent
                             hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
-                            onContainsMouseChanged: if (containsMouse) win.hoverEnter(dateTimeBlock)
+                            onContainsMouseChanged: {
+                                if (containsMouse)
+                                    win.hoverEnter(dateTimeBlock);
+
+                            }
                             onClicked: win.openCalendar()
                         }
+
                     }
 
                     // hollow dots (click to switch) + one filled dot that slides
@@ -8647,7 +8939,11 @@ Variants {
                         anchors.fill: parent
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
-                        onContainsMouseChanged: if (launchMa.containsMouse) win.hoverEnter(launcherIcon)
+                        onContainsMouseChanged: {
+                            if (launchMa.containsMouse)
+                                win.hoverEnter(launcherIcon);
+
+                        }
                         onClicked: {
                             win.open = false;
                             win.launcher = true;
@@ -8769,8 +9065,11 @@ Variants {
 
                 Connections {
                     function onCloseRequested() {
+                        const wasGrabbing = win.grabsKeyboard;
                         win.open = false;
-                        root.restoreFocus();
+                        if (wasGrabbing)
+                            root.restoreFocus();
+
                     }
 
                     target: menuLoader.item
@@ -8825,8 +9124,12 @@ Variants {
                     // the full-screen menu overlay so it can drop out of the pill.
                     onAppMenuRequested: (app, fav, pinned, x, y) => {
                         const p = launcherItem.mapToItem(launcherMenu, x, y);
-                        launcherMenu.openFor(app, p.x, p.y,
-                            { fav: fav, showFav: true, pinned: pinned, showPin: true });
+                        launcherMenu.openFor(app, p.x, p.y, {
+                            "fav": fav,
+                            "showFav": true,
+                            "pinned": pinned,
+                            "showPin": true
+                        });
                     }
                     onConfirmPower: (action, cmd) => {
                         return win.requestConfirm(action, cmd);
@@ -8841,7 +9144,7 @@ Variants {
                             launcherItem.open();
                         } else {
                             launcherItem.close();
-                            launcherMenu.close();   // a right-click menu never outlives the launcher
+                            launcherMenu.close(); // a right-click menu never outlives the launcher
                         }
                     }
 
@@ -8882,9 +9185,7 @@ Variants {
                         theme: theme
                         group: win.ctxGroup
                         desktops: root.desktops
-                        isPinned: win.ctxGroup
-                            ? root.isPinned(win.ctxGroup.entry || DesktopEntries.heuristicLookup(win.ctxGroup.icon))
-                            : false
+                        isPinned: win.ctxGroup ? root.isPinned(win.ctxGroup.entry || DesktopEntries.heuristicLookup(win.ctxGroup.icon)) : false
                         onLaunchRequested: (s) => {
                             root.launch(s);
                             win.ctxGroup = null;
@@ -8900,6 +9201,7 @@ Variants {
                         onPinToggled: (e) => {
                             if (e)
                                 root.togglePin(e);
+
                             win.ctxGroup = null;
                         }
                         onCloseRequested: win.ctxGroup = null
@@ -8952,6 +9254,14 @@ Variants {
 
             }
 
+            Behavior on y {
+                NumberAnimation {
+                    duration: theme.anim
+                    easing.type: Easing.OutCubic
+                }
+
+            }
+
             Behavior on width {
                 NumberAnimation {
                     duration: theme.anim
@@ -8992,8 +9302,12 @@ Variants {
             anchors.fill: parent
             z: 1000
             theme: theme
-            onFavouriteToggled: (e) => launcherItem.toggleFav(e)
-            onPinToggled: (e) => launcherItem.togglePin(e)
+            onFavouriteToggled: (e) => {
+                return launcherItem.toggleFav(e);
+            }
+            onPinToggled: (e) => {
+                return launcherItem.togglePin(e);
+            }
             onLaunched: win.launcher = false
         }
 
