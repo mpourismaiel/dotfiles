@@ -71,9 +71,9 @@ GRAB = r'''
             readonly property var _states: [
                 { name: "collapsed",  fn: function(){ win.focused=false; win.menuOpen=false; agent.dnd=false; agent.workingCount=0; agent.workingList=[]; agent.permissionNotif=null; agent.finishedNotif=null; } },
                 { name: "working",    fn: function(){ win.focused=false; win.menuOpen=false; agent.workingCount=2; agent.workingList=[{workspace:"AWESOME"},{workspace:"DOOM"}]; agent.permissionNotif=null; agent.finishedNotif=null; } },
-                { name: "finished",   fn: function(){ win.focused=false; win.menuOpen=false; agent.workingCount=1; agent.workingList=[{workspace:"DOOM"}]; agent.permissionNotif=null; agent.finishedNotif={id:"1", title:"claude: refactor pill"}; } },
-                { name: "permission", fn: function(){ win.focused=false; win.menuOpen=false; agent.workingCount=1; agent.workingList=[{workspace:"DOOM"}]; agent.finishedNotif=null; agent.permissionNotif={id:"2", title:"claude: write tests", body:"Run shell command: qs -p init.qml to validate the harness output", actions:[["allow","Allow"],["deny","Deny"]]}; } },
-                { name: "bar",        fn: function(){ agent.permissionNotif=null; agent.finishedNotif=null; agent.workingCount=1; agent.workingList=[{workspace:"AWESOME"}]; win.menuOpen=false; win.focused=true; } },
+                { name: "finished",   fn: function(){ win.focused=false; win.menuOpen=false; agent.workingCount=2; agent.workingList=[{workspace:"DOOM"},{workspace:"AWESOME"}]; agent.permissionNotif=null; agent.finishedNotif={id:"1", title:"claude: refactor pill"}; } },
+                { name: "permission", fn: function(){ win.focused=false; win.menuOpen=false; agent.workingCount=2; agent.workingList=[{workspace:"DOOM"},{workspace:"AWESOME"}]; agent.finishedNotif=null; agent.permissionNotif={id:"2", title:"claude: write tests", body:"Run shell command: qs -p init.qml to validate the harness output", actions:[["allow","Allow"],["deny","Deny"]]}; } },
+                { name: "bar",        fn: function(){ agent.permissionNotif=null; agent.finishedNotif=null; agent.workingCount=2; agent.workingList=[{workspace:"AWESOME"},{workspace:"DOOM"}]; win.menuOpen=false; win.focused=true; } },
                 { name: "menu",       fn: function(){ win.focused=true; win.menuWs="AWESOME"; win.confirmClose=false; win.menuOpen=true; } },
                 { name: "confirm",    fn: function(){ win.focused=true; win.menuWs="AWESOME"; win.menuOpen=true; win.confirmClose=true; } }
             ]

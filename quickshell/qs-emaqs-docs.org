@@ -916,6 +916,87 @@ QtObject {
 }
 #+end_src
 
+** IconButton.qml
+*** Description
+A rounded hover button — an =MSym= glyph over a fill that appears on hover, with a
+=clicked()= signal. Size, radius and the three colours (=hoverBg=, =restColor=,
+=hoverColor=) are all caller-set, so it covers the magit / menu-close / dismiss (✕)
+buttons uniformly (they were the same Rectangle+MSym+MouseArea+Behavior block repeated
+four times). The workspace-bar DND toggle keeps its own bespoke three-state colouring.
+*** Code
+#+begin_src qml :tangle ~/.config/quickshell/emaqs/IconButton.qml :mkdirp yes
+pragma ComponentBehavior: Bound
+// IconButton.qml — a rounded hover button: an MSym glyph over a fill that fades in on
+// hover, emitting clicked(). Caller sets width/height (and radius if not the default
+// radiusBtn) plus the icon and colours, so one component serves the magit, close and
+// dismiss buttons.
+import QtQuick
+
+Rectangle {
+    id: root
+    required property var theme
+    property string icon: ""
+    property int iconSize: 18
+    property color hoverBg: root.theme.row
+    property color restColor: root.theme.faint
+    property color hoverColor: root.theme.text
+    signal clicked()
+
+    radius: root.theme.radiusBtn
+    color: ma.containsMouse ? root.hoverBg : "transparent"
+    Behavior on color { ColorAnimation { duration: root.theme.animFast } }
+
+    MSym {
+        anchors.centerIn: parent
+        icon: root.icon
+        size: root.iconSize
+        color: ma.containsMouse ? root.hoverColor : root.restColor
+    }
+    MouseArea {
+        id: ma
+        anchors.fill: parent
+        hoverEnabled: true
+        cursorShape: Qt.PointingHandCursor
+        onClicked: root.clicked()
+    }
+}
+#+end_src
+
+** AgentCountBadge.qml
+*** Description
+The small "N agents working" pill — an accent-soft circle holding the count in accent
+mono, shown only when more than one agent is active. Appears in three spots (the
+=finished= line, the permission card, and the workspace-bar leading slot); they were
+byte-identical apart from the circle diameter, so they share this component now.
+*** Code
+#+begin_src qml :tangle ~/.config/quickshell/emaqs/AgentCountBadge.qml :mkdirp yes
+pragma ComponentBehavior: Bound
+// AgentCountBadge.qml — accent-soft circle holding the active-agent count in accent
+// mono; hidden (and zero-width) unless more than one agent is working. `diameter`
+// sizes the circle (18 in the collapsed cards, 22 in the expanded bar).
+import QtQuick
+
+Rectangle {
+    id: root
+    required property var theme
+    property int count: 0
+    property int diameter: 18
+    visible: count > 1
+    width: visible ? diameter : 0
+    height: diameter
+    radius: diameter / 2
+    color: root.theme.accentSoft
+    Text {
+        anchors.centerIn: parent
+        text: root.count
+        color: root.theme.accent
+        font.family: root.theme.mono
+        font.pixelSize: root.theme.fsSmall
+        font.bold: true
+    }
+}
+#+end_src
+
 ** init.qml
 *** Description
 The overlay itself: one full-screen layer-shell =PanelWindow= per monitor (reserving
@@ -1232,19 +1313,10 @@ ShellRoot {
                         spacing: 9
 
                         // active-agent count (only when more than one is running)
-                        Rectangle {
+                        AgentCountBadge {
                             anchors.verticalCenter: parent.verticalCenter
-                            visible: win.agentCount > 1
-                            width: visible ? 18 : 0; height: 18; radius: 9
-                            color: theme.accentSoft
-                            Text {
-                                anchors.centerIn: parent
-                                text: win.agentCount
-                                color: theme.accent
-                                font.family: theme.mono
-                                font.pixelSize: theme.fsSmall
-                                font.bold: true
-                            }
+                            theme: theme
+                            count: win.agentCount
                         }
 
                         // check badge — a filled ✓ in an accent halo that pops on show
@@ -1313,21 +1385,13 @@ ShellRoot {
                         }
 
                         // dismiss (✕)
-                        Rectangle {
+                        IconButton {
                             anchors.verticalCenter: parent.verticalCenter
                             width: 22; height: 22; radius: 11
-                            color: finX.containsMouse ? theme.bgHover : "transparent"
-                            MSym {
-                                anchors.centerIn: parent; icon: "close"; size: 15
-                                color: finX.containsMouse ? theme.text : theme.faint
-                            }
-                            MouseArea {
-                                id: finX
-                                anchors.fill: parent
-                                hoverEnabled: true; cursorShape: Qt.PointingHandCursor
-                                onClicked: { if (finItem.n) agent.dismiss(finItem.n.id); }
-                            }
-                            Behavior on color { ColorAnimation { duration: theme.animFast } }
+                            theme: theme
+                            icon: "close"; iconSize: 15
+                            hoverBg: theme.bgHover
+                            onClicked: { if (finItem.n) agent.dismiss(finItem.n.id); }
                         }
                     }
                 }
@@ -1394,38 +1458,20 @@ ShellRoot {
                                     font.capitalization: Font.AllUppercase
                                     font.bold: true
                                 }
-                                Rectangle {                       // active-agent count (>1)
+                                AgentCountBadge {                 // active-agent count (>1)
                                     anchors.verticalCenter: parent.verticalCenter
-                                    visible: win.agentCount > 1
-                                    width: visible ? 18 : 0; height: 18; radius: 9
-                                    color: theme.accentSoft
-                                    Text {
-                                        anchors.centerIn: parent
-                                        text: win.agentCount
-                                        color: theme.accent
-                                        font.family: theme.mono
-                                        font.pixelSize: theme.fsSmall
-                                        font.bold: true
-                                    }
+                                    theme: theme
+                                    count: win.agentCount
                                 }
                             }
-                            Rectangle {
-                                id: permX
+                            IconButton {
                                 anchors.right: parent.right
                                 anchors.verticalCenter: parent.verticalCenter
                                 width: 22; height: 22; radius: 11
-                                color: permXMa.containsMouse ? theme.bgHover : "transparent"
-                                MSym {
-                                    anchors.centerIn: parent; icon: "close"; size: 15
-                                    color: permXMa.containsMouse ? theme.text : theme.faint
-                                }
-                                MouseArea {
-                                    id: permXMa
-                                    anchors.fill: parent
-                                    hoverEnabled: true; cursorShape: Qt.PointingHandCursor
-                                    onClicked: { if (permCard.n) agent.dismiss(permCard.n.id); }
-                                }
-                                Behavior on color { ColorAnimation { duration: theme.animFast } }
+                                theme: theme
+                                icon: "close"; iconSize: 15
+                                hoverBg: theme.bgHover
+                                onClicked: { if (permCard.n) agent.dismiss(permCard.n.id); }
                             }
                         }
 
@@ -1589,19 +1635,11 @@ ShellRoot {
 
                         // leading: how many agents are working (only when >1) — the
                         // "left of the title" count for the multiple-pulse case.
-                        Rectangle {
+                        AgentCountBadge {
                             anchors.verticalCenter: parent.verticalCenter
-                            visible: win.agentCount > 1
-                            width: visible ? 22 : 0; height: 22; radius: 11
-                            color: theme.accentSoft
-                            Text {
-                                anchors.centerIn: parent
-                                text: win.agentCount
-                                color: theme.accent
-                                font.family: theme.mono
-                                font.pixelSize: theme.fsSmall
-                                font.bold: true
-                            }
+                            theme: theme
+                            count: win.agentCount
+                            diameter: 22
                         }
 
                         Repeater {
@@ -1709,39 +1747,18 @@ ShellRoot {
                         onBack: win.closeMenu()
 
                         // trailing: magit + close (opposite the header)
-                        Rectangle {
-                            width: 28; height: 28; radius: theme.radiusBtn
-                            color: magitMa.containsMouse ? theme.row : "transparent"
-                            MSym {
-                                anchors.centerIn: parent
-                                icon: "account_tree"; size: 19
-                                color: magitMa.containsMouse ? theme.text : theme.faint
-                            }
-                            MouseArea {
-                                id: magitMa
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: { emacs.magit(win.menuWs); win.collapseAll(); }
-                            }
-                            Behavior on color { ColorAnimation { duration: theme.animFast } }
+                        IconButton {
+                            width: 28; height: 28
+                            theme: theme
+                            icon: "account_tree"; iconSize: 19
+                            onClicked: { emacs.magit(win.menuWs); win.collapseAll(); }
                         }
-                        Rectangle {
-                            width: 28; height: 28; radius: theme.radiusBtn
-                            color: closeMa.containsMouse ? theme.accentSoft : "transparent"
-                            MSym {
-                                anchors.centerIn: parent
-                                icon: "close"; size: 19
-                                color: closeMa.containsMouse ? theme.danger : theme.faint
-                            }
-                            MouseArea {
-                                id: closeMa
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: win.confirmClose = true
-                            }
-                            Behavior on color { ColorAnimation { duration: theme.animFast } }
+                        IconButton {
+                            width: 28; height: 28
+                            theme: theme
+                            icon: "close"; iconSize: 19
+                            hoverBg: theme.accentSoft; hoverColor: theme.danger
+                            onClicked: win.confirmClose = true
                         }
                     }
 
