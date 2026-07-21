@@ -1333,7 +1333,8 @@ Item {
             Text {
                 anchors.verticalCenter: parent.verticalCenter
                 visible: device.batteryAvailable
-                text: Math.round(device.battery) + "%"
+                // Bluetooth battery is a 0..1 ratio — scale to 0..100 (100%, not 1%).
+                text: Math.round(device.battery * 100) + "%"
                 color: root.theme.faint
                 font.family: root.theme.family
                 font.pixelSize: root.theme.fsSmall
@@ -1760,7 +1761,9 @@ Item {
                     }
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
-                        text: Math.round(devRow.modelData.percentage) + "%"
+                        // UPower percentage is a 0..1 ratio (see the glyph thresholds
+                        // above), so scale to 0..100 — a full battery is 100%, not 1%.
+                        text: Math.round(devRow.modelData.percentage * 100) + "%"
                         color: root.theme.text
                         font.family: root.theme.serif
                         font.pixelSize: root.theme.fsLarge + 3
