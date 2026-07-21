@@ -1234,6 +1234,14 @@ z1..z9 keys, LEVEL is read from the triggering digit."
         org-pretty-entities t
         org-ellipsis "…"))
 
+;; Fully disable org-modern. Doom's `(org +pretty)' flag hooks `org-modern-mode'
+;; into `org-mode' (see lang/org/contrib/pretty.el), so not configuring it isn't
+;; enough — strip the hooks it installs. The hooks are added eagerly at Doom init
+;; (use-package `:hook'), and this file loads afterwards, so `remove-hook' here
+;; takes effect. `+pretty' still provides org-appear and LaTeX highlighting.
+(remove-hook 'org-mode-hook #'org-modern-mode)
+(remove-hook 'org-agenda-finalize-hook #'org-modern-agenda)
+
 ;; Hide window dividers by painting them the background colour. This used to
 ;; ride along inside `after! org-modern' (org-modern is no longer enabled), so
 ;; it now lives on its own: re-run on every theme load so the colour tracks the
@@ -2649,6 +2657,65 @@ Magit can refine diff hunks to show the exact changed characters inside a line i
 **** Agent Shell
 Agent shell is a core part of this setup, so related integrations live together here.
 
+***** Per-Project Claude Config Dir
+By default the Claude ACP client uses =~/.claude/= (Claude's default home). For
+certain work projects I want it to use a *separate* Claude home instead (a
+different logged-in account) — the equivalent of launching
+=CLAUDE_CONFIG_DIR=/some/dir claude= without having to log in/out or export the
+variable by hand.
+
+The lever is =agent-shell-anthropic-claude-environment=: agent-shell appends this
+list of ="VAR=value"= strings to the Claude process environment (see
+=agent-shell-anthropic-make-claude-client=). The client-maker runs inside the
+freshly-created shell buffer, whose =default-directory= is the resolved project
+cwd (=agent-shell-cwd= → project root). So an =:around= advice on the client-maker
+can inspect =default-directory=, and when it falls under a configured project
+root, dynamically let-bind =agent-shell-anthropic-claude-environment= to prepend
+=CLAUDE_CONFIG_DIR=. The path is =expand-file-name='d to an absolute path (the
+subprocess won't expand =~= the way the shell did).
+
+The actual project→config-dir mappings are *not* kept here — they live in the
+gitignored =private.el= (loaded early, see [[*Project management]]), which =setq='s
+=mp/agent-shell-claude-config-dirs= to keep private paths out of the repo. The
+=defvar= below only establishes the empty default so the advice works when
+=private.el= is absent.
+
+#+begin_src emacs-lisp
+(defvar mp/agent-shell-claude-config-dirs nil
+  "Alist of (PROJECT-ROOT . CLAUDE-CONFIG-DIR) overrides.
+When an agent-shell Claude client starts with a cwd under PROJECT-ROOT,
+CLAUDE_CONFIG_DIR is set to CLAUDE-CONFIG-DIR so Claude uses that home
+instead of the default ~/.claude/.  Longest match wins.
+Populated from `private.el' (see the Project management section).")
+
+(defun mp/agent-shell--claude-config-dir (dir)
+  "Return the CLAUDE_CONFIG_DIR override for DIR, or nil.
+Picks the entry in `mp/agent-shell-claude-config-dirs' whose PROJECT-ROOT
+is the longest prefix of DIR."
+  (let ((dir (expand-file-name (file-name-as-directory dir)))
+        (best nil) (best-len -1))
+    (dolist (entry mp/agent-shell-claude-config-dirs best)
+      (let* ((root (expand-file-name (file-name-as-directory (car entry))))
+             (len (length root)))
+        (when (and (string-prefix-p root dir) (> len best-len))
+          (setq best (expand-file-name (cdr entry)) best-len len))))))
+
+(defun mp/agent-shell--claude-config-env (orig-fn &rest args)
+  "Prepend a per-project CLAUDE_CONFIG_DIR when starting a Claude client.
+ORIG-FN is `agent-shell-anthropic-make-claude-client', which runs in the
+shell buffer whose `default-directory' is the resolved project cwd."
+  (let* ((config-dir (mp/agent-shell--claude-config-dir default-directory))
+         (agent-shell-anthropic-claude-environment
+          (if config-dir
+              (cons (format "CLAUDE_CONFIG_DIR=%s" config-dir)
+                    agent-shell-anthropic-claude-environment)
+            agent-shell-anthropic-claude-environment)))
+    (apply orig-fn args)))
+
+(advice-add 'agent-shell-anthropic-make-claude-client :around
+            #'mp/agent-shell--claude-config-env)
+#+end_src
+
 ***** Desktop Notifications
 Agent-shell turns are surfaced by the *emaqs* overlay (see =quickshell/qs-emaqs-docs.org=), not the freedesktop notification daemon: permission requests, "agent finished" turns and the per-workspace "working" pulse all render *in the emaqs pill*, and are therefore *completely absent* from the pill's notification popups/history.
 
@@ -3553,7 +3620,6 @@ can never break config load.
 - https://github.com/joaotavora/breadcrumb
 - https://github.com/magnars/expand-region.el
 - https://github.com/meain/evil-textobj-tree-sitter
-- https://github.com/minad/org-modern
 - https://github.com/tumashu/vertico-posframe
 - https://github.com/karthink/consult-dir
 - https://github.com/manateelazycat/color-rg
@@ -3568,8 +3634,6 @@ can never break config load.
 (package! expand-region)
 ;; syntax-aware Evil text objects: vif/vac/viv (function/class/variable)
 (package! evil-textobj-tree-sitter)
-;; org
-(package! org-modern)
 ;; some minibuffer help
 (package! vertico-posframe)
 (package! consult-dir)

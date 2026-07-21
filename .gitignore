@@ -23,5 +23,5 @@ node_modules
 dist/
 
 ags/config.json
-extra/doom/private.el
-extra/doom/connections.json
+doom/private.el
+doom/connections.json

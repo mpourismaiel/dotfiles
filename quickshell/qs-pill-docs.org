@@ -6512,7 +6512,7 @@ Item {
     // accent while live, the clock's own colour when muted; kept only lightly
     // transparent so the thin (1px) line still reads, the muted line a touch softer.
     property color waveColor: micOn
-        ? Qt.rgba(root.theme.accent.r, root.theme.accent.g, root.theme.accent.b, 0.25)
+        ? Qt.rgba(root.theme.accent.r, root.theme.accent.g, root.theme.accent.b, 0.5)
         : Qt.rgba(root.theme.text.r,   root.theme.text.g,   root.theme.text.b,   0.05)
     Behavior on waveColor { ColorAnimation { duration: root.theme.anim } }
 
