@@ -12,9 +12,15 @@ This file is the single source of truth: tangling it writes every script into
 to config.org (already done under Config > Teamwork timesheet).
 
 * Credential setup
-Prompts for your site URL (custom domains welcome, used as-is) + API key,
-validates against the live API, and stores them in the system keyring (never on
-disk in the repo). Run it once: =~/.config/doom/teamwork/teamwork-setup.sh=.
+Prompts for an account name (a label of your choosing), your site URL (custom
+domains welcome, used as-is) + API key, validates against the live API, and
+stores them in the system keyring (never on disk in the repo). Run it once per
+account: =~/.config/doom/teamwork/teamwork-setup.sh= (or, from Emacs,
+=M-x teamwork-account-add=). Several accounts are supported — each is a separate
+keyring item told apart by its name; =--print= lists them and =--remove NAME=
+deletes one. When more than one account exists, the timesheet commands ask which
+to use, and the pulled buffer records its choice in a =#+TEAMWORK_ACCOUNT= header
+so submit targets the same account.
 
 #+begin_src sh :tangle ~/.config/doom/teamwork/teamwork-setup.sh :mkdirp yes :tangle-mode (identity #o755)
 #!/usr/bin/env bash
@@ -27,9 +33,13 @@ disk in the repo). Run it once: =~/.config/doom/teamwork/teamwork-setup.sh=.
 # `secretstorage` or from the shell with `secret-tool lookup service teamwork-timesheet`.
 #
 # Usage:
-#   ./teamwork-setup.sh            # interactive: prompt, validate, store
-#   ./teamwork-setup.sh --print    # show what is stored (API key masked)
-#   ./teamwork-setup.sh --remove   # delete stored credentials from the keyring
+#   ./teamwork-setup.sh                 # interactive: add an account (name, site, key)
+#   ./teamwork-setup.sh --print         # list configured account names
+#   ./teamwork-setup.sh --remove NAME   # delete one account from the keyring
+#
+# Multiple accounts are supported: each is stored as its own keyring item, told
+# apart by a user-chosen `account` name. The Emacs commands teamwork-account-add
+# / teamwork-account-view / teamwork-account-delete drive this from inside Emacs.
 #
 set -euo pipefail
 
@@ -48,32 +58,42 @@ done
 # --- subcommands -------------------------------------------------------------
 case "${1:-}" in
   --remove)
-    secret-tool clear service "$SERVICE" && ok "Removed Teamwork credentials from the keyring."
+    name="${2:-}"
+    [ -n "$name" ] || die "usage: $0 --remove ACCOUNT_NAME (see --print for names)"
+    if secret-tool clear service "$SERVICE" account "$name"; then
+      ok "Removed Teamwork account '$name' from the keyring."
+    else
+      die "no account named '$name' found (see --print)"
+    fi
     exit 0
     ;;
   --print)
-    json="$(secret-tool lookup service "$SERVICE" 2>/dev/null)" \
-      || die "No credentials stored. Run without arguments to set them up."
-    python3 - "$json" <<'PY'
-import json, sys
-d = json.loads(sys.argv[1])
-key = d.get("api_key", "")
-masked = (key[:4] + "…" + key[-4:]) if len(key) > 8 else "********"
-print(f"  site      : {d.get('site') or d.get('subdomain')}")
-print(f"  base_url  : {d.get('base_url')}")
-print(f"  user      : {d.get('user_name')} (id {d.get('user_id')})")
-print(f"  api_key   : {masked}")
-PY
+    info "Configured Teamwork accounts:"
+    names="$(secret-tool search --all service "$SERVICE" 2>/dev/null \
+             | sed -n 's/^attribute\.account = //p')"
+    if [ -n "$names" ]; then
+      printf '%s\n' "$names" | sed 's/^/  - /'
+    else
+      echo "  (none — run without arguments to add one)"
+    fi
+    echo "Use the Emacs command teamwork-account-view for site/user details."
     exit 0
     ;;
-  ""|--setup) : ;;   # fall through to interactive setup
-  *) die "unknown option: $1 (use --print or --remove)" ;;
+  ""|--setup|--add) : ;;   # fall through to interactive setup
+  *) die "unknown option: $1 (use --print or --remove NAME)" ;;
 esac
 
 # --- interactive setup -------------------------------------------------------
 info "Teamwork.com credential setup"
 echo "This stores your API key in the system keyring (encrypted, not in the repo)."
 echo
+
+# Account name: a short label you pick to tell accounts apart (e.g. 'work',
+# 'client-x'). Stored as the keyring `account` attribute; re-using a name
+# updates that account in place.
+read -rp "Account name (a label for this account, e.g. work or client-x): " account_name
+account_name="$(printf '%s' "$account_name" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')"
+[ -n "$account_name" ] || die "account name cannot be empty"
 
 # Site URL: used AS-IS (custom domains welcome). We only add https:// when no
 # scheme is given and trim whitespace / a trailing slash — no .teamwork.com munging.
@@ -124,10 +144,11 @@ user_name="${parsed[1]:-}"
 ok "Authenticated as ${user_name:-'(unknown)'} — user id ${user_id}."
 
 # --- store as a single JSON secret in the keyring ---------------------------
-secret_json="$(python3 - "$site" "$base_url" "$api_key" "$user_id" "$user_name" <<'PY'
+secret_json="$(python3 - "$account_name" "$site" "$base_url" "$api_key" "$user_id" "$user_name" <<'PY'
 import json, sys
-_, site, base, key, uid, name = sys.argv
+_, account, site, base, key, uid, name = sys.argv
 print(json.dumps({
+    "account":   account,
     "site":      site,
     "base_url":  base,
     "api_key":   key,
@@ -137,19 +158,24 @@ print(json.dumps({
 PY
 )"
 
-printf '%s' "$secret_json" | secret-tool store --label="$LABEL" service "$SERVICE"
-ok "Stored in the keyring under service='$SERVICE'."
+printf '%s' "$secret_json" | secret-tool store --label="$LABEL — $account_name" \
+  service "$SERVICE" account "$account_name"
+ok "Stored account '$account_name' in the keyring under service='$SERVICE'."
 echo
-echo "The sidecar reads it via:  secret-tool lookup service $SERVICE"
-echo "To inspect later:          $0 --print"
-echo "To remove:                 $0 --remove"
+echo "Accounts are told apart by name; add more by re-running this script."
+echo "To list accounts:          $0 --print"
+echo "To remove this one:        $0 --remove $account_name"
 #+end_src
 
 * Sidecar
 All HTTP + org rendering + diffing + streamed apply. Pages via the X-Pages header
 (so large log sets are never truncated). Completed/archived lists+tasks are
 reattached from log metadata. `timesheet.py logs --from D --to D [--grep TXT]` is a
-read-only dump of fetched logs. Hidden-project prefs in =~/.config/teamwork-timesheet/prefs.json=.
+read-only dump of fetched logs. Hidden-project prefs in =~/.config/teamwork-timesheet/prefs.json=
+(=prefs_<account>.json= when an account is selected). Read/write subcommands take
+=--account NAME=; snapshot cache and prefs are keyed per account so they never
+clobber each other. `timesheet.py accounts` lists accounts as JSON;
+`timesheet.py account-delete --account NAME` removes one from the keyring.
 
 #+begin_src python :tangle ~/.config/doom/teamwork/timesheet.py :mkdirp yes :tangle-mode (identity #o755)
 #!/usr/bin/env python3
@@ -164,9 +190,17 @@ The pure functions (render_org, parse_org, compute_plan, serialize_parsed) have
 no network or keyring dependency so they can be unit-tested offline. Only
 load_creds() and Client touch secretstorage / requests, imported lazily.
 
+Multiple Teamwork accounts may be configured (each a keyring item told apart by
+an `account` name). Read/write subcommands take an optional --account NAME; the
+pulled buffer records its account in a #+TEAMWORK_ACCOUNT header so submit uses
+the same one. Per-account state (hidden-project prefs, snapshot cache) is keyed
+by account, so accounts never clobber each other.
+
 Subcommands:
-    ping                              health check: who am I (read-only)
-    explore [--days N]                dump real API JSON shapes (read-only)
+    ping [--account N]                health check: who am I (read-only)
+    accounts                          list configured accounts as JSON (read-only)
+    account-delete --account N        remove one account from the keyring
+    explore [--days N] [--account N]  dump real API JSON shapes (read-only)
     pull  --from D --to D [...]        emit org buffer to stdout, cache a snapshot
     submit --file F [--json]          print the diff plan (JSON with --json)
     submit --file F --apply --out G   apply the plan, stream progress, write the
@@ -195,20 +229,32 @@ MAX_ATTEMPTS = 3
 BACKOFF_BASE = 2  # seconds * attempt between retries; tests set this to 0
 
 
+def _slug(s) -> str:
+    """Filesystem-safe token for an account name (used in cache/prefs filenames)."""
+    return re.sub(r"[^A-Za-z0-9._-]+", "_", str(s)).strip("_") or "default"
+
+
 # --------------------------------------------------------------------------- #
 # Local preferences (hidden projects) — persisted, never touches Teamwork
 # --------------------------------------------------------------------------- #
-def load_prefs() -> dict:
+def prefs_path(account=None) -> pathlib.Path:
+    """Hidden-project prefs file, kept per account so accounts don't clobber each
+    other. The no-account path stays prefs.json for backward compatibility."""
+    return CONFIG_DIR / (f"prefs_{_slug(account)}.json" if account else "prefs.json")
+
+
+def load_prefs(account=None) -> dict:
     try:
-        p = json.loads(PREFS_PATH.read_text(encoding="utf-8"))
+        p = json.loads(prefs_path(account).read_text(encoding="utf-8"))
         return {"hidden": p.get("hidden") or {}, "shown": p.get("shown") or []}
     except (OSError, ValueError):
         return {"hidden": {}, "shown": []}
 
 
-def save_prefs(prefs: dict):
+def save_prefs(prefs: dict, account=None):
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    PREFS_PATH.write_text(json.dumps(prefs, indent=2, ensure_ascii=False), encoding="utf-8")
+    prefs_path(account).write_text(
+        json.dumps(prefs, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
 def reconcile_hidden(prefs: dict, prev_present, hidden_prop) -> set:
@@ -232,16 +278,85 @@ def reconcile_hidden(prefs: dict, prev_present, hidden_prop) -> set:
 # --------------------------------------------------------------------------- #
 # Credentials + HTTP client (the only network/keyring code)
 # --------------------------------------------------------------------------- #
-def load_creds() -> dict:
+def _open_collection():
     import secretstorage
 
     conn = secretstorage.dbus_init()
     coll = secretstorage.get_default_collection(conn)
     if coll.is_locked():
         coll.unlock()
+    return coll
+
+
+def _item_account(item, secret: dict) -> str:
+    """Best-effort account name: the keyring `account` attribute, else a value
+    baked into the secret, else the site (so a legacy single account still has a
+    stable name)."""
+    attrs = item.get_attributes() or {}
+    return (attrs.get("account") or secret.get("account")
+            or secret.get("site") or secret.get("base_url") or "?")
+
+
+def _stored_creds() -> list[dict]:
+    """Every stored account's secret dict, each with its resolved 'account' name."""
+    out = []
+    for item in _open_collection().search_items({"service": SERVICE}):
+        try:
+            d = json.loads(item.get_secret().decode())
+        except (ValueError, UnicodeDecodeError):
+            continue
+        d["account"] = _item_account(item, d)
+        out.append(d)
+    return out
+
+
+def load_creds(account=None) -> dict:
+    creds = _stored_creds()
+    if not creds:
+        raise SystemExit("No Teamwork credentials found. Run teamwork-setup.sh first.")
+    if account is not None:
+        for d in creds:
+            if d.get("account") == account:
+                return d
+        names = ", ".join(sorted(d["account"] for d in creds))
+        raise SystemExit(f"No Teamwork account named {account!r}. Configured: {names}")
+    if len(creds) == 1:
+        return creds[0]
+    names = ", ".join(sorted(d["account"] for d in creds))
+    raise SystemExit(f"Multiple Teamwork accounts configured; pass --account NAME. "
+                     f"Configured: {names}")
+
+
+def list_accounts() -> list[dict]:
+    """Public account list (no raw API keys) for the Emacs account picker/viewer."""
+    out = []
+    for d in _stored_creds():
+        key = d.get("api_key", "") or ""
+        out.append({
+            "account": d.get("account"),
+            "site": d.get("site") or d.get("subdomain"),
+            "base_url": d.get("base_url"),
+            "user_name": d.get("user_name"),
+            "user_id": d.get("user_id"),
+            "api_key_masked": (key[:4] + "…" + key[-4:]) if len(key) > 8 else "****",
+        })
+    out.sort(key=lambda a: (a.get("account") or "").lower())
+    return out
+
+
+def delete_account(account: str) -> int:
+    """Remove every keyring item matching ACCOUNT. Returns how many were deleted."""
+    coll = _open_collection()
+    deleted = 0
     for item in coll.search_items({"service": SERVICE}):
-        return json.loads(item.get_secret().decode())
-    raise SystemExit("No Teamwork credentials found. Run teamwork-setup.sh first.")
+        try:
+            d = json.loads(item.get_secret().decode())
+        except (ValueError, UnicodeDecodeError):
+            d = {}
+        if _item_account(item, d) == account:
+            item.delete()
+            deleted += 1
+    return deleted
 
 
 class Client:
@@ -469,11 +584,15 @@ def _drawer(key: str, value) -> str:
     return f":PROPERTIES:\n:{key}: {value}\n:END:"
 
 
-def _header(frm, to, user, hidden=None, hidden_names=None) -> list[str]:
+def _header(frm, to, user, hidden=None, hidden_names=None, account=None) -> list[str]:
     hidden = [str(h) for h in (hidden or [])]
     lines = [
         f"#+TITLE: Teamwork timesheet {frm} .. {to}",
         f"#+TEAMWORK: from={frm} to={to} user={user}",
+    ]
+    if account:
+        lines.append(f"#+TEAMWORK_ACCOUNT: {account}")
+    lines += [
         "#+TEAMWORK_BILLABLE: 1",
         "# Log lines:  - [ID] DATE START END description   (edit if ID present, create if not)",
         "#             - [ID] DATE =H:MM description        (duration form, no start time)",
@@ -512,7 +631,8 @@ def render_org(projects, tasklists, tasks, logs, meta: dict, hidden_names: dict 
 
     hidden_names = hidden_names or {}
     out = _header(meta["from"], meta["to"], meta["user_id"],
-                  hidden=sorted(hidden_names, key=int), hidden_names=hidden_names)
+                  hidden=sorted(hidden_names, key=int), hidden_names=hidden_names,
+                  account=meta.get("account"))
     for pr in sorted(projects, key=lambda p: p["name"].lower()):
         out.append(f"* {pr['name']}")
         out.append(_drawer("TW_PROJECT_ID", pr["id"]))
@@ -538,7 +658,8 @@ def serialize_parsed(parsed: dict) -> str:
     existing), while unapplied creates keep id=None and stay 'new' for retry.
     """
     m = parsed["meta"]
-    out = _header(m.get("from"), m.get("to"), m.get("user"), hidden=m.get("hidden"))
+    out = _header(m.get("from"), m.get("to"), m.get("user"), hidden=m.get("hidden"),
+                  account=m.get("account"))
     for p in parsed["projects"]:
         out.append(f"* {p['name']}")
         if p["id"] is not None:
@@ -628,7 +749,8 @@ def _norm_hm(hm: str) -> str:
 
 
 def parse_org(text: str) -> dict:
-    meta = {"from": None, "to": None, "user": None, "billable_default": True, "hidden": None}
+    meta = {"from": None, "to": None, "user": None, "billable_default": True,
+            "hidden": None, "account": None}
     problems: list[str] = []
     projects: list[dict] = []
     cur_p = cur_tl = cur_tk = None
@@ -647,6 +769,9 @@ def parse_org(text: str) -> dict:
                     meta["to"] = tok[3:]
                 elif tok.startswith("user="):
                     meta["user"] = tok[5:]
+            continue
+        if raw.startswith("#+TEAMWORK_ACCOUNT:"):
+            meta["account"] = raw.split(":", 1)[1].strip() or None
             continue
         if raw.startswith("#+TEAMWORK_BILLABLE:"):
             meta["billable_default"] = raw.split(":", 1)[1].strip() in ("1", "true", "yes")
@@ -915,21 +1040,42 @@ def apply_stream(plan: dict, client: "Client", parsed: dict, out_path: str, snap
 # --------------------------------------------------------------------------- #
 # Snapshot cache helpers
 # --------------------------------------------------------------------------- #
-def snapshot_path(date_from: str, date_to: str) -> pathlib.Path:
+def snapshot_path(date_from: str, date_to: str, account=None) -> pathlib.Path:
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    # No-account path is unchanged (backward compatible); accounts get their own
+    # snapshot so submitting account B never diffs against account A's pull.
+    if account:
+        return CACHE_DIR / f"snapshot_{_slug(account)}_{date_from}_{date_to}.json"
     return CACHE_DIR / f"snapshot_{date_from}_{date_to}.json"
 
 
 # --------------------------------------------------------------------------- #
 # Subcommands
 # --------------------------------------------------------------------------- #
-def cmd_ping(_args):
-    creds = load_creds()
-    print(f"OK: {creds.get('user_name')} (id {creds['user_id']}) @ {creds['base_url']}")
+def cmd_ping(args):
+    creds = load_creds(getattr(args, "account", None))
+    print(f"OK: {creds.get('user_name')} (id {creds['user_id']}) @ {creds['base_url']}"
+          f"  [account: {creds.get('account')}]")
+
+
+def cmd_accounts(_args):
+    print(json.dumps(list_accounts(), ensure_ascii=False))
+
+
+def cmd_account_delete(args):
+    n = delete_account(args.account)
+    if not n:
+        raise SystemExit(f"No Teamwork account named {args.account!r} to delete.")
+    # Drop that account's local prefs too; the snapshot cache is harmless to keep.
+    try:
+        prefs_path(args.account).unlink()
+    except OSError:
+        pass
+    print(json.dumps({"deleted": args.account, "count": n}))
 
 
 def cmd_explore(args):
-    creds = load_creds()
+    creds = load_creds(getattr(args, "account", None))
     c = Client(creds)
     end = dt.date.today()
     start = end - dt.timedelta(days=args.days)
@@ -942,7 +1088,7 @@ def cmd_explore(args):
 
 def cmd_logs(args):
     """Read-only: dump every time log fetched for a range (for diagnostics)."""
-    c = Client(load_creds())
+    c = Client(load_creds(getattr(args, "account", None)))
     logs = c.my_timelogs(args.date_from, args.date_to)
     g = (args.grep or "").lower()
     shown = 0
@@ -960,13 +1106,15 @@ def cmd_logs(args):
 
 
 def cmd_pull(args):
-    creds = load_creds()
+    creds = load_creds(getattr(args, "account", None))
+    account = creds.get("account")
     c = Client(creds)
-    meta = {"from": args.date_from, "to": args.date_to, "user_id": creds["user_id"]}
+    meta = {"from": args.date_from, "to": args.date_to, "user_id": creds["user_id"],
+            "account": account}
     only = set(int(x) for x in args.projects.split(",")) if args.projects else None
 
     # -- reconcile hidden-project preferences from the buffer being replaced --
-    prefs = load_prefs()
+    prefs = load_prefs(account)
     prev_present = hidden_prop = None
     if args.prev and os.path.exists(args.prev):
         pv = parse_org(pathlib.Path(args.prev).read_text(encoding="utf-8"))
@@ -1006,8 +1154,8 @@ def cmd_pull(args):
     if len(tasks) > before:
         sys.stderr.write(f"reattached {len(tasks) - before} completed/archived task(s) from logs\n")
 
-    save_prefs({"hidden": hidden_names, "shown": [p["id"] for p in projects]})
-    snapshot_path(args.date_from, args.date_to).write_text(
+    save_prefs({"hidden": hidden_names, "shown": [p["id"] for p in projects]}, account)
+    snapshot_path(args.date_from, args.date_to, account).write_text(
         json.dumps(build_snapshot(projects, tasklists, tasks, logs, meta)), encoding="utf-8"
     )
     org = render_org(projects, tasklists, tasks, logs, meta, hidden_names)
@@ -1020,11 +1168,13 @@ def cmd_submit(args):
     frm, to = parsed["meta"]["from"], parsed["meta"]["to"]
     if not frm or not to:
         raise SystemExit("buffer is missing its #+TEAMWORK: from=.. to=.. header")
-    snap_file = snapshot_path(frm, to)
+    # The buffer's own #+TEAMWORK_ACCOUNT wins; --account is an override/fallback.
+    account = parsed["meta"].get("account") or getattr(args, "account", None)
+    snap_file = snapshot_path(frm, to, account)
     if not snap_file.exists():
         raise SystemExit(f"no snapshot for {frm}..{to} (re-run pull first): {snap_file}")
     snapshot = json.loads(snap_file.read_text(encoding="utf-8"))
-    creds = load_creds()
+    creds = load_creds(account)
     plan = compute_plan(parsed, snapshot, int(creds["user_id"]))
 
     if args.json:
@@ -1059,16 +1209,26 @@ def main(argv=None):
     ap = argparse.ArgumentParser(prog="timesheet")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
-    sub.add_parser("ping").set_defaults(func=cmd_ping)
+    pg = sub.add_parser("ping")
+    pg.add_argument("--account", default=None, help="which stored account to use")
+    pg.set_defaults(func=cmd_ping)
+
+    sub.add_parser("accounts", help="list configured accounts as JSON").set_defaults(func=cmd_accounts)
+
+    ad = sub.add_parser("account-delete", help="remove one account from the keyring")
+    ad.add_argument("--account", required=True, help="account name to delete")
+    ad.set_defaults(func=cmd_account_delete)
 
     ex = sub.add_parser("explore")
     ex.add_argument("--days", type=int, default=30)
+    ex.add_argument("--account", default=None, help="which stored account to use")
     ex.set_defaults(func=cmd_explore)
 
     lg = sub.add_parser("logs", help="read-only: list every fetched time log for a range")
     lg.add_argument("--from", dest="date_from", required=True)
     lg.add_argument("--to", dest="date_to", required=True)
     lg.add_argument("--grep", default=None, help="filter by task/list/project/description text")
+    lg.add_argument("--account", default=None, help="which stored account to use")
     lg.set_defaults(func=cmd_logs)
 
     pl = sub.add_parser("pull")
@@ -1076,6 +1236,7 @@ def main(argv=None):
     pl.add_argument("--to", dest="date_to", required=True)
     pl.add_argument("--projects", default=None, help="comma-separated project ids to limit the walk")
     pl.add_argument("--prev", default=None, help="the buffer being replaced (for hidden-project reconciliation)")
+    pl.add_argument("--account", default=None, help="which stored account to use")
     pl.add_argument("--out", default=None)
     pl.set_defaults(func=cmd_pull)
 
@@ -1084,6 +1245,7 @@ def main(argv=None):
     sb.add_argument("--apply", action="store_true", help="execute the plan (streams progress)")
     sb.add_argument("--stream", action="store_true", help="(implied by --apply) stream JSON events")
     sb.add_argument("--json", action="store_true", help="emit the plan as JSON and exit")
+    sb.add_argument("--account", default=None, help="account fallback if the buffer lacks a header")
     sb.add_argument("--out", default=None, help="where to write the updated buffer after --apply")
     sb.set_defaults(func=cmd_submit)
 
@@ -1099,7 +1261,11 @@ if __name__ == "__main__":
 Commands: =teamwork-timesheet= (past 30 days; honors an edited #+TEAMWORK header),
 =teamwork-set-range= (C-c C-d), =teamwork-timesheet-prev-time= (reuse last range),
 =teamwork-submit= (C-c C-c), =teamwork-log-preview= (C-c C-l — live chronological
-list w/ overlap + format warnings + action preview), =teamwork-quit= (C-c C-k).
+list w/ weekday + overlap + format warnings + action preview),
+=teamwork-quit= (C-c C-k). Account management: =teamwork-account-add= (interactive
+setup in a terminal), =teamwork-account-view= (list configured accounts),
+=teamwork-account-delete= (pick one, confirm, remove from the keyring). When
+multiple accounts are configured the pull commands prompt which to use.
 Loaded from config.org via =(load! "teamwork/teamwork")=.
 
 #+begin_src emacs-lisp :tangle ~/.config/doom/teamwork/teamwork.el :mkdirp yes
@@ -1113,6 +1279,12 @@ Loaded from config.org via =(load! "teamwork/teamwork")=.
 ;; Commands:
 ;;   M-x teamwork-timesheet        pull the previous month (C-u = prompt dates)
 ;;   M-x teamwork-submit           review the diff, then apply on confirm
+;;   M-x teamwork-account-add      add a Teamwork account (name, site, API key)
+;;   M-x teamwork-account-view     list the configured accounts
+;;   M-x teamwork-account-delete   remove an account from the keyring
+;;
+;; Several accounts can be configured; when more than one exists the pull
+;; commands ask which to use and record it in a #+TEAMWORK_ACCOUNT header.
 ;;
 ;; In the timesheet buffer:
 ;;   C-c C-c   submit     C-c C-k   close
@@ -1154,6 +1326,40 @@ Loaded from config.org via =(load! "teamwork/teamwork")=.
   "Face for update/edit actions (blue).")
 (defface teamwork-delete-face '((t :inherit error))
   "Face for delete actions (red).")
+
+;; --------------------------------------------------------------------------- ;;
+;; Accounts — several Teamwork logins, told apart by name (one keyring item each)
+;; --------------------------------------------------------------------------- ;;
+(defun teamwork--list-accounts ()
+  "Return the configured accounts (list of alists) via the sidecar, or nil.
+Never signals: a locked keyring / missing sidecar just yields no accounts."
+  (condition-case _err
+      (teamwork--run-json "accounts")
+    (error nil)))
+
+(defun teamwork--account-names ()
+  "Return the list of configured account names (strings)."
+  (delq nil (mapcar (lambda (a) (alist-get 'account a)) (teamwork--list-accounts))))
+
+(defun teamwork--choose-account (&optional prompt)
+  "Return the account name to use for a pull.
+Nil when none are configured (the sidecar then guides you to set one up); the
+sole name when only one exists; otherwise prompt with completion using PROMPT."
+  (let ((names (teamwork--account-names)))
+    (cond ((null names) nil)
+          ((null (cdr names)) (car names))
+          (t (completing-read (or prompt "Teamwork account: ") names nil t)))))
+
+(defun teamwork--buffer-account ()
+  "Return the buffer's #+TEAMWORK_ACCOUNT header value, or nil.
+So submit targets the same account the buffer was pulled from."
+  (let ((buf (get-buffer teamwork-buffer)))
+    (when (buffer-live-p buf)
+      (with-current-buffer buf
+        (save-excursion
+          (goto-char (point-min))
+          (when (re-search-forward "^#\\+TEAMWORK_ACCOUNT:[ \t]*\\(.+?\\)[ \t]*$" nil t)
+            (match-string-no-properties 1)))))))
 
 ;; --------------------------------------------------------------------------- ;;
 ;; Minor mode / keymap for the timesheet buffer
@@ -1267,6 +1473,18 @@ Loaded from config.org via =(load! "teamwork/teamwork")=.
         (format "%dh" (truncate h))
       (format "%sh" (string-trim-right (format "%.2f" h) "0+")))))
 
+(defun teamwork--weekday (iso-date)
+  "Return the English weekday name for ISO-DATE (\"YYYY-MM-DD\"), or nil.
+Locale is forced to C so the name is always English (e.g. \"Monday\")."
+  (when (and iso-date
+             (string-match "\\`\\([0-9]\\{4\\}\\)-\\([0-9]\\{2\\}\\)-\\([0-9]\\{2\\}\\)\\'"
+                           iso-date))
+    (let ((y (string-to-number (match-string 1 iso-date)))
+          (m (string-to-number (match-string 2 iso-date)))
+          (d (string-to-number (match-string 3 iso-date)))
+          (system-time-locale "C"))
+      (format-time-string "%A" (encode-time (list 0 0 0 d m y nil -1 nil))))))
+
 (defun teamwork--log-interval (lg)
   "Return (START . END) in minutes if LG has both times, else nil."
   (let ((s (plist-get lg :start)) (e (plist-get lg :end)))
@@ -1347,12 +1565,14 @@ Loaded from config.org via =(load! "teamwork/teamwork")=.
     (when (and src (get-buffer-window teamwork-logs-buffer))
       (when (process-live-p teamwork--plan-proc) (ignore-errors (kill-process teamwork--plan-proc)))
       (let ((tmp (make-temp-file "teamwork-plan" nil ".org"))
-            (obuf (generate-new-buffer " *teamwork-plan-out*")))
+            (obuf (generate-new-buffer " *teamwork-plan-out*"))
+            (account (teamwork--buffer-account)))
         (with-current-buffer src (write-region (point-min) (point-max) tmp nil 'silent))
         (setq teamwork--plan-proc
               (make-process
                :name "teamwork-plan" :buffer obuf :noquery t
-               :command (list teamwork-python teamwork-script "submit" "--file" tmp "--json")
+               :command (append (list teamwork-python teamwork-script "submit" "--file" tmp "--json")
+                                (when account (list "--account" account)))
                :sentinel
                (lambda (proc _e)
                  (when (memq (process-status proc) '(exit signal))
@@ -1401,7 +1621,8 @@ non-committable action preview sits between separators above the totals."
           (let ((date (plist-get lg :date)))
             (unless (equal date cur)
               (setq cur date)
-              (insert (propertize (format "%s (%s)\n" date
+              (insert (propertize (format "%s %s (%s)\n" date
+                                          (or (teamwork--weekday date) "")
                                           (teamwork--fmt-hours (gethash date day-totals 0)))
                                   'face 'font-lock-comment-face)))
             (let* ((over (plist-get lg :overlap))
@@ -1538,9 +1759,11 @@ pull needn't be retyped)."
              (when (looking-at "\\([0-9-]+\\)[ \t]+\\([0-9-]+\\)")
                (cons (match-string 1) (match-string 2)))))))
 
-(defun teamwork--pull (from to)
+(defun teamwork--pull (from to &optional account)
   "Pull the timesheet for FROM..TO into the timesheet buffer (current window).
-The buffer being replaced (if any) is passed to the sidecar as --prev, so a
+ACCOUNT, when given, selects which stored Teamwork account to pull from; the
+sidecar records it in the buffer's #+TEAMWORK_ACCOUNT header so submit reuses
+it.  The buffer being replaced (if any) is passed to the sidecar as --prev, so a
 deleted project heading or edited #+TEAMWORK_HIDDEN updates the hidden prefs."
   (teamwork--save-range from to)   ; remember before requesting, so failures survive
   (let* ((buf (get-buffer-create teamwork-buffer))
@@ -1565,6 +1788,7 @@ deleted project heading or edited #+TEAMWORK_HIDDEN updates the hidden prefs."
       (make-process
        :name "teamwork-pull" :buffer out :stderr errbuf :noquery t
        :command (append (list teamwork-python teamwork-script "pull" "--from" from "--to" to)
+                        (when account (list "--account" account))
                         (when prev (list "--prev" prev)))
        :sentinel
        (lambda (proc _event)
@@ -1587,28 +1811,39 @@ timesheet buffer already has a #+TEAMWORK header, reuse its dates (so you can
 edit the dates in the header and re-run to change the range); else default to
 the past 30 days.  To pick dates without a prefix (C-u scrolls in evil), use
 `teamwork-set-range' (C-c C-d); reuse the last range with
-`teamwork-timesheet-prev-time'."
+`teamwork-timesheet-prev-time'.
+
+With more than one account configured you are asked which to use; when reusing
+the current buffer's dates (no prefix), its account is reused without asking."
   (interactive "P")
-  (let ((range (cond (ask (teamwork--prompt-range))
-                     ((teamwork--buffer-range))
-                     (t (teamwork--default-range)))))
-    (teamwork--pull (car range) (cdr range))))
+  (let* ((buf-range (teamwork--buffer-range))
+         (range (cond (ask (teamwork--prompt-range))
+                      (buf-range)
+                      (t (teamwork--default-range))))
+         ;; Reuse the buffer's account when reusing its dates; else pick one.
+         (account (if (and buf-range (not ask))
+                      (or (teamwork--buffer-account) (teamwork--choose-account))
+                    (teamwork--choose-account))))
+    (teamwork--pull (car range) (cdr range) account)))
 
 ;;;###autoload
 (defun teamwork-set-range ()
   "Prompt for a date range via the calendar, then pull the timesheet.
-Reliable in Doom/evil where C-u scrolls instead of giving a prefix arg."
+Reliable in Doom/evil where C-u scrolls instead of giving a prefix arg.
+Asks which account to use when several are configured."
   (interactive)
-  (let ((range (teamwork--prompt-range)))
-    (teamwork--pull (car range) (cdr range))))
+  (let ((range (teamwork--prompt-range))
+        (account (teamwork--choose-account)))
+    (teamwork--pull (car range) (cdr range) account)))
 
 ;;;###autoload
 (defun teamwork-timesheet-prev-time ()
-  "Pull using the last-used date range (remembered across pulls and restarts)."
+  "Pull using the last-used date range (remembered across pulls and restarts).
+Asks which account to use when several are configured."
   (interactive)
   (let ((range (teamwork--load-range)))
     (if range
-        (teamwork--pull (car range) (cdr range))
+        (teamwork--pull (car range) (cdr range) (teamwork--choose-account))
       (user-error "No previous range yet — use `teamwork-set-range' (C-c C-d)"))))
 
 ;; --------------------------------------------------------------------------- ;;
@@ -1681,8 +1916,9 @@ Reliable in Doom/evil where C-u scrolls instead of giving a prefix arg."
           (delete-char 1)
           (insert (if face (propertize glyph 'face face) glyph)))))))
 
-(defun teamwork--apply (tmp out)
-  "Run streamed apply on TMP, updating the preview live; reload buffer from OUT."
+(defun teamwork--apply (tmp out &optional account)
+  "Run streamed apply on TMP, updating the preview live; reload buffer from OUT.
+ACCOUNT selects the stored account (else the sidecar reads the buffer header)."
   (let ((acc "")
         (tsbuf (get-buffer teamwork-buffer))
         (errbuf (get-buffer-create " *teamwork-apply-stderr*")))
@@ -1690,7 +1926,9 @@ Reliable in Doom/evil where C-u scrolls instead of giving a prefix arg."
     (make-process
      :name "teamwork-apply" :buffer (get-buffer-create " *teamwork-apply-out*")
      :stderr errbuf :noquery t
-     :command (list teamwork-python teamwork-script "submit" "--file" tmp "--apply" "--out" out)
+     :command (append (list teamwork-python teamwork-script "submit" "--file" tmp
+                            "--apply" "--out" out)
+                      (when account (list "--account" account)))
      :filter
      (lambda (_proc chunk)
        (setq acc (concat acc chunk))
@@ -1753,9 +1991,12 @@ Preview appears in a split below; on confirm it applies with live progress."
   (unless (save-excursion (goto-char (point-min)) (re-search-forward "^#\\+TEAMWORK:" nil t))
     (user-error "Not a timesheet buffer (no #+TEAMWORK header)"))
   (let ((tmp (make-temp-file "teamwork" nil ".org"))
-        (out (make-temp-file "teamwork-applied" nil ".org")))
+        (out (make-temp-file "teamwork-applied" nil ".org"))
+        (account (teamwork--buffer-account)))
     (write-region (point-min) (point-max) tmp nil 'silent)
-    (let* ((plan (teamwork--run-json "submit" "--file" tmp "--json"))
+    (let* ((plan (apply #'teamwork--run-json
+                        (append (list "submit" "--file" tmp "--json")
+                                (when account (list "--account" account)))))
            (problems (alist-get 'problems plan))
            (actions (alist-get 'actions plan)))
       (cond
@@ -1774,13 +2015,73 @@ Preview appears in a split below; on confirm it applies with live progress."
        (t
         (let ((pbuf (teamwork--render-preview actions)))
           (display-buffer-below-selected pbuf nil)
-          (if (yes-or-no-p (format "Apply %d change(s) to Teamwork? " (length actions)))
-              (teamwork--apply tmp out)
+          (if (yes-or-no-p (format "Apply %d change(s) to Teamwork%s? " (length actions)
+                                   (if account (format " [%s]" account) "")))
+              (teamwork--apply tmp out account)
             ;; declined: close preview window, keep timesheet
             (when-let ((w (get-buffer-window pbuf))) (delete-window w))
             (kill-buffer pbuf)
             (delete-file tmp) (delete-file out)
             (message "Teamwork: submit cancelled."))))))))
+
+;; --------------------------------------------------------------------------- ;;
+;; Account management — add / view / delete stored Teamwork logins
+;; --------------------------------------------------------------------------- ;;
+;;;###autoload
+(defun teamwork-account-add ()
+  "Add (or update) a Teamwork account interactively in a terminal buffer.
+Runs teamwork-setup.sh, which prompts for an account name, site URL and API key,
+validates against the live API, and stores the credentials in the system
+keyring.  Re-using an existing account name updates it in place."
+  (interactive)
+  (let ((script (expand-file-name "teamwork-setup.sh" teamwork-dir)))
+    (unless (file-exists-p script)
+      (user-error "teamwork-setup.sh not found in %s" teamwork-dir))
+    (require 'term)
+    (when (get-buffer "*teamwork-account-add*")
+      (kill-buffer "*teamwork-account-add*"))
+    (ansi-term script "teamwork-account-add")
+    (message "Teamwork: enter the account details in the terminal buffer.")))
+
+;;;###autoload
+(defun teamwork-account-view ()
+  "List the configured Teamwork accounts (name, site, user; API keys masked)."
+  (interactive)
+  (let ((accounts (teamwork--list-accounts))
+        (buf (get-buffer-create "*teamwork-accounts*")))
+    (with-current-buffer buf
+      (let ((inhibit-read-only t))
+        (erase-buffer)
+        (if (null accounts)
+            (insert "No Teamwork accounts configured.\n\n"
+                    "Run M-x teamwork-account-add to add one.\n")
+          (insert (propertize (format "Teamwork accounts (%d)\n\n" (length accounts))
+                              'face 'bold))
+          (dolist (a accounts)
+            (insert (propertize (format "• %s\n" (alist-get 'account a))
+                                'face 'font-lock-function-name-face)
+                    (format "    site : %s\n"
+                            (or (alist-get 'base_url a) (alist-get 'site a)))
+                    (format "    user : %s (id %s)\n"
+                            (alist-get 'user_name a) (alist-get 'user_id a))
+                    (format "    key  : %s\n\n" (alist-get 'api_key_masked a))))))
+      (goto-char (point-min))
+      (special-mode))
+    (display-buffer buf)))
+
+;;;###autoload
+(defun teamwork-account-delete ()
+  "Delete a Teamwork account from the keyring, after confirmation."
+  (interactive)
+  (let ((names (teamwork--account-names)))
+    (unless names (user-error "No Teamwork accounts configured"))
+    (let ((name (completing-read "Delete Teamwork account: " names nil t)))
+      (if (yes-or-no-p
+           (format "Really delete Teamwork account %S from the keyring? " name))
+          (progn
+            (teamwork--run-json "account-delete" "--account" name)
+            (message "Teamwork: deleted account %s" name))
+        (message "Teamwork: deletion cancelled")))))
 
 (provide 'teamwork)
 ;;; teamwork.el ends here
@@ -2065,6 +2366,49 @@ class HiddenProjects(unittest.TestCase):
         plan = T.compute_plan(T.parse_org(_tree("")), snap, 363603)
         dels = {a["id"] for a in plan["actions"] if a["type"] == "delete_timelog"}
         self.assertEqual(dels, {42})   # 100 present -> delete; 500 absent -> kept
+
+
+class Accounts(unittest.TestCase):
+    """Multi-account: header round-trip, slug, and per-account snapshot keying."""
+
+    def test_slug(self):
+        self.assertEqual(T._slug("work"), "work")
+        self.assertEqual(T._slug("Client X / 2"), "Client_X_2")
+        self.assertEqual(T._slug(""), "default")
+
+    def test_parse_account_header(self):
+        p = T.parse_org("#+TEAMWORK: from=2026-06-01 to=2026-06-30 user=1\n"
+                        "#+TEAMWORK_ACCOUNT: client x\n* P\n")
+        self.assertEqual(p["meta"]["account"], "client x")
+
+    def test_account_absent_is_none(self):
+        p = T.parse_org("#+TEAMWORK: from=2026-06-01 to=2026-06-30 user=1\n* P\n")
+        self.assertIsNone(p["meta"]["account"])
+
+    def test_render_includes_account_and_round_trips(self):
+        text = T.render_org([{"id": 1, "name": "P"}], [], [], [],
+                            {"from": "2026-06-01", "to": "2026-06-30", "user_id": 1,
+                             "account": "work"})
+        self.assertIn("#+TEAMWORK_ACCOUNT: work", text)
+        self.assertEqual(T.parse_org(text)["meta"]["account"], "work")
+
+    def test_render_omits_account_header_when_absent(self):
+        text = T.render_org([{"id": 1, "name": "P"}], [], [], [],
+                            {"from": "2026-06-01", "to": "2026-06-30", "user_id": 1})
+        self.assertNotIn("#+TEAMWORK_ACCOUNT", text)
+
+    def test_serialize_preserves_account(self):
+        p = T.parse_org("#+TEAMWORK: from=2026-06-01 to=2026-06-30 user=1\n"
+                        "#+TEAMWORK_ACCOUNT: work\n"
+                        "* P\n:PROPERTIES:\n:TW_PROJECT_ID: 100\n:END:\n")
+        self.assertIn("#+TEAMWORK_ACCOUNT: work", T.serialize_parsed(p))
+
+    def test_snapshot_path_keyed_by_account(self):
+        base = T.snapshot_path("2026-06-01", "2026-06-30")
+        acct = T.snapshot_path("2026-06-01", "2026-06-30", "work")
+        self.assertEqual(base.name, "snapshot_2026-06-01_2026-06-30.json")  # unchanged
+        self.assertNotEqual(base.name, acct.name)
+        self.assertIn("work", acct.name)
 
 
 class Synthesize(unittest.TestCase):
