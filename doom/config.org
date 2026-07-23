@@ -676,10 +676,12 @@ split; otherwise show the Doom dashboard."
   (select-window (split-window-below))
   (mp/split-target-buffer))
 
+;; Full "w v"/"w s" sequences merge into Doom's window menu. A
+;; `(:prefix ("w" . "window") ...)' form would replace the whole `w' prefix
+;; keymap, wiping the defaults (SPC w d delete, SPC w h/j/k/l navigate, ...).
 (map! :leader
-      (:prefix ("w" . "window")
-       :desc "Split right (fresh)" "v" #'mp/split-window-right-fresh
-       :desc "Split below (fresh)" "s" #'mp/split-window-below-fresh))
+      :desc "Split right (fresh)" "w v" #'mp/split-window-right-fresh
+      :desc "Split below (fresh)" "w s" #'mp/split-window-below-fresh)
 #+end_src
 
 ***** Popups
@@ -699,10 +701,12 @@ split; otherwise show the Doom dashboard."
          (remove #'+format/buffer before-save-hook)))
     (save-buffer)))
 
+;; Bind the single key into Doom's existing file menu with a full key
+;; sequence. Do NOT use `(:prefix ("f" . "file") ...)` here: `map!'/general
+;; replace the whole `f' prefix keymap, wiping Doom's defaults (SPC f s save,
+;; SPC f f find-file, ...). A full "f !" sequence merges instead of clobbering.
 (map! :leader
-      (:prefix ("f" . "file")
-        :desc "Save without formatting" "!"
-        #'mp/save-without-format))
+      :desc "Save without formatting" "f !" #'mp/save-without-format)
 
 (after! format-all
   (setq-hook! '(js-mode-hook
@@ -873,12 +877,13 @@ quits.
   (setq color-rg-mac-load-path-from-shell nil)
   ;; NOTE: `SPC s r' is bound to `evil-show-marks' in Doom, so it can't become
   ;; a prefix until that binding is cleared. Unbind it first, then nest under it.
+  ;; Full sequences merge into Doom's search menu instead of replacing the whole
+  ;; `s' prefix map. `SPC s r' is `evil-show-marks' in Doom (a command, not a
+  ;; prefix), so clear it first before nesting `r f'/`r p' under it.
   (map! :leader
-        (:prefix ("s" . "search")
-         "r" nil
-         (:prefix ("r" . "color-rg")
-          :desc "Search in file"    "f" #'color-rg-search-input-in-current-file
-          :desc "Search in project" "p" #'color-rg-search-input-in-project)))
+        "s r" nil
+        :desc "Search in file"    "s r f" #'color-rg-search-input-in-current-file
+        :desc "Search in project" "s r p" #'color-rg-search-input-in-project)
   :config
   ;; Respect .gitignore so project searches stay focused like an IDE.
   ;; Toggle per-search inside the results buffer with `I'.
@@ -1623,6 +1628,9 @@ heading (e.g. press ~b SPC~ to narrow to buffers).
   global otherwise.
 - ~[A]gent Shell~ :: agent-shell / Codex agent buffers.
 - ~Ghos[t]el~ :: Ghostel terminal buffers (narrow key ~t~).
+- ~[P]ackages~ :: buffers from local packages — the Teamwork timesheet and GitHub
+  PR tools plus their submit/preview/logs companions (narrow key ~P~, shifted, so
+  it does not clash with ~[P]roject~). These are kept out of ~[B]uffer~.
 
 *When the active buffer visits a file:*
 - ~[D]irectory~ :: the files and sub-directories of that file's directory.
@@ -1685,12 +1693,21 @@ buffer list."
   "Return non-nil if BUF is a special star buffer."
   (string-prefix-p "*" (buffer-name buf)))
 
+(defun mp/package-buffer-p (buf)
+  "Return non-nil if BUF belongs to a local package (Teamwork / GitHub PR).
+Matches their main buffers and companions (submit/preview/logs/accounts) while
+skipping the leading-space internal process buffers."
+  (let ((name (buffer-name buf)))
+    (and (not (string-prefix-p " " name))
+         (string-match-p "\\(teamwork\\|github-pr\\)" name))))
+
 (defun mp/normal-buffer-p (buf)
   "Return non-nil for ordinary user-facing buffers."
   (and (buffer-live-p buf)
        (not (mp/special-buffer-p buf))
        (not (mp/agent-shell-buffer-p buf))
-       (not (mp/ghostel-buffer-p buf))))
+       (not (mp/ghostel-buffer-p buf))
+       (not (mp/package-buffer-p buf))))
 
 (defun mp/history-index (item history)
   "Return ITEM position in HISTORY, or a large number."
@@ -1789,6 +1806,23 @@ buffer list."
                          t)
                        (mp/ghostel-buffer-p buf))))
                buffer-name-history))))
+
+(defvar mp/consult-source-package-buffer
+  `(:name "[P]ackages"
+    :narrow (?P . "Packages")
+    :category buffer
+    :face consult-buffer
+    :history buffer-name-history
+    :state ,#'consult--buffer-state
+    :action ,#'consult--buffer-action
+    :items ,(lambda ()
+              (mp/sort-strings-by-history
+               (consult--buffer-query
+                :sort nil
+                :as #'buffer-name
+                :predicate #'mp/package-buffer-p)
+               buffer-name-history)))
+  "Buffers from local packages (Teamwork timesheet, GitHub PR) for the super menu.")
 
 (defun mp/live-project-files (root)
   "Return live relative file list under ROOT using fd, falling back to Elisp."
@@ -2074,6 +2108,7 @@ sources have something to anchor to."
           mp/consult-source-all-buffer
           mp/consult-source-agent-shell-buffer
           mp/consult-source-ghostel-buffer
+          mp/consult-source-package-buffer
           mp/consult-source-current-dir-file
           mp/consult-source-current-dir-action
           mp/consult-source-live-project-file
@@ -2095,7 +2130,7 @@ sources have something to anchor to."
 **** Olivetti
 #+begin_src emacs-lisp
 (after! olivetti
-  (setq olivetti-body-width 100))
+  (setq olivetti-body-width 160))
 #+end_src
 
 **** WhichKey
@@ -2108,9 +2143,9 @@ sources have something to anchor to."
 (use-package! eldoc-box
   :commands (eldoc-box-help-at-point)
   :init
+  ;; Full "c h" sequence merges into Doom's code menu instead of replacing it.
   (map! :leader
-        (:prefix ("c" . "code")
-         :desc "Hover docs" "h" #'eldoc-box-help-at-point))
+        :desc "Hover docs" "c h" #'eldoc-box-help-at-point)
   :config
   (setq eldoc-box-max-pixel-width 900
         eldoc-box-max-pixel-height 520
@@ -2903,6 +2938,135 @@ KEY is \"allow\", \"reject\" or \"default\" (a body click = switch to shell)."
               #'mp/agent-shell--emaqs-working-stop))
 #+end_src
 
+***** Default Model
+The latest =agent-shell= added =agent-shell-anthropic-default-model-id=. When it
+is nil the Anthropic (Claude) shell leaves the model unset and just parks the
+"Available models" picker in every fresh buffer, waiting for a pick. Setting a
+value makes bootstrapping send a =setModel= request automatically, so no picker.
+
+The value must be one of the IDs the Claude ACP agent advertises. =default= is
+special: it always exists (even under a restrictive =availableModels= allowlist)
+and resolves to whatever Claude Code itself is configured to use, so it never
+breaks on a model I lack access to. The =sonnet= / =opus= / =haiku= aliases (or a
+date-pinned id like =claude-opus-4-6=) work here too if I want to pin one.
+
+#+begin_src emacs-lisp
+(setq agent-shell-anthropic-default-model-id "default")
+#+end_src
+
+***** Faces
+=agent-shell= ships ~44 customizable faces (UI chrome in =agent-shell-faces=,
+markdown rendering in =agent-shell-markdown=). Out of the box they inherit a
+grab-bag of =font-lock-*= faces, which reads incoherently against =dobri-c07=. The
+block below re-skins every one of them from the theme's own Palenight palette so
+the agent buffer feels native.
+
+The palette locals mirror =dobri-c07-theme.el= exactly; =custom-set-faces!=
+evaluates its specs at runtime, so the backquoted =,vars= resolve. A few
+deliberate decisions:
+
+- *User vs. agent turns.* The user's message text (=agent-shell-input=) gets a
+  cool blue band (=user-bg=) plus a teal, bold prompt (=agent-shell-prompt=), so a
+  submitted turn reads as a distinct card. The agent's streamed reply is plain
+  markdown on the default background — the two never blur together.
+- *Code.* =source-block= paints the fenced body on the panel surface (=bg-alt=,
+  =:foreground unspecified= so the language's own font-lock colors survive), and
+  the language label rides above it as a cyan tab on the deep-shadow band so
+  it's obvious which language a block is.
+- *Tables.* A banded, cyan header row; muted (not invisible) borders; and a gentle
+  =bg-alt= zebra so wide tables stay legible without shouting.
+- *Semantics.* success/warning/error/pending and the viewport status chips map
+  onto the theme's green/yellow/red/dim so state is readable at a glance.
+
+#+begin_src emacs-lisp
+(let* ((bg-alt    "#171a24")   ; panels, org blocks — code surface
+       (bg-dark   "#0a0c11")   ; deep shadow — language-label band
+       (bg-light  "#212737")   ; lighter surface — keycaps
+       (border    "#2a3142")   ; borders, boxes
+       (user-bg   "#151d2b")   ; cool band behind a submitted user turn
+       (fg        "#c5cdde")   ; primary text
+       (fg-alt    "#9aa3ba")   ; secondary text
+       (fg-dim    "#6b7488")   ; faint text, ids, borders
+       (comment   "#69718a")   ; muted supporting text
+       (red       "#ff6e7e")
+       (orange    "#f78c6c")
+       (yellow    "#ffcb6b")
+       (green     "#c3e88d")
+       (cyan      "#89ddff")
+       (blue      "#82aaff")
+       (purple    "#c792ea")
+       (teal      "#56d6d6"))
+  (custom-set-faces!
+   ;; -- mode-line & header ---------------------------------------------------
+   `(agent-shell-model               :foreground ,teal   :weight bold)
+   `(agent-shell-thought-level       :foreground ,purple)
+   `(agent-shell-container-indicator :foreground ,orange)
+   `(agent-shell-buffer-name         :foreground ,fg     :weight bold)
+
+   ;; -- session metadata -----------------------------------------------------
+   `(agent-shell-session-id          :foreground ,fg-dim)
+   `(agent-shell-session-mode        :foreground ,yellow)
+   `(agent-shell-session-title       :foreground ,cyan   :weight bold)
+   `(agent-shell-session-directory   :foreground ,green)
+   `(agent-shell-session-date        :foreground ,comment)
+
+   ;; -- collapsible sections (magit-like) ------------------------------------
+   `(agent-shell-section-heading     :foreground ,blue   :weight bold)
+   `(agent-shell-section-annotation  :foreground ,fg-alt :slant italic)
+   `(agent-shell-secondary           :foreground ,comment)
+
+   ;; -- semantic status ------------------------------------------------------
+   `(agent-shell-success             :foreground ,green  :weight bold)
+   `(agent-shell-warning             :foreground ,yellow :weight bold)
+   `(agent-shell-error               :foreground ,red    :weight bold)
+   `(agent-shell-pending             :foreground ,fg-dim :slant italic)
+
+   ;; -- "Available ..." listings ---------------------------------------------
+   `(agent-shell-list-name           :foreground ,cyan)
+   `(agent-shell-list-value          :foreground ,orange)
+
+   ;; -- prompt & input (user turn) -------------------------------------------
+   `(agent-shell-prompt              :foreground ,teal :weight bold)
+   `(agent-shell-input               :foreground ,fg :background ,user-bg :extend t)
+   `(agent-shell-key-binding         :foreground ,cyan :background ,bg-light
+                                     :box (:line-width (1 . -1) :color ,border))
+   `(agent-shell-link                :foreground ,cyan :underline t)
+   `(agent-shell-permission-title    :foreground ,yellow :weight bold)
+
+   ;; -- viewport -------------------------------------------------------------
+   `(agent-shell-viewport-prompt        :foreground ,fg-alt :slant italic)
+   `(agent-shell-viewport-status-edit   :foreground ,green  :weight bold)
+   `(agent-shell-viewport-status-busy   :foreground ,yellow :weight bold)
+   `(agent-shell-viewport-status-view   :foreground ,fg-alt)
+
+   ;; -- markdown: inline emphasis --------------------------------------------
+   `(agent-shell-markdown-bold          :foreground ,fg :weight bold)
+   `(agent-shell-markdown-italic        :foreground ,fg :slant italic)
+   `(agent-shell-markdown-strikethrough :foreground ,fg-dim :strike-through t)
+   `(agent-shell-markdown-inline-code   :foreground ,cyan :background ,bg-alt)
+   `(agent-shell-markdown-link          :foreground ,cyan :underline t)
+   `(agent-shell-markdown-blockquote    :foreground ,fg-alt :slant italic)
+
+   ;; -- markdown: headers (colored, only mild scaling to stay chat-compact) --
+   `(agent-shell-markdown-header-1      :foreground ,blue   :weight bold :height 1.1)
+   `(agent-shell-markdown-header-2      :foreground ,purple :weight bold :height 1.05)
+   `(agent-shell-markdown-header-3      :foreground ,cyan   :weight bold)
+   `(agent-shell-markdown-header-4      :foreground ,green  :weight bold)
+   `(agent-shell-markdown-header-5      :foreground ,yellow :weight bold)
+   `(agent-shell-markdown-header-6      :foreground ,orange :weight bold)
+
+   ;; -- markdown: tables -----------------------------------------------------
+   `(agent-shell-markdown-table-header  :foreground ,cyan :weight bold :background ,bg-alt)
+   `(agent-shell-markdown-table-border  :foreground ,fg-dim)
+   `(agent-shell-markdown-table-zebra   :background ,bg-alt)
+
+   ;; -- markdown: fenced code blocks -----------------------------------------
+   ;; :foreground unspecified lets the language's font-lock colors show through.
+   `(agent-shell-markdown-source-block  :background ,bg-alt :extend t)
+   `(agent-shell-markdown-source-block-language
+     :foreground ,cyan :background ,bg-dark :slant italic :weight bold :extend t)))
+#+end_src
+
 **** Copilot Auto suggestions
 #+begin_src emacs-lisp
 (use-package! copilot
@@ -3081,25 +3245,6 @@ This section exists to stop Pipenv from being inferred, created, or invoked in t
   ;; The Python env segment can shell out to `pipenv run ...` on Python buffers.
   ;; Disable it so merely visiting files can't hit pipenv.
   (setq doom-modeline-env-enable-python nil))
-#+end_src
-
-**** Ren'Py
-=renpy-mode= derives from =python-mode= and already autoloads itself for =.rpy=
-files; this block just makes the association explicit so it survives any future
-=auto-mode-alist= shuffling.
-#+begin_src emacs-lisp
-(use-package! renpy-mode
-  :ensure t
-  :custom
-  (renpy-program (or (getenv "RENPY_EXECUTABLE_PATH") "renpy"))
-  :bind
-  ;; Bind some useful commands.
-  ("C-c C-c" . renpy-compile)
-  ("C-c C-r" . renpy-run)
-  ("C-c C-l" . renpy-lint)
-  :hook
-  ((renpy-mode . flymake-mode)
-   (renpy-mode . outline-minor-mode)))
 #+end_src
 
 *** Terminal (Ghostel)
@@ -3283,23 +3428,11 @@ The `\\='(4)' prefix is Ghostel's \"force a brand-new buffer\" argument."
           (forward-line (if (> direction 0) (1- line-count) 0))
           (move-to-column column))))))
 
-(defun mp/move-lines-up ()
-  "Move the current line or active region up by one line."
-  (interactive)
-  (mp/move-lines--apply -1))
-
-(defun mp/move-lines-down ()
-  "Move the current line or active region down by one line."
-  (interactive)
-  (mp/move-lines--apply 1))
-
 ;; Global GUI-style bindings.
 ;; Keeps a terminal toggle, line commenting, and line movement available
 ;; through familiar keys.
 (map! :g "C-`" #'mp/ghostel-open
-      :g "C-/" #'comment-line
-      :g "M-<up>" #'mp/move-lines-up
-      :g "M-<down>" #'mp/move-lines-down)
+      :g "C-/" #'comment-line)
 #+end_src
 
 **** Evil State Overrides
@@ -3349,26 +3482,14 @@ The `\\='(4)' prefix is Ghostel's \"force a brand-new buffer\" argument."
     (call-interactively #'delete-window)))
 
 (after! workspaces
+  ;; Full "w d"/"w D" sequences override just those keys in Doom's window menu
+  ;; instead of replacing the whole `w' prefix map (which would drop h/j/k/l etc.).
   (map! :leader
-        (:prefix ("w" . "workspaces/windows")
-         :desc "Delete window" "d" #'mp/close-window-preserve-buffer
-         :desc "Delete window/workspace" "D" #'+workspace/close-window-or-workspace))
+        :desc "Delete window" "w d" #'mp/close-window-preserve-buffer
+        :desc "Delete window/workspace" "w D" #'+workspace/close-window-or-workspace)
   (map! :map evil-window-map
         "d" #'mp/close-window-preserve-buffer
         "D" #'+workspace/close-window-or-workspace))
-#+end_src
-
-**** Directory Navigation In Completion
-#+begin_src emacs-lisp
-(use-package! consult-dir
-  :defer t
-  :config
-  (map! :leader
-        :desc "Find file from directory" "." #'find-file
-        :desc "Switch directory" "f d" #'consult-dir)
-  (map! :map minibuffer-local-completion-map
-        "C-x C-d" #'consult-dir
-        "C-x C-j" #'consult-dir-jump-file))
 #+end_src
 
 **** Which-Key Group Labels
@@ -3409,64 +3530,6 @@ Some Doom prefix maps are still present but may show up as generic =+prefix= ent
          :desc "Verify checker" "v" #'flycheck-verify-setup)))
 #+end_src
 *** Should be plugins (My own code (with llm help))
-**** Project Scripts runner
-Pick a shell script from =__ignore__/scripts/= in the current project and run it
-in a Ghostel terminal via =SPC p S=. Each project+script pair reuses its own
-named terminal (=*project:NAME*=), so re-running a script sends the command to
-the same buffer; scripts that have been launched this session are prefixed with
-a ~✓~ in the picker.
-#+begin_src emacs-lisp
-(defvar my/project-running-scripts (make-hash-table :test 'equal))
-
-(defun my/project-scripts-dir ()
-  (expand-file-name "__ignore__/scripts/" (projectile-project-root)))
-
-(defun my/project-script-files ()
-  (let ((dir (my/project-scripts-dir)))
-    (when (file-directory-p dir)
-      (directory-files dir t "\\.sh$"))))
-
-(defun my/project-script-label (file)
-  (let* ((project (projectile-project-root))
-         (key (concat project "::" file))
-         (name (file-name-base file)))
-    (if (gethash key my/project-running-scripts)
-        (concat "✓ " name)
-      name)))
-
-(defun my/run-project-script ()
-  "Pick a project script and run it in a Ghostel terminal."
-  (interactive)
-  (let* ((project (projectile-project-root))
-         (files (my/project-script-files)))
-    (unless files
-      (user-error "No scripts found in __ignore__/scripts/"))
-
-    (let* ((choices
-            (mapcar (lambda (file)
-                      (cons (my/project-script-label file) file))
-                    files))
-           (picked-label (completing-read "Run script: " choices nil t))
-           (file (cdr (assoc picked-label choices)))
-           (name (file-name-base file))
-           (key (concat project "::" file))
-           (buf-name (format "*project:%s*" name)))
-
-      (puthash key t my/project-running-scripts)
-
-      ;; Open (or reuse, by buffer identity) a Ghostel named after the script
-      ;; rooted at the project, then send the script path to its shell.
-      (let ((default-directory project)
-            (ghostel-buffer-name buf-name))
-        (ghostel)
-        (ghostel-send-string (concat (shell-quote-argument file) "\n"))
-        (delete-other-windows)))))
-
-(map! :leader
-      :desc "Run project script"
-      "p S" #'my/run-project-script)
-#+end_src
-
 **** Org src block formatter
 Run a per-language external formatter on every recognised src block in an Org
 buffer. Enable it per-file with a =before-save-hook= local variable, e.g.:
@@ -3533,64 +3596,6 @@ non-zero, or produces empty output."
                     (unless (bolp) (insert "\n"))))))))))))
 #+end_src
 
-**** Org sort todos by state and priority
-Reorder a TODO list so remaining work floats to the top: entries are grouped
-by TODO state in the order they are defined in =org-todo-keywords= (TODO, NEXT,
-WAIT, SOMEDAY, DONE, CANCELLED — headings with no keyword sort last), and within
-each group by priority (=#A=, =#B=, =#C=, ..., then unprioritised). It builds a
-single sort key like =00-A= per heading and hands it to =org-sort-entries=, so
-one stable pass gives the state-then-priority ordering.
-
-Scope is DWIM, in order of preference: an active region; the children of the
-heading at point when it has any (put point on a list's parent heading); the
-siblings of the heading at point (its parent's children — put point on any item
-of a nested list); or every top-level heading when point is above the first one.
-Bound to =SPC m s t=, next to Doom's generic =SPC m s S= (=org-sort=).
-#+begin_src emacs-lisp
-(defun mp/org-sort-todos ()
-  "Sort a TODO list by TODO state, then by priority.
-
-State order follows the definition in `org-todo-keywords'; headings with
-no keyword sort last.  Within a state, higher priority first (#A, #B,
-#C, ...), then unprioritised entries.
-
-Scope, in order of preference: an active region; the children of the
-heading at point when it has any; the siblings of the heading at point
-\(its parent's children); or every top-level heading when point is above
-the first one."
-  (interactive)
-  (let* ((getkey
-          (lambda ()
-            (let* ((comps (org-heading-components))
-                   (todo  (nth 2 comps))
-                   (prio  (nth 3 comps))
-                   (state (or (seq-position org-todo-keywords-1 todo) 99)))
-              (format "%02d-%s" state (if prio (char-to-string prio) "~")))))
-         (do-sort (lambda () (org-sort-entries nil ?f getkey #'string<))))
-    (cond
-     ((org-region-active-p) (funcall do-sort))
-     ((and (org-at-heading-p) (save-excursion (org-goto-first-child)))
-      (funcall do-sort))
-     ((save-excursion (and (org-at-heading-p) (org-up-heading-safe)))
-      (save-excursion (org-up-heading-safe) (funcall do-sort)))
-     (t
-      ;; No parent to hang the sort on: select the whole buffer so
-      ;; `org-sort-entries' takes its region branch and orders the
-      ;; top-level headings.  Bind `transient-mark-mode' so the region
-      ;; registers even when it is otherwise off.
-      (let ((transient-mark-mode t))
-        (save-mark-and-excursion
-          (goto-char (point-min))
-          (push-mark (point-max) t t)
-          (funcall do-sort)))))))
-
-(map! :after org
-      :map org-mode-map
-      :localleader
-      (:prefix ("s" . "tree/subtree")
-       :desc "Sort todos by state/priority" "t" #'mp/org-sort-todos))
-#+end_src
-
 *** Teamwork timesheet
 Log time to Teamwork.com from an editable org buffer. The sidecar, setup script
 and command definitions live in [[file:teamwork.org]], which tangles them into
@@ -3603,6 +3608,22 @@ can never break config load.
   (if (file-exists-p mp/teamwork-el)
       (load mp/teamwork-el nil 'nomessage)
     (message "teamwork.el not tangled yet; run `org-babel-tangle' on teamwork.org")))
+#+end_src
+
+*** GitHub PR comments
+Read a pull request's review-comment threads (the inline "conversations") plus
+the general discussion into an editable org buffer, newest-active thread first,
+and reply by adding an empty-author heading. The sidecar and command definitions
+live in [[file:github-pr.org]], which tangles them into =~/.config/doom/github-pr/=.
+All GitHub access goes through the =gh= CLI (which owns auth + account selection).
+This block just loads the tangled commands (=github-pr= / =github-pr-submit=),
+guarded so a missing tangle can never break config load.
+
+#+begin_src emacs-lisp
+(let ((mp/github-pr-el (expand-file-name "github-pr/github-pr.el" doom-user-dir)))
+  (if (file-exists-p mp/github-pr-el)
+      (load mp/github-pr-el nil 'nomessage)
+    (message "github-pr.el not tangled yet; run `org-babel-tangle' on github-pr.org")))
 #+end_src
 
 ** Packages
