@@ -30,7 +30,7 @@ cp "$HERE"/emaqs/*.qml "$EW"/
 sed -i "s#@OUT@#$OUT#g" "$PW"/harness.qml "$PW"/MockClip.qml
 
 echo "==> neutering python bridges (DBus safety)"
-for f in "$PW/winbridge.py" "$PW/clipbridge.py" "$PW/orgbridge.py" \
+for f in "$PW/winbridge.py" "$PW/clipbridge.py" "$PW/orgbridge.py" "$PW/hledgerbridge.py" \
          "$EW/fswatch.py" "$EW/emaqsbridge.py" "$EW/agentbridge.py"; do
   [ -e "$f" ] && printf '#!/usr/bin/env python\nimport time\nwhile True: time.sleep(3600)\n' > "$f" || true
 done

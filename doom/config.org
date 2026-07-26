@@ -166,7 +166,7 @@
        ;;kotlin            ; a better, slicker Java(Script)
        ;;latex             ; writing papers in Emacs has never been so fun
        ;;lean              ; for folks with too much to prove
-       ;;ledger            ; be audit you can be
+       ledger            ; be audit you can be
        (lua +lsp +tree-sitter)               ; one-based indices? one-based indices
        markdown          ; writing docs for people to ignore
        ;;nim               ; python + lisp at the speed of c
@@ -3626,6 +3626,21 @@ guarded so a missing tangle can never break config load.
     (message "github-pr.el not tangled yet; run `org-babel-tangle' on github-pr.org")))
 #+end_src
 
+*** hledger finance
+Personal finance with [[https://hledger.org][hledger]]: monthly journals, forecast and wishlist files in
+=~/Documents/finance=, edited in =ledger-mode= (the =:lang ledger= module) with
+hledger as the binary, plus report/quick-add commands under =SPC o l=. The
+mode configuration and command definitions live in [[file:hledger.org]], which
+tangles them into =~/.config/doom/hledger/=. This block just loads the tangled
+commands, guarded so a missing tangle can never break config load.
+
+#+begin_src emacs-lisp
+(let ((mp/hledger-el (expand-file-name "hledger/hledger.el" doom-user-dir)))
+  (if (file-exists-p mp/hledger-el)
+      (load mp/hledger-el nil 'nomessage)
+    (message "hledger.el not tangled yet; run `org-babel-tangle' on hledger.org")))
+#+end_src
+
 ** Packages
 :PROPERTIES:
 :header-args:emacs-lisp: :tangle ~/.config/doom/packages.el
@@ -3664,6 +3679,9 @@ guarded so a missing tangle can never break config load.
 (package! prescient)
 (package! corfu-prescient)
 (package! vertico-prescient)
+;; hledger-aware flycheck checker for journal buffers (the stock `ledger'
+;; checker assumes the ledger CLI and is disabled in hledger.org)
+(package! flycheck-hledger)
 #+end_src
 
 *** Terminal

@@ -19,7 +19,9 @@ FloatingWindow {
     MockNetState  { id: netState }
     MockNotifs    { id: notifs }
     MockClip      { id: clip }
+    MockMemos     { id: memos }
     MockOrg       { id: org }
+    MockFinance   { id: fin }
     MockBrightness { id: brightness }
 
     // mock clock strings so the dashboard is deterministic
@@ -58,6 +60,10 @@ FloatingWindow {
         { name: "menu-battery",  comp: cBatt },
         { name: "menu-clipboard", comp: cClip },
         { name: "menu-calendar", comp: cCal },
+        { name: "menu-finance", comp: cFin },
+        { name: "menu-finance-add", comp: cFinAdd },
+        { name: "menu-finance-wishlist", comp: cFinWish },
+        { name: "menu-finance-forecast", comp: cFinFore },
         { name: "menu-notifhistory", comp: cNotifHist },
         { name: "notif-stack",   comp: cNotifStack },
         { name: "power-hush",    comp: cPowerHush },
@@ -189,8 +195,39 @@ FloatingWindow {
     Component { id: cVol;  MenuHost { VolumeMenu    { anchors.fill: parent; theme: theme } } }
     Component { id: cBt;   MenuHost { BluetoothMenu { anchors.fill: parent; theme: theme } } }
     Component { id: cBatt; MenuHost { BatteryMenu   { anchors.fill: parent; theme: theme; brightness: brightness } } }
-    Component { id: cClip; MenuHost { pillH: 670; ClipboardMenu { anchors.fill: parent; theme: theme; clip: clip } } }
-    Component { id: cCal;  MenuHost { pillW: 760; CalendarMenu  { anchors.fill: parent; theme: theme; org: org } } }
+    Component { id: cClip; MenuHost { pillH: 670; ClipboardMenu { anchors.fill: parent; theme: theme; clip: clip; memos: memos } } }
+    Component { id: cCal;  MenuHost { pillW: 760; CalendarMenu  { anchors.fill: parent; theme: theme; org: org; fin: fin } } }
+    Component { id: cFin;  MenuHost { pillW: 760; FinanceMenu   { anchors.fill: parent; theme: theme; fin: fin } } }
+    Component {
+        id: cFinAdd
+        MenuHost {
+            pillW: 760
+            FinanceMenu {
+                anchors.fill: parent; theme: theme; fin: fin
+                Component.onCompleted: openMode("add")
+            }
+        }
+    }
+    Component {
+        id: cFinWish
+        MenuHost {
+            pillW: 760
+            FinanceMenu {
+                anchors.fill: parent; theme: theme; fin: fin
+                Component.onCompleted: openMode("wishlist")
+            }
+        }
+    }
+    Component {
+        id: cFinFore
+        MenuHost {
+            pillW: 760
+            FinanceMenu {
+                anchors.fill: parent; theme: theme; fin: fin
+                Component.onCompleted: openMode("forecast")
+            }
+        }
+    }
     Component { id: cNotifHist; MenuHost { NotificationHistory { anchors.fill: parent; theme: theme; notifs: notifs } } }
     Component {
         id: cNotifStack
