@@ -1054,6 +1054,266 @@ Item {
 }
 #+end_src
 
+** PolishConfig.qml
+*** Description
+The shared polish-backend picker, used both in the Volume ▸ Transcribe tab and in
+the [[*VoiceMemoMenu.qml][voice-memo config menu]] (when Polish is enabled), so the
+model choice + credentials live in one place. A click-to-cycle *Model* row
+(Claude / Gemini-flash / GPT / =local=), then — depending on the provider (matches
+=voicebridge.py='s =provider_of=) — either a masked cloud API-key field (=key=
+icon, eye toggle, hint when empty, saved to the keyring on *Enter*) for the right
+provider (Anthropic / Google / OpenAI) or the ollama *Local model* picker plus a
+*Download* button with a live progress bar. Backed by =settings= (the model ids)
+and [[*VoiceSetup.qml][=VoiceSetup=]] (key presence + download). The Gemini ids
+are the free-tier flash models (no billing required).
+*** Code
+#+begin_src qml :tangle ~/.config/quickshell/pill/PolishConfig.qml :mkdirp yes
+pragma ComponentBehavior: Bound
+// PolishConfig.qml — polish model + credentials/download, shared by the
+// Transcribe tab and the voice-memo menu. settings holds the model ids; setup
+// (VoiceSetup) reports/stores keys and drives the local-model download.
+import QtQuick
+
+Column {
+    id: root
+    required property var theme
+    property var settings: null
+    property var setup: null
+    spacing: root.theme.gap
+
+    // which backend the selected model uses: "local" | "gemini" | "openai" | "claude"
+    readonly property string provider: {
+        const m = root.settings ? root.settings.claudeModel : "";
+        if (m === "local") return "local";
+        if (m.indexOf("gemini") === 0) return "gemini";
+        if (m.indexOf("gpt") === 0) return "openai";
+        return "claude";
+    }
+    function refresh() { if (root.setup) root.setup.refresh(); }
+    Component.onCompleted: root.refresh()
+
+    // one click-to-cycle row (label left, value chip right)
+    component CycleRow: Item {
+        id: cyc
+        property string label: ""
+        property var options: []
+        property string value: ""
+        signal picked(string v)
+        width: parent ? parent.width : 0
+        height: 26
+        Text {
+            anchors.left: parent.left
+            anchors.verticalCenter: parent.verticalCenter
+            text: cyc.label
+            color: root.theme.text
+            font.family: root.theme.family
+            font.pixelSize: root.theme.fsNormal
+        }
+        Rectangle {
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
+            width: cycTxt.implicitWidth + 20
+            height: 22
+            radius: root.theme.radiusBtn
+            color: cycMa.containsMouse ? root.theme.rowHi : root.theme.row
+            border.width: 1
+            border.color: root.theme.border
+            Text {
+                id: cycTxt
+                anchors.centerIn: parent
+                text: cyc.value
+                color: root.theme.text
+                font.family: root.theme.mono
+                font.pixelSize: root.theme.fsSmall
+                font.letterSpacing: root.theme.labelSpacing
+            }
+            MouseArea {
+                id: cycMa
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: {
+                    const i = cyc.options.indexOf(cyc.value);
+                    cyc.picked(cyc.options[(i + 1) % cyc.options.length]);
+                }
+            }
+        }
+    }
+
+    CycleRow {
+        label: "Model"
+        // claude-* / gemini-* / gpt-* use a cloud API (key below); "local" runs
+        // offline via ollama (download below). Gemini ids are free-tier flash models.
+        options: ["claude-opus-4-8", "claude-sonnet-4-6", "claude-haiku-4-5",
+                  "gemini-3.5-flash-lite", "gemini-3.5-flash",
+                  "gpt-5", "gpt-5-mini", "gpt-4o-mini", "local"]
+        value: root.settings ? root.settings.claudeModel : "claude-opus-4-8"
+        onPicked: v => { if (root.settings) root.settings.claudeModel = v; }
+    }
+    CycleRow {
+        visible: root.provider === "local"
+        label: "Local model"
+        options: ["qwen2.5:3b", "llama3.2:3b", "gemma2:2b"]
+        value: root.settings ? root.settings.localModel : "qwen2.5:3b"
+        onPicked: v => { if (root.settings) root.settings.localModel = v; root.refresh(); }
+    }
+
+    // ---- cloud API key (Anthropic / Google) — masked, eye toggle ----
+    Item {
+        id: keyArea
+        visible: root.provider !== "local"
+        width: parent.width
+        height: visible ? keyRow.height + keyHint.height + 6 : 0
+        property bool reveal: false
+        readonly property string prov: root.provider === "gemini" ? "google"
+                                     : root.provider === "openai" ? "openai" : "anthropic"
+        readonly property string provLabel: root.provider === "gemini" ? "Google"
+                                          : root.provider === "openai" ? "OpenAI" : "Anthropic"
+        readonly property bool isSet: root.setup ? root.setup.keySet(keyArea.prov) : false
+
+        Rectangle {
+            id: keyRow
+            width: parent.width; height: 40
+            radius: root.theme.radiusRow
+            color: root.theme.row
+            border.width: 1
+            border.color: keyInput.activeFocus ? root.theme.accent : root.theme.border
+            MSym {
+                id: keyIcon
+                anchors.left: parent.left; anchors.leftMargin: 12
+                anchors.verticalCenter: parent.verticalCenter
+                icon: "key"; size: 18
+                color: keyInput.activeFocus ? root.theme.accent : root.theme.faint
+            }
+            TextInput {
+                id: keyInput
+                objectName: "pillKbInput"
+                anchors.left: keyIcon.right; anchors.leftMargin: 8
+                anchors.right: eyeBtn.left; anchors.rightMargin: 6
+                anchors.verticalCenter: parent.verticalCenter
+                verticalAlignment: TextInput.AlignVCenter
+                echoMode: keyArea.reveal ? TextInput.Normal : TextInput.Password
+                passwordCharacter: "•"
+                color: root.theme.text
+                font.family: root.theme.mono
+                font.pixelSize: root.theme.fsNormal
+                clip: true
+                selectByMouse: true
+                selectionColor: root.theme.accentDim
+                onAccepted: {                       // Enter -> save to keyring, clear
+                    if (root.setup && text.length > 0) {
+                        root.setup.setKey(keyArea.prov, text);
+                        text = "";
+                    }
+                }
+                Text {
+                    anchors.fill: parent
+                    verticalAlignment: Text.AlignVCenter
+                    visible: keyInput.text.length === 0
+                    text: keyArea.isSet ? "Key saved — type a new one to replace"
+                                        : ("Paste your " + keyArea.provLabel + " API key")
+                    color: root.theme.faint
+                    font.family: root.theme.family
+                    font.pixelSize: root.theme.fsNormal
+                    elide: Text.ElideRight
+                }
+            }
+            Item {                                  // eye toggle
+                id: eyeBtn
+                anchors.right: parent.right; anchors.rightMargin: 8
+                anchors.verticalCenter: parent.verticalCenter
+                width: 24; height: 24
+                MSym {
+                    anchors.centerIn: parent
+                    icon: keyArea.reveal ? "visibility_off" : "visibility"
+                    size: 18
+                    color: eyeMa.containsMouse ? root.theme.text : root.theme.faint
+                }
+                MouseArea {
+                    id: eyeMa
+                    anchors.fill: parent
+                    hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                    onClicked: keyArea.reveal = !keyArea.reveal
+                }
+            }
+        }
+        Text {
+            id: keyHint
+            anchors.top: keyRow.bottom; anchors.topMargin: 6
+            anchors.left: parent.left; anchors.right: parent.right
+            wrapMode: Text.Wrap
+            text: keyArea.isSet
+                  ? ("✓ " + keyArea.provLabel + " key saved (stored in the keyring)")
+                  : (keyArea.provLabel + " API key needed for this model — press Enter to save")
+            color: keyArea.isSet ? root.theme.good : root.theme.faint
+            font.family: root.theme.family
+            font.pixelSize: root.theme.fsSmall
+        }
+    }
+
+    // ---- local model download (ollama pull) with progress ----
+    Item {
+        id: dlArea
+        visible: root.provider === "local"
+        width: parent.width
+        height: visible ? 40 : 0
+        readonly property string model: root.settings ? root.settings.localModel : ""
+        readonly property bool present: root.setup ? root.setup.localPresent : false
+        readonly property bool busy: root.setup ? root.setup.pulling : false
+
+        Rectangle {
+            id: dlBtn
+            anchors.fill: parent
+            radius: root.theme.radiusRow
+            color: (dlMa.containsMouse && !dlArea.present && !dlArea.busy) ? root.theme.rowHi : root.theme.row
+            border.width: 1
+            border.color: dlArea.present ? root.theme.good : root.theme.border
+            clip: true
+            Behavior on color { ColorAnimation { duration: root.theme.animFast } }
+
+            Rectangle {                             // progress fill while pulling
+                visible: dlArea.busy
+                anchors.left: parent.left; anchors.top: parent.top; anchors.bottom: parent.bottom
+                width: parent.width * (root.setup ? root.setup.pullProgress : 0)
+                color: root.theme.accentSoft
+                Behavior on width { NumberAnimation { duration: root.theme.animFast } }
+            }
+            Row {
+                anchors.left: parent.left; anchors.leftMargin: 12
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: 8
+                MSym {
+                    anchors.verticalCenter: parent.verticalCenter
+                    icon: dlArea.present ? "check_circle" : (dlArea.busy ? "downloading" : "download")
+                    fill: dlArea.present ? 1 : 0
+                    size: 18
+                    color: dlArea.present ? root.theme.good : root.theme.textDim
+                }
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: dlArea.present ? ("Downloaded — " + dlArea.model)
+                        : dlArea.busy ? ((root.setup ? root.setup.pullStatus : "") + " · "
+                                         + Math.round((root.setup ? root.setup.pullProgress : 0) * 100) + "%")
+                        : ("Download " + dlArea.model)
+                    color: root.theme.text
+                    font.family: root.theme.family
+                    font.pixelSize: root.theme.fsNormal
+                    elide: Text.ElideRight
+                }
+            }
+            MouseArea {
+                id: dlMa
+                anchors.fill: parent
+                hoverEnabled: true
+                enabled: !dlArea.present && !dlArea.busy
+                cursorShape: Qt.PointingHandCursor
+                onClicked: if (root.setup) root.setup.pull(dlArea.model)
+            }
+        }
+    }
+}
+#+end_src
+
 ** VolumeMenu.qml
 *** Description
 Devices tab (speakers = =Audio/Sink=, mics = =Audio/Source=) with per-device
@@ -1069,9 +1329,16 @@ A third *Transcribe* tab holds the voice-to-text pipeline's knobs (see
 =settings= adapter (passed in by =init.qml='s component declaration): input gain
 for the default mic (a reused =NodeRow=), RNNoise noise-suppression and whisper
 VAD toggles, click-to-cycle rows for the whisper model / language / device and
-the Claude polish model (no text fields, so no keyboard-grab complications), and
-a hint pointing at the editable prompt files under
-=~/.config/quickshell/transcribe/=.
+the polish model (no text fields, so no keyboard-grab complications), and a hint
+pointing at the editable prompt files under =~/.config/quickshell/transcribe/=.
+The polish model cycles through the Claude API ids, the Gemini flash ids, the
+OpenAI GPT ids, and =local= (offline via ollama). A provider-aware setup area sits
+below it (state in [[*VoiceSetup.qml][=VoiceSetup=]]): for a cloud model, a masked
+API-key field (=key= icon, eye toggle to reveal, hint when empty, saved to the
+keyring on *Enter*) for the right provider (Anthropic / Google / OpenAI); for
+=local=, the ollama
+model picker plus a *Download* button that streams pull progress as a bar. So
+keys and model downloads happen in the pill — no =setup-transcribe.sh= key prompt.
 *** Code
 #+begin_src qml :tangle ~/.config/quickshell/pill/VolumeMenu.qml :mkdirp yes
 pragma ComponentBehavior: Bound
@@ -1089,8 +1356,13 @@ Item {
     // the shared launcher-settings JsonAdapter (init.qml) — the Transcribe tab
     // reads/writes the voice-pipeline keys on it; mutations auto-persist.
     property var settings: null
+    // in-pill setup state (VoiceSetup: cloud keys + local-model download)
+    property var setup: null
     signal closeRequested()
     property int tab: 0               // 0 = Devices, 1 = Applications, 2 = Transcribe
+
+    // refresh key/model availability whenever the Transcribe tab is shown
+    onTabChanged: if (tab === 2 && root.setup) root.setup.refresh()
 
     // open KDE's audio settings. KDE ships two: "Audio" (kcm_pulseaudio, the
     // volume/devices module) and "Multimedia" (kcm_phonon, backend/device order).
@@ -1379,21 +1651,23 @@ Item {
                     value: root.settings ? root.settings.whisperDevice : "auto"
                     onPicked: v => { if (root.settings) root.settings.whisperDevice = v; }
                 }
-                VolLabel { text: "Claude Polish"; visible: root.tab === 2 }
-                CycleRow {
+                VolLabel { text: "Polish"; visible: root.tab === 2 }
+                // shared polish-backend picker (model + cloud key / local download)
+                PolishConfig {
                     visible: root.tab === 2
-                    label: "Model"
-                    options: ["claude-opus-4-8", "claude-sonnet-4-6", "claude-haiku-4-5"]
-                    value: root.settings ? root.settings.claudeModel : "claude-opus-4-8"
-                    onPicked: v => { if (root.settings) root.settings.claudeModel = v; }
+                    width: parent.width
+                    theme: root.theme
+                    settings: root.settings
+                    setup: root.setup
                 }
+
                 // where the editable prompt files live (voicebridge writes sane
                 // defaults on first run; re-tangling never touches them)
                 Text {
                     visible: root.tab === 2
                     width: col.width
                     wrapMode: Text.Wrap
-                    text: "Prompts (editable): ~/.config/quickshell/transcribe/whisper-prompt.md · polish-prompt.md — defaults are written on first run."
+                    text: "Prompts (editable): ~/.config/quickshell/transcribe/ — whisper-prompt.md · polish-prompt.md · org-prompt.md (defaults written on first run)."
                     color: root.theme.faint
                     font.family: root.theme.family
                     font.pixelSize: root.theme.fsSmall
@@ -4381,6 +4655,13 @@ Rectangle {
     }
     readonly property int imgMax: 100   // notification image fits within a 100px box
 
+    // bodies render as StyledText (so apps' <b>/<i>/<a> markup works), but
+    // StyledText is HTML — it collapses literal newlines to a space. Convert
+    // them to <br/> so multi-line bodies (e.g. a polished transcript with a
+    // requested line break) actually wrap. The clipboard/memo file keep the
+    // real \n; this is display-only.
+    function bodyMarkup(s) { return (s || "").replace(/\n/g, "<br/>"); }
+
     // copy the raw transcript to the clipboard, then close (dismiss a popup /
     // forget a history row). printf|wl-copy so any leading dash / newline in the
     // text is safe (no arg-as-option, no trailing newline).
@@ -4545,7 +4826,7 @@ Rectangle {
         Text {
             width: parent.width
             visible: text.length > 0
-            text: (root.notification && root.notification.body) ? root.notification.body : ""
+            text: root.bodyMarkup(root.notification ? root.notification.body : "")
             textFormat: Text.StyledText
             wrapMode: Text.Wrap
             maximumLineCount: 6
@@ -4785,7 +5066,7 @@ Rectangle {
                 id: tBody
                 x: 12; y: 11
                 width: parent.width - 24
-                text: (root.notification && root.notification.body) ? root.notification.body : ""
+                text: root.bodyMarkup(root.notification ? root.notification.body : "")
                 textFormat: Text.StyledText
                 wrapMode: Text.Wrap                // FULL transcript, never truncated
                 color: root.critical ? root.theme.textDim : root.theme.text
@@ -5149,6 +5430,159 @@ QtObject {
 }
 #+end_src
 
+** Memos.qml
+*** Description
+Voice-memo *state*, instantiated once in =init.qml= as =Memos { id: memos }= and
+handed to the clipboard menu's Memos tab (mirrors [[*Clipboard.qml][=Clipboard=]]).
+It shells out to [[*voicebridge.py][=voicebridge.py=]] (the transcription venv
+python) for the permanent memos in =~/Documents/memos=: =refresh()= reloads
+=entries= (=[\{id, created, type, polished, text\}]=, newest first), =copy(id)=
+puts a memo's text on the clipboard, =remove(id)= deletes its file, and
+=repolish(id)= re-runs the polish model over it (updating the file + clipboard).
+The polish model ids come from the shared =settings= adapter.
+*** Code
+#+begin_src qml :tangle ~/.config/quickshell/pill/Memos.qml :mkdirp yes
+pragma ComponentBehavior: Bound
+// Memos.qml — permanent voice-memo state over voicebridge.py (~/Documents/memos).
+// `entries` is the parsed list (newest first); refresh() reloads it, copy/remove/
+// repolish act on a memo by id (its filename) then refresh.
+import QtQuick
+import Quickshell
+import Quickshell.Io
+
+QtObject {
+    id: root
+    required property var settings
+    property var entries: []          // [{ id, created, type, polished, text }]
+
+    // the transcription venv python (faster-whisper/anthropic live there); list &
+    // delete are stdlib-only but run through it too for one consistent path.
+    readonly property string py: Quickshell.env("HOME") + "/.local/share/pill-transcribe/venv/bin/python"
+
+    function refresh() { if (!listProc.running) listProc.running = true; }
+    function copyText(s) {                    // copy arbitrary text (polished or raw)
+        if (!s || s.length === 0) return;
+        copyProc.command = ["sh", "-c", "printf '%s' \"$1\" | wl-copy", "sh", s];
+        copyProc.running = true;
+    }
+    function copy(id) {
+        const e = (root.entries || []).find(x => x.id === id);
+        if (e) root.copyText(e.text);
+    }
+    function remove(id) { act(["delete", String(id)]); }
+    function repolish(id) {
+        act(["repolish", String(id),
+             root.settings ? root.settings.claudeModel : "claude-opus-4-8",
+             root.settings ? root.settings.localModel : "qwen2.5:3b"]);
+    }
+    function act(args) {
+        actProc.command = [root.py, Quickshell.shellPath("voicebridge.py")].concat(args);
+        actProc.running = true;
+    }
+
+    property Process listProc: Process {
+        command: [root.py, Quickshell.shellPath("voicebridge.py"), "list"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try { root.entries = JSON.parse(this.text) || []; }
+                catch (e) { root.entries = []; }
+            }
+        }
+    }
+    property Process copyProc: Process { }
+    // delete/repolish are user-paced; refresh after so the list reflects the change
+    property Process actProc: Process { onExited: root.refresh() }
+}
+#+end_src
+
+** VoiceSetup.qml
+*** Description
+In-pill setup *state* for the Transcribe tab (mirrors [[*Memos.qml][=Memos=]]),
+so [[*setup-transcribe.sh][=setup-transcribe.sh=]] is no longer needed for
+credentials or local models. Over [[*voicebridge.py][=voicebridge.py=]]:
+=refresh()= reports which cloud keys are stored and whether the selected local
+model is pulled (=anthropicKeySet= / =googleKeySet= / =openaiKeySet= / =localPresent=);
+=setKey(provider, value)= writes a key to the keyring; =pull(model)= streams an
+ollama download, driving =pulling= / =pullProgress= / =pullStatus=.
+*** Code
+#+begin_src qml :tangle ~/.config/quickshell/pill/VoiceSetup.qml :mkdirp yes
+pragma ComponentBehavior: Bound
+// VoiceSetup.qml — Transcribe-tab setup state over voicebridge.py: cloud-key
+// presence + storage (keyring), and local-model download with progress.
+import QtQuick
+import Quickshell
+import Quickshell.Io
+
+QtObject {
+    id: root
+    required property var settings
+    readonly property string py: Quickshell.env("HOME") + "/.local/share/pill-transcribe/venv/bin/python"
+
+    property bool anthropicKeySet: false
+    property bool googleKeySet: false
+    property bool openaiKeySet: false
+    property bool localPresent: false        // is settings.localModel pulled?
+    property bool pulling: false
+    property real pullProgress: 0            // 0..1 (only meaningful while pulling)
+    property string pullStatus: ""
+
+    function keySet(provider) {
+        if (provider === "google") return root.googleKeySet;
+        if (provider === "openai") return root.openaiKeySet;
+        return root.anthropicKeySet;
+    }
+
+    function refresh() {
+        statusProc.command = [root.py, Quickshell.shellPath("voicebridge.py"),
+                              "status", root.settings ? root.settings.localModel : ""];
+        statusProc.running = true;
+    }
+    function setKey(provider, value) {
+        if (!value || value.length === 0) return;
+        setkeyProc.command = [root.py, Quickshell.shellPath("voicebridge.py"),
+                              "setkey", provider, value];
+        setkeyProc.running = true;
+    }
+    function pull(model) {
+        if (root.pulling) return;
+        root.pulling = true; root.pullProgress = 0; root.pullStatus = "starting…";
+        pullProc.command = [root.py, Quickshell.shellPath("voicebridge.py"), "pull", model];
+        pullProc.running = true;
+    }
+
+    property Process statusProc: Process {
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try {
+                    const d = JSON.parse(this.text) || {};
+                    root.anthropicKeySet = !!d.anthropic;
+                    root.googleKeySet = !!d.google;
+                    root.openaiKeySet = !!d.openai;
+                    root.localPresent = !!d.local;
+                } catch (e) {}
+            }
+        }
+    }
+    property Process setkeyProc: Process { onExited: root.refresh() }
+    property Process pullProc: Process {
+        // ollama progress arrives as one JSON object per line
+        stdout: SplitParser {
+            onRead: line => {
+                let d = null;
+                try { d = JSON.parse(line); } catch (e) { return; }
+                if (d.error) root.pullStatus = d.error;
+                else if (d.done) root.pullStatus = "done";
+                else {
+                    root.pullStatus = d.status || "";
+                    if (d.total > 0) root.pullProgress = Math.max(0, Math.min(1, (d.completed || 0) / d.total));
+                }
+            }
+        }
+        onExited: { root.pulling = false; root.pullProgress = 0; root.refresh(); }
+    }
+}
+#+end_src
+
 ** ClipboardMenu.qml
 *** Description
 The control-panel pane (=win.menu === 5=, between battery and notifications) — a
@@ -5164,6 +5598,15 @@ Keyboard nav mirrors the launcher on a vertical list: *↑/↓* move the row hig
 *Enter* copies the highlighted entry, and *←/→* stay with the search field's text
 cursor. The list is a =ListView= (over =shown=) so =setSel= can scroll the selection
 into view; =currentIndex= resets to the top on a new query.
+
+A second *Memos* tab lists the permanent voice-memo store (=~/Documents/memos=,
+via [[*Memos.qml][=Memos=]] → [[*voicebridge.py][=voicebridge.py=]]): each row
+shows the memo's type chip, timestamp (and a "polished" marker) over the text
+preview, with per-row *copy* / *polish* (re-run the polish model) / *delete*
+buttons. *Clicking the row expands it* to the full text; a polished memo also
+gets a *See unpolished* toggle (and *copy* then copies whichever version is
+shown). Search + arrow-key nav apply to whichever tab is active; *Clear all* is
+clipboard-only.
 *** Code
 #+begin_src qml :tangle ~/.config/quickshell/pill/ClipboardMenu.qml :mkdirp yes
 pragma ComponentBehavior: Bound
@@ -5181,9 +5624,12 @@ Item {
     id: root
     required property var theme
     required property var clip
+    required property var memos           // permanent voice memos (Memos.qml)
     signal closeRequested()
 
-    Component.onCompleted: { root.clip.refresh(); search.forceActiveFocus(); }
+    property int tab: 0                    // 0 = Clipboard, 1 = Memos
+
+    Component.onCompleted: { root.clip.refresh(); root.memos.refresh(); search.forceActiveFocus(); }
 
     readonly property string q: search.text.trim().toLowerCase()
 
@@ -5208,7 +5654,7 @@ Item {
         }
         return score;
     }
-    readonly property var shown: {
+    readonly property var shownClip: {
         const all = root.clip.entries || [];
         if (root.q.length === 0) return all.slice(0, 10);
         const scored = [];
@@ -5216,6 +5662,17 @@ Item {
         scored.sort((a, b) => b.s - a.s);
         return scored.map(x => x.e);
     }
+    // memos: the full permanent store at rest (fuzzy-filtered while searching)
+    readonly property var shownMemo: {
+        const all = root.memos.entries || [];
+        if (root.q.length === 0) return all;
+        const scored = [];
+        for (const e of all) { const s = root.fuzzy(root.q, (e.text || "") + " " + (e.type || "")); if (s >= 0) scored.push({ e: e, s: s }); }
+        scored.sort((a, b) => b.s - a.s);
+        return scored.map(x => x.e);
+    }
+    // the active list (drives keyboard nav + the empty-state text)
+    readonly property var shown: root.tab === 1 ? root.shownMemo : root.shownClip
 
     // ---- keyboard selection (arrow-key navigation) ----
     // The list is vertical, so up/down move the row highlight while left/right stay
@@ -5228,12 +5685,14 @@ Item {
     function setSel(i) {
         const n = root.shown.length;
         root.currentIndex = n === 0 ? 0 : Math.max(0, Math.min(n - 1, i));
-        if (n > 0) listView.positionViewAtIndex(root.currentIndex, ListView.Contain);
+        const lv = root.tab === 1 ? memoView : listView;
+        if (n > 0) lv.positionViewAtIndex(root.currentIndex, ListView.Contain);
     }
     function activateCurrent() {
         const n = root.shown.length;
         if (n === 0) return;
-        root.clip.copy(root.shown[Math.max(0, Math.min(n - 1, root.currentIndex))].id);
+        const e = root.shown[Math.max(0, Math.min(n - 1, root.currentIndex))];
+        if (root.tab === 1) root.memos.copy(e.id); else root.clip.copy(e.id);
         root.closeRequested();
     }
 
@@ -5245,9 +5704,9 @@ Item {
             theme: root.theme
             title: "Clipboard"
             onBack: root.closeRequested()
-            Text {
+            Text {                                // Clear all — clipboard tab only
                 anchors.verticalCenter: parent.verticalCenter
-                visible: (root.clip.entries || []).length > 0
+                visible: root.tab === 0 && (root.clip.entries || []).length > 0
                 text: "Clear all"
                 color: clearMa.containsMouse ? root.theme.danger : root.theme.textDim
                 font.family: root.theme.mono
@@ -5259,6 +5718,29 @@ Item {
                     anchors.fill: parent; anchors.margins: -4
                     hoverEnabled: true; cursorShape: Qt.PointingHandCursor
                     onClicked: root.clip.wipe()
+                }
+            }
+        }
+
+        Row {                                    // tabs
+            id: tabRow
+            spacing: 18
+            Repeater {
+                model: ["Clipboard", "Memos"]
+                delegate: Text {
+                    required property int index
+                    required property string modelData
+                    text: modelData
+                    color: root.tab === index ? root.theme.accent : root.theme.faint
+                    font.family: root.theme.mono
+                    font.pixelSize: root.theme.fsSmall
+                    font.letterSpacing: root.theme.labelSpacing
+                    font.capitalization: Font.AllUppercase
+                    MouseArea {
+                        anchors.fill: parent; anchors.margins: -4
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: { root.tab = index; root.currentIndex = 0; }
+                    }
                 }
             }
         }
@@ -5303,7 +5785,7 @@ Item {
                     anchors.fill: parent
                     verticalAlignment: Text.AlignVCenter
                     visible: search.text.length === 0
-                    text: "Search clipboard"
+                    text: root.tab === 1 ? "Search memos" : "Search clipboard"
                     color: root.theme.faint
                     font.family: root.theme.family
                     font.pixelSize: root.theme.fsNormal
@@ -5452,15 +5934,179 @@ Item {
             }
         }
 
+        // ---- one memo row: click to expand/collapse; copy/polish/delete buttons.
+        // When expanded, the full text shows; a polished memo also offers a
+        // "see unpolished" toggle (and copy then copies whichever is shown). ----
+        component MemoRow: Rectangle {
+            id: memoRow
+            required property var entry
+            property bool selected: false
+            property bool expanded: false
+            property bool showRaw: false
+            // a polished memo carries its original transcript (entry.raw)
+            readonly property bool hasRaw: !!(memoRow.entry.polished && memoRow.entry.raw && memoRow.entry.raw.length > 0)
+            readonly property bool showToggle: memoRow.expanded && memoRow.hasRaw
+            readonly property string shownText: (memoRow.showRaw && memoRow.hasRaw)
+                                                ? memoRow.entry.raw : (memoRow.entry.text || "")
+
+            width: parent ? parent.width : 0
+            height: memoRow.expanded
+                    ? (bodyText.y + bodyText.implicitHeight + (memoRow.showToggle ? toggleRow.height + 8 : 0) + 12)
+                    : 50
+            radius: root.theme.radiusRow
+            color: (memoRow.selected || mRowMa.containsMouse) ? root.theme.rowHi : root.theme.row
+            clip: true
+            Behavior on color { ColorAnimation { duration: root.theme.animFast } }
+            Behavior on height { NumberAnimation { duration: root.theme.animFast; easing.type: Easing.OutCubic } }
+
+            // click the row body = expand/collapse (buttons keep their own actions)
+            MouseArea {
+                id: mRowMa
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: memoRow.expanded = !memoRow.expanded
+            }
+
+            // header: type chip + time (+ polished), top-left
+            Row {
+                id: headerRow
+                anchors.left: parent.left; anchors.leftMargin: 12
+                anchors.top: parent.top; anchors.topMargin: 9
+                spacing: 8
+                Rectangle {
+                    anchors.verticalCenter: parent.verticalCenter
+                    height: 18; width: chip.implicitWidth + 14; radius: 6
+                    color: root.theme.accentSoft
+                    Text {
+                        id: chip
+                        anchors.centerIn: parent
+                        text: memoRow.entry.type || "note"
+                        color: root.theme.accent
+                        font.family: root.theme.mono
+                        font.pixelSize: root.theme.fsSmall
+                        font.letterSpacing: root.theme.labelSpacing
+                        font.capitalization: Font.AllUppercase
+                    }
+                }
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: {
+                        const c = memoRow.entry.created || "";
+                        const t = c ? c.replace("T", " ").slice(0, 16) : "";
+                        return t + (memoRow.entry.polished ? " · polished" : "");
+                    }
+                    color: root.theme.faint
+                    font.family: root.theme.mono
+                    font.pixelSize: root.theme.fsSmall
+                    font.letterSpacing: root.theme.labelSpacing
+                }
+            }
+
+            // copy / polish / delete — aligned with the header line, top-right
+            Row {
+                id: memoActions
+                anchors.right: parent.right; anchors.rightMargin: 8
+                anchors.top: parent.top; anchors.topMargin: 4
+                spacing: 2
+                Repeater {
+                    model: [
+                        { ic: "content_copy",  act: "copy",   danger: false },
+                        { ic: "auto_fix_high", act: "polish", danger: false },
+                        { ic: "delete",        act: "delete", danger: true }
+                    ]
+                    delegate: Item {
+                        required property var modelData
+                        width: 28; height: 28
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: width / 2
+                            color: aMa.containsMouse ? (parent.modelData.danger ? root.theme.danger : root.theme.bgHover) : "transparent"
+                            Behavior on color { ColorAnimation { duration: root.theme.animFast } }
+                        }
+                        MSym {
+                            anchors.centerIn: parent
+                            icon: parent.modelData.ic
+                            size: 16
+                            color: aMa.containsMouse ? root.theme.text : root.theme.faint
+                        }
+                        MouseArea {
+                            id: aMa
+                            anchors.fill: parent
+                            hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                const a = parent.modelData.act;
+                                // copy the currently-shown version (polished or unpolished)
+                                if (a === "copy") { root.memos.copyText(memoRow.shownText); root.closeRequested(); }
+                                else if (a === "polish") root.memos.repolish(memoRow.entry.id);
+                                else root.memos.remove(memoRow.entry.id);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // body: 1-line preview when collapsed, full wrapped text when expanded
+            Text {
+                id: bodyText
+                anchors.left: parent.left; anchors.leftMargin: 12
+                anchors.right: parent.right; anchors.rightMargin: 12
+                anchors.top: headerRow.bottom; anchors.topMargin: 3
+                // PlainText (not the default AutoText, which can pick RichText and
+                // eat newlines). Collapsed: flatten whitespace for a one-line
+                // preview; expanded: the real multi-line text.
+                textFormat: Text.PlainText
+                text: memoRow.expanded ? memoRow.shownText : memoRow.shownText.replace(/\s+/g, " ").trim()
+                wrapMode: Text.Wrap
+                maximumLineCount: memoRow.expanded ? 100000 : 1
+                elide: memoRow.expanded ? Text.ElideNone : Text.ElideRight
+                color: root.theme.text
+                font.family: root.theme.family
+                font.pixelSize: root.theme.fsNormal
+            }
+
+            // "see unpolished" / "see polished" toggle (expanded polished memos only)
+            Row {
+                id: toggleRow
+                visible: memoRow.showToggle
+                anchors.left: parent.left; anchors.leftMargin: 12
+                anchors.top: bodyText.bottom; anchors.topMargin: 8
+                height: 22
+                Rectangle {
+                    width: tgTxt.implicitWidth + 20; height: 22; radius: root.theme.radiusBtn
+                    color: tgMa.containsMouse ? root.theme.rowHi : root.theme.row
+                    border.width: 1; border.color: root.theme.border
+                    Text {
+                        id: tgTxt
+                        anchors.centerIn: parent
+                        text: memoRow.showRaw ? "See polished" : "See unpolished"
+                        color: root.theme.textDim
+                        font.family: root.theme.mono
+                        font.pixelSize: root.theme.fsSmall
+                        font.letterSpacing: root.theme.labelSpacing
+                        font.capitalization: Font.AllUppercase
+                    }
+                    MouseArea {
+                        id: tgMa
+                        anchors.fill: parent
+                        hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                        onClicked: memoRow.showRaw = !memoRow.showRaw
+                    }
+                }
+            }
+        }
+
         Item {
             width: parent.width
-            height: parent.height - 26 - 40 - root.theme.gap * 2
+            height: parent.height - 26 - tabRow.height - 40 - root.theme.gap * 3
+            // clipboard list
             ListView {
                 id: listView
                 anchors.fill: parent
+                visible: root.tab === 0
                 clip: true
                 spacing: 8
-                model: root.shown
+                model: root.shownClip
                 currentIndex: root.currentIndex
                 boundsBehavior: Flickable.StopAtBounds
                 delegate: ClipRow {
@@ -5471,10 +6117,29 @@ Item {
                     selected: index === root.currentIndex
                 }
             }
+            // memos list
+            ListView {
+                id: memoView
+                anchors.fill: parent
+                visible: root.tab === 1
+                clip: true
+                spacing: 8
+                model: root.shownMemo
+                currentIndex: root.currentIndex
+                boundsBehavior: Flickable.StopAtBounds
+                delegate: MemoRow {
+                    required property var modelData
+                    required property int index
+                    width: ListView.view.width
+                    entry: modelData
+                    selected: index === root.currentIndex
+                }
+            }
             Text {
                 anchors.top: parent.top
                 visible: root.shown.length === 0
-                text: root.q.length > 0 ? "No matches" : "Clipboard is empty"
+                text: root.q.length > 0 ? "No matches"
+                    : (root.tab === 1 ? "No memos yet" : "Clipboard is empty")
                 color: root.theme.textDim
                 font.family: root.theme.family
                 font.pixelSize: root.theme.fsNormal
@@ -6279,10 +6944,25 @@ because =faster-whisper=/=ctranslate2= and the =anthropic= SDK live there
 (=pipx install faster-whisper= fails outright: it is a library with no console
 scripts, and ctranslate2 wheels lag the system Python).
 
-Call shape: =voicebridge.py WAV MODE MODEL LANGUAGE DEVICE VAD CLAUDE_MODEL=
+Call shape: =voicebridge.py WAV MODE MODEL LANGUAGE DEVICE VAD POLISH_MODEL LOCAL_MODEL=
 (=MODE= raw|polish, =LANGUAGE= auto|ISO code, =DEVICE= auto|cuda|cpu, =VAD=
-vad|novad), or =voicebridge.py init= to just write the default prompt files.
-Behaviour worth knowing:
+vad|novad, =POLISH_MODEL= a =claude-*= id or the literal =local=, =LOCAL_MODEL=
+the ollama model used when =POLISH_MODEL= is =local=), or =voicebridge.py init= to
+just write the default prompt files. Behaviour worth knowing:
+
+- *Polish backend*: the =POLISH_MODEL= id picks the backend (=provider_of=) —
+  =local= runs the polish pass through a local ollama model
+  (=http://localhost:11434=, no API key, offline, fast); a =gemini-*= id uses the
+  Google API, a =gpt-*= id the OpenAI API, and anything else the Claude API. The
+  local path needs =ollama serve= running and the model pulled
+  (=setup-transcribe.sh local=).
+- *Org agenda*: with =ORG= = =org=, the memo is added to the user's real org
+  agenda (matching the Doom capture setup in =doom/config.org=). A =todo= runs an
+  LLM extraction (=org-prompt.md=, given today's date) that returns
+  ={title, deadline}= — "tomorrow I have to deploy Elvou" ⇒ a =* TODO Deploy
+  Elvou= with =DEADLINE:= tomorrow in =~/org/inbox.org=; "go to doctor next week"
+  ⇒ deadline +7d. A =note= becomes a heading in =~/org/notes.org=. Written
+  through the Emacs daemon (=emacsclient=; direct file append if it's down).
 
 - *CUDA with a real fallback*: =auto=/=cuda= try =float16= on the GPU first —
   the nvidia pip wheels are dlopen-preloaded by absolute path, since
@@ -6295,8 +6975,10 @@ Behaviour worth knowing:
   (whisper =initial_prompt= — vocabulary/punctuation bias, ~224-token budget) and
   =polish-prompt.md= (the Claude system prompt). Sane defaults are written on
   first run; they live outside the tangle dir so re-tangling never clobbers edits.
-- *API key*: =ANTHROPIC_API_KEY= if set, else keyring =anthropic/pill-transcribe=
-  (KWallet via the venv's =keyring=; stored by the setup script).
+- *API key*: per cloud provider — the provider's env var if set
+  (=ANTHROPIC_API_KEY= / =GOOGLE_API_KEY= / =OPENAI_API_KEY=), else the keyring
+  entry =<provider>/pill-transcribe= (KWallet via the venv's =keyring=; stored
+  from the pill's Transcribe tab).
 - *It reports for itself*: success and failure notifications are sent from here
   with =notify-send -a Transcribe= (the pill renders them with the custom
   resident styling — see [[*NotificationView.qml][=NotificationView=]]), so a
@@ -6317,16 +6999,41 @@ Behaviour worth knowing:
 # failure) are posted from here via notify-send -a Transcribe; stdout carries one
 # JSON line {"ok": bool, "mode": str, "error": str} for the pill. The wav is
 # deleted on every path.
-import json, os, subprocess, sys
+import datetime, json, os, subprocess, sys
 
 CONF_DIR = os.path.expanduser("~/.config/quickshell/transcribe")
 WHISPER_PROMPT = os.path.join(CONF_DIR, "whisper-prompt.md")
 POLISH_PROMPT = os.path.join(CONF_DIR, "polish-prompt.md")
 ICON = os.path.expanduser("~/.config/quickshell/pill/transcribe.svg")
+# permanent per-memo store (created on demand) + the org-agenda append target
+MEMO_DIR = os.path.expanduser("~/Documents/memos")
+ORG_PROMPT = os.path.join(CONF_DIR, "org-prompt.md")
+# where org memos land — matches the user's Doom capture setup (~/org is the
+# agenda root; inbox.org is the TODO capture file, notes.org the note file).
+ORG_INBOX = os.path.expanduser("~/org/inbox.org")
+ORG_NOTES = os.path.expanduser("~/org/notes.org")
 
 DEFAULT_WHISPER_PROMPT = """Casual technical dictation, in full sentences with proper punctuation and
 capitalization. Vocabulary that comes up: Quickshell, KDE, Plasma, KWin, Wayland,
 PipeWire, Emacs, org-mode, Doom, GitHub, Claude, API, QML, Python.
+"""
+
+DEFAULT_ORG_PROMPT = """You turn a short spoken memo into a single actionable org-agenda task.
+Today is {TODAY} ({WEEKDAY}).
+
+Return ONLY a JSON object — no prose, no markdown, no code fences:
+{"title": "<imperative task, capitalized, with the date/time words removed>",
+ "deadline": "<YYYY-MM-DD, or an empty string if the memo names no time>"}
+
+Resolve relative dates against today ({TODAY}):
+- "today" -> {TODAY}; "tomorrow" -> today + 1 day.
+- "next week" -> today + 7 days; "in N days"/"in N weeks" -> computed.
+- "next <weekday>" / "on <weekday>" -> the next such weekday after today.
+- an explicit date ("July 3", "3rd of August", "2026-09-01") -> that date.
+Strip the time phrase out of the title:
+  "tomorrow I have to deploy Elvou" -> {"title": "Deploy Elvou", "deadline": "<today+1>"}
+  "go to doctor next week"          -> {"title": "Go to doctor", "deadline": "<today+7>"}
+  "remember to water the plants"    -> {"title": "Water the plants", "deadline": ""}
 """
 
 DEFAULT_POLISH_PROMPT = """You clean up raw voice transcriptions. The user message is the unedited output
@@ -6346,7 +7053,8 @@ Reply with ONLY the cleaned-up text: no preamble, no quotes, no commentary.
 def ensure_prompts():
     os.makedirs(CONF_DIR, exist_ok=True)
     for path, body in ((WHISPER_PROMPT, DEFAULT_WHISPER_PROMPT),
-                       (POLISH_PROMPT, DEFAULT_POLISH_PROMPT)):
+                       (POLISH_PROMPT, DEFAULT_POLISH_PROMPT),
+                       (ORG_PROMPT, DEFAULT_ORG_PROMPT)):
         if not os.path.exists(path):
             with open(path, "w") as f:
                 f.write(body)
@@ -6377,15 +7085,39 @@ def notify(summary, body, critical=False, copy_text=None):
     subprocess.run(cmd + [summary, body], check=False)
 
 
-def api_key():
-    k = os.environ.get("ANTHROPIC_API_KEY", "")
-    if k:
-        return k
+# credentials per cloud provider — an env var wins, else the keyring entry the
+# pill writes from the Transcribe tab (service = provider, user = pill-transcribe).
+KEY_ENV = {"anthropic": ["ANTHROPIC_API_KEY"],
+           "google": ["GOOGLE_API_KEY", "GEMINI_API_KEY"],
+           "openai": ["OPENAI_API_KEY"]}
+
+
+def _get_key(provider):
+    for env in KEY_ENV.get(provider, []):
+        v = os.environ.get(env, "")
+        if v:
+            return v
     try:
         import keyring
-        return keyring.get_password("anthropic", "pill-transcribe") or ""
+        return keyring.get_password(provider, "pill-transcribe") or ""
     except Exception:
         return ""
+
+
+def api_key():
+    return _get_key("anthropic")
+
+
+# the polish/extraction model id decides the backend: "local" -> ollama,
+# "gemini*" -> the Gemini API, "gpt*" -> the OpenAI API, anything else -> Claude.
+def provider_of(model):
+    if model == "local":
+        return "local"
+    if model.startswith("gemini"):
+        return "gemini"
+    if model.startswith("gpt"):
+        return "openai"
+    return "claude"
 
 
 def preload_cuda_libs():
@@ -6427,18 +7159,53 @@ def transcribe(wav, model, language, device, vad):
     raise RuntimeError("whisper failed: %s" % last)
 
 
-def polish(text, claude_model):
+## ---- LLM completion (shared by polish + org extraction) --------------------
+# one system+user turn -> text. claude_model "local" routes to a local ollama
+# model (offline, no key); any other id uses the Claude API. json_mode asks the
+# local model for strict JSON (used by the org extractor).
+
+def _llm_local(system, user, local_model, json_mode=False):
+    import json as _json, urllib.request
+    payload = {
+        "model": local_model,
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+        "stream": False,
+        "options": {"temperature": 0.2},
+    }
+    if json_mode:
+        payload["format"] = "json"
+    req = urllib.request.Request(
+        "http://localhost:11434/api/chat",
+        data=_json.dumps(payload).encode(),
+        headers={"Content-Type": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=120) as r:
+            data = _json.loads(r.read())
+    except urllib.error.URLError as e:
+        raise RuntimeError("ollama unreachable (%s) — is `ollama serve` running "
+                           "and '%s' pulled? (setup-transcribe.sh local)" % (e, local_model))
+    out = ((data.get("message") or {}).get("content") or "").strip()
+    if not out:
+        raise RuntimeError("local model '%s' returned no text" % local_model)
+    return out
+
+
+def _llm_claude(system, user, claude_model):
     import anthropic
-    key = api_key()
+    key = _get_key("anthropic")
     if not key:
-        raise RuntimeError("no API key — store one via setup-transcribe.sh "
-                           "(keyring anthropic/pill-transcribe) or set ANTHROPIC_API_KEY")
+        raise RuntimeError("no Anthropic API key — add one in the pill's "
+                           "Transcribe tab, or switch the polish model to 'local'")
     client = anthropic.Anthropic(api_key=key)
     resp = client.messages.create(
         model=claude_model,
         max_tokens=4000,
-        system=read_prompt(POLISH_PROMPT),
-        messages=[{"role": "user", "content": text}],
+        system=system,
+        messages=[{"role": "user", "content": user}],
     )
     out = "".join(b.text for b in resp.content if b.type == "text").strip()
     if not out:
@@ -6446,12 +7213,391 @@ def polish(text, claude_model):
     return out
 
 
+def _llm_gemini(system, user, model, json_mode=False):
+    # Google Gemini via the REST API (stdlib only — no SDK). Key from the pill.
+    import json as _json, urllib.request, urllib.error
+    key = _get_key("google")
+    if not key:
+        raise RuntimeError("no Google API key — add one in the pill's Transcribe tab")
+    gen = {"temperature": 0.2}
+    if json_mode:
+        gen["responseMimeType"] = "application/json"
+    body = {
+        "systemInstruction": {"parts": [{"text": system}]},
+        "contents": [{"role": "user", "parts": [{"text": user}]}],
+        "generationConfig": gen,
+    }
+    url = ("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent" % model)
+    req = urllib.request.Request(
+        url, data=_json.dumps(body).encode(),
+        headers={"Content-Type": "application/json", "x-goog-api-key": key})
+    try:
+        with urllib.request.urlopen(req, timeout=120) as r:
+            data = _json.loads(r.read())
+    except urllib.error.HTTPError as e:
+        raise RuntimeError("gemini HTTP %s: %s" % (e.code, e.read()[:200].decode("utf-8", "replace")))
+    except urllib.error.URLError as e:
+        raise RuntimeError("gemini unreachable (%s)" % e)
+    cands = data.get("candidates") or []
+    if not cands:
+        raise RuntimeError("gemini returned no candidates (%s)" % data.get("promptFeedback"))
+    parts = ((cands[0].get("content") or {}).get("parts") or [])
+    out = "".join(p.get("text", "") for p in parts).strip()
+    if not out:
+        raise RuntimeError("gemini empty response")
+    return out
+
+
+def _llm_openai(system, user, model, json_mode=False):
+    # OpenAI via the Chat Completions REST API (stdlib only — no SDK). Key from
+    # the pill. No temperature is sent (the reasoning gpt-* models reject anything
+    # but the default), and json_mode asks for a strict JSON object.
+    import json as _json, urllib.request, urllib.error
+    key = _get_key("openai")
+    if not key:
+        raise RuntimeError("no OpenAI API key — add one in the pill's Transcribe tab")
+    body = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+    }
+    if json_mode:
+        body["response_format"] = {"type": "json_object"}
+    req = urllib.request.Request(
+        "https://api.openai.com/v1/chat/completions",
+        data=_json.dumps(body).encode(),
+        headers={"Content-Type": "application/json", "Authorization": "Bearer " + key})
+    try:
+        with urllib.request.urlopen(req, timeout=120) as r:
+            data = _json.loads(r.read())
+    except urllib.error.HTTPError as e:
+        raise RuntimeError("openai HTTP %s: %s" % (e.code, e.read()[:200].decode("utf-8", "replace")))
+    except urllib.error.URLError as e:
+        raise RuntimeError("openai unreachable (%s)" % e)
+    choices = data.get("choices") or []
+    if not choices:
+        raise RuntimeError("openai returned no choices (%s)" % data.get("error"))
+    out = ((choices[0].get("message") or {}).get("content") or "").strip()
+    if not out:
+        raise RuntimeError("openai empty response")
+    return out
+
+
+def _llm(system, user, model, local_model, json_mode=False):
+    p = provider_of(model)
+    if p == "local":
+        return _llm_local(system, user, local_model, json_mode)
+    if p == "gemini":
+        return _llm_gemini(system, user, model, json_mode)
+    if p == "openai":
+        return _llm_openai(system, user, model, json_mode)
+    return _llm_claude(system, user, model)
+
+
+## ---- in-pill setup: provider keys + local-model download -------------------
+# the Transcribe tab drives these instead of setup-transcribe.sh: report which
+# keys/models are present (status), store a cloud key (setkey -> keyring), and
+# stream an ollama model download (pull -> newline JSON progress).
+
+def _ollama_tags():
+    import json as _json, urllib.request
+    try:
+        with urllib.request.urlopen("http://localhost:11434/api/tags", timeout=5) as r:
+            data = _json.loads(r.read())
+    except Exception:
+        return []
+    return [m.get("name", "") for m in (data.get("models") or [])]
+
+
+def _ollama_has(model):
+    if not model:
+        return False
+    names = _ollama_tags()
+    if model in names or (model + ":latest") in names:
+        return True
+    if ":" not in model:                         # bare name matches any tag
+        return any(n.split(":", 1)[0] == model for n in names)
+    return False
+
+
+def cmd_status(local_model):
+    sys.stdout.write(json.dumps({
+        "anthropic": bool(_get_key("anthropic")),
+        "google": bool(_get_key("google")),
+        "openai": bool(_get_key("openai")),
+        "local": _ollama_has(local_model),
+    }))
+
+
+def cmd_setkey(provider, value):
+    if provider not in ("anthropic", "google", "openai"):
+        sys.stdout.write(json.dumps({"ok": False, "error": "unknown provider"}))
+        return
+    try:
+        import keyring
+        keyring.set_password(provider, "pill-transcribe", value)
+        sys.stdout.write(json.dumps({"ok": True}))
+    except Exception as e:
+        sys.stdout.write(json.dumps({"ok": False, "error": str(e)}))
+
+
+def cmd_pull(model):
+    # stream ollama's /api/pull; emit one compact JSON progress line at a time so
+    # the pill can drive a progress bar (SplitParser reads it line-by-line).
+    import json as _json, urllib.request, urllib.error
+    try:
+        req = urllib.request.Request(
+            "http://localhost:11434/api/pull",
+            data=_json.dumps({"model": model, "stream": True}).encode(),
+            headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=3600) as r:
+            for raw in r:
+                raw = raw.strip()
+                if not raw:
+                    continue
+                try:
+                    d = _json.loads(raw)
+                except Exception:
+                    continue
+                line = {"status": d.get("status", "")}
+                for k in ("completed", "total", "error"):
+                    if k in d:
+                        line[k] = d[k]
+                sys.stdout.write(_json.dumps(line) + "\n")
+                sys.stdout.flush()
+        sys.stdout.write(_json.dumps({"done": True}) + "\n")
+        sys.stdout.flush()
+    except urllib.error.URLError as e:
+        sys.stdout.write(_json.dumps({"error": "ollama unreachable (%s) — is it installed and running?" % e}) + "\n")
+        sys.stdout.flush()
+
+
+def polish(text, claude_model, local_model):
+    return _llm(read_prompt(POLISH_PROMPT), text, claude_model, local_model)
+
+
+## ---- permanent memo store (~/Documents/memos, one file per memo) ----------
+# each memo is a markdown file `YYYYMMDD-HHMMSS-<type>.md` with a tiny frontmatter
+# (created / type / polished) so the pill's clipboard→Memos tab can list them.
+
+# a polished memo keeps its original transcript after this marker, so the pill's
+# Memos tab can offer "see unpolished" and copy either version.
+UNPOL_MARK = "<!-- unpolished -->"
+
+
+def _memo_body(text, raw):
+    body = text.strip()
+    if raw and raw.strip() and raw.strip() != text.strip():
+        body += "\n\n" + UNPOL_MARK + "\n" + raw.strip()
+    return body + "\n"
+
+
+def _write_memo(path, created, memo_type, polished, text, raw=""):
+    fm = "---\ncreated: %s\ntype: %s\npolished: %s\n---\n" % (
+        created, memo_type, "true" if polished else "false")
+    with open(path, "w") as f:
+        f.write(fm + _memo_body(text, raw))
+
+
+def store_memo(text, memo_type, polished, raw=""):
+    os.makedirs(MEMO_DIR, exist_ok=True)
+    now = datetime.datetime.now()
+    base = now.strftime("%Y%m%d-%H%M%S") + "-" + memo_type
+    path = os.path.join(MEMO_DIR, base + ".md")
+    n = 1
+    while os.path.exists(path):          # two within the same second
+        path = os.path.join(MEMO_DIR, "%s-%d.md" % (base, n)); n += 1
+    _write_memo(path, now.isoformat(timespec="seconds"), memo_type, polished, text, raw)
+    return path
+
+
+def _read_memo(path):
+    try:
+        with open(path) as f:
+            content = f.read()
+    except OSError:
+        return None
+    meta = {"created": "", "type": "note", "polished": False}
+    body = content
+    if content.startswith("---\n"):
+        end = content.find("\n---\n", 4)
+        if end != -1:
+            for line in content[4:end].splitlines():
+                if ":" in line:
+                    k, v = line.split(":", 1)
+                    k, v = k.strip(), v.strip()
+                    if k == "polished":
+                        meta["polished"] = (v == "true")
+                    elif k in meta:
+                        meta[k] = v
+            body = content[end + 5:]
+    text, unpol = body, ""
+    marker = "\n" + UNPOL_MARK + "\n"
+    i = body.find(marker)
+    if i != -1:
+        text, unpol = body[:i], body[i + len(marker):]
+    return {"created": meta["created"], "type": meta["type"], "polished": meta["polished"],
+            "text": text.strip(), "raw": unpol.strip()}
+
+
+def list_memos():
+    try:
+        names = sorted((n for n in os.listdir(MEMO_DIR) if n.endswith(".md")), reverse=True)
+    except OSError:
+        names = []                       # dir not created yet -> empty list
+    out = []
+    for name in names:
+        m = _read_memo(os.path.join(MEMO_DIR, name))
+        if m is not None:
+            m["id"] = name
+            out.append(m)
+    sys.stdout.write(json.dumps(out))
+
+
+def delete_memo(fid):
+    try:
+        os.remove(os.path.join(MEMO_DIR, os.path.basename(fid)))
+    except OSError:
+        pass
+    sys.stdout.write(json.dumps({"ok": True}))
+
+
+def repolish_memo(fid, claude_model, local_model):
+    path = os.path.join(MEMO_DIR, os.path.basename(fid))
+    m = _read_memo(path)
+    if m is None:
+        sys.stdout.write(json.dumps({"ok": False, "error": "memo not found"}))
+        return
+    src = m["raw"] or m["text"]           # re-polish from the original transcript
+    try:
+        out = polish(src, claude_model, local_model)
+    except Exception as e:
+        notify("Polish failed", str(e), critical=True)
+        sys.stdout.write(json.dumps({"ok": False, "error": str(e)}))
+        return
+    created = m["created"] or datetime.datetime.now().isoformat(timespec="seconds")
+    _write_memo(path, created, m["type"], True, out, src)   # keep the original as unpolished
+    clip(out)
+    notify("Polished", out, copy_text=out)
+    sys.stdout.write(json.dumps({"ok": True}))
+
+
+## ---- org-agenda integration --------------------------------------------------
+# a task memo becomes a real TODO in ~/org/inbox.org with a DEADLINE parsed from
+# natural language ("tomorrow", "next week", "next Friday", …); a note becomes a
+# heading in ~/org/notes.org. Written through the running Emacs daemon so an open
+# buffer stays consistent (falls back to a direct file append if the daemon is
+# down). Matches the user's Doom capture format (see doom/config.org).
+
+def _extract_json(s):
+    s = s.strip()
+    a, b = s.find("{"), s.rfind("}")
+    if a != -1 and b > a:
+        return json.loads(s[a:b + 1])
+    raise ValueError("no JSON in model output")
+
+
+def org_extract(text, claude_model, local_model):
+    # -> (title, deadline_iso_or_empty). Resolve relative dates against today.
+    today = datetime.date.today()
+    system = (read_prompt(ORG_PROMPT)
+              .replace("{TODAY}", today.isoformat())
+              .replace("{WEEKDAY}", today.strftime("%A")))
+    data = _extract_json(_llm(system, text, claude_model, local_model, json_mode=True))
+    title = (data.get("title") or "").strip() or " ".join(text.split())[:80]
+    deadline = (data.get("deadline") or "").strip()
+    return title, deadline
+
+
+def _org_date(iso):
+    try:
+        return datetime.date.fromisoformat(iso).strftime("<%Y-%m-%d %a>")
+    except Exception:
+        return ""
+
+
+def _elisp_str(s):
+    return '"' + s.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def _emacs_append(path, entry):
+    # insert at end of the file's (daemon) buffer and save, so an already-open
+    # buffer doesn't clobber the append and the agenda picks it up immediately.
+    el = ("(condition-case nil "
+          "(progn (with-current-buffer (find-file-noselect %s) "
+          "(goto-char (point-max)) (unless (bolp) (insert \"\\n\")) (insert %s) "
+          "(save-buffer)) t) "
+          "(error nil))") % (_elisp_str(path), _elisp_str(entry))
+    try:
+        r = subprocess.run(["emacsclient", "-e", el],
+                           capture_output=True, text=True, timeout=10)
+        return r.returncode == 0 and r.stdout.strip() == "t"
+    except Exception:
+        return False
+
+
+def _append_org(path, entry):
+    if _emacs_append(path, entry):
+        return
+    os.makedirs(os.path.dirname(path), exist_ok=True)   # daemon down -> write directly
+    with open(path, "a") as f:
+        f.write("\n" + entry)
+
+
+def org_add(title, deadline, category, body=""):
+    created = datetime.datetime.now().strftime("[%Y-%m-%d %a %H:%M]")
+    if category == "todo":
+        dl = _org_date(deadline)
+        entry = "* TODO %s\n" % title
+        if dl:
+            entry += "DEADLINE: %s\n" % dl
+        entry += "CREATED: %s\n" % created
+        _append_org(ORG_INBOX, entry)
+    else:
+        entry = "* %s\nCREATED: %s\n" % (title, created)
+        if body and body.strip() and body.strip() != title:
+            entry += body.strip() + "\n"
+        _append_org(ORG_NOTES, entry)
+
+
 def main():
-    if len(sys.argv) >= 2 and sys.argv[1] == "init":
+    argv = sys.argv
+    if len(argv) >= 2 and argv[1] == "init":
         ensure_prompts()
         sys.stdout.write(json.dumps({"ok": True, "mode": "init", "error": ""}))
         return
-    wav, mode, model, language, device, vadflag, claude_model = sys.argv[1:8]
+    # memo-management subcommands (clipboard→Memos tab)
+    if len(argv) >= 2 and argv[1] == "list":
+        list_memos()
+        return
+    if len(argv) >= 3 and argv[1] == "delete":
+        delete_memo(argv[2])
+        return
+    if len(argv) >= 3 and argv[1] == "repolish":
+        cm = argv[3] if len(argv) > 3 else "claude-opus-4-8"
+        lm = argv[4] if len(argv) > 4 else "qwen2.5:3b"
+        repolish_memo(argv[2], cm, lm)
+        return
+    # in-pill setup subcommands (Transcribe tab): key status / store / model pull
+    if len(argv) >= 2 and argv[1] == "status":
+        cmd_status(argv[2] if len(argv) > 2 else "")
+        return
+    if len(argv) >= 4 and argv[1] == "setkey":
+        cmd_setkey(argv[2], argv[3])
+        return
+    if len(argv) >= 3 and argv[1] == "pull":
+        cmd_pull(argv[2])
+        return
+
+    # transcription:
+    #   wav mode model language device vad claudeModel localModel memoType org orgCategory
+    wav, mode, model, language, device, vadflag, claude_model = argv[1:8]
+    local_model = argv[8] if len(argv) > 8 else "qwen2.5:3b"
+    memo_type = argv[9] if len(argv) > 9 else "note"
+    org_flag = argv[10] if len(argv) > 10 else "noorg"
+    org_cat = argv[11] if len(argv) > 11 else "note"
     ensure_prompts()
     ok, err = True, ""
     try:
@@ -6459,9 +7605,11 @@ def main():
         if not text:
             raise RuntimeError("nothing transcribed (silence?)")
         clip(text)                  # raw text lands first, whatever happens next
+        final_text = text           # what gets stored / sent to org (polished if it lands)
         if mode == "polish":
             try:
-                out = polish(text, claude_model)
+                out = polish(text, claude_model, local_model)
+                final_text = out
                 clip(out)
                 notify("Polished", out, copy_text=out)
             except Exception as e:
@@ -6470,6 +7618,30 @@ def main():
                        "%s\n\n%s" % (e, text), critical=True, copy_text=text)
         else:
             notify("Transcribed", text, copy_text=text)
+        # every transcription is stored permanently; when polish landed, keep the
+        # original transcript too (the Memos tab can show/copy the unpolished text)
+        try:
+            polished_ok = (mode == "polish" and ok)
+            store_memo(final_text, memo_type, polished_ok, raw=(text if polished_ok else ""))
+        except Exception:
+            pass
+        if org_flag == "org":
+            try:
+                if org_cat == "todo":
+                    # extract a clean task title + a deadline from the memo
+                    title, deadline = org_extract(final_text, claude_model, local_model)
+                    org_add(title, deadline, "todo")
+                else:
+                    flat = " ".join(final_text.split())
+                    org_add(flat[:80], "", "note", body=final_text)
+            except Exception:
+                # extraction / daemon failed — fall back to a plain TODO/note so
+                # nothing is lost (the full memo is also in ~/Documents/memos)
+                try:
+                    flat = " ".join(final_text.split())
+                    org_add(flat[:80], "", org_cat, body=final_text)
+                except Exception:
+                    pass
     except Exception as e:
         ok, err = False, str(e)
         notify("Transcription failed", str(e), critical=True)
@@ -6577,11 +7749,16 @@ API key. Run it once after tangling:
    default combos — *Meta+X* record/stop, *Meta+Shift+X* record/stop+polish —
    rebindable in System Settings → Shortcuts; kglobalaccel refuses conflicts,
    so pick different keys there if these are taken.
-5. Prompts for the Anthropic API key and stores it in the keyring
-   (=anthropic/pill-transcribe=, KWallet-backed). Blank skips — raw
-   transcription works without a key; only polish needs it.
-6. Warns if the RNNoise LADSPA plugin (=noise-suppression-for-voice=) is
+5. Warns if the RNNoise LADSPA plugin (=noise-suppression-for-voice=) is
    missing — the noise-suppression toggle silently degrades without it.
+
+It no longer prompts for API keys or downloads models — those moved *into the
+pill* (Volume ▸ Transcribe tab): pick the polish model and, for a cloud model
+(Claude / Gemini), paste the provider's key into the masked field (eye toggle;
+stored in the keyring by [[*VoiceSetup.qml][=VoiceSetup=]] → =voicebridge.py
+setkey=); for =local=, a Download button pulls the ollama model with a progress
+bar. The =setup-transcribe.sh local= subcommand (pull the model from the CLI)
+still exists for convenience. Local models need =ollama= installed + running.
 *** Code
 #+begin_src sh :tangle ~/.config/quickshell/pill/setup-transcribe.sh :mkdirp yes :tangle-mode (identity #o755)
 #!/usr/bin/env bash
@@ -6593,6 +7770,28 @@ VENV="$HOME/.local/share/pill-transcribe/venv"
 PILL="$HOME/.config/quickshell/pill"
 APPS="$HOME/.local/share/applications"
 WHISPER_MODEL="${WHISPER_MODEL:-small}"
+LOCAL_MODEL="${LOCAL_MODEL:-qwen2.5:3b}"
+
+# pull the local (ollama) polish model — the "local" option in the Transcribe
+# tab's Polish setting. Additive: touches nothing else.
+setup_local() {
+    if ! command -v ollama >/dev/null 2>&1; then
+        echo "!! ollama not installed — the local polish model needs it."
+        echo "   Install: sudo pacman -S ollama  &&  systemctl enable --now ollama"
+        return 1
+    fi
+    echo "==> pulling local polish model '$LOCAL_MODEL' via ollama"
+    ollama pull "$LOCAL_MODEL"
+}
+
+# `setup-transcribe.sh local` ONLY adds the local model — it does NOT re-run the
+# venv / shortcuts / API-key setup, so it safely adds local polish to an existing
+# install without rewriting anything. Pick the model with
+# LOCAL_MODEL=llama3.2:3b setup-transcribe.sh local
+if [ "${1:-}" = "local" ]; then
+    setup_local
+    exit $?
+fi
 
 echo "==> venv at $VENV (python 3.12 — ctranslate2 wheels lag system python)"
 uv venv --python 3.12 "$VENV"
@@ -6637,18 +7836,13 @@ if [ ! -e /usr/lib/ladspa/librnnoise_ladspa.so ]; then
     echo "   Install it with: sudo pacman -S noise-suppression-for-voice"
 fi
 
-echo "==> Anthropic API key for the polish pass (stored in keyring; blank = skip,"
-echo "    raw transcription works without one)"
-read -rsp "    API key: " KEY; echo
-if [ -n "${KEY:-}" ]; then
-    "$VENV/bin/python" - "$KEY" <<'PY'
-import sys, keyring
-keyring.set_password("anthropic", "pill-transcribe", sys.argv[1])
-print("    key stored (keyring anthropic/pill-transcribe)")
-PY
-fi
-
-echo "==> done. Toggle with Meta+X (raw) / Meta+Shift+X (polish)."
+echo "==> done. Meta+X = quick raw note; Meta+Shift+X = memo menu (type/polish/org)."
+echo "    Polish backend + API keys + local-model download are all in the pill now:"
+echo "    Volume ▸ Transcribe tab (Claude / Gemini keys with an eye toggle, or a"
+echo "    Download button for the local ollama model). No key prompt here anymore."
+echo "    Memos are stored in ~/Documents/memos (see the Clipboard ▸ Memos tab)."
+echo "    Org memos go to ~/org/inbox.org (TODO + parsed DEADLINE) / ~/org/notes.org."
+echo "    (Local models still need 'ollama' installed: sudo pacman -S ollama.)"
 #+end_src
 
 ** DesktopDots.qml
@@ -6934,8 +8128,9 @@ pragma ComponentBehavior: Bound
 // UPower charge/state (6-bar granularity + a red alert glyph when critically low),
 // and the notifications icon carries a count badge for un-cleared history.
 // menuRequested(menu) fires on click; when `open`, the icon for the current `menu`
-// is highlighted. Menu ids: 0 net, 1 vol, 2 bt, 3 batt, 5 clipboard, 4 notif (the
-// clipboard sits between battery and notifications in the row). The hover highlight
+// is highlighted. Menu ids: 0 net, 1 vol, 2 bt, 3 batt, 5 clipboard, 4 notif. Row
+// order is net · bt · batt · vol · clipboard · notif (volume beside clipboard, away
+// from the similar-looking network glyph). The hover highlight
 // is NOT drawn here (only the open-menu selection): each icon reports itself via
 // itemEntered (on enter only) so the shared hover square jumps to it.
 import QtQuick
@@ -7011,9 +8206,11 @@ Row {
     Repeater {
         model: [
             { ic: root.netIcon(), fill: root.netFill(), menu: 0, warn: false, badge: 0, vpn: !!(root.netState && root.netState.vpnActive) },
-            { ic: root.volumeIcon(), fill: root.muted ? 0 : 1, menu: 1, warn: false, badge: 0 },
             { ic: "bluetooth",     fill: 0, menu: 2, warn: false, badge: 0 },
             { ic: root.batteryIcon(), fill: 1, menu: 3, warn: root.batteryLow, badge: 0 },
+            // volume sits right next to clipboard (the volume/network glyphs read
+            // alike at a glance, so keep volume away from network)
+            { ic: root.volumeIcon(), fill: root.muted ? 0 : 1, menu: 1, warn: false, badge: 0 },
             { ic: "content_paste", fill: 0, menu: 5, warn: false, badge: 0 },
             { ic: "notifications", fill: root.unread > 0 ? 1 : 0, menu: 4, warn: false, badge: root.unread }
         ]
@@ -7520,6 +8717,241 @@ Item {
         enabled: root.recording
         cursorShape: Qt.PointingHandCursor
         onClicked: root.stopRequested()
+    }
+}
+#+end_src
+
+** VoiceMemoMenu.qml
+*** Description
+The pre-record config panel (=win.menu === 7=) opened by the =voicePolishToggle=
+shortcut (=voiceToggle= still starts a quick raw note immediately). Pick the memo
+*type* (Meeting / Task / Prompt / Note) from a tile grid — *Note* is preselected,
+with *Polish* (run the transcript through the polish model) on by default — and
+toggle *Add to org agenda* (off by default). When the org toggle is on, a
+secondary TODO/NOTE selector overrides the
+type-derived category (Task ⇒ TODO, everything else ⇒ NOTE). A *Start* button
+appears once a type is chosen; pressing it commits the config to the root voice
+state and begins recording (see [[*init.qml — voice recording][the state machine]]).
+*** Code
+#+begin_src qml :tangle ~/.config/quickshell/pill/VoiceMemoMenu.qml :mkdirp yes
+pragma ComponentBehavior: Bound
+// VoiceMemoMenu.qml — pre-record config panel (menu 7), opened by voicePolishToggle.
+// Choose memo type (meeting/task/prompt/note; Note preselected), toggle Polish (on
+// by default) and Add-to-org (off; shows a TODO/NOTE override), then Start records.
+import QtQuick
+
+Item {
+    id: root
+    required property var theme
+    property var settings: null      // shared JsonAdapter (polish model ids)
+    property var setup: null         // VoiceSetup (keys + local download)
+    signal closeRequested()
+    // committed on Start: the chosen type, whether to polish, whether to add to
+    // the org agenda, and the resolved org category ("todo"/"note").
+    signal startRequested(string memoType, bool polish, bool org, string orgCategory)
+
+    property string sel: "note"      // selected type (defaults to Note; "" = none -> no Start)
+    property bool polishOn: true     // default to polishing the transcript
+    property bool orgOn: false
+    property string orgOverride: ""  // "" = derive from type; else "todo"/"note"
+
+    readonly property var types: [
+        { key: "meeting", icon: "groups",         label: "Meeting" },
+        { key: "task",    icon: "task_alt",        label: "Task" },
+        { key: "prompt",  icon: "smart_toy",       label: "Prompt" },
+        { key: "note",    icon: "sticky_note_2",   label: "Note" }
+    ]
+    // task -> a TODO, everything else -> a plain note
+    function defaultCat(t) { return t === "task" ? "todo" : "note"; }
+    readonly property string effectiveCat: root.orgOverride !== "" ? root.orgOverride : root.defaultCat(root.sel)
+
+    // one settings row: label (left) + a PillToggle (right)
+    component SwitchRow: Item {
+        id: sw
+        property string label: ""
+        property bool checked: false
+        signal toggled(bool value)
+        width: parent ? parent.width : 0
+        height: 26
+        Text {
+            anchors.left: parent.left
+            anchors.verticalCenter: parent.verticalCenter
+            text: sw.label
+            color: root.theme.text
+            font.family: root.theme.family
+            font.pixelSize: root.theme.fsNormal
+        }
+        PillToggle {
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
+            theme: root.theme
+            checked: sw.checked
+            onToggled: v => sw.toggled(v)
+        }
+    }
+
+    // scrolls when Polish is on (the shared PolishConfig adds a model + key rows)
+    Flickable {
+        anchors.fill: parent
+        contentHeight: col.implicitHeight
+        clip: true
+        boundsBehavior: Flickable.StopAtBounds
+
+    Column {
+        id: col
+        width: parent.width
+        spacing: root.theme.gap
+
+        MenuHeader { theme: root.theme; title: "Voice Memo"; onBack: root.closeRequested() }
+
+        // ---- type tiles (2×2 grid) ----
+        Grid {
+            width: parent.width
+            columns: 2
+            columnSpacing: root.theme.gap
+            rowSpacing: root.theme.gap
+            Repeater {
+                model: root.types
+                delegate: Rectangle {
+                    id: tile
+                    required property var modelData
+                    readonly property bool on: root.sel === modelData.key
+                    width: (parent.width - root.theme.gap) / 2
+                    height: 60
+                    radius: root.theme.radiusRow
+                    color: on ? root.theme.accentSoft : (tileMa.containsMouse ? root.theme.rowHi : root.theme.row)
+                    border.width: 1
+                    border.color: on ? root.theme.accent : root.theme.border
+                    Behavior on color { ColorAnimation { duration: root.theme.animFast } }
+                    Row {
+                        anchors.centerIn: parent
+                        spacing: 10
+                        MSym {
+                            anchors.verticalCenter: parent.verticalCenter
+                            icon: tile.modelData.icon
+                            size: 22
+                            fill: tile.on ? 1 : 0
+                            color: tile.on ? root.theme.accent : root.theme.textDim
+                        }
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: tile.modelData.label
+                            color: tile.on ? root.theme.text : root.theme.textDim
+                            font.family: root.theme.family
+                            font.pixelSize: root.theme.fsNormal
+                        }
+                    }
+                    MouseArea {
+                        id: tileMa
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: root.sel = tile.modelData.key
+                    }
+                }
+            }
+        }
+
+        SwitchRow {
+            label: "Polish transcript"
+            checked: root.polishOn
+            onToggled: v => root.polishOn = v
+        }
+        // polish backend picker (model + cloud key / local download), shared with
+        // the Transcribe tab — only while Polish is enabled
+        PolishConfig {
+            visible: root.polishOn
+            width: parent.width
+            theme: root.theme
+            settings: root.settings
+            setup: root.setup
+        }
+        SwitchRow {
+            label: "Add to org agenda"
+            checked: root.orgOn
+            onToggled: v => { root.orgOn = v; if (!v) root.orgOverride = ""; }
+        }
+
+        // ---- org category override (only while Add-to-org is on) ----
+        Row {
+            width: parent.width
+            height: root.orgOn ? 26 : 0
+            visible: root.orgOn
+            spacing: root.theme.gap
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                text: "As"
+                color: root.theme.faint
+                font.family: root.theme.mono
+                font.pixelSize: root.theme.fsSmall
+                font.letterSpacing: root.theme.labelSpacing
+                font.capitalization: Font.AllUppercase
+            }
+            Repeater {
+                model: ["todo", "note"]
+                delegate: Rectangle {
+                    id: catChip
+                    required property string modelData
+                    readonly property bool on: root.effectiveCat === modelData
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: catTxt.implicitWidth + 22
+                    height: 22
+                    radius: root.theme.radiusBtn
+                    color: on ? root.theme.accent : (catMa.containsMouse ? root.theme.rowHi : root.theme.row)
+                    border.width: 1
+                    border.color: on ? root.theme.accent : root.theme.border
+                    Text {
+                        id: catTxt
+                        anchors.centerIn: parent
+                        text: catChip.modelData
+                        color: catChip.on ? "#ffffff" : root.theme.text
+                        font.family: root.theme.mono
+                        font.pixelSize: root.theme.fsSmall
+                        font.letterSpacing: root.theme.labelSpacing
+                        font.capitalization: Font.AllUppercase
+                    }
+                    MouseArea {
+                        id: catMa
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: root.orgOverride = catChip.modelData
+                    }
+                }
+            }
+        }
+
+        // ---- Start (only once a type is chosen) ----
+        Rectangle {
+            width: parent.width
+            height: root.sel !== "" ? 42 : 0
+            visible: root.sel !== ""
+            radius: root.theme.radiusRow
+            color: startMa.containsMouse ? root.theme.danger : root.theme.accent
+            Behavior on color { ColorAnimation { duration: root.theme.animFast } }
+            Row {
+                anchors.centerIn: parent
+                spacing: 8
+                MSym { anchors.verticalCenter: parent.verticalCenter; icon: "mic"; fill: 1; size: 18; color: "#ffffff" }
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "Start"
+                    color: "#ffffff"
+                    font.family: root.theme.mono
+                    font.pixelSize: root.theme.fsNormal
+                    font.letterSpacing: root.theme.labelSpacing
+                    font.capitalization: Font.AllUppercase
+                }
+            }
+            MouseArea {
+                id: startMa
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.startRequested(root.sel, root.polishOn, root.orgOn, root.effectiveCat)
+            }
+        }
+    }
     }
 }
 #+end_src
@@ -9206,8 +10638,17 @@ IpcHandler {
     // idle; the one that STOPS it picks the route: voiceToggle -> raw transcript
     // to the clipboard, voicePolishToggle -> Claude-polished text. Bind to KDE
     // custom-command shortcuts (setup-transcribe.sh registers Meta+X / Meta+Shift+X).
-    function voiceToggle(): void       { root.voiceRequest("raw"); }
-    function voicePolishToggle(): void { root.voiceRequest("polish"); }
+    // voiceToggle: quick raw note — start immediately when idle, stop when recording.
+    function voiceToggle(): void {
+        if (root.voiceState === "recording") root.voiceStop();
+        else if (root.voiceState === "idle") root.voiceStartQuick();
+    }
+    // voicePolishToggle: opens the memo config menu when idle (type + polish/org
+    // switches, then Start); stops the take when recording.
+    function voicePolishToggle(): void {
+        if (root.voiceState === "recording") root.voiceStop();
+        else if (root.voiceState === "idle") root.voiceMemoRequested();
+    }
 }
 // pick the volume glyph for a level/mute state (matches the dashboard status icon).
 function volumeGlyph(v, muted) {
@@ -9352,6 +10793,12 @@ children on =SIGTERM=). Requires =cliphist= + =wl-clipboard= on =PATH=.
 #+begin_src qml
 // ---- clipboard history (cliphist watchers + shared state) ----
 Clipboard { id: clipboard }
+// permanent voice-memo store (~/Documents/memos), shown in the clipboard menu's
+// Memos tab; shares the settings adapter for the re-polish model ids.
+Memos { id: memos; settings: settings }
+// in-pill transcription setup (cloud keys + local-model download) for the
+// Transcribe tab — replaces setup-transcribe.sh's key prompt / model pull.
+VoiceSetup { id: voiceSetup; settings: settings }
 Process {
     running: true
     command: ["python", Quickshell.shellPath("clipbridge.py"), "watch"]
@@ -9645,8 +11092,15 @@ cancel.
 // pw-record, one bridge — every monitor's pill just renders it (voiceMorph).
 property string voiceState: "idle"     // "idle" | "recording" | "transcribing"
 readonly property bool voiceActive: voiceState !== "idle"
-property string voiceMode: "raw"       // "raw" | "polish" — picked at STOP time
+// per-memo config, set before a take begins: voiceToggle -> a quick raw note;
+// voicePolishToggle -> the VoiceMemoMenu (type + polish/org switches) sets these.
+property string voiceMemoType: "note"  // meeting | task | prompt | note
+property bool voicePolishEnabled: false
+property bool voiceOrgEnabled: false
+property string voiceOrgCategory: "note" // todo | note (for the org-agenda entry)
 property string voiceWavPath: ""
+// requested by voicePolishToggle when idle — a window opens the config menu (7)
+signal voiceMemoRequested()
 property bool voiceDiscard: false      // cancel: exit handlers clean up, no chaining
 property bool voicePendingStart: false // waiting for the rnnoise node before pw-record
 property bool voiceBridgeReported: false // bridge printed its JSON (it notifies itself)
@@ -9673,13 +11127,25 @@ readonly property Timer voiceRnnoiseFallback: Timer {
     onTriggered: if (root.voicePendingStart) root.startVoiceRec(false)
 }
 
-// both shortcuts land here: start when idle, stop-with-route when recording,
-// no-op while transcribing (double-toggle guard).
-function voiceRequest(mode) {
-    if (voiceState === "recording") voiceStop(mode);
-    else if (voiceState === "idle") voiceStart();
+// voiceToggle (idle): a quick raw note — no menu, no polish, no org.
+function voiceStartQuick() {
+    if (voiceState !== "idle") return;
+    voiceMemoType = "note";
+    voicePolishEnabled = false;
+    voiceOrgEnabled = false;
+    voiceOrgCategory = "note";
+    voiceBeginRecord();
 }
-function voiceStart() {
+// voicePolishToggle (idle) opens the config menu; its Start commits here.
+function voiceStartConfigured(memoType, polish, org, orgCategory) {
+    if (voiceState !== "idle") return;
+    voiceMemoType = memoType;
+    voicePolishEnabled = polish;
+    voiceOrgEnabled = org;
+    voiceOrgCategory = orgCategory;
+    voiceBeginRecord();
+}
+function voiceBeginRecord() {
     voiceDiscard = false;
     voiceBridgeReported = false;
     voiceSeconds = 0;
@@ -9702,9 +11168,8 @@ function startVoiceRec(useRnnoise) {
     voiceRecProc.command = cmd;
     voiceRecProc.running = true;
 }
-function voiceStop(mode) {
+function voiceStop() {
     if (voiceState !== "recording") return;
-    voiceMode = mode;
     voiceState = "transcribing";
     // SIGTERM lets pw-record finalize the wav header; onExited chains the bridge.
     if (voiceRecProc.running) voiceRecProc.signal(15);
@@ -9737,10 +11202,13 @@ Process {
             voiceTranscribeProc.command = [
                 Quickshell.env("HOME") + "/.local/share/pill-transcribe/venv/bin/python",
                 Quickshell.shellPath("voicebridge.py"),
-                root.voiceWavPath, root.voiceMode,
+                root.voiceWavPath, root.voicePolishEnabled ? "polish" : "raw",
                 settings.whisperModel, settings.whisperLanguage, settings.whisperDevice,
                 settings.voiceVad ? "vad" : "novad",
-                settings.claudeModel];
+                settings.claudeModel, settings.localModel,
+                root.voiceMemoType,
+                root.voiceOrgEnabled ? "org" : "noorg",
+                root.voiceOrgCategory];
             voiceTranscribeProc.running = true;
         } else {
             // pw-record died mid-take (unplugged mic, pipewire hiccup)
@@ -10039,7 +11507,8 @@ FileView {
         property string whisperDevice: "auto"     // auto | cuda | cpu
         property bool voiceNoiseSuppress: false   // record through the RNNoise filter chain
         property bool voiceVad: true              // whisper's built-in voice-activity filter
-        property string claudeModel: "claude-opus-4-8"  // polish-pass model
+        property string claudeModel: "claude-opus-4-8"  // polish model: a claude-* id, or "local"
+        property string localModel: "qwen2.5:3b"  // ollama model used when claudeModel === "local"
     }
 }
 #+end_src
@@ -10076,7 +11545,7 @@ Variants {
         // focus away. Set true by the collapsed-pill click, cleared by the backdrop.
         property bool focused: false
         property bool dash: open || launcher || focused || ctxMode
-        property int menu: 4 // 0 net, 1 vol, 2 bt, 3 batt, 5 clipboard, 6 calendar, 4 notif (default pane)
+        property int menu: 4 // 0 net, 1 vol, 2 bt, 3 batt, 5 clipboard, 6 calendar, 7 voice memo, 4 notif (default pane)
         // keyboard-focus gating. The pill grabs the compositor keyboard ONLY while
         // it actually needs it: the launcher or clipboard menu is up (both auto-focus
         // a search field and want arrow-key nav), or *some* editable field inside the
@@ -10102,7 +11571,7 @@ Variants {
         // open + launcher pill height
         // the clipboard-history menu runs 200px taller than the other panes so more
         // history is visible; every other open menu (and the launcher) uses openHeight.
-        readonly property int openPaneHeight: (open && menu === 5) ? openHeight + 200 : openHeight
+        readonly property int openPaneHeight: (open && menu === 5) ? openHeight + 200 : (open && menu === 7) ? 440 : openHeight
         // hovered dashboard geometry (its own generous, HTML-scale size — distinct
         // from the open menu's 520 so the two rows can breathe).
         readonly property int hoverWidth: 640
@@ -10215,6 +11684,21 @@ Variants {
             }
         }
 
+        // open the voice-memo config panel (menu 7) — fired by voicePolishToggle
+        // when idle. Re-firing while it's showing closes it (the shortcut also
+        // stops a running take, handled in the IPC handler).
+        function openVoiceMemo() {
+            if (win.open && win.menu === 7) {
+                win.open = false;
+            } else {
+                win.launcher = false;
+                win.ctxGroup = null;
+                win.trayItem = null;
+                win.menu = 7;
+                win.open = true;
+            }
+        }
+
         // open (or toggle shut) the calendar pane — fired by clicking the dashboard
         // date/time. Mirrors openClipboard: re-firing while it's showing closes it.
         function openCalendar() {
@@ -10276,12 +11760,22 @@ Variants {
                 win.openClipboard();
             }
 
+            // voicePolishToggle (idle) opens the config panel on every pill (like
+            // the clipboard shortcut); Start closes them all via onVoiceStateChanged.
+            function onVoiceMemoRequested() {
+                win.openVoiceMemo();
+            }
+
             // a starting voice take drops focus mode so the dashboard can't sit
-            // over the recorder (voiceMorph is gated on !dash); open panels and
-            // the launcher are left alone — the recorder just waits them out.
+            // over the recorder (voiceMorph is gated on !dash), and closes the
+            // config panel on every monitor. Open non-voice panels / the launcher
+            // are left alone — the recorder just waits them out.
             function onVoiceStateChanged() {
-                if (root.voiceState === "recording")
+                if (root.voiceState === "recording") {
                     win.focused = false;
+                    if (win.open && win.menu === 7)
+                        win.open = false;
+                }
             }
 
             target: root
@@ -10579,7 +12073,7 @@ Variants {
                     level: micPeak.peak
                     seconds: root.voiceSeconds
                     // the in-pill stop affordance == the raw route (voiceToggle)
-                    onStopRequested: root.voiceStop("raw")
+                    onStopRequested: root.voiceStop()
                 }
 
                 Behavior on opacity {
@@ -10992,7 +12486,7 @@ Variants {
 
                     anchors.fill: parent
                     active: win.open
-                    sourceComponent: win.menu === 0 ? cNet : win.menu === 1 ? cVol : win.menu === 2 ? cBt : win.menu === 3 ? cBatt : win.menu === 5 ? cClip : win.menu === 6 ? cCal : cNotif
+                    sourceComponent: win.menu === 0 ? cNet : win.menu === 1 ? cVol : win.menu === 2 ? cBt : win.menu === 3 ? cBatt : win.menu === 5 ? cClip : win.menu === 6 ? cCal : win.menu === 7 ? cVoice : cNotif
                 }
                 // chevron back -> collapse panel
 
@@ -11003,6 +12497,12 @@ Variants {
                         if (wasGrabbing)
                             root.restoreFocus();
 
+                    }
+
+                    // VoiceMemoMenu (menu 7) Start: commit the config + begin a take
+                    // (onVoiceStateChanged then closes the panel on every monitor).
+                    function onStartRequested(memoType, polish, org, orgCategory) {
+                        root.voiceStartConfigured(memoType, polish, org, orgCategory);
                     }
 
                     target: menuLoader.item
@@ -11333,11 +12833,12 @@ the action-burst content wrapper ([[*ActionBurstPill.qml][=ActionBurstPill=]]).
 
 // ---- menu components ----
 Component { id: cNet;  NetworkMenu   { theme: theme; netState: netState } }
-Component { id: cVol;  VolumeMenu    { theme: theme; settings: settings } }
+Component { id: cVol;  VolumeMenu    { theme: theme; settings: settings; setup: voiceSetup } }
 Component { id: cBt;   BluetoothMenu { theme: theme } }
 Component { id: cBatt; BatteryMenu   { theme: theme; brightness: brightness } }
-Component { id: cClip; ClipboardMenu { theme: theme; clip: clipboard } }
+Component { id: cClip; ClipboardMenu { theme: theme; clip: clipboard; memos: memos } }
 Component { id: cCal;  CalendarMenu  { theme: theme; org: orgAgenda } }
+Component { id: cVoice; VoiceMemoMenu { theme: theme; settings: settings; setup: voiceSetup } }
 Component { id: cNotif; NotificationHistory { theme: theme; notifs: notifs } }
 // the active-notification deck, reused for the pill morph and the floating stack
 Component { id: cStack; NotificationStack { theme: theme; notifs: notifs } }
