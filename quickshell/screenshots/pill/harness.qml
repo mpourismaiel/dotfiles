@@ -98,7 +98,7 @@ FloatingWindow {
     Component {
         id: cResting
         Item {
-            width: 132; height: 30
+            width: 168; height: 30
             PillSurface {
                 anchors.fill: parent; theme: theme
                 radius: Math.min(theme.radiusPanel, height / 2); wing: 12
@@ -107,6 +107,7 @@ FloatingWindow {
             CollapsedPill {
                 anchors.centerIn: parent; theme: theme
                 clock: win.clockShort; hasUnread: true
+                notifGroups: notifs.grouped; iconsMax: 4
             }
         }
     }
@@ -123,6 +124,7 @@ FloatingWindow {
             CollapsedPill {
                 anchors.centerIn: parent; theme: theme
                 clock: win.clockShort; solid: true; recordingOn: true; cameraOn: true
+                hasUnread: true; notifGroups: notifs.grouped; iconsMax: 4
             }
         }
     }
