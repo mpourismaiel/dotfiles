@@ -64,6 +64,7 @@ FloatingWindow {
         { name: "menu-finance-add", comp: cFinAdd },
         { name: "menu-finance-wishlist", comp: cFinWish },
         { name: "menu-finance-forecast", comp: cFinFore },
+        { name: "menu-finance-plan", comp: cFinPlan },
         { name: "menu-notifhistory", comp: cNotifHist },
         { name: "notif-stack",   comp: cNotifStack },
         { name: "power-hush",    comp: cPowerHush },
@@ -228,6 +229,16 @@ FloatingWindow {
             FinanceMenu {
                 anchors.fill: parent; theme: theme; fin: fin
                 Component.onCompleted: openMode("forecast")
+            }
+        }
+    }
+    Component {
+        id: cFinPlan
+        MenuHost {
+            pillW: 760
+            FinanceMenu {
+                anchors.fill: parent; theme: theme; fin: fin
+                Component.onCompleted: openMode("plan")
             }
         }
     }

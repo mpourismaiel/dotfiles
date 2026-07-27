@@ -45,13 +45,41 @@ QtObject {
         { date: "2026-07-18", description: "Groceries", kind: "expense", amount: 2100000, currency: "IRT", postings: [] }
     ]
     property var wishlist: ({
-        liquid: [{ currency: "EUR", value: 8187.50 }, { currency: "IRT", value: 84000000 }],
+        liquid: 8187.50, buffer: 1000, spendable: 7187.50, currency: "EUR",
         items: [
-            { description: "camera", amount: 200000000, currency: "IRT", affordable: false },
+            { description: "camera", amount: 920.00, currency: "EUR", affordable: true },
             { description: "headphones", amount: 150.00, currency: "EUR", affordable: true },
-            { description: "standing desk", amount: 700.00, currency: "USD", affordable: null }
+            { description: "standing desk", amount: 700.00, currency: "EUR", affordable: false }
         ]
     })
+    // savings + wishlist-purchase plan (see FinanceState.planData)
+    property var planData: ({
+        currency: "EUR", buffer: 1000, goal: 5000, goal_date: "2026-12-31", start: 8187.50,
+        months: [
+            { month: "2026-07", end_date: "2026-07-31", net: 1250.00, projected: 8437.50, floor: 1000, cushion: 7437.50, purchases: ["headphones"] },
+            { month: "2026-08", end_date: "2026-08-31", net: 1900.00, projected: 9417.50, floor: 1000, cushion: 8417.50, purchases: ["camera"] },
+            { month: "2026-09", end_date: "2026-09-30", net: 2000.00, projected: 11417.50, floor: 1000, cushion: 10417.50, purchases: [] },
+            { month: "2026-10", end_date: "2026-10-31", net: 2000.00, projected: 13417.50, floor: 1000, cushion: 12417.50, purchases: [] },
+            { month: "2026-11", end_date: "2026-11-30", net: 1400.00, projected: 14817.50, floor: 1000, cushion: 13817.50, purchases: [] },
+            { month: "2026-12", end_date: "2026-12-31", net: 2000.00, projected: 16817.50, floor: 5000, cushion: 11817.50, purchases: [] }
+        ],
+        items: [
+            { description: "headphones", price: 150.00, currency: "EUR", month: "2026-07", month_index: 0 },
+            { description: "camera", price: 920.00, currency: "EUR", month: "2026-08", month_index: 1 },
+            { description: "standing desk", price: 700.00, currency: "EUR", month: null, shortfall: 220.00 }
+        ]
+    })
+    // books (entities) — a second one so the header chip shows
+    property string entity: "personal"
+    property var entities: [{ name: "personal", default: true }, { name: "company", default: false }]
+    function loadEntities() {}
+    function loadPlan() {}
+    function switchEntity(name) { if (name) root.entity = name; }
+    function cycleEntity() {
+        var names = root.entities.map(function (e) { return e.name; });
+        var i = names.indexOf(root.entity);
+        root.switchEntity(names[(i + 1) % names.length]);
+    }
     property bool todayHasEntry: false
     property bool adding: false
     property bool privacy: false

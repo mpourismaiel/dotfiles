@@ -3313,6 +3313,26 @@ QtObject {
     property bool screenShare: false      // bound to root.screenRecording
     property date now: new Date()         // bound to sysclock.date (reactive, minutes)
 
+    // ---- book (entity): which set of journals every command targets ----
+    //   "personal" = the journals at the base dir; any other name = a subfolder
+    //   with its own main.journal (e.g. "company"). Every bridge call is scoped
+    //   to it; switching reloads whatever views are live.
+    property string entity: "personal"
+    property var entities: [{ name: "personal", default: true }]
+    function loadEntities() {
+        entitiesProc.command = root.bridge(["entities"]);
+        if (!entitiesProc.running) entitiesProc.running = true;
+    }
+    function switchEntity(name) {
+        if (name && name !== root.entity) root.entity = name;
+    }
+    function cycleEntity() {                 // header chip: hop to the next book
+        var names = (root.entities || []).map(function (e) { return e.name; });
+        if (names.length < 2) return;
+        var i = names.indexOf(root.entity);
+        root.switchEntity(names[(i + 1) % names.length]);
+    }
+
     // ---- display currency: how every amount the pill shows is valued ----
     //   "native" = as entered (mixed EUR/IRT) · "EUR"/"IRT" = market-valued.
     //   Shared by calendar + finance menu; cycling it reloads the live views.
@@ -3336,7 +3356,11 @@ QtObject {
     property var balances: ({ rows: [], totals: [] })
     property var timelineItems: []        // [{ date, description, amount, currency, kind, balance }]
     property var registerItems: []
-    property var wishlist: ({ liquid: [], items: [] })
+    property var wishlist: ({ liquid: 0, buffer: 0, spendable: 0, currency: "EUR", items: [] })
+    // savings + wishlist-purchase plan: { currency, buffer, goal, goal_date,
+    // start, months:[{month,end_date,net,projected,floor,cushion,purchases}],
+    // items:[{description,price,currency,month,month_index?,shortfall?}] }
+    property var planData: ({ currency: "EUR", buffer: 0, goal: null, months: [], items: [] })
 
     // optimistic default so the nag never flashes before the first check lands
     property bool todayHasEntry: true
@@ -3346,20 +3370,30 @@ QtObject {
     signal entryAdded()                   // fired after a successful add (reload hook)
 
     function bridge(args) {
-        return ["python", Quickshell.shellPath("hledgerbridge.py")].concat(args);
+        // every command is scoped to the current book via a leading --entity.
+        return ["python", Quickshell.shellPath("hledgerbridge.py"),
+                "--entity", root.entity].concat(args);
     }
+    // remembered so an entity switch can re-fire the same-span calendar loads
+    property string lastRangeA: ""
+    property string lastRangeB: ""
     function loadDay(key) {
         root.dayKey = key;
         dayProc.command = root.bridge(["day", key, root.displayCurrency]);
         if (!dayProc.running) dayProc.running = true;
     }
     function loadRange(a, b) {
+        root.lastRangeA = a; root.lastRangeB = b;
         rangeProc.command = root.bridge(["range", a, b]);
         if (!rangeProc.running) rangeProc.running = true;
     }
     function loadForecastRange(a, b) {
         forecastRangeProc.command = root.bridge(["frange", a, b]);
         if (!forecastRangeProc.running) forecastRangeProc.running = true;
+    }
+    function loadPlan() {
+        planProc.command = root.bridge(["plan", root.displayCurrency]);
+        if (!planProc.running) planProc.running = true;
     }
     function loadAccounts() {
         accountsProc.command = root.bridge(["accounts"]);
@@ -3380,7 +3414,7 @@ QtObject {
         if (!registerProc.running) registerProc.running = true;
     }
     function loadWishlist() {
-        wishlistProc.command = root.bridge(["wishlist"]);
+        wishlistProc.command = root.bridge(["wishlist", root.displayCurrency]);
         if (!wishlistProc.running) wishlistProc.running = true;
     }
     function checkToday() {
@@ -3398,6 +3432,17 @@ QtObject {
     // Cycling the display currency reloads the day list in place; the finance
     // menu reloads whichever report is open (it watches displayCurrency too).
     onDisplayCurrencyChanged: if (root.dayKey) root.loadDay(root.dayKey)
+
+    // Switching books re-fires every live load against the new journals; the
+    // menus watch `entity` too and re-open their current view.
+    onEntityChanged: {
+        root.checkToday();
+        if (root.dayKey) root.loadDay(root.dayKey);
+        if (root.lastRangeA) {
+            root.loadRange(root.lastRangeA, root.lastRangeB);
+            root.loadForecastRange(root.lastRangeA, root.lastRangeB);
+        }
+    }
 
     // ---- one formatter for every amount the pill renders: EUR two decimals,
     //      IRT whole Toman, en-US separators; privacy masks the number ----
@@ -3456,7 +3501,7 @@ QtObject {
         root.settings.financeNagDismissedUntil = d.toISOString();
     }
     onTodayKeyChanged: checkToday()        // midnight rollover: fresh day, fresh check
-    Component.onCompleted: checkToday()
+    Component.onCompleted: { checkToday(); loadEntities(); }
 
     // catch entries added outside the pill (Emacs) during the nag window
     property Timer freshTimer: Timer {
@@ -3533,8 +3578,28 @@ QtObject {
     property Process wishlistProc: Process {
         stdout: StdioCollector {
             onStreamFinished: {
-                try { root.wishlist = JSON.parse(this.text) || { liquid: [], items: [] }; }
-                catch (e) { root.wishlist = { liquid: [], items: [] }; }
+                var empty = { liquid: 0, buffer: 0, spendable: 0, currency: "EUR", items: [] };
+                try { root.wishlist = JSON.parse(this.text) || empty; }
+                catch (e) { root.wishlist = empty; }
+            }
+        }
+    }
+    property Process planProc: Process {
+        stdout: StdioCollector {
+            onStreamFinished: {
+                var empty = { currency: "EUR", buffer: 0, goal: null, months: [], items: [] };
+                try { root.planData = JSON.parse(this.text) || empty; }
+                catch (e) { root.planData = empty; }
+            }
+        }
+    }
+    property Process entitiesProc: Process {
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try {
+                    var arr = JSON.parse(this.text);
+                    if (arr && arr.length) root.entities = arr;
+                } catch (e) { /* keep last */ }
             }
         }
     }
@@ -3631,10 +3696,11 @@ Item {
     signal calendarRequested()
 
     // ---- mode machine ----
-    property string mode: "cal"               // cal | add | forecast | register | balances | wishlist
+    property string mode: "cal"               // cal | add | forecast | register | balances | wishlist | plan
     readonly property bool calLike: root.mode === "cal" || root.mode === "add"
     readonly property var reportTitles: ({ forecast: "Forecast", register: "Register",
-                                           balances: "Balances", wishlist: "Wishlist" })
+                                           balances: "Balances", wishlist: "Wishlist",
+                                           plan: "Plan" })
     function openMode(m) {
         root.mode = m;
         root.addError = "";
@@ -3648,6 +3714,7 @@ Item {
         if (m === "register") { root.fin.loadRegister(root.registerFilter, 50); }
         if (m === "balances") { root.fin.loadBalances(); }
         if (m === "wishlist") { root.fin.loadWishlist(); }
+        if (m === "plan")     { root.fin.loadPlan(); }
     }
 
     // ---- view state (mirrors CalendarMenu) ----
@@ -3663,6 +3730,15 @@ Item {
     // ---- report state ----
     property int forecastHorizon: 12          // timeline months ahead; grows on scroll
     property string registerFilter: ""        // "" | expenses | income | assets
+    readonly property var planMonths: (root.fin && root.fin.planData && root.fin.planData.months)
+        ? root.fin.planData.months : []
+    readonly property var planUnbuyable: {    // wishlist items that never fit the horizon
+        var items = (root.fin && root.fin.planData && root.fin.planData.items)
+            ? root.fin.planData.items : [];
+        var out = [];
+        for (var i = 0; i < items.length; i++) if (!items[i].month) out.push(items[i]);
+        return out;
+    }
 
     // ---- add-form state ----
     property string addKind: "expense"        // expense | income
@@ -3964,6 +4040,11 @@ Item {
         function onDisplayCurrencyChanged() {
             if (!root.calLike) root.loadModeData(root.mode);
         }
+        // book switched: FinanceState re-fires the calendar loads; here we
+        // re-open whichever report is showing so it reflects the new book.
+        function onEntityChanged() {
+            if (!root.calLike) root.loadModeData(root.mode);
+        }
         function onAddFinished(ok, error) {
             if (!ok) { root.addError = error || "add failed"; return; }
             descInput.text = "";
@@ -4007,6 +4088,50 @@ Item {
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
                 onClicked: root.toggleCalendar()
+            }
+            Behavior on color { ColorAnimation { duration: root.theme.animFast } }
+        }
+
+        // book chip — cycles through the finance books (personal / company / …);
+        // hidden when there is only one book. A non-personal book is gold-badged.
+        Rectangle {
+            visible: root.fin && root.fin.entities && root.fin.entities.length > 1
+            width: hdrBookRow.implicitWidth + 18
+            height: 24
+            radius: root.theme.radiusBtn
+            anchors.verticalCenter: parent.verticalCenter
+            color: hdrBookMa.containsMouse ? root.theme.rowHi : root.theme.row
+            border.width: 1
+            border.color: root.fin && root.fin.entity !== "personal"
+                        ? root.theme.money : "transparent"
+            Row {
+                id: hdrBookRow
+                anchors.centerIn: parent
+                spacing: 5
+                MSym {
+                    anchors.verticalCenter: parent.verticalCenter
+                    icon: "menu_book"
+                    size: 14
+                    color: root.fin && root.fin.entity !== "personal"
+                         ? root.theme.money : root.theme.textDim
+                }
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: root.fin ? root.fin.entity : "personal"
+                    color: root.fin && root.fin.entity !== "personal"
+                         ? root.theme.money : root.theme.textDim
+                    font.family: root.theme.mono
+                    font.pixelSize: root.theme.fsSmall
+                    font.letterSpacing: root.theme.labelSpacing
+                    font.capitalization: Font.AllUppercase
+                }
+            }
+            MouseArea {
+                id: hdrBookMa
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: if (root.fin) root.fin.cycleEntity()
             }
             Behavior on color { ColorAnimation { duration: root.theme.animFast } }
         }
@@ -4550,6 +4675,7 @@ Item {
             Repeater {
                 model: [
                     { key: "forecast", ic: "query_stats",     label: "Forecast" },
+                    { key: "plan",     ic: "savings",         label: "Plan" },
                     { key: "register", ic: "receipt_long",    label: "Register" },
                     { key: "balances", ic: "account_balance", label: "Balances" },
                     { key: "wishlist", ic: "favorite",        label: "Wishlist" }
@@ -4557,7 +4683,7 @@ Item {
                 delegate: Rectangle {
                     id: tile
                     required property var modelData
-                    width: (switcher.width - 18) / 4
+                    width: (switcher.width - 24) / 5
                     height: 46
                     radius: root.theme.radiusBtn
                     color: tileMa.containsMouse ? root.theme.rowHi : root.theme.row
@@ -5327,16 +5453,15 @@ Item {
         width: root.width
         height: root.gridH
 
-        // liquid strip
+        // liquid − buffer = spendable strip (affordability subtracts the buffer)
         Text {
             id: liquidHead
             text: {
-                var l = (root.fin && root.fin.wishlist.liquid) ? root.fin.wishlist.liquid : [];
-                if (!l.length || !root.fin) return "Liquid: —";
-                var parts = [];
-                for (var i = 0; i < l.length; i++)
-                    parts.push(root.fin.fmtAmount(l[i].value, l[i].currency));
-                return "Liquid: " + parts.join(" · ");
+                if (!root.fin) return "Liquid: —";
+                var w = root.fin.wishlist, cur = w.currency || "EUR";
+                return "Spendable " + root.fin.fmtAmount(w.spendable || 0, cur)
+                     + "   =  liquid " + root.fin.fmtAmount(w.liquid || 0, cur)
+                     + " − buffer " + root.fin.fmtAmount(w.buffer || 0, cur);
             }
             color: root.theme.textDim
             font.family: root.theme.mono
@@ -5403,6 +5528,165 @@ Item {
                 Text {
                     visible: !root.fin || !root.fin.wishlist.items || root.fin.wishlist.items.length === 0
                     text: "Wishlist is empty — add items to wishlist.journal."
+                    color: root.theme.faint
+                    font.family: root.theme.family
+                    font.italic: true
+                    font.pixelSize: root.theme.fsNormal
+                }
+            }
+        }
+    }
+
+    // ---- plan: month-by-month savings + wishlist-purchase schedule ----
+    Item {
+        visible: root.mode === "plan"
+        x: 0
+        y: root.gridTop
+        width: root.width
+        height: root.gridH
+
+        // targets strip (buffer + goal from plan.conf)
+        Text {
+            id: planHead
+            readonly property var pd: root.fin ? root.fin.planData : ({})
+            text: {
+                if (!root.fin) return "—";
+                var cur = planHead.pd.currency || "EUR";
+                var s = "Keep ≥ " + root.fin.fmtAmount(planHead.pd.buffer || 0, cur) + " buffer";
+                if (planHead.pd.goal)
+                    s += "   ·   reach " + root.fin.fmtAmount(planHead.pd.goal, cur)
+                       + " by " + planHead.pd.goal_date;
+                return s;
+            }
+            color: root.theme.textDim
+            font.family: root.theme.mono
+            font.pixelSize: root.theme.fsSmall
+            font.letterSpacing: root.theme.labelSpacing
+            font.capitalization: Font.AllUppercase
+        }
+
+        Flickable {
+            anchors.top: planHead.bottom
+            anchors.topMargin: root.theme.gap
+            anchors.bottom: parent.bottom
+            width: parent.width
+            contentHeight: planCol.height
+            clip: true
+            Column {
+                id: planCol
+                width: parent.width
+                spacing: 6
+
+                Repeater {
+                    model: root.planMonths
+                    delegate: Item {
+                        id: pRow
+                        required property var modelData
+                        readonly property var buys: pRow.modelData.purchases || []
+                        readonly property string cur: (root.fin && root.fin.planData.currency)
+                            ? root.fin.planData.currency : "EUR"
+                        width: planCol.width
+                        height: pRow.buys.length ? 40 : 22
+
+                        Text {                       // month label
+                            id: pMonth
+                            anchors.left: parent.left
+                            y: 0
+                            text: root.monthLabel(pRow.modelData.month)
+                            color: root.theme.text
+                            font.family: root.theme.mono
+                            font.pixelSize: root.theme.fsSmall
+                            font.capitalization: Font.AllUppercase
+                            font.letterSpacing: root.theme.labelSpacing
+                        }
+                        Text {                       // save Δ → projected balance
+                            anchors.right: parent.right
+                            y: 0
+                            text: (root.fin ? (((pRow.modelData.net || 0) >= 0 ? "+" : "−")
+                                    + root.fin.fmtAmount(Math.abs(pRow.modelData.net || 0), pRow.cur))
+                                    : "")
+                                  + "  →  " + (root.fin
+                                    ? root.fin.fmtAmount(pRow.modelData.projected || 0, pRow.cur) : "")
+                            color: root.theme.textDim
+                            font.family: root.theme.mono
+                            font.pixelSize: root.theme.fsSmall
+                        }
+                        Text {                       // cushion above the floor
+                            anchors.left: pMonth.right
+                            anchors.leftMargin: 10
+                            y: 0
+                            text: root.fin ? ("cushion " + root.fin.fmtAmount(
+                                    pRow.modelData.cushion || 0, pRow.cur)) : ""
+                            color: (pRow.modelData.cushion || 0) < 0 ? root.theme.danger
+                                 : root.theme.faint
+                            font.family: root.theme.mono
+                            font.pixelSize: root.theme.fsSmall - 2
+                        }
+                        Row {                        // buy: … (gold, only when purchases)
+                            visible: pRow.buys.length > 0
+                            anchors.left: parent.left
+                            anchors.bottom: parent.bottom
+                            spacing: 5
+                            MSym {
+                                anchors.verticalCenter: parent.verticalCenter
+                                icon: "shopping_bag"
+                                size: 13
+                                color: root.theme.money
+                            }
+                            Text {
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: "buy: " + pRow.buys.join(", ")
+                                color: root.theme.money
+                                font.family: root.theme.family
+                                font.pixelSize: root.theme.fsNormal
+                            }
+                        }
+                    }
+                }
+
+                // items that never fit within the plan horizon
+                Text {
+                    visible: root.planUnbuyable.length > 0
+                    text: "Not yet within reach:"
+                    color: root.theme.textDim
+                    font.family: root.theme.mono
+                    font.pixelSize: root.theme.fsSmall
+                    font.letterSpacing: root.theme.labelSpacing
+                    font.capitalization: Font.AllUppercase
+                    topPadding: 6
+                }
+                Repeater {
+                    model: root.planUnbuyable
+                    delegate: Item {
+                        id: uRow
+                        required property var modelData
+                        width: planCol.width
+                        height: 20
+                        Text {
+                            anchors.left: parent.left
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: uRow.modelData.description
+                            color: root.theme.text
+                            font.family: root.theme.family
+                            font.pixelSize: root.theme.fsNormal
+                        }
+                        Text {
+                            anchors.right: parent.right
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: (root.fin && uRow.modelData.shortfall != null)
+                                ? ("need " + root.fin.fmtAmount(uRow.modelData.shortfall,
+                                    root.fin.planData.currency || "EUR") + " more")
+                                : "no rate"
+                            color: root.theme.faint
+                            font.family: root.theme.mono
+                            font.pixelSize: root.theme.fsSmall
+                        }
+                    }
+                }
+
+                Text {
+                    visible: root.planMonths.length === 0
+                    text: "No plan yet — set a buffer/goal in plan.conf and add a forecast."
                     color: root.theme.faint
                     font.family: root.theme.family
                     font.italic: true
@@ -9341,8 +9625,19 @@ missing, data commands print =[]= / empty shapes and the UI just shows nothing.
 #                      from today over the next `mo` months, real + forecast events
 #                      (--historical: balance starts from the current asset total)
 #   register [q][n][CUR] print JSON [txn_row, …] newest first, at most n (default 50)
-#   wishlist           print JSON {liquid, items: [{description, amount, currency, affordable}]}
+#   wishlist [CUR]     print JSON {liquid, buffer, spendable, currency,
+#                      items: [{description, amount, currency, affordable}]} — a
+#                      wish is affordable when (liquid − buffer) ≥ its price
+#   plan [CUR]         print JSON {currency, buffer, goal, goal_date, start,
+#                      months: [{month, end_date, net, projected, floor, cushion,
+#                      purchases}], items: [{description, price, currency, month,
+#                      month_index?, shortfall?}]} — a month-by-month savings +
+#                      wishlist-purchase schedule (see cmd_plan)
+#   entities           print JSON [{name, default}] — the available books
 #   today-has-entry    print JSON {has, count}
+#
+# A LEADING `--entity NAME` (or `-E NAME`) selects the book; default "personal".
+#   python hledgerbridge.py --entity company balances EUR
 #
 # CUR is one of: native (no conversion — the amount as entered), EUR, IRT. EUR/IRT
 # value every amount at market price (`-X CUR --infer-market-prices`), so rates
@@ -9359,8 +9654,26 @@ missing, data commands print =[]= / empty shapes and the UI just shows nothing.
 # if hledger fails, data commands print empty shapes and the UI shows nothing.
 import sys, os, json, subprocess, datetime
 
-FINANCE_DIR = os.path.expanduser(os.environ.get("PILL_FINANCE_DIR",
-                                                "~/Documents/finance"))
+# A "book" (entity) is a self-contained set of journals. The DEFAULT book,
+# "personal", is the journals sitting at the base dir. Any subfolder that holds
+# its own main.journal is another book (e.g. company/). BASE_DIR is the parent
+# of all books (override: PILL_FINANCE_DIR).
+BASE_DIR = os.path.expanduser(os.environ.get("PILL_FINANCE_DIR",
+                                             "~/Documents/finance"))
+
+
+def entity_dir(entity):
+    """Folder for a book. 'personal'/''/None → the base dir when it holds the
+    root journals, else base/personal; any other name → base/<name>."""
+    if entity in ("", "personal", None):
+        if os.path.exists(os.path.join(BASE_DIR, "main.journal")):
+            return BASE_DIR
+        return os.path.join(BASE_DIR, "personal")
+    return os.path.join(BASE_DIR, entity)
+
+
+# Rebound per-invocation in main() once --entity is parsed; default = personal.
+FINANCE_DIR = entity_dir("personal")
 MAIN = os.path.join(FINANCE_DIR, "main.journal")
 WISHLIST = os.path.join(FINANCE_DIR, "wishlist.journal")
 
@@ -9368,10 +9681,106 @@ MONTHS = ["january", "february", "march", "april", "may", "june", "july",
           "august", "september", "october", "november", "december"]
 
 
-def run_hledger(args, file=MAIN):
-    """hledger stdout, or None on any failure (missing binary/journal, bad rc)."""
+def cmd_entities():
+    """List books: [{name, default}]. 'personal' (the root journals) first when
+    they exist, then every subfolder of BASE_DIR carrying its own main.journal."""
+    out = []
+    if os.path.exists(os.path.join(BASE_DIR, "main.journal")):
+        out.append({"name": "personal", "default": True})
     try:
-        r = subprocess.run(["hledger", "-f", file] + args,
+        for name in sorted(os.listdir(BASE_DIR)):
+            d = os.path.join(BASE_DIR, name)
+            if os.path.isdir(d) and os.path.exists(os.path.join(d, "main.journal")):
+                out.append({"name": name, "default": not out})
+    except Exception:
+        pass
+    return out or [{"name": "personal", "default": True}]
+
+
+def _num(s):
+    """Parse a plan.conf number: strips thousands separators / stray text."""
+    try:
+        return float(str(s).replace(",", "").replace("_", "").strip())
+    except Exception:
+        return 0.0
+
+
+def read_plan_conf():
+    """The current book's plan.conf → {currency, buffer, goal, goal_date}.
+    Missing file or keys degrade to no floor / no goal."""
+    conf = {"currency": "EUR", "buffer": 0.0, "goal": None, "goal_date": None}
+    try:
+        with open(os.path.join(FINANCE_DIR, "plan.conf")) as f:
+            for line in f:
+                line = line.split("#", 1)[0].strip()
+                if not line:
+                    continue
+                parts = line.split(None, 1)
+                if len(parts) < 2:
+                    continue
+                k, v = parts[0].lower(), parts[1].strip()
+                if k == "currency":
+                    conf["currency"] = v
+                elif k == "buffer":
+                    conf["buffer"] = _num(v)
+                elif k == "goal":
+                    conf["goal"] = _num(v) if v else None
+                elif k in ("goal-date", "goal_date"):
+                    conf["goal_date"] = v or None
+    except Exception:
+        pass
+    return conf
+
+
+def market_rate(frm, to):
+    """Market value of 1 `frm` in `to` at today's rate, using the book's prices
+    (prices.journal + inferred @@ costs). 1.0 if same commodity, None if no rate
+    connects them. A one-line synthetic txn is fed on stdin alongside the real
+    journal (`-f MAIN -f -`) so its own prices apply."""
+    if frm == to:
+        return 1.0
+    try:
+        today = datetime.date.today().isoformat()
+        synth = "%s rate\n    a  1.00 %s\n    b\n" % (today, frm)
+        r = subprocess.run(["hledger", "-f", MAIN, "-f", "-", "balance", "a",
+                            "-X", to, "--infer-market-prices", "-O", "json"],
+                           input=synth, capture_output=True, text=True, timeout=15)
+        if r.returncode != 0:
+            return None
+        rows, _ = json.loads(r.stdout)
+        for row in rows:
+            for amt in row[3]:
+                if amt.get("acommodity") == to:
+                    return amt.get("aquantity", {}).get("floatingPoint")
+    except Exception:
+        return None
+    return None
+
+
+def plan_targets(cur):
+    """Resolve the display currency + buffer/goal for the plan and wishlist.
+    Returns (pc, buffer_in_pc, goal_in_pc, goal_date, conf). buffer/goal are
+    stored in conf['currency']; when the requested display currency differs they
+    are converted at market rate so the floor stays meaningful. If no rate is
+    available we fall back to showing everything in the plan currency."""
+    conf = read_plan_conf()
+    pc = cur if cur in ("EUR", "IRT") else conf["currency"]
+    rate = 1.0
+    if pc != conf["currency"]:
+        rate = market_rate(conf["currency"], pc)
+        if not rate:                       # no rate → don't fake it; stay native
+            pc, rate = conf["currency"], 1.0
+    buf = (conf["buffer"] or 0.0) * rate
+    goal = conf["goal"] * rate if conf["goal"] is not None else None
+    return pc, buf, goal, conf["goal_date"], conf
+
+
+def run_hledger(args, file=None):
+    """hledger stdout, or None on any failure (missing binary/journal, bad rc).
+    `file` defaults to the current book's main.journal (resolved at call time so
+    an --entity switch in main() is honoured)."""
+    try:
+        r = subprocess.run(["hledger", "-f", file or MAIN] + args,
                            capture_output=True, text=True, timeout=15)
         return r.stdout if r.returncode == 0 else None
     except Exception:
@@ -9383,7 +9792,7 @@ def val(cur):
     return ["-X", cur, "--infer-market-prices"] if cur in ("EUR", "IRT") else []
 
 
-def print_json(args, file=MAIN):
+def print_json(args, file=None):
     """Parsed `hledger print -x -O json` transactions, [] on failure.
 
     -x makes elided amounts explicit so every posting carries a value."""
@@ -9605,21 +10014,176 @@ def cmd_register(query, limit, cur="native"):
     return list(reversed(rows))[:limit]
 
 
-def cmd_wishlist():
-    liquid = balance_data(["assets"])["totals"]
-    have = {a["currency"]: a["value"] for a in liquid}
-    items = []
+def valued_total(query, cur):
+    """Single float: the total of `query` valued in `cur`. (After valuation the
+    totals coalesce to one commodity, so summing is safe.)"""
+    return sum(t["value"] for t in balance_data(query, cur)["totals"])
+
+
+def wishlist_ordered_valued(cur):
+    """Wishlist items in FILE ORDER (the buy priority), each with its price
+    valued in `cur`. Prices come from the book's prices.journal, so valuation
+    runs against MAIN *and* the wishlist file together (`-f MAIN -f WISHLIST`);
+    the wishlist file alone carries no exchange rates. `price` is None when no
+    rate connects the item's commodity to `cur`."""
+    ordered = []
     for t in print_json([], WISHLIST):
         row = txn_row(t)
         wish = [p for p in row["postings"] if p["account"].startswith("wishlist")]
         if not wish:
             continue
-        cur = wish[0]["currency"]
-        price = sum(p["value"] for p in wish if p["currency"] == cur)
-        items.append({"description": row["description"], "amount": price,
-                      "currency": cur,
-                      "affordable": (have[cur] >= price) if cur in have else None})
-    return {"liquid": liquid, "items": items}
+        ncur = wish[0]["currency"]
+        namt = sum(p["value"] for p in wish if p["currency"] == ncur)
+        ordered.append({"description": row["description"],
+                        "account": wish[0]["account"],
+                        "native_amount": namt, "native_currency": ncur})
+    valmap = {}
+    out = run_hledger(["-f", WISHLIST, "balance", "^wishlist", "--flat",
+                       "--no-total", "-O", "json"] + val(cur))
+    if out:
+        try:
+            rows, _ = json.loads(out)
+            for r in rows:
+                valmap[r[0]] = sum(a.get("aquantity", {}).get("floatingPoint", 0)
+                                   for a in r[3])
+        except Exception:
+            pass
+    for it in ordered:
+        it["price"] = valmap.get(
+            it["account"],
+            it["native_amount"] if it["native_currency"] == cur else None)
+    return ordered
+
+
+def cmd_wishlist(cur=None):
+    """Wishlist with buffer-aware affordability. A wish is affordable when
+    liquid assets MINUS the plan buffer still cover its price — so a purchase is
+    never called affordable if it would eat into your base needed money. Honours
+    the display currency (EUR/IRT re-value everything, buffer included)."""
+    pc, buffer, _goal, _gd, _conf = plan_targets(cur)
+    liquid = valued_total(["assets"], pc)
+    spendable = liquid - buffer
+    items = []
+    for it in wishlist_ordered_valued(pc):
+        price = it["price"]
+        items.append({"description": it["description"],
+                      "amount": price if price is not None else it["native_amount"],
+                      "currency": pc if price is not None else it["native_currency"],
+                      "affordable": (spendable >= price) if price is not None else None})
+    return {"liquid": liquid, "buffer": buffer, "spendable": spendable,
+            "currency": pc, "items": items}
+
+
+def first_of_month(d):
+    return datetime.date(d.year, d.month, 1)
+
+
+def month_trajectory(cur, until):
+    """[{month:'YYYY-MM', end_date, balance}] — projected month-end liquid-asset
+    balances from this month through the month containing `until`, forecast +
+    historical (running from today's real total), valued in `cur`."""
+    today = datetime.date.today()
+    end = add_months(first_of_month(until), 1)   # exclusive: include until's month
+    out = run_hledger(["balance", "assets", "--forecast", "-H", "-M",
+                       "--depth", "1", "-b", first_of_month(today).isoformat(),
+                       "-e", end.isoformat(), "-O", "json"] + val(cur))
+    if not out:
+        return []
+    try:
+        d = json.loads(out)
+    except Exception:
+        return []
+    totals = d.get("prTotals", {}).get("prrAmounts", [])
+    months = []
+    for i, per in enumerate(d.get("prDates", [])):
+        start = per[0].get("contents", "")
+        endbound = per[1].get("contents", "")
+        try:
+            end_date = (datetime.date.fromisoformat(endbound)
+                        - datetime.timedelta(days=1)).isoformat()
+        except Exception:
+            end_date = endbound
+        amts = totals[i] if i < len(totals) else []
+        bal = sum(a.get("aquantity", {}).get("floatingPoint", 0) for a in amts)
+        months.append({"month": start[:7], "end_date": end_date, "balance": bal})
+    return months
+
+
+def cmd_plan(cur=None):
+    """A month-by-month savings + wishlist-purchase schedule for the current
+    book. It starts from the projected month-end balance trajectory (forecast,
+    valued in the plan currency), then walks the wishlist IN FILE ORDER and
+    places each item in the EARLIEST month where buying it keeps every later
+    month-end balance at or above the floor. The floor is `buffer` before
+    goal-date and max(buffer, goal) on/after it — so a purchase can never drop a
+    projected balance below your base needed money (or your saved-by goal).
+    Purchases never move earlier than a higher-priority item's month, so entry
+    order is respected; they need not land in the same month. Honours the display
+    currency (EUR/IRT re-value the whole plan, buffer + goal included)."""
+    pc, buffer, goal, gdate, conf = plan_targets(cur)
+    today = datetime.date.today()
+    horizon = add_months(today, 12)
+    if gdate:
+        try:
+            gd = datetime.date.fromisoformat(gdate)
+            if gd > horizon:
+                horizon = gd
+        except Exception:
+            gdate = None
+    months = month_trajectory(pc, horizon)
+    base = {"currency": pc, "buffer": buffer, "goal": goal, "goal_date": gdate}
+    if not months:
+        return dict(base, start=0.0, months=[], items=[])
+    start = valued_total(["assets"], pc)
+    # baseline monthly net (before any purchase) = Δ of month-end balances
+    prev = start
+    for m in months:
+        m["net"] = m["balance"] - prev
+        prev = m["balance"]
+    # per-month floor
+    def floor_at(i):
+        if goal is not None and gdate and months[i]["end_date"] >= gdate:
+            return max(buffer, goal)
+        return buffer
+    floors = [floor_at(i) for i in range(len(months))]
+    bal = [m["balance"] for m in months]        # mutated as purchases are placed
+    items = wishlist_ordered_valued(pc)
+    plan_items = []
+    min_i = 0
+    for it in items:
+        price = it["price"]
+        rec = {"description": it["description"], "price": price, "currency": pc}
+        placed = None
+        if price is not None:
+            for i in range(min_i, len(months)):
+                if all(bal[k] - price >= floors[k] for k in range(i, len(months))):
+                    placed = i
+                    for k in range(i, len(months)):
+                        bal[k] -= price
+                    min_i = i
+                    break
+        if placed is not None:
+            rec["month"] = months[placed]["month"]
+            rec["month_index"] = placed
+        else:
+            rec["month"] = None
+            if price is not None:
+                # best headroom any allowed month offers; shortfall = how much
+                # more you'd need for it to ever fit within the horizon.
+                best = None
+                for i in range(min_i, len(months)):
+                    head = min(bal[k] - floors[k] for k in range(i, len(months)))
+                    best = head if best is None else max(best, head)
+                rec["shortfall"] = price - (best or 0.0)
+        plan_items.append(rec)
+    month_out = []
+    for i, m in enumerate(months):
+        buys = [p["description"] for p in plan_items if p.get("month_index") == i]
+        month_out.append({"month": m["month"], "end_date": m["end_date"],
+                          "net": m["net"], "projected": bal[i],
+                          "floor": floors[i], "cushion": bal[i] - floors[i],
+                          "purchases": buys})
+    return dict(base, start=start, months=month_out, items=plan_items)
 
 
 def cmd_today_has_entry():
@@ -9629,7 +10193,14 @@ def cmd_today_has_entry():
 
 
 def main():
+    global FINANCE_DIR, MAIN, WISHLIST
     argv = sys.argv[1:]
+    # optional leading `--entity NAME` / `-E NAME` selects the book
+    if len(argv) >= 2 and argv[0] in ("--entity", "-E"):
+        FINANCE_DIR = entity_dir(argv[1])
+        MAIN = os.path.join(FINANCE_DIR, "main.journal")
+        WISHLIST = os.path.join(FINANCE_DIR, "wishlist.journal")
+        argv = argv[2:]
     cmd = argv[0] if argv else ""
     if cmd == "range" and len(argv) > 2:
         out = cmd_range(argv[1], argv[2])
@@ -9651,7 +10222,11 @@ def main():
         limit = int(argv[2]) if len(argv) > 2 else 50
         out = cmd_register(query, limit, argv[3] if len(argv) > 3 else "native")
     elif cmd == "wishlist":
-        out = cmd_wishlist()
+        out = cmd_wishlist(argv[1] if len(argv) > 1 else None)
+    elif cmd == "plan":
+        out = cmd_plan(argv[1] if len(argv) > 1 else None)
+    elif cmd == "entities":
+        out = cmd_entities()
     elif cmd == "today-has-entry":
         out = cmd_today_has_entry()
     else:
