@@ -376,12 +376,17 @@ looks ahead.
             '("Upcoming 30 days" "Next 3 months balances" "Projected income statement")
             nil t)
       ("Upcoming 30 days"
+       ;; -H seeds the running balance with the current asset total; without the
+       ;; tag filter the projection includes already-recorded future-dated real
+       ;; txns too, so the balance column reflects where you actually land.
        (mp/hledger--run "forecast: upcoming"
-                        (list "register" "--forecast=today.."
-                              "tag:generated-transaction" "-e" in30)))
+                        (list "register" "assets" "--forecast=today.."
+                              "-H" "-e" in30)))
       ("Next 3 months balances"
+       ;; -H makes each month column the projected end-of-month balance
+       ;; (opening balance carried in) instead of just that month's change.
        (mp/hledger--run "forecast: balances"
-                        (list "balance" "--forecast" "-M" "-e" in92)))
+                        (list "balance" "--forecast" "-H" "-M" "-e" in92)))
       ("Projected income statement"
        (mp/hledger--run "forecast: income statement"
                         (list "incomestatement" "-M" "--forecast" "-e" in92))))))

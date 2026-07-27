@@ -9317,6 +9317,7 @@ missing, data commands print =[]= / empty shapes and the UI just shows nothing.
 #   timeline CUR [mo]  print JSON [{date, description, amount, currency, kind,
 #                      balance:[{currency,value}]}] — a running assets projection
 #                      from today over the next `mo` months, real + forecast events
+#                      (--historical: balance starts from the current asset total)
 #   register [q][n][CUR] print JSON [txn_row, …] newest first, at most n (default 50)
 #   wishlist           print JSON {liquid, items: [{description, amount, currency, affordable}]}
 #   today-has-entry    print JSON {has, count}
@@ -9549,12 +9550,14 @@ def kind_of(account, amount):
 def cmd_timeline(cur="native", months=12):
     """A running projection of liquid assets from today over the next `months`.
     One row per real-or-forecast event that moves an asset account, each with the
-    event amount and the projected running balance after it (register semantics)."""
+    event amount and the projected running balance after it (register semantics).
+    `-H` (--historical) seeds the running balance with the actual current asset
+    balance, so the projection continues from today's real total rather than 0."""
     today = datetime.date.today()
     span = "%s..%s" % (today.isoformat(),
                        add_months(today, months).isoformat())
     out = run_hledger(["register", "assets", "--forecast=" + span,
-                       "date:" + span, "-O", "json"] + val(cur))
+                       "date:" + span, "-H", "-O", "json"] + val(cur))
     if out is None:
         return []
     try:
