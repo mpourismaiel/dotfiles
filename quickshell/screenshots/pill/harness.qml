@@ -124,7 +124,8 @@ FloatingWindow {
             CollapsedPill {
                 anchors.centerIn: parent; theme: theme
                 clock: win.clockShort; solid: true; recordingOn: true; cameraOn: true
-                hasUnread: true; notifGroups: notifs.grouped; iconsMax: 4
+                // a screencast auto-enters DND → app strip hidden, generic dot shown
+                dnd: true; hasUnread: true; notifGroups: notifs.grouped; iconsMax: 4
             }
         }
     }

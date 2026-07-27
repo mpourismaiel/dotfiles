@@ -6766,11 +6766,12 @@ QtObject {
         if (!root.stamps[n.id])
             root.stamps[n.id] = (new Date()).getTime();
         n.tracked = true;                     // keep it for history
-        // rebuild the grouped history now: setting tracked=true doesn't reliably
-        // fire trackedNotificationsChanged for a fresh arrival, so without this the
-        // history (and the collapsed-pill unread dot) wouldn't update until the
-        // history pane is opened and rebuilds it by hand.
-        root.rebuild();
+        // rebuild the grouped history now, splicing in `n` explicitly: setting
+        // tracked=true neither fires trackedNotificationsChanged nor lands `n` in
+        // the server's `values` on this tick, so a plain rebuild would omit it and
+        // the resting app-icon strip / bell badge / history wouldn't update until
+        // something later forced another rebuild (e.g. opening the history pane).
+        root.rebuild(n);
         if (n.lastGeneration)                 // restored on reload: history only, don't re-pop
             return;
         if (root.dnd) {                       // do-not-disturb: history only, no popup
@@ -6861,15 +6862,36 @@ QtObject {
         delegate: Connections {
             required property var modelData
             target: modelData
-            function onClosed(reason) { root.drop(modelData); }
+            // CloseRequested == the *sending app* withdrew the notification via
+            // CloseNotification — e.g. you opened the app and it cleared the alert.
+            // Treat that as "handled": forget it from history too (not just the
+            // active stack) so the resting app-icon strip / unread badge update
+            // immediately. Expired / user-Dismissed only leave the active stack —
+            // their history copy is kept until the user forgets/clears it.
+            function onClosed(reason) {
+                if (reason === NotificationCloseReason.CloseRequested)
+                    root.forget(modelData);
+                else
+                    root.drop(modelData);
+            }
         }
     }
 
     // ---- grouped history: by app, newest-first within a group, group ordered by
     //      its newest item, so a fresh notification floats its app to the top ----
     property var grouped: []
-    function rebuild() {
-        const list = root.server.trackedNotifications ? root.server.trackedNotifications.values : [];
+    // `extra` is an optional just-arrived notification: setting `tracked=true` adds
+    // it to the server model *without* emitting trackedNotificationsChanged AND its
+    // `values` list may not include it yet on the same tick, so a plain rebuild at
+    // arrival would omit it and the resting strip / badge / history would go stale
+    // until something later forced another rebuild (e.g. opening the history pane).
+    // Splicing `extra` in makes the arrival reflect immediately and deterministically
+    // (deduped by id; a later rebuild from a settled `values` yields the same set).
+    function rebuild(extra) {
+        const vals = root.server.trackedNotifications ? root.server.trackedNotifications.values : [];
+        const list = vals.slice();
+        if (extra && extra.tracked && !list.some(x => x && x.id === extra.id))
+            list.push(extra);
         const ts = id => root.stamps[id] || 0;
         const by = {}, order = [];
         for (const n of list) {
@@ -11025,6 +11047,7 @@ Row {
     property bool cameraOn: false
     property bool recordingOn: false    // screen being shared/recorded
     property bool hasUnread: false      // un-cleared notifications waiting in history
+    property bool dnd: false            // do-not-disturb: dot instead of the app strip
     // grouped history (one entry per app: { app, items:[Notification,…] }, newest
     // app first) → the resting app-icon glance strip. `iconsMax` caps how many app
     // icons show before a "+N" overflow chip.
@@ -11035,11 +11058,11 @@ Row {
     // unread-notifications dot (left of the clock): a small filled accent circle
     // while notifications sit un-cleared in history. Normally the per-app icon
     // strip (right of the clock) conveys this, so the dot is only a *fallback*
-    // shown while screen-recording — when the app-icon strip is hidden to avoid
-    // revealing notification sources on a shared screen. Slides in/out like the
-    // privacy icons (animated slot width).
+    // shown in do-not-disturb (auto-on during a screencast) — when the app-icon
+    // strip is hidden to avoid revealing notification sources. Slides in/out like
+    // the privacy icons (animated slot width).
     Item {
-        readonly property bool showDot: root.hasUnread && root.recordingOn
+        readonly property bool showDot: root.hasUnread && root.dnd
         anchors.verticalCenter: parent.verticalCenter
         width: showDot ? 6 : 0
         height: 6
@@ -11073,18 +11096,19 @@ Row {
     // ---- notification app-icon strip: one icon per app that has un-cleared
     // notifications (deduped via notifGroups, newest app first), so a glance shows
     // *which* apps are waiting. Sits right of the clock, before the privacy
-    // (recording / camera) indicators. Hidden while screen-recording so the shared
-    // screen doesn't reveal notification sources — the fallback unread dot covers
-    // that case instead. Capped at `iconsMax` with a "+N" overflow chip.
+    // (recording / camera) indicators. Hidden in do-not-disturb (auto-on during a
+    // screencast) so a sensitive share doesn't reveal notification sources — the
+    // fallback unread dot covers that case instead; dropping DND brings the icons
+    // back. Capped at `iconsMax` with a "+N" overflow chip.
     Row {
         id: appStrip
         anchors.verticalCenter: parent.verticalCenter
         spacing: 4
         // left-pad from the clock only when there's actually something to show
         leftPadding: shown.length > 0 ? 2 : 0
-        readonly property var shown: root.recordingOn
+        readonly property var shown: root.dnd
             ? [] : root.notifGroups.slice(0, root.iconsMax)
-        readonly property int overflow: root.recordingOn
+        readonly property int overflow: root.dnd
             ? 0 : Math.max(0, root.notifGroups.length - root.iconsMax)
 
         Repeater {
@@ -13526,14 +13550,16 @@ readonly property int  privacyCount: (cameraInUse ? 1 : 0) + (screenRecording ? 
 // ---- resting-pill notification indicator footprint ----
 // At rest the collapsed pill shows one app icon per app that has un-cleared
 // notifications (deduped via notifs.grouped), so a glance reveals *which* apps
-// are waiting. Capped at `notifAppIconsMax` with a "+N" overflow chip. While a
-// screencast is live the app icons are hidden (don't reveal notification sources
-// on a shared screen) and a single generic unread dot stands in. `notifRestWidth`
-// is the extra pill width that footprint needs (used in the resting width below).
+// are waiting. Capped at `notifAppIconsMax` with a "+N" overflow chip. In
+// do-not-disturb (which a live screencast auto-enters) the app icons are hidden
+// and a single generic unread dot stands in — so during a sensitive share the
+// pill doesn't reveal notification sources, while dropping DND brings the icons
+// back for showcasing. `notifRestWidth` is the extra pill width that footprint
+// needs (used in the resting width below).
 readonly property int notifAppIconsMax: 4
 readonly property int notifRestWidth: {
     if (!notifs || notifs.grouped.length === 0) return 0;
-    if (root.screenRecording) return 14;                 // generic unread dot only
+    if (notifs.dnd) return 14;                           // generic unread dot only
     const overflow = notifs.grouped.length > root.notifAppIconsMax ? 1 : 0;
     const n = Math.min(notifs.grouped.length, root.notifAppIconsMax) + overflow;
     return n * 20;                                        // ~14px icon + spacing each
@@ -14813,6 +14839,9 @@ Variants {
                 cameraOn: root.cameraInUse
                 recordingOn: root.screenRecording
                 hasUnread: notifs.unreadCount > 0
+                // do-not-disturb (auto-on during a screencast) hides the app-icon
+                // strip and shows the generic unread dot instead
+                dnd: notifs.dnd
                 // one entry per app with un-cleared notifications (deduped,
                 // newest-app-first) → an app-icon glance strip before the privacy icons
                 notifGroups: notifs.grouped

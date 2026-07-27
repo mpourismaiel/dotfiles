@@ -10,6 +10,7 @@ Item {
     property var grouped: []
     property var active: []
     property bool held: false
+    property bool dnd: false
     property int unreadCount: 3
     readonly property var current: active.length ? active[0] : null
     readonly property bool anyReply: active.some(n => n && n.hasInlineReply)
