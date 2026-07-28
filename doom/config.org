@@ -549,6 +549,29 @@ Quit confirmation is disabled for faster exits.
       :n "C-k" `View-scroll-page-backward)
 #+end_src
 
+***** Word deletion
+Emacs binds =C-<backspace>= to ~backward-kill-word~, and "kill" means it saves the
+deleted text to the kill ring. That's why fixing a typo with =C-<backspace>= quietly
+copies the word. Rebind =C-<backspace>= / =C-<delete>= to plain delete-word
+functions that never touch the kill ring, everywhere (global + normal + insert, which
+also covers the minibuffer). =M-<backspace>= is left as the stock word-kill.
+#+begin_src emacs-lisp
+(defun mp/delete-word-backward (arg)
+  "Delete characters backward until the start of a word.
+Unlike `backward-kill-word', this does NOT save the text to the kill ring."
+  (interactive "p")
+  (delete-region (point) (progn (backward-word arg) (point))))
+
+(defun mp/delete-word-forward (arg)
+  "Delete characters forward until the end of a word.
+Unlike `kill-word', this does NOT save the text to the kill ring."
+  (interactive "p")
+  (delete-region (point) (progn (forward-word arg) (point))))
+
+(map! :gni "C-<backspace>" #'mp/delete-word-backward
+      :gni "C-<delete>"    #'mp/delete-word-forward)
+#+end_src
+
 ***** Region Expansion
 #+begin_src emacs-lisp
 (use-package! expand-region
