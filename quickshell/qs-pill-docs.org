@@ -2239,7 +2239,13 @@ Finance rides along (via [[*FinanceState.qml][=FinanceState=]]): days with journ
 entries grow a second, *green* dot next to the agenda dot, the selected day's
 transactions are listed under the agenda (description + signed amount), and a
 wallet button in the header switches to the [[*FinanceMenu.qml][finance menu]]
-(=financeRequested()=). All three finance signals hide while privacy is on.
+(=financeRequested()=). Days carrying a *forecast* (periodic-rule) occurrence show
+a hollow gold ring, and the selected day's forecasts are listed under the real
+transactions in an *Upcoming* section — each with a gold checkbox that hands the
+row (=confirmForecast=, via =FinanceState.pendingPrefill=) to the finance menu's
+add form, prefilled with the date/amount/currency/category/account so the user can
+confirm or adjust it into a real transaction. All finance signals hide while
+privacy is on.
 *** Code
 #+begin_src qml :tangle ~/.config/quickshell/pill/CalendarMenu.qml :mkdirp yes
 pragma ComponentBehavior: Bound
@@ -2439,6 +2445,25 @@ Item {
         root.selKey = key;
         if (root.org) root.org.loadDay(key);
         if (root.fin) root.fin.loadDay(key);
+    }
+    // the selected day's forecast occurrences (from the range already loaded for
+    // the dots, so the list always matches them). Empty under privacy.
+    readonly property var selForecast: (root.fin && !root.fin.privacy && root.selKey)
+        ? root.fin.forecastForDay(root.selKey) : []
+    // hand a forecast occurrence to the finance menu's add form, prefilled, so
+    // the user can confirm/adjust it into a real transaction.
+    function confirmForecast(item) {
+        if (!root.fin) return;
+        root.fin.pendingPrefill = {
+            date: root.selKey,
+            description: item.description,
+            amount: item.amount,
+            currency: item.currency,
+            kind: item.kind === "income" ? "income" : "expense",
+            account: item.account || "",
+            asset: item.asset || "assets:cash"
+        };
+        root.financeRequested();
     }
     // select a grid cell; if it's a leading/trailing day of an adjacent month,
     // page to that month (with the slide animation) so the selection stays framed
@@ -3156,6 +3181,114 @@ Item {
                         }
                     }
                 }
+
+                // ---- the day's forecast (periodic) occurrences — each is a
+                //      tickable row that opens the finance menu's add form
+                //      prefilled, so the user can confirm/adjust it into a real
+                //      transaction (hides under privacy). ----
+                Rectangle {
+                    visible: root.selForecast.length > 0
+                    width: agendaCol.width
+                    height: 1
+                    color: root.theme.divider
+                }
+                Item {
+                    visible: root.selForecast.length > 0
+                    width: agendaCol.width
+                    height: 20
+                    Text {
+                        anchors.left: parent.left
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "Upcoming"
+                        color: root.theme.faint
+                        font.family: root.theme.mono
+                        font.pixelSize: root.theme.fsSmall
+                        font.letterSpacing: root.theme.labelSpacing
+                        font.capitalization: Font.AllUppercase
+                    }
+                }
+                Repeater {
+                    model: root.selForecast
+                    delegate: Row {
+                        id: fcRow
+                        required property var modelData
+                        width: agendaCol.width
+                        spacing: 8
+
+                        // gold checkbox — ticking opens the prefilled add form
+                        // (its state is transient: the row navigates away on click)
+                        Item {
+                            width: 16
+                            height: 16
+                            anchors.top: parent.top
+                            anchors.topMargin: 3
+                            Rectangle {
+                                anchors.centerIn: parent
+                                width: 14
+                                height: 14
+                                radius: 4
+                                color: fcCheckMa.containsMouse ? root.theme.money : "transparent"
+                                border.width: 1
+                                border.color: root.theme.money
+                                Behavior on color { ColorAnimation { duration: root.theme.animFast } }
+                                MSym {
+                                    anchors.centerIn: parent
+                                    icon: "check"
+                                    fill: 1
+                                    size: 11
+                                    color: root.theme.bg
+                                    opacity: fcCheckMa.containsMouse ? 1 : 0
+                                    scale: fcCheckMa.containsMouse ? 1 : 0.4
+                                    Behavior on opacity { NumberAnimation { duration: root.theme.animFast } }
+                                    Behavior on scale { NumberAnimation { duration: root.theme.anim; easing.type: Easing.OutBack } }
+                                }
+                            }
+                            MouseArea {
+                                id: fcCheckMa
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: root.confirmForecast(fcRow.modelData)
+                            }
+                        }
+
+                        Column {
+                            width: agendaCol.width - 24 - 110 - 16
+                            spacing: 1
+                            Text {
+                                width: parent.width
+                                wrapMode: Text.WordWrap
+                                text: fcRow.modelData.description
+                                color: root.theme.text
+                                font.family: root.theme.family
+                                font.pixelSize: root.theme.fsNormal
+                            }
+                            // the category it will post to (dim subtext)
+                            Text {
+                                visible: !!fcRow.modelData.account
+                                width: parent.width
+                                elide: Text.ElideLeft
+                                text: fcRow.modelData.account
+                                color: root.theme.faint
+                                font.family: root.theme.mono
+                                font.pixelSize: root.theme.fsSmall - 1
+                            }
+                        }
+
+                        Text {
+                            width: 110
+                            anchors.top: parent.top
+                            anchors.topMargin: 1
+                            horizontalAlignment: Text.AlignRight
+                            text: (fcRow.modelData.kind === "expense" ? "−"
+                                 : fcRow.modelData.kind === "income" ? "+" : "")
+                                + (root.fin ? root.fin.fmtAmount(fcRow.modelData.amount, fcRow.modelData.currency) : "")
+                            color: root.theme.money
+                            font.family: root.theme.mono
+                            font.pixelSize: root.theme.fsSmall
+                        }
+                    }
+                }
             }
         }
     }
@@ -3261,8 +3394,11 @@ Finance *state*, instantiated once in =init.qml= as =FinanceState { id: finance 
 dot + day list), the [[*Launcher.qml][=Launcher=]] (privacy toggle) and
 [[*StatusIcons.qml][=StatusIcons=]] (evening nag icon). Data comes from
 [[*hledgerbridge.py][=hledgerbridge.py=]] — =loadDay= / =loadRange= /
-=loadForecastRange= (calendar dots: filled for real entries, hollow for
-forecasts), =loadAccounts= / =loadBalances= / =loadTimeline= / =loadRegister= /
+=loadForecastRange= (one =fentries= query over the grid span, filling both the
+hollow-dot =forecastMap= and =forecastRangeItems=, the full forecast rows;
+=forecastForDay(key)= filters them for the calendar's *Upcoming* section — each
+row carries its category + money account so =pendingPrefill= can seed the add
+form), =loadAccounts= / =loadBalances= / =loadTimeline= / =loadRegister= /
 =loadWishlist= (the finance menu's views), =addEntry(payload)= (quick-add; emits
 =addFinished(ok, error)= and =entryAdded()= on success) and =checkToday()= (the
 nag's "did I log anything today?"). All best-effort: empty shapes if hledger
@@ -3350,6 +3486,23 @@ QtObject {
     property var rangeMap: ({})           // date -> actual-entry count in the loaded range
     property var rangeDays: []            // [{ date, count }, …]
     property var forecastMap: ({})        // date -> forecast-entry count (hollow dot)
+    property var forecastRangeItems: []   // [{ date, description, kind, amount, currency, account, asset, postings }]
+                                          //   every forecast occurrence in the loaded range; both the hollow
+                                          //   dots (forecastMap) and the calendar's per-day "Upcoming" list
+                                          //   (forecastForDay) derive from this one query, so they always agree.
+    // the selected day's forecast occurrences — filtered from forecastRangeItems.
+    function forecastForDay(key) {
+        var out = [];
+        var arr = root.forecastRangeItems || [];
+        for (var i = 0; i < arr.length; i++)
+            if (arr[i].date === key) out.push(arr[i]);
+        return out;
+    }
+
+    // Hand-off from the calendar's forecast section to the finance menu's add
+    // form: the calendar sets this to a forecast row, flips to the finance menu,
+    // and the menu prefills + clears it. Null when nothing is pending.
+    property var pendingPrefill: null
 
     // ---- finance-menu view data ----
     property var accounts: ({ expenses: [], income: [], assets: [], liabilities: [], other: [] })
@@ -3388,7 +3541,7 @@ QtObject {
         if (!rangeProc.running) rangeProc.running = true;
     }
     function loadForecastRange(a, b) {
-        forecastRangeProc.command = root.bridge(["frange", a, b]);
+        forecastRangeProc.command = root.bridge(["fentries", a, b]);
         if (!forecastRangeProc.running) forecastRangeProc.running = true;
     }
     function loadPlan() {
@@ -3551,11 +3704,15 @@ QtObject {
     property Process forecastRangeProc: Process {
         stdout: StdioCollector {
             onStreamFinished: {
+                // full forecast rows over the range; the hollow-dot map is the
+                // per-day count of these, so dots and the "Upcoming" list agree.
                 var arr = [];
                 try { arr = JSON.parse(this.text) || []; } catch (e) { arr = []; }
                 var m = {};
-                for (var i = 0; i < arr.length; i++) m[arr[i].date] = arr[i].count;
+                for (var i = 0; i < arr.length; i++)
+                    m[arr[i].date] = (m[arr[i].date] || 0) + 1;
                 root.forecastMap = m;
+                root.forecastRangeItems = arr;
             }
         }
     }
@@ -3624,6 +3781,7 @@ QtObject {
                 } catch (e) { err = "finance bridge failed"; }
                 if (ok) {
                     if (root.dayKey) root.loadDay(root.dayKey);
+                    if (root.lastRangeA) root.loadForecastRange(root.lastRangeA, root.lastRangeB);
                     root.checkToday();
                     root.entryAdded();
                 }
@@ -3973,6 +4131,40 @@ Item {
         root.selKey = key;
         if (root.fin) root.fin.loadDay(key);
     }
+    // point the grid at a given "YYYY-MM-DD" and select it (used by the forecast
+    // prefill hand-off, which may land on a month other than today's).
+    function goToDate(key) {
+        var p = ("" + key).split("-");
+        var y = +p[0], m = +p[1], d = +p[2];
+        if (!(y && m && d)) return;
+        root.gY = y; root.gM = m;
+        var j = root.toJalaali(y, m, d);
+        root.jY = j.jy; root.jM = j.jm;
+        root.select(key);
+        root.loadRange();
+    }
+    // prefill + open the add form from a calendar forecast row (FinanceState's
+    // pendingPrefill). The category highlights by name; the money account is
+    // matched to an index once `accounts` loads (resolvePendingAsset).
+    property string pendingAsset: ""
+    function applyPrefill(p) {
+        if (!p) return;
+        root.goToDate(p.date);
+        root.addKind = (p.kind === "income") ? "income" : "expense";
+        root.addCurrency = (p.currency === "IRT") ? "IRT" : "EUR";
+        root.addAccount = p.account || "";
+        root.pendingAsset = p.asset || "";
+        descInput.text = p.description || "";
+        amountInput.text = isFinite(p.amount) ? ("" + p.amount) : "";
+        root.openMode("add");            // loads accounts → resolvePendingAsset
+        root.resolvePendingAsset();
+    }
+    function resolvePendingAsset() {
+        if (!root.pendingAsset || !root.fin) return;
+        var a = root.fin.accounts.assets || [];
+        var i = a.indexOf(root.pendingAsset);
+        if (i >= 0) { root.addAssetIdx = i; root.pendingAsset = ""; }
+    }
     function pickCell(c) {
         root.select(c.key);
         if (c.inMonth) return;
@@ -4028,6 +4220,12 @@ Item {
         root.jY = j.jy; root.jM = j.jm;
         root.select(root.todayKey);
         root.loadRange();
+        // arriving from the calendar's forecast section with a row to confirm
+        if (root.fin && root.fin.pendingPrefill) {
+            var p = root.fin.pendingPrefill;
+            root.fin.pendingPrefill = null;
+            root.applyPrefill(p);
+        }
     }
 
     // refresh the dots after a successful quick-add
@@ -4035,6 +4233,16 @@ Item {
         target: root.fin
         ignoreUnknownSignals: true
         function onEntryAdded() { root.loadRange(); }
+        // a forecast row picked while the finance menu is already open
+        function onPendingPrefillChanged() {
+            if (root.fin && root.fin.pendingPrefill) {
+                var p = root.fin.pendingPrefill;
+                root.fin.pendingPrefill = null;
+                root.applyPrefill(p);
+            }
+        }
+        // accounts finished loading: resolve the prefilled money account to its index
+        function onAccountsChanged() { root.resolvePendingAsset(); }
         // currency changed: the day list reloads itself in FinanceState; here we
         // re-run whichever report is open so its amounts re-value too.
         function onDisplayCurrencyChanged() {
@@ -9616,6 +9824,11 @@ missing, data commands print =[]= / empty shapes and the UI just shows nothing.
 #   range A B          print JSON [{date, count}, …] for days in [A,B] with entries
 #   frange A B         print JSON [{date, count}, …] for days in [A,B] with a
 #                      *forecast* (periodic) entry — drives the hollow calendar dot
+#   fentries A B       print JSON [forecast_row, …] the forecast (periodic)
+#                      occurrences across [A,B], native amounts, each carrying the
+#                      category + asset account so the pill can list them per day
+#                      (calendar "Upcoming") and prefill an add form. Same query as
+#                      frange, so it lines up exactly with the hollow dots.
 #   day KEY [CUR]      print JSON [txn_row, …] for that day, valued in CUR
 #   add JSON           append a transaction (see payload below), check, print {ok}
 #   accounts           print JSON {expenses, income, assets, liabilities, other}
@@ -9864,6 +10077,37 @@ def cmd_frange(a, b):
 def cmd_day(key, cur="native"):
     return [txn_row(t) for t in
             print_json(["date:%s..%s" % (key, day_after(key))] + val(cur))]
+
+
+def forecast_row(t):
+    """A forecast occurrence, extended with the category + money account so the
+    pill can prefill an add form. Amounts stay native (as the periodic rule
+    defines them) — confirming a forecast writes the real figure, not a
+    market-valued one."""
+    row = txn_row(t)
+    ps = row["postings"]
+    cat, asset = "", ""
+    for p in ps:
+        a = p["account"]
+        if not cat and a.startswith(("expenses", "income")):
+            cat = a
+        elif not asset and a.startswith(("assets", "liabilities")):
+            asset = a
+    row["account"] = cat
+    row["asset"] = asset or "assets:cash"
+    return row
+
+
+def cmd_fentries(a, b):
+    """Forecast occurrences across [a,b] (native amounts), each carrying its
+    category + money account. The SAME query as cmd_frange (only generated
+    transactions, tag _generated-transaction), so the per-day list the calendar
+    shows lines up exactly with the hollow dots — grouping/counting is done in
+    the pill from these rows."""
+    span = "%s..%s" % (a, day_after(b))
+    return [forecast_row(t) for t in
+            print_json(["--forecast=" + span, "date:" + span,
+                        "tag:_generated-transaction"])]
 
 
 def fmt_amount(value, currency):
@@ -10206,6 +10450,8 @@ def main():
         out = cmd_range(argv[1], argv[2])
     elif cmd == "frange" and len(argv) > 2:
         out = cmd_frange(argv[1], argv[2])
+    elif cmd == "fentries" and len(argv) > 2:
+        out = cmd_fentries(argv[1], argv[2])
     elif cmd == "day" and len(argv) > 1:
         out = cmd_day(argv[1], argv[2] if len(argv) > 2 else "native")
     elif cmd == "add" and len(argv) > 1:

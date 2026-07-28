@@ -14,6 +14,11 @@ QtObject {
     ]
     property var rangeMap: ({})
     property var rangeDays: []
+    // forecast (periodic) occurrences over the loaded range — the calendar's
+    // hollow dots + per-day "Upcoming" section (native amounts, category + asset)
+    property var forecastRangeItems: []
+    // hand-off to the finance menu's add form (see FinanceState.pendingPrefill)
+    property var pendingPrefill: null
     property var accounts: ({
         expenses: ["expenses:rent", "expenses:food:groceries", "expenses:food:restaurants",
                    "expenses:transport", "expenses:utilities", "expenses:entertainment",
@@ -121,6 +126,15 @@ QtObject {
     function hasForecast(key) {
         var d = ("" + key).slice(-2);
         return ["01", "07", "15", "21", "28"].indexOf(d) !== -1;
+    }
+    // the selected day's forecast rows — non-empty on a hasForecast day, so the
+    // calendar's "Upcoming" section renders whenever a hollow dot is selected.
+    function forecastForDay(key) {
+        if (!root.hasForecast(key)) return [];
+        return [
+            { date: key, description: "Rent", kind: "expense", amount: 300000000, currency: "IRT", account: "expenses:rent", asset: "assets:bank:checking", postings: [] },
+            { date: key, description: "Netflix subscription", kind: "expense", amount: 12.99, currency: "EUR", account: "expenses:entertainment", asset: "assets:bank:checking", postings: [] }
+        ];
     }
     // real formatter (copied from FinanceState) so the shots match production
     function fmtAmount(v, cur) {
