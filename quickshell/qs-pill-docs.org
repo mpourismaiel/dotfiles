@@ -3200,6 +3200,10 @@ Item {
                         required property var modelData
                         width: agendaCol.width
                         spacing: 4
+                        // a fully-past event (now beyond its end) dims wholesale —
+                        // colour bar, times, title, description all fade together.
+                        opacity: evCard.past ? 0.45 : 1
+                        Behavior on opacity { NumberAnimation { duration: root.theme.anim } }
                         property bool expanded: false
                         // is there anything worth expanding into?
                         readonly property bool hasDetail: !!(evCard.modelData.description
@@ -3227,6 +3231,20 @@ Item {
                               evCard.minsToStart > 0 ? ("Starts in " + evCard.minsToStart + " min")
                             : evCard.minsToStart === 0 ? "Starting now"
                             : ("Started " + (-evCard.minsToStart) + " min ago")
+
+                        // wall-clock (ms) of the event's end; a "past" event is one
+                        // now beyond it. All-day: end key is the exclusive next-day
+                        // date, so it turns past at that midnight.
+                        readonly property double endMs: {
+                            var p = ("" + evCard.modelData.endKey).split("-");
+                            if (evCard.modelData.allDay)
+                                return new Date(+p[0], +p[1] - 1, +p[2], 0, 0, 0).getTime();
+                            var et = evCard.modelData.endTime || evCard.modelData.startTime;
+                            if (!et) return NaN;
+                            var t = ("" + et).split(":");
+                            return new Date(+p[0], +p[1] - 1, +p[2], +t[0], +t[1], 0).getTime();
+                        }
+                        readonly property bool past: !isNaN(evCard.endMs) && root.nowMs > evCard.endMs
 
                         // imminent-meeting banner — makes the current / next-up
                         // event unmistakable at a glance
