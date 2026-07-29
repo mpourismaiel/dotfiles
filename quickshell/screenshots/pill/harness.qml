@@ -22,6 +22,7 @@ FloatingWindow {
     MockMemos     { id: memos }
     MockOrg       { id: org }
     MockFinance   { id: fin }
+    MockCal       { id: cal }
     MockBrightness { id: brightness }
 
     // mock clock strings so the dashboard is deterministic
@@ -200,7 +201,7 @@ FloatingWindow {
     Component { id: cBt;   MenuHost { BluetoothMenu { anchors.fill: parent; theme: theme } } }
     Component { id: cBatt; MenuHost { BatteryMenu   { anchors.fill: parent; theme: theme; brightness: brightness } } }
     Component { id: cClip; MenuHost { pillH: 670; ClipboardMenu { anchors.fill: parent; theme: theme; clip: clip; memos: memos } } }
-    Component { id: cCal;  MenuHost { pillW: 760; CalendarMenu  { anchors.fill: parent; theme: theme; org: org; fin: fin } } }
+    Component { id: cCal;  MenuHost { pillW: 760; CalendarMenu  { anchors.fill: parent; theme: theme; org: org; fin: fin; cal: cal } } }
     Component { id: cFin;  MenuHost { pillW: 760; FinanceMenu   { anchors.fill: parent; theme: theme; fin: fin } } }
     Component {
         id: cFinAdd

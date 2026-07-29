@@ -115,6 +115,7 @@ QtObject {
     readonly property color good:        "#3ecf8e"   // green (privacy/live cue)
     readonly property color success:     "#a8d5a4"   // pastel green (all-done calendar dot / completed cue)
     readonly property color money:       "#d9a441"   // gold (finance dots / figures — distinct from the vermillion agenda dot)
+    readonly property color event:       "#6ea8d8"   // soft blue (Google-calendar event dot / times — distinct from agenda & finance)
     readonly property color track:       Qt.rgba(0xec / 255.0, 0xe4 / 255.0, 0xd6 / 255.0, 0.14)  // toggle / slider track
 
     // resting (collapsed, un-hovered) pill: translucent + dimmed (see init.qml).
@@ -2263,6 +2264,7 @@ Item {
     required property var theme
     property var org                          // OrgAgenda state (may be null)
     property var fin                          // FinanceState (may be null)
+    property var cal                          // CalendarEvents state (may be null)
     signal closeRequested()
     signal financeRequested()                 // header wallet button → finance menu
 
@@ -2275,6 +2277,7 @@ Item {
     property string selKey: ""                 // selected day, "YYYY-MM-DD" (Gregorian)
     property string todayKey: ""
     property int hoverIdx: -1                   // hovered cell (0..41) or -1
+    property double nowMs: Date.now()           // wall-clock for the imminent-event banner (ticked below)
 
     // ---- geometry ----
     readonly property int detailW: 280
@@ -2516,7 +2519,13 @@ Item {
             root.fin.loadRange(c[0].key, c[41].key);
             root.fin.loadForecastRange(c[0].key, c[41].key);
         }
+        // Google Calendar events are cached in a window; only refetch when the
+        // shown grid falls outside it (the hourly Timer keeps it fresh otherwise).
+        if (root.cal) root.cal.ensureCovers(c[0].key, c[41].key);
     }
+    // the selected day's Google Calendar events (client-side filter of the cache)
+    readonly property var calEvents: (root.cal && root.selKey)
+        ? root.cal.dayEvents(root.selKey) : []
 
     Component.onCompleted: {
         var t = new Date();
@@ -2526,6 +2535,15 @@ Item {
         root.jY = j.jy; root.jM = j.jm;
         root.select(root.todayKey);
         root.loadRange();
+    }
+
+    // tick the wall-clock ~3×/min so an event's "imminent" banner appears and
+    // clears on time, without a heavy per-second tick.
+    Timer {
+        interval: 20000
+        running: true
+        repeat: true
+        onTriggered: root.nowMs = Date.now()
     }
 
     // ================= header =================
@@ -2803,6 +2821,14 @@ Item {
                             color: "transparent"
                             border.width: 1
                             border.color: !cell.modelData.inMonth ? root.theme.faint : root.theme.money
+                        }
+                        // soft-blue: the day has Google Calendar events
+                        Rectangle {
+                            visible: root.cal && root.cal.hasEvents(cell.modelData.key)
+                            width: 4
+                            height: 4
+                            radius: 2
+                            color: !cell.modelData.inMonth ? root.theme.faint : root.theme.event
                         }
                     }
 
@@ -3094,6 +3120,352 @@ Item {
                     font.pixelSize: root.theme.fsNormal
                 }
 
+                // ---- the day's Google Calendar events (from CalendarEvents; each
+                //      row is collapsed by default and expands to its location,
+                //      description, guests and a Join button). Always shown so the
+                //      refetch button (top-right) has a home. ----
+                Rectangle {
+                    width: agendaCol.width
+                    height: 1
+                    color: root.theme.divider
+                }
+                Item {
+                    width: agendaCol.width
+                    height: 20
+                    Text {
+                        anchors.left: parent.left
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "Calendar"
+                        color: root.theme.faint
+                        font.family: root.theme.mono
+                        font.pixelSize: root.theme.fsSmall
+                        font.letterSpacing: root.theme.labelSpacing
+                        font.capitalization: Font.AllUppercase
+                    }
+                    // refetch — refreshes the shown month's window from Google;
+                    // the icon spins while a fetch is in flight.
+                    Rectangle {
+                        anchors.right: parent.right
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 24
+                        height: 24
+                        radius: root.theme.radiusBtn
+                        color: refetchMa.containsMouse ? root.theme.rowHi : "transparent"
+                        MSym {
+                            anchors.centerIn: parent
+                            icon: "refresh"
+                            size: 16
+                            color: refetchMa.containsMouse ? root.theme.text : root.theme.textDim
+                            RotationAnimation on rotation {
+                                running: !!(root.cal && root.cal.loading)
+                                loops: Animation.Infinite
+                                from: 0; to: 360
+                                duration: 900
+                            }
+                        }
+                        MouseArea {
+                            id: refetchMa
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: if (root.cal) root.cal.fetch(root.view.cells[0].key,
+                                                                    root.view.cells[41].key)
+                        }
+                        Behavior on color { ColorAnimation { duration: root.theme.animFast } }
+                    }
+                }
+                // sign-in / fetch error, if any (helps spot a re-consent need)
+                Text {
+                    visible: !!(root.cal && root.cal.lastError) && root.calEvents.length === 0
+                    width: agendaCol.width
+                    wrapMode: Text.WordWrap
+                    text: root.cal ? root.cal.lastError : ""
+                    color: root.theme.faint
+                    font.family: root.theme.mono
+                    font.pixelSize: root.theme.fsSmall - 1
+                }
+                Text {
+                    visible: root.calEvents.length === 0
+                          && !(root.cal && root.cal.lastError)
+                    text: "No events."
+                    color: root.theme.faint
+                    font.family: root.theme.family
+                    font.italic: true
+                    font.pixelSize: root.theme.fsNormal
+                }
+                Repeater {
+                    model: root.calEvents
+                    delegate: Column {
+                        id: evCard
+                        required property var modelData
+                        width: agendaCol.width
+                        spacing: 4
+                        property bool expanded: false
+                        // is there anything worth expanding into?
+                        readonly property bool hasDetail: !!(evCard.modelData.description
+                            || evCard.modelData.location || evCard.modelData.joinLink
+                            || (evCard.modelData.attendees && evCard.modelData.attendees.length))
+                        readonly property color barColor: (evCard.modelData.color
+                            && ("" + evCard.modelData.color).length)
+                            ? evCard.modelData.color : root.theme.event
+
+                        // minutes until this timed event starts (negative once it
+                        // has started); 9999 for all-day / undated so they never nag
+                        readonly property int minsToStart: {
+                            if (evCard.modelData.allDay || !evCard.modelData.startTime)
+                                return 9999;
+                            var p = ("" + evCard.modelData.startKey).split("-");
+                            var t = ("" + evCard.modelData.startTime).split(":");
+                            var start = new Date(+p[0], +p[1] - 1, +p[2],
+                                                 +t[0], +t[1], 0).getTime();
+                            return Math.round((start - root.nowMs) / 60000);
+                        }
+                        // "imminent": from 10 min before the start until 5 min after it
+                        readonly property bool imminent: evCard.minsToStart <= 10
+                                                      && evCard.minsToStart >= -5
+                        readonly property string imminentLabel:
+                              evCard.minsToStart > 0 ? ("Starts in " + evCard.minsToStart + " min")
+                            : evCard.minsToStart === 0 ? "Starting now"
+                            : ("Started " + (-evCard.minsToStart) + " min ago")
+
+                        // imminent-meeting banner — makes the current / next-up
+                        // event unmistakable at a glance
+                        Rectangle {
+                            visible: evCard.imminent
+                            width: evCard.width
+                            height: visible ? bannerRow.implicitHeight + 10 : 0
+                            radius: root.theme.radiusSmall
+                            color: root.theme.accentSoft
+                            border.width: 1
+                            border.color: root.theme.accent
+                            Row {
+                                id: bannerRow
+                                anchors.left: parent.left
+                                anchors.leftMargin: 8
+                                anchors.verticalCenter: parent.verticalCenter
+                                spacing: 6
+                                MSym {
+                                    icon: "notifications_active"
+                                    size: 14
+                                    fill: 1
+                                    color: root.theme.accent
+                                    anchors.verticalCenter: parent.verticalCenter
+                                }
+                                Text {
+                                    text: evCard.imminentLabel
+                                    color: root.theme.accent
+                                    font.family: root.theme.mono
+                                    font.pixelSize: root.theme.fsSmall
+                                    font.letterSpacing: root.theme.labelSpacing
+                                    font.capitalization: Font.AllUppercase
+                                    anchors.verticalCenter: parent.verticalCenter
+                                }
+                            }
+                        }
+
+                        // header row — click toggles expansion
+                        MouseArea {
+                            id: hdrMa
+                            width: evCard.width
+                            height: hdrRow.implicitHeight
+                            hoverEnabled: true
+                            cursorShape: evCard.hasDetail ? Qt.PointingHandCursor : Qt.ArrowCursor
+                            onClicked: if (evCard.hasDetail) evCard.expanded = !evCard.expanded
+                            Row {
+                                id: hdrRow
+                                width: hdrMa.width
+                                spacing: 8
+                                // per-calendar colour bar
+                                Rectangle {
+                                    width: 3
+                                    height: hdrCol.height
+                                    radius: 1.5
+                                    color: evCard.barColor
+                                }
+                                Column {
+                                    id: hdrCol
+                                    width: evCard.width - 3 - 16 - (evCard.hasDetail ? 24 : 0)
+                                    spacing: 1
+                                    Text {
+                                        text: evCard.modelData.allDay ? "All day"
+                                            : (evCard.modelData.startTime
+                                               + (evCard.modelData.endTime
+                                                  && evCard.modelData.endTime !== evCard.modelData.startTime
+                                                  ? " – " + evCard.modelData.endTime : ""))
+                                        color: root.theme.event
+                                        font.family: root.theme.mono
+                                        font.pixelSize: root.theme.fsSmall
+                                        font.letterSpacing: root.theme.labelSpacing
+                                        font.capitalization: Font.AllUppercase
+                                    }
+                                    Text {
+                                        width: parent.width
+                                        wrapMode: Text.WordWrap
+                                        text: evCard.modelData.summary
+                                        color: root.theme.text
+                                        font.family: root.theme.family
+                                        font.pixelSize: root.theme.fsNormal
+                                    }
+                                    // which calendar/account (only useful with >1 account)
+                                    Text {
+                                        visible: !!(root.cal && root.cal.accounts.length > 1)
+                                        width: parent.width
+                                        elide: Text.ElideRight
+                                        text: evCard.modelData.calendar || evCard.modelData.account
+                                        color: root.theme.faint
+                                        font.family: root.theme.mono
+                                        font.pixelSize: root.theme.fsSmall - 1
+                                    }
+                                }
+                                // chevron (only when there's detail)
+                                Item {
+                                    width: evCard.hasDetail ? 24 : 0
+                                    height: 24
+                                    visible: evCard.hasDetail
+                                    MSym {
+                                        anchors.centerIn: parent
+                                        icon: "expand_more"
+                                        size: 18
+                                        color: root.theme.textDim
+                                        rotation: evCard.expanded ? 180 : 0
+                                        Behavior on rotation { NumberAnimation { duration: root.theme.anim } }
+                                    }
+                                }
+                            }
+                        }
+
+                        // detail — animated open/close
+                        Item {
+                            width: evCard.width
+                            height: evCard.expanded ? detailCol.implicitHeight : 0
+                            clip: true
+                            opacity: evCard.expanded ? 1 : 0
+                            Behavior on height { NumberAnimation { duration: root.theme.anim; easing.type: Easing.OutCubic } }
+                            Behavior on opacity { NumberAnimation { duration: root.theme.animFast } }
+                            Column {
+                                id: detailCol
+                                width: parent.width
+                                spacing: 6
+
+                                // location
+                                Row {
+                                    visible: !!evCard.modelData.location
+                                    width: detailCol.width
+                                    spacing: 6
+                                    MSym {
+                                        icon: "place"
+                                        size: 14
+                                        color: root.theme.faint
+                                        anchors.top: parent.top
+                                        anchors.topMargin: 1
+                                    }
+                                    Text {
+                                        width: detailCol.width - 20
+                                        wrapMode: Text.WordWrap
+                                        text: evCard.modelData.location
+                                        color: root.theme.textDim
+                                        font.family: root.theme.family
+                                        font.pixelSize: root.theme.fsSmall
+                                    }
+                                }
+                                // description
+                                Text {
+                                    visible: !!evCard.modelData.description
+                                    width: detailCol.width
+                                    wrapMode: Text.WordWrap
+                                    textFormat: Text.PlainText
+                                    text: evCard.modelData.description
+                                    color: root.theme.textDim
+                                    font.family: root.theme.family
+                                    font.pixelSize: root.theme.fsSmall
+                                }
+                                // guests
+                                Column {
+                                    visible: !!(evCard.modelData.attendees
+                                             && evCard.modelData.attendees.length > 0)
+                                    width: detailCol.width
+                                    spacing: 3
+                                    Text {
+                                        text: "Guests"
+                                        color: root.theme.faint
+                                        font.family: root.theme.mono
+                                        font.pixelSize: root.theme.fsSmall - 1
+                                        font.letterSpacing: root.theme.labelSpacing
+                                        font.capitalization: Font.AllUppercase
+                                    }
+                                    Repeater {
+                                        model: evCard.modelData.attendees
+                                        delegate: Row {
+                                            id: att
+                                            required property var modelData
+                                            width: detailCol.width
+                                            spacing: 6
+                                            // response status dot
+                                            Rectangle {
+                                                width: 6
+                                                height: 6
+                                                radius: 3
+                                                anchors.verticalCenter: parent.verticalCenter
+                                                color: att.modelData.response === "accepted" ? root.theme.good
+                                                     : att.modelData.response === "declined" ? root.theme.danger
+                                                     : att.modelData.response === "tentative" ? root.theme.money
+                                                     : root.theme.faint
+                                            }
+                                            Text {
+                                                width: detailCol.width - 12
+                                                elide: Text.ElideRight
+                                                text: att.modelData.name
+                                                    + (att.modelData.self ? " (you)" : "")
+                                                color: root.theme.textDim
+                                                font.family: root.theme.family
+                                                font.pixelSize: root.theme.fsSmall
+                                            }
+                                        }
+                                    }
+                                }
+                                // join button → opens the meeting link in the browser
+                                Rectangle {
+                                    visible: !!evCard.modelData.joinLink
+                                    width: joinRow.implicitWidth + 22
+                                    height: 26
+                                    radius: root.theme.radiusBtn
+                                    color: joinMa.containsMouse ? root.theme.event : root.theme.row
+                                    border.width: 1
+                                    border.color: root.theme.event
+                                    Row {
+                                        id: joinRow
+                                        anchors.centerIn: parent
+                                        spacing: 6
+                                        MSym {
+                                            icon: "videocam"
+                                            size: 15
+                                            color: joinMa.containsMouse ? root.theme.bg : root.theme.event
+                                            anchors.verticalCenter: parent.verticalCenter
+                                        }
+                                        Text {
+                                            text: "Join"
+                                            color: joinMa.containsMouse ? root.theme.bg : root.theme.event
+                                            font.family: root.theme.mono
+                                            font.pixelSize: root.theme.fsSmall
+                                            font.letterSpacing: root.theme.labelSpacing
+                                            font.capitalization: Font.AllUppercase
+                                            anchors.verticalCenter: parent.verticalCenter
+                                        }
+                                    }
+                                    MouseArea {
+                                        id: joinMa
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: Qt.openUrlExternally(evCard.modelData.joinLink)
+                                    }
+                                    Behavior on color { ColorAnimation { duration: root.theme.animFast } }
+                                }
+                            }
+                        }
+                    }
+                }
+
                 // ---- the day's finance entries (from FinanceState; whole
                 //      section hides under privacy) ----
                 Rectangle {
@@ -3382,6 +3754,672 @@ QtObject {
     property Timer reloadTimer: Timer {
         interval: 260
         onTriggered: root.loadDay(root.dayKey)
+    }
+}
+#+end_src
+
+** CalendarEvents.qml
+*** Description
+Google-Calendar *state*, instantiated once in =init.qml= as
+=CalendarEvents { id: calEvents }= (mirroring [[*OrgAgenda.qml][=OrgAgenda=]] /
+[[*FinanceState.qml][=FinanceState=]], no singletons) and handed to
+[[*CalendarMenu.qml][=CalendarMenu=]]. It shells out to [[*gcalbridge.py][=gcalbridge.py=]]:
+=read()= loads the on-disk event cache without any network I/O (called on startup and
+menu open); =fetch()= / =fetch(a, b)= refresh that cache from Google (the hourly
+background =Timer= and the calendar's *refetch* button). Because the bridge caches a
+whole date *window*, day membership is filtered client-side: =dayEvents(key)= returns
+one day's events (each carries a =days= list so multi-day events show on every day) and
+=hasEvents(key)= drives the calendar's blue event dot. =ensureCovers(a, b)= kicks a
+fetch only when the shown month grid falls outside the cached window, growing it to
+cover both. =loading= drives the refetch spinner; =lastError= / =fetched= / =accounts=
+surface status. Best-effort — if the bridge or sign-in fails the lists stay empty and
+the calendar still works.
+*** Code
+#+begin_src qml :tangle ~/.config/quickshell/pill/CalendarEvents.qml :mkdirp yes
+pragma ComponentBehavior: Bound
+// CalendarEvents.qml — Google Calendar state over gcalbridge.py (KDE Online Accounts
+// + signond). Instantiated once in init.qml as `CalendarEvents { id: calEvents }` and
+// shared with the calendar menu (mirrors OrgAgenda / FinanceState). read() loads the
+// cache with no network I/O; fetch()/fetch(a,b) refresh it from Google (hourly Timer +
+// refetch button). dayEvents(key) / hasEvents(key) filter the cached window client-side.
+import QtQuick
+import Quickshell
+import Quickshell.Io
+
+QtObject {
+    id: root
+    property var events: []            // normalized events across all accounts
+    property var dayMap: ({})          // "YYYY-MM-DD" -> true (any event that day)
+    property bool loading: false
+    property string lastError: ""      // first error from the last fetch, if any
+    property string fetched: ""        // "YYYY-MM-DD HH:MM" of the last fetch
+    property var accounts: []          // account display names seen last fetch
+    property string winStart: ""       // cached window bounds (drive ensureCovers)
+    property string winEnd: ""
+
+    function _ingest(text) {
+        var env = null;
+        try { env = JSON.parse(text); } catch (e) { env = null; }
+        if (!env) return;
+        root.events = env.events || [];
+        var m = {};
+        for (var i = 0; i < root.events.length; i++) {
+            var ds = root.events[i].days || [];
+            for (var j = 0; j < ds.length; j++) m[ds[j]] = true;
+        }
+        root.dayMap = m;
+        root.accounts = env.accounts || [];
+        if (env.window) { root.winStart = env.window[0]; root.winEnd = env.window[1]; }
+        if (env.fetched) root.fetched = env.fetched;
+        root.lastError = (env.errors && env.errors.length) ? ("" + env.errors[0]) : "";
+    }
+
+    // load the cache without touching the network (menu open / startup)
+    function read() {
+        readProc.command = ["python", Quickshell.shellPath("gcalbridge.py"), "read"];
+        if (!readProc.running) readProc.running = true;
+    }
+    // refresh from Google. Optional A/B extend the fetched window.
+    function fetch(a, b) {
+        if (fetchProc.running) return;
+        var cmd = ["python", Quickshell.shellPath("gcalbridge.py"), "fetch"];
+        if (a && b) { cmd.push(a); cmd.push(b); }
+        fetchProc.command = cmd;
+        root.loading = true;
+        fetchProc.running = true;
+    }
+    // trigger a fetch only when the shown grid falls outside the cached window,
+    // growing the window to cover both the old span and the newly-requested one.
+    function ensureCovers(a, b) {
+        if (fetchProc.running) return;
+        var haveWin = root.winStart !== "" && root.winEnd !== "";
+        if (!haveWin || a < root.winStart || b > root.winEnd) {
+            var na = (haveWin && root.winStart < a) ? root.winStart : a;
+            var nb = (haveWin && root.winEnd > b) ? root.winEnd : b;
+            root.fetch(na, nb);
+        }
+    }
+
+    function hasEvents(key) { return root.dayMap.hasOwnProperty(key); }
+    // the selected day's events (client-side filter of the cached window)
+    function dayEvents(key) {
+        var out = [];
+        for (var i = 0; i < root.events.length; i++) {
+            var ds = root.events[i].days || [];
+            if (ds.indexOf(key) !== -1) out.push(root.events[i]);
+        }
+        return out;
+    }
+
+    property Process readProc: Process {
+        stdout: StdioCollector { onStreamFinished: root._ingest(this.text) }
+    }
+    property Process fetchProc: Process {
+        stdout: StdioCollector { onStreamFinished: root._ingest(this.text) }
+        onRunningChanged: if (!running) root.loading = false
+    }
+    // hourly background refresh (default window)
+    property Timer hourly: Timer {
+        interval: 3600 * 1000
+        repeat: true
+        running: true
+        onTriggered: root.fetch()
+    }
+    // one fetch shortly after start-up, so sign-in doesn't race the shell coming up
+    property Timer startup: Timer {
+        interval: 4000
+        running: true
+        onTriggered: root.fetch()
+    }
+    Component.onCompleted: root.read()
+}
+#+end_src
+
+** AccountsState.qml
+*** Description
+Calendar-account manager *state*, instantiated once in =init.qml= as
+=AccountsState { id: accounts }= (mirroring [[*CalendarEvents.qml][=CalendarEvents=]])
+and handed to the launcher's settings page ([[*AccountsMenu.qml][=AccountsMenu=]]). It
+shells out to [[*gcalbridge.py][=gcalbridge.py=]]: =load()= fills =accounts= (KDE +
+pill accounts, each =\{id, provider, label, source, removable\}=); =addGoogle()= runs
+the loopback-OAuth sign-in (opens the browser; can take a while, so =busy= drives a
+spinner), =addProton(url, label)= registers an ICS share link, and =remove(id)= drops a
+pill account. Every change reloads the list and refetches [[*CalendarEvents.qml][=CalendarEvents=]]
+(=cal=) so new/removed calendars show at once. =lastError= surfaces failures.
+*** Code
+#+begin_src qml :tangle ~/.config/quickshell/pill/AccountsState.qml :mkdirp yes
+pragma ComponentBehavior: Bound
+// AccountsState.qml — calendar account manager over gcalbridge.py. Lists KDE + pill
+// accounts and adds Google (loopback OAuth) / Proton (ICS URL) / removes pill ones.
+// Mirrors CalendarEvents; the launcher settings page (AccountsMenu) drives it, and any
+// change reloads the list and refetches CalendarEvents (`cal`).
+import QtQuick
+import Quickshell
+import Quickshell.Io
+
+QtObject {
+    id: root
+    property var cal: null              // CalendarEvents — refetched after any change
+    property var accounts: []           // [{id, provider, label, source, removable}]
+    property string lastError: ""
+    property bool busy: false           // an add/remove is in flight
+    property string busyKind: ""        // "google" | "proton" | "remove" | ""
+
+    function load() {
+        listProc.command = ["python", Quickshell.shellPath("gcalbridge.py"), "accounts"];
+        if (!listProc.running) listProc.running = true;
+    }
+    function addGoogle() {
+        if (root.busy) return;
+        root.busy = true; root.busyKind = "google"; root.lastError = "";
+        opProc.command = ["python", Quickshell.shellPath("gcalbridge.py"), "add-google"];
+        opProc.running = true;
+    }
+    function addProton(url, label) {
+        if (root.busy || !url) return;
+        root.busy = true; root.busyKind = "proton"; root.lastError = "";
+        opProc.command = ["python", Quickshell.shellPath("gcalbridge.py"),
+                          "add-proton", "" + url, "" + (label || "")];
+        opProc.running = true;
+    }
+    function remove(id) {
+        if (root.busy) return;
+        root.busy = true; root.busyKind = "remove"; root.lastError = "";
+        opProc.command = ["python", Quickshell.shellPath("gcalbridge.py"), "remove", "" + id];
+        opProc.running = true;
+    }
+
+    property Process listProc: Process {
+        stdout: StdioCollector {
+            onStreamFinished: {
+                var env = null;
+                try { env = JSON.parse(this.text); } catch (e) { env = null; }
+                if (env) {
+                    root.accounts = env.accounts || [];
+                    if (env.errors && env.errors.length)
+                        root.lastError = "" + env.errors[0];
+                }
+            }
+        }
+    }
+    property Process opProc: Process {
+        stdout: StdioCollector {
+            onStreamFinished: {
+                var r = null;
+                try { r = JSON.parse(this.text); } catch (e) { r = null; }
+                root.lastError = (r && r.ok === false) ? ("" + (r.error || "failed")) : "";
+                root.busy = false; root.busyKind = "";
+                root.load();
+                if (root.cal) root.cal.fetch();
+            }
+        }
+        onRunningChanged: if (!running) { root.busy = false; root.busyKind = ""; }
+    }
+    Component.onCompleted: root.load()
+}
+#+end_src
+
+** AccountsMenu.qml
+*** Description
+The calendar-account manager page, shown as an overlay inside the
+[[*Launcher.qml][launcher]] when its *settings gear* (in the bottom-left toggle row,
+after the DND / privacy icons) is clicked. Lists every account from
+[[*AccountsState.qml][=AccountsState=]]: KDE Online-Accounts Google accounts are
+*read-only* (a lock, no remove), pill-added Google / Proton accounts get a *remove*
+button. An *Add* section signs in an extra *Google* account through the loopback OAuth
+flow (opens the browser — a spinner shows while it waits) or adds a *Proton* calendar
+by its *ICS share link* (Proton has no calendar API; the field takes the "Share with
+anyone" URL). Text fields tag themselves =pillKbInput= so the pill routes typing into
+them. All actions are best-effort; =AccountsState.lastError= surfaces failures inline.
+*** Code
+#+begin_src qml :tangle ~/.config/quickshell/pill/AccountsMenu.qml :mkdirp yes
+pragma ComponentBehavior: Bound
+// AccountsMenu.qml — calendar account manager (launcher settings overlay). Lists KDE
+// (read-only) + pill accounts, adds Google via loopback OAuth or Proton via an ICS
+// share URL, removes pill accounts. Drives AccountsState; paints an opaque background
+// so it fully covers the launcher body while open.
+import QtQuick
+
+Item {
+    id: root
+    required property var theme
+    property var acc                       // AccountsState (may be null)
+    signal closeRequested()
+
+    property bool protonForm: false        // the Proton URL form is showing
+    property bool protonSubmitted: false   // a submit is in flight (to auto-close on success)
+
+    function _provColor(p) { return p === "proton" ? "#8a6fdf" : root.theme.event; }
+    function _provName(p) { return p === "proton" ? "Proton" : "Google"; }
+
+    Component.onCompleted: if (root.acc) root.acc.load()
+
+    // auto-close the Proton form once a submit succeeds (no error)
+    Connections {
+        target: root.acc
+        function onBusyChanged() {
+            if (root.acc && !root.acc.busy && root.protonSubmitted) {
+                root.protonSubmitted = false;
+                if (!root.acc.lastError) {
+                    root.protonForm = false;
+                    urlInput.text = "";
+                    labelInput.text = "";
+                }
+            }
+        }
+    }
+
+    // opaque backdrop so the launcher body doesn't bleed through
+    Rectangle { anchors.fill: parent; color: root.theme.bg }
+
+    // ---- header ----
+    Item {
+        id: header
+        anchors.top: parent.top
+        anchors.left: parent.left
+        anchors.right: parent.right
+        height: 30
+        Rectangle {
+            id: backBtn
+            width: 26
+            height: 26
+            anchors.left: parent.left
+            anchors.verticalCenter: parent.verticalCenter
+            radius: root.theme.radiusBtn
+            color: backMa.containsMouse ? root.theme.rowHi : "transparent"
+            MSym {
+                anchors.centerIn: parent
+                icon: "chevron_left"
+                size: 18
+                color: backMa.containsMouse ? root.theme.text : root.theme.textDim
+            }
+            MouseArea {
+                id: backMa
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.closeRequested()
+            }
+            Behavior on color { ColorAnimation { duration: root.theme.animFast } }
+        }
+        Text {
+            anchors.left: backBtn.right
+            anchors.leftMargin: 6
+            anchors.verticalCenter: parent.verticalCenter
+            text: "Calendar accounts"
+            color: root.theme.text
+            font.family: root.theme.serif
+            font.pixelSize: root.theme.fsLarge + 2
+        }
+    }
+    Rectangle {
+        id: headRule
+        anchors.top: header.bottom
+        anchors.topMargin: 4
+        anchors.left: parent.left
+        anchors.right: parent.right
+        height: 1
+        color: root.theme.divider
+    }
+
+    // ---- body ----
+    Flickable {
+        anchors.top: headRule.bottom
+        anchors.topMargin: root.theme.gap
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        contentHeight: col.height
+        clip: true
+        Column {
+            id: col
+            width: parent.width
+            spacing: 8
+
+            // ---- existing accounts ----
+            Repeater {
+                model: root.acc ? root.acc.accounts : []
+                delegate: Rectangle {
+                    id: accRow
+                    required property var modelData
+                    width: col.width
+                    height: 48
+                    radius: root.theme.radiusRow
+                    color: root.theme.row
+
+                    MSym {
+                        id: provIcon
+                        anchors.left: parent.left
+                        anchors.leftMargin: 12
+                        anchors.verticalCenter: parent.verticalCenter
+                        icon: accRow.modelData.provider === "proton" ? "lock" : "account_circle"
+                        size: 22
+                        color: root._provColor(accRow.modelData.provider)
+                    }
+                    Column {
+                        anchors.left: provIcon.right
+                        anchors.leftMargin: 10
+                        anchors.right: trailing.left
+                        anchors.rightMargin: 8
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: 1
+                        Text {
+                            width: parent.width
+                            elide: Text.ElideMiddle
+                            text: accRow.modelData.label
+                            color: root.theme.text
+                            font.family: root.theme.family
+                            font.pixelSize: root.theme.fsNormal
+                        }
+                        Text {
+                            text: root._provName(accRow.modelData.provider)
+                                + (accRow.modelData.source === "kde" ? "  ·  KDE (read-only)" : "")
+                            color: root.theme.faint
+                            font.family: root.theme.mono
+                            font.pixelSize: root.theme.fsSmall - 1
+                            font.letterSpacing: root.theme.labelSpacing
+                            font.capitalization: Font.AllUppercase
+                        }
+                    }
+                    // trailing: remove (pill accounts) or a lock (KDE, read-only)
+                    Item {
+                        id: trailing
+                        anchors.right: parent.right
+                        anchors.rightMargin: 8
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 30
+                        height: 30
+                        MSym {
+                            visible: !accRow.modelData.removable
+                            anchors.centerIn: parent
+                            icon: "lock"
+                            size: 15
+                            color: root.theme.faint
+                        }
+                        Rectangle {
+                            visible: accRow.modelData.removable
+                            anchors.fill: parent
+                            radius: root.theme.radiusBtn
+                            color: rmMa.containsMouse ? root.theme.rowHi : "transparent"
+                            MSym {
+                                anchors.centerIn: parent
+                                icon: "delete"
+                                size: 16
+                                color: rmMa.containsMouse ? root.theme.danger : root.theme.textDim
+                            }
+                            MouseArea {
+                                id: rmMa
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                enabled: !(root.acc && root.acc.busy)
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: if (root.acc) root.acc.remove(accRow.modelData.id)
+                            }
+                            Behavior on color { ColorAnimation { duration: root.theme.animFast } }
+                        }
+                    }
+                }
+            }
+            Text {
+                visible: !root.acc || root.acc.accounts.length === 0
+                text: "No accounts yet."
+                color: root.theme.faint
+                font.family: root.theme.family
+                font.italic: true
+                font.pixelSize: root.theme.fsNormal
+            }
+
+            // error line
+            Text {
+                visible: !!(root.acc && root.acc.lastError)
+                width: col.width
+                wrapMode: Text.WordWrap
+                text: root.acc ? root.acc.lastError : ""
+                color: root.theme.danger
+                font.family: root.theme.mono
+                font.pixelSize: root.theme.fsSmall - 1
+            }
+
+            Rectangle { width: col.width; height: 1; color: root.theme.divider }
+            Text {
+                text: "Add account"
+                color: root.theme.faint
+                font.family: root.theme.mono
+                font.pixelSize: root.theme.fsSmall
+                font.letterSpacing: root.theme.labelSpacing
+                font.capitalization: Font.AllUppercase
+            }
+
+            // ---- add Google ----
+            Rectangle {
+                width: col.width
+                height: 42
+                radius: root.theme.radiusRow
+                color: gMa.containsMouse && !(root.acc && root.acc.busy)
+                     ? root.theme.rowHi : root.theme.row
+                opacity: (root.acc && root.acc.busy && root.acc.busyKind !== "google") ? 0.5 : 1
+                Row {
+                    anchors.left: parent.left
+                    anchors.leftMargin: 12
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 8
+                    MSym {
+                        anchors.verticalCenter: parent.verticalCenter
+                        icon: (root.acc && root.acc.busy && root.acc.busyKind === "google")
+                            ? "progress_activity" : "add"
+                        size: 18
+                        color: root.theme.event
+                        RotationAnimation on rotation {
+                            running: !!(root.acc && root.acc.busy && root.acc.busyKind === "google")
+                            loops: Animation.Infinite
+                            from: 0; to: 360; duration: 900
+                        }
+                    }
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: (root.acc && root.acc.busy && root.acc.busyKind === "google")
+                            ? "Waiting for browser sign-in…" : "Add Google account"
+                        color: root.theme.text
+                        font.family: root.theme.family
+                        font.pixelSize: root.theme.fsNormal
+                    }
+                }
+                MouseArea {
+                    id: gMa
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    enabled: !(root.acc && root.acc.busy)
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: if (root.acc) root.acc.addGoogle()
+                }
+                Behavior on color { ColorAnimation { duration: root.theme.animFast } }
+            }
+
+            // ---- add Proton (toggles the URL form) ----
+            Rectangle {
+                width: col.width
+                height: 42
+                radius: root.theme.radiusRow
+                color: pMa.containsMouse && !(root.acc && root.acc.busy)
+                     ? root.theme.rowHi : root.theme.row
+                border.width: root.protonForm ? 1 : 0
+                border.color: root._provColor("proton")
+                opacity: (root.acc && root.acc.busy && root.acc.busyKind !== "proton") ? 0.5 : 1
+                Row {
+                    anchors.left: parent.left
+                    anchors.leftMargin: 12
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 8
+                    MSym {
+                        anchors.verticalCenter: parent.verticalCenter
+                        icon: "lock"
+                        size: 18
+                        color: root._provColor("proton")
+                    }
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "Add Proton calendar"
+                        color: root.theme.text
+                        font.family: root.theme.family
+                        font.pixelSize: root.theme.fsNormal
+                    }
+                }
+                MouseArea {
+                    id: pMa
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    enabled: !(root.acc && root.acc.busy)
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        root.protonForm = !root.protonForm;
+                        if (root.protonForm) urlInput.forceActiveFocus();
+                    }
+                }
+                Behavior on color { ColorAnimation { duration: root.theme.animFast } }
+            }
+
+            // ---- Proton URL form ----
+            Column {
+                visible: root.protonForm
+                width: col.width
+                spacing: 6
+                Text {
+                    width: parent.width
+                    wrapMode: Text.WordWrap
+                    text: "Proton has no calendar API. In Proton Calendar open your "
+                        + "calendar → Share → Share with anyone, and paste the ICS link."
+                    color: root.theme.textDim
+                    font.family: root.theme.family
+                    font.pixelSize: root.theme.fsSmall
+                }
+                // URL field
+                Rectangle {
+                    width: parent.width
+                    height: 36
+                    radius: root.theme.radiusBtn
+                    color: root.theme.bgElevated
+                    border.width: 1
+                    border.color: urlInput.activeFocus ? root._provColor("proton") : root.theme.border
+                    TextInput {
+                        id: urlInput
+                        objectName: "pillKbInput"
+                        anchors.fill: parent
+                        anchors.leftMargin: 10
+                        anchors.rightMargin: 10
+                        verticalAlignment: TextInput.AlignVCenter
+                        color: root.theme.text
+                        font.family: root.theme.mono
+                        font.pixelSize: root.theme.fsSmall
+                        clip: true
+                        selectByMouse: true
+                        selectionColor: root.theme.accentDim
+                        Keys.onEscapePressed: root.protonForm = false
+                        Text {
+                            anchors.fill: parent
+                            verticalAlignment: Text.AlignVCenter
+                            visible: urlInput.text.length === 0
+                            text: "https://calendar.proton.me/api/calendar/…/calendar.ics"
+                            color: root.theme.faint
+                            font.family: root.theme.mono
+                            font.pixelSize: root.theme.fsSmall
+                            elide: Text.ElideRight
+                        }
+                    }
+                }
+                // optional label field
+                Rectangle {
+                    width: parent.width
+                    height: 36
+                    radius: root.theme.radiusBtn
+                    color: root.theme.bgElevated
+                    border.width: 1
+                    border.color: labelInput.activeFocus ? root._provColor("proton") : root.theme.border
+                    TextInput {
+                        id: labelInput
+                        objectName: "pillKbInput"
+                        anchors.fill: parent
+                        anchors.leftMargin: 10
+                        anchors.rightMargin: 10
+                        verticalAlignment: TextInput.AlignVCenter
+                        color: root.theme.text
+                        font.family: root.theme.family
+                        font.pixelSize: root.theme.fsNormal
+                        clip: true
+                        selectByMouse: true
+                        selectionColor: root.theme.accentDim
+                        Keys.onEscapePressed: root.protonForm = false
+                        Text {
+                            anchors.fill: parent
+                            verticalAlignment: Text.AlignVCenter
+                            visible: labelInput.text.length === 0
+                            text: "Label (optional)"
+                            color: root.theme.faint
+                            font.family: root.theme.family
+                            font.pixelSize: root.theme.fsNormal
+                        }
+                    }
+                }
+                // add / cancel
+                Row {
+                    spacing: 8
+                    Rectangle {
+                        width: addTxt.implicitWidth + 28
+                        height: 32
+                        radius: root.theme.radiusBtn
+                        color: addMa.containsMouse ? root.theme.accent : root.theme.accentSoft
+                        opacity: (urlInput.text.length > 0 && !(root.acc && root.acc.busy)) ? 1 : 0.5
+                        Text {
+                            id: addTxt
+                            anchors.centerIn: parent
+                            text: (root.acc && root.acc.busy && root.acc.busyKind === "proton")
+                                ? "Adding…" : "Add"
+                            color: addMa.containsMouse ? "#ffffff" : root.theme.accent
+                            font.family: root.theme.mono
+                            font.pixelSize: root.theme.fsSmall
+                            font.letterSpacing: root.theme.labelSpacing
+                            font.capitalization: Font.AllUppercase
+                        }
+                        MouseArea {
+                            id: addMa
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            enabled: urlInput.text.length > 0 && !(root.acc && root.acc.busy)
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                if (!root.acc) return;
+                                root.protonSubmitted = true;
+                                root.acc.addProton(urlInput.text, labelInput.text);
+                            }
+                        }
+                        Behavior on color { ColorAnimation { duration: root.theme.animFast } }
+                    }
+                    Rectangle {
+                        width: cancelTxt.implicitWidth + 28
+                        height: 32
+                        radius: root.theme.radiusBtn
+                        color: cancelMa.containsMouse ? root.theme.rowHi : root.theme.row
+                        Text {
+                            id: cancelTxt
+                            anchors.centerIn: parent
+                            text: "Cancel"
+                            color: root.theme.textDim
+                            font.family: root.theme.mono
+                            font.pixelSize: root.theme.fsSmall
+                            font.letterSpacing: root.theme.labelSpacing
+                            font.capitalization: Font.AllUppercase
+                        }
+                        MouseArea {
+                            id: cancelMa
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.protonForm = false
+                        }
+                        Behavior on color { ColorAnimation { duration: root.theme.animFast } }
+                    }
+                }
+            }
+        }
     }
 }
 #+end_src
@@ -5976,6 +7014,9 @@ Item {
     required property var settings    // JsonAdapter { bool grid; var favorites }
     required property var notifs      // notification state (the DND toggle drives it)
     property var fin                  // FinanceState (the privacy toggle drives it)
+    property var acc                  // AccountsState (the settings page manages calendar accounts)
+    // the settings gear (toggle row) opens the calendar-account manager over the body
+    property bool settingsOpen: false
     signal launched()
     signal closeRequested()
     // right-click on an app row/tile/result: ask the parent to show the app
@@ -5990,6 +7031,7 @@ Item {
     <<launcher-toggles>>
     <<launcher-power>>
     <<launcher-body>>
+    <<launcher-accounts>>
 }
 #+end_src
 
@@ -6310,6 +7352,25 @@ Row {
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
             onClicked: if (root.fin) root.fin.togglePrivacy()
+        }
+
+    }
+
+    // settings gear — opens the calendar-account manager (KDE + pill accounts)
+    MSym {
+        icon: "settings"
+        size: 18
+        fill: root.settingsOpen ? 1 : 0
+        color: root.settingsOpen ? root.theme.accent : (setMa.containsMouse ? root.theme.text : root.theme.faint)
+
+        MouseArea {
+            id: setMa
+
+            anchors.fill: parent
+            anchors.margins: -4
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: root.settingsOpen = !root.settingsOpen
         }
 
     }
@@ -6905,6 +7966,50 @@ Item {
 
     }
 
+}
+#+end_src
+
+**** Launcher.qml — accounts overlay
+The calendar-account manager ([[*AccountsMenu.qml][=AccountsMenu=]]) shown over the
+whole launcher when the settings gear is on. An opaque backdrop + a catch =MouseArea=
+cover the body; opening it drops the search field's keyboard focus (so stray keys
+don't land in the now-hidden search) and reloads the account list, and closing it
+restores focus.
+#+name: launcher-accounts
+#+begin_src qml
+// ================= calendar-account manager overlay =================
+Item {
+    id: accountsOverlay
+
+    anchors.fill: parent
+    visible: root.settingsOpen
+    z: 100
+
+    // swallow clicks/hover so nothing in the launcher body underneath reacts
+    MouseArea {
+        anchors.fill: parent
+        hoverEnabled: true
+    }
+
+    AccountsMenu {
+        anchors.fill: parent
+        theme: root.theme
+        acc: root.acc
+        onCloseRequested: root.settingsOpen = false
+    }
+}
+// manage keyboard focus + refresh as the overlay toggles
+Connections {
+    target: root
+    function onSettingsOpenChanged() {
+        if (root.settingsOpen) {
+            search.focus = false;
+            if (root.acc)
+                root.acc.load();
+        } else {
+            search.forceActiveFocus();
+        }
+    }
 }
 #+end_src
 
@@ -9780,6 +10885,906 @@ def main():
         _emacs("(progn %s (pill-open))" % HELPERS, wait=False)
     else:
         sys.stdout.write("[]")
+
+
+if __name__ == "__main__":
+    main()
+#+end_src
+
+** gcalbridge.py
+*** Description
+The Google-Calendar backend for [[*CalendarMenu.qml][=CalendarMenu=]] (via
+[[*CalendarEvents.qml][=CalendarEvents=]]). The user's Google accounts are already
+connected through *KDE Online Accounts*, and their stored OAuth scope already
+includes =…/auth/calendar= — so rather than run its own OAuth dance, the pill reuses
+those accounts: it enumerates them with =libaccounts-glib= (=gi.repository.Accounts=)
+and asks *signond* for a fresh access token over its sanctioned D-Bus SSO API
+(=com.google.code.AccountsSSO.SingleSignOn=: =getAuthSessionObjectPath(CredId, "",
+"oauth2")= → =AuthSession.process(sessionData, "web_server")= with
+=UiPolicy = 3= / no-user-interaction). signond pulls the refresh token from KWallet
+and returns the access token; the secret store is never read directly. The OAuth
+=ClientId=/=ClientSecret=/=Scope= come from the world-readable provider file
+=/usr/share/accounts/providers/kde/google.provider=.
+
+With a token in hand it hits the Calendar v3 REST API (=calendarList= then =events=
+per selected calendar) and writes a normalised event cache to
+=~/.cache/quickshell-pill/gcal-events.json=.
+
+Beyond the KDE accounts, the pill can manage *its own* accounts (see
+[[*AccountsMenu.qml][=AccountsMenu=]], via [[*AccountsState.qml][=AccountsState=]]),
+persisted as metadata in =~/.local/share/quickshell-pill/accounts.json= with the
+secret (a Google refresh token or a Proton iCal URL) in the *keyring* (=secret-tool=,
+service =quickshell-pill-cal=). Two provider types: additional *Google* accounts sign
+in through our own *loopback OAuth* — a localhost listener catches the redirect (the
+KDE client's registered =localhost/oauth2callback= redirect permits any loopback port),
+reusing the same =ClientId=/=ClientSecret=; and *Proton*, which has no calendar API and
+is end-to-end encrypted, is added as its *ICS share link* (Proton → Calendar → Share →
+"Share with anyone"), fetched and parsed here (recurrence expanded with
+=dateutil.rrule=). Commands: =fetch [A B]= refreshes the cache across *all* accounts
+(KDE Google + pill Google + pill Proton) and dedupes; =read= prints the cache with no
+network; =accounts= lists every account for the settings page; =add-google= /
+=add-proton URL [LABEL]= / =remove ID= manage pill accounts.
+
+*Dedup* keys on the normalised iCalUID/UID (domain-stripped) + instance start, so the
+*same* meeting is shown once even across providers — e.g. a Proton event imported into
+a Google calendar folds with the direct-Proton copy — while distinct recurring
+instances survive. On a tie the higher-scoring copy wins: access role first, then a
+source preference (Proton original > pill-added Google > KDE Google), which is what
+makes a pill-added account "ignore the KDE one" for the same Google account.
+
+Everything is best-effort and defensive: a missing dependency, an account that needs
+re-consent, or a network error is caught, recorded in the envelope's =errors=, and the
+rest still render. Multi-day events carry a =days= list so a single event lights every
+day it spans. *Note:* the signond token call and the OAuth/keyring paths cannot be
+exercised from the coding sandbox (its credential-access guard blocks them), so those
+are verified only structurally — they must be run from the real pill.
+*** Code
+#+begin_src python :tangle ~/.config/quickshell/pill/gcalbridge.py :mkdirp yes
+#!/usr/bin/env python3
+# gcalbridge.py — calendar backend for the pill's calendar menu + account manager.
+#
+#   fetch [A B]     refresh the event cache for window [A,B] from every account —
+#                   KDE Google + pill-added Google + pill-added Proton (ICS) — then
+#                   dedupe and print the cached JSON (hourly Timer + refetch button).
+#   read            print the cached JSON with no network I/O (menu open).
+#   accounts        print JSON of all accounts for the settings page:
+#                   {"accounts":[{id, provider, label, source, removable}], "errors":[]}
+#   add-google      run a loopback OAuth flow (opens the browser), store the refresh
+#                   token in the keyring, register the account; print {ok, label, error}
+#   add-proton URL [LABEL]
+#                   register a Proton / iCal share-URL calendar (URL kept in the
+#                   keyring); print {ok, label, error}
+#   remove ID       remove a pill-added account and its keyring secret; print {ok}
+#
+# KDE Google accounts come from KDE Online Accounts (libaccounts) with tokens from
+# signond (the refresh token stays in KWallet). Pill-added Google accounts use our
+# own loopback OAuth — reusing the KDE OAuth client, whose registered localhost
+# redirect lets the loopback flow use any port — with the refresh token in the
+# keyring (secret-tool). Proton has no calendar API and is end-to-end encrypted, so
+# a "Proton" account is that calendar's ICS share link, fetched + parsed here.
+# Everything is best-effort: failures are recorded in "errors" and the rest render.
+import sys, os, json, re, tempfile, subprocess, hashlib
+from datetime import date, datetime, timedelta
+
+CACHE_DIR = os.path.expanduser("~/.cache/quickshell-pill")
+CACHE = os.path.join(CACHE_DIR, "gcal-events.json")
+DATA_DIR = os.path.expanduser("~/.local/share/quickshell-pill")
+ACCOUNTS_FILE = os.path.join(DATA_DIR, "accounts.json")
+KEYRING_SERVICE = "quickshell-pill-cal"
+PROVIDER = "/usr/share/accounts/providers/kde/google.provider"
+SSO = "com.google.code.AccountsSSO.SingleSignOn"
+SSO_PATH = "/com/google/code/AccountsSSO/SingleSignOn"
+API = "https://www.googleapis.com/calendar/v3"
+TOKEN_URL = "https://oauth2.googleapis.com/token"
+AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
+USERINFO = "https://www.googleapis.com/oauth2/v3/userinfo"
+CAL_SCOPE = "https://www.googleapis.com/auth/calendar.readonly"
+PROTON_COLOR = "#8a6fdf"  # default bar/dot colour for Proton events (ICS has none)
+NO_UI = 3  # signon SessionData UiPolicy: NO_USER_INTERACTION_POLICY
+
+# hard-coded fallbacks (also present in the provider file) so a missing/renamed
+# provider file doesn't break auth.
+FALLBACK = {
+    "Host": "accounts.google.com",
+    "AuthPath": "o/oauth2/auth?access_type=offline&approval_prompt=force",
+    "TokenPath": "o/oauth2/token",
+    "RedirectUri": "http://localhost/oauth2callback",
+    "ResponseType": "code",
+    "ClientId": "317066460457-pkpkedrvt2ldq6g2hj1egfka2n7vpuoo.apps.googleusercontent.com",
+    "ClientSecret": "Y8eFAaWfcanV3amZdDvtbYUq",
+    "Scope": ["https://www.googleapis.com/auth/calendar"],
+}
+
+
+def _empty(errors=None):
+    return {"events": [], "window": None, "fetched": None,
+            "errors": errors or [], "accounts": []}
+
+
+# ---------------------------------------------------------------- pill accounts
+def _load_accounts():
+    try:
+        with open(ACCOUNTS_FILE, encoding="utf-8") as fh:
+            return (json.load(fh) or {}).get("accounts", [])
+    except Exception:
+        return []
+
+
+def _save_accounts(accs):
+    os.makedirs(DATA_DIR, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=DATA_DIR, prefix=".accts-", suffix=".json")
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        json.dump({"accounts": accs}, fh, ensure_ascii=False, indent=2)
+    os.replace(tmp, ACCOUNTS_FILE)
+
+
+def _secret_store(acc_id, value):
+    try:
+        p = subprocess.run(
+            ["secret-tool", "store", "--label", "pill calendar " + acc_id,
+             "service", KEYRING_SERVICE, "account", acc_id],
+            input=value.encode(), capture_output=True, timeout=20)
+        return p.returncode == 0
+    except Exception:
+        return False
+
+
+def _secret_lookup(acc_id):
+    try:
+        p = subprocess.run(
+            ["secret-tool", "lookup", "service", KEYRING_SERVICE, "account", acc_id],
+            capture_output=True, timeout=20)
+        return p.stdout.decode("utf-8", "replace").strip() if p.returncode == 0 else ""
+    except Exception:
+        return ""
+
+
+def _secret_clear(acc_id):
+    try:
+        subprocess.run(["secret-tool", "clear", "service", KEYRING_SERVICE,
+                        "account", acc_id], capture_output=True, timeout=20)
+    except Exception:
+        pass
+
+
+# ------------------------------------------------------------ google OAuth creds
+def provider_creds():
+    # Parse the (world-readable) KDE provider file for the OAuth client + endpoints.
+    # Falls back to the constants above if it can't be read/parsed.
+    creds = dict(FALLBACK)
+    try:
+        import xml.etree.ElementTree as ET
+
+        root = ET.parse(PROVIDER).getroot()
+        for s in root.iter("setting"):
+            name = s.get("name")
+            if name in ("Host", "AuthPath", "TokenPath", "RedirectUri",
+                        "ResponseType", "ClientId", "ClientSecret") and s.text:
+                creds[name] = s.text.strip()
+            elif name == "Scope" and s.text:
+                sc = re.findall(r"'([^']+)'", s.text)
+                if sc:
+                    creds["Scope"] = sc
+    except Exception:
+        pass
+    if "https://www.googleapis.com/auth/calendar" in creds["Scope"]:
+        creds["Scope"] = ["https://www.googleapis.com/auth/calendar"]
+    return creds
+
+
+def list_accounts(errors):
+    # Enumerate enabled KDE Google accounts + their signond credentials id via
+    # libaccounts-glib. Returns [{name, cred_id}].
+    out = []
+    try:
+        import gi
+
+        gi.require_version("Accounts", "1.0")
+        from gi.repository import Accounts
+
+        mgr = Accounts.Manager.new()
+        for aid in mgr.list():
+            acc = mgr.get_account(aid)
+            if not acc or acc.get_provider_name() != "google" or not acc.get_enabled():
+                continue
+            name = acc.get_display_name() or ("account %d" % aid)
+            cred_id = 0
+            try:
+                asvc = Accounts.AccountService.new(acc, None)  # None -> global service
+                cred_id = int(asvc.get_auth_data().get_credentials_id())
+            except Exception:
+                cred_id = 0
+            if cred_id:
+                out.append({"name": name, "cred_id": cred_id})
+            else:
+                errors.append("%s: no credentials id" % name)
+    except Exception as e:
+        errors.append("accounts: %s" % e)
+    return out
+
+
+def access_token(cred_id, creds):
+    # Ask signond for a fresh access token for this credentials id, no UI. The
+    # refresh token lives in KWallet; signond refreshes and hands us only the
+    # access token. Returns "" on any failure.
+    import dbus
+
+    bus = dbus.SessionBus()
+    auth = dbus.Interface(bus.get_object(SSO, SSO_PATH), SSO + ".AuthService")
+    path = auth.getAuthSessionObjectPath(dbus.UInt32(cred_id), "", "oauth2")
+    sess = dbus.Interface(bus.get_object(SSO, path), SSO + ".AuthSession")
+    sd = dbus.Dictionary(
+        {
+            "Host": creds["Host"], "AuthPath": creds["AuthPath"],
+            "TokenPath": creds["TokenPath"], "RedirectUri": creds["RedirectUri"],
+            "ResponseType": creds["ResponseType"], "ClientId": creds["ClientId"],
+            "ClientSecret": creds["ClientSecret"], "ForceClientAuthViaRequestBody": True,
+            "Scope": dbus.Array(creds["Scope"], signature="s"),
+            "UiPolicy": dbus.UInt32(NO_UI),
+        },
+        signature="sv",
+    )
+    reply = sess.process(sd, "web_server", timeout=30)
+    return str(reply.get("AccessToken", "") or "")
+
+
+def _pill_google_token(acc, creds, errors):
+    # Refresh a pill-added Google account's access token from its keyring refresh token.
+    import requests
+
+    rt = _secret_lookup(acc["id"])
+    if not rt:
+        errors.append("%s: not signed in (re-add the account)" % acc.get("label", acc["id"]))
+        return ""
+    try:
+        r = requests.post(TOKEN_URL, data={
+            "client_id": creds["ClientId"], "client_secret": creds["ClientSecret"],
+            "refresh_token": rt, "grant_type": "refresh_token"}, timeout=25)
+    except Exception as e:
+        errors.append("%s: token refresh failed (%s)" % (acc.get("label", ""), str(e)[:100]))
+        return ""
+    if r.status_code != 200:
+        errors.append("%s: token refresh rejected (re-add the account)" % acc.get("label", ""))
+        return ""
+    return r.json().get("access_token", "") or ""
+
+
+# ----------------------------------------------------------- google event fetch
+def _get(session, url, params, token):
+    r = session.get(url, headers={"Authorization": "Bearer " + token},
+                    params=params, timeout=25)
+    r.raise_for_status()
+    return r.json()
+
+
+_URL_RE = re.compile(r"https?://\S+")
+_JOIN_RE = re.compile(r"https?://\S*(?:meet\.google|zoom\.us|teams\.microsoft|"
+                      r"webex\.com|whereby\.com|meet\.jit\.si)\S*", re.I)
+
+
+def _join_from_text(*fields):
+    for field in fields:
+        m = _JOIN_RE.search(field or "")
+        if m:
+            return m.group(0).rstrip(").,>")
+    m = _URL_RE.search(fields[0] or "" if fields else "")
+    return m.group(0).rstrip(").,>") if m else ""
+
+
+def _join_link(ev):
+    if ev.get("hangoutLink"):
+        return ev["hangoutLink"]
+    conf = ev.get("conferenceData") or {}
+    for ep in conf.get("entryPoints", []) or []:
+        if ep.get("entryPointType") == "video" and ep.get("uri"):
+            return ep["uri"]
+    return _join_from_text(ev.get("location", ""), ev.get("description", ""))
+
+
+def _local(dtstr):
+    s = dtstr.replace("Z", "+00:00")
+    dt = datetime.fromisoformat(s)
+    if dt.tzinfo is not None:
+        dt = dt.astimezone()
+    return dt.strftime("%Y-%m-%d"), dt.strftime("%H:%M")
+
+
+def _day_span(start_key, end_key, all_day):
+    d0 = date(*map(int, start_key.split("-")))
+    d1 = date(*map(int, end_key.split("-")))
+    if all_day:
+        d1 -= timedelta(days=1)
+    if d1 < d0:
+        d1 = d0
+    out, d = [], d0
+    while d <= d1 and len(out) < 60:
+        out.append(d.isoformat())
+        d += timedelta(days=1)
+    return out
+
+
+def normalize(ev, account, cal, color, access, source):
+    start, end = ev.get("start", {}), ev.get("end", {})
+    all_day = "date" in start
+    if all_day:
+        start_key = start.get("date", "")
+        end_key = end.get("date", start_key)
+        start_time = end_time = ""
+    else:
+        sd = start.get("dateTime", "")
+        ed = end.get("dateTime", sd)
+        start_key, start_time = _local(sd) if sd else ("", "")
+        end_key, end_time = _local(ed) if ed else (start_key, "")
+    if not start_key:
+        return None
+    atts = []
+    for a in ev.get("attendees", []) or []:
+        if a.get("resource"):
+            continue
+        atts.append({"name": a.get("displayName") or a.get("email") or "",
+                     "response": a.get("responseStatus", ""), "self": bool(a.get("self"))})
+    org = ev.get("organizer", {}) or {}
+    return {
+        "id": ev.get("id", ""),
+        "uid": ev.get("iCalUID", "") or ev.get("id", ""),
+        "access": access or "",
+        "source": source,
+        "provider": "google",
+        "account": account,
+        "calendar": cal,
+        "color": color or "",
+        "summary": ev.get("summary", "") or "(no title)",
+        "allDay": all_day,
+        "days": _day_span(start_key, end_key, all_day),
+        "startKey": start_key, "endKey": end_key,
+        "startTime": start_time, "endTime": end_time,
+        "location": ev.get("location", "") or "",
+        "description": (ev.get("description", "") or "").strip(),
+        "attendees": atts,
+        "organizer": org.get("displayName") or org.get("email") or "",
+        "joinLink": _join_link(ev),
+        "htmlLink": ev.get("htmlLink", "") or "",
+        "status": ev.get("status", ""),
+    }
+
+
+def _fetch_google_events(token, account, source, time_min, time_max, errors):
+    import requests
+
+    out = []
+    session = requests.Session()
+    try:
+        cal_list = _get(session, API + "/users/me/calendarList", {"maxResults": 250}, token)
+    except Exception as e:
+        errors.append("%s: calendar list failed (%s)" % (account, str(e)[:120]))
+        return []
+    for cal in cal_list.get("items", []):
+        if cal.get("hidden") or not (cal.get("selected") or cal.get("primary")):
+            continue
+        cal_id = cal.get("id")
+        cal_name = cal.get("summaryOverride") or cal.get("summary") or cal_id
+        color = cal.get("backgroundColor", "")
+        access = cal.get("accessRole", "")
+        page = None
+        for _ in range(20):
+            params = {"timeMin": time_min, "timeMax": time_max, "singleEvents": "true",
+                      "orderBy": "startTime", "maxResults": 250}
+            if page:
+                params["pageToken"] = page
+            try:
+                data = _get(session, API + "/calendars/%s/events"
+                            % requests.utils.quote(cal_id, safe=""), params, token)
+            except Exception as e:
+                errors.append("%s / %s: events failed (%s)" % (account, cal_name, str(e)[:100]))
+                break
+            for ev in data.get("items", []):
+                if ev.get("status") == "cancelled":
+                    continue
+                n = normalize(ev, account, cal_name, color, access, source)
+                if n:
+                    out.append(n)
+            page = data.get("nextPageToken")
+            if not page:
+                break
+    return out
+
+
+def fetch_account(acct, creds, time_min, time_max, errors):
+    # KDE Google account: token via signond, then the shared event fetch.
+    try:
+        token = access_token(acct["cred_id"], creds)
+    except Exception as e:
+        errors.append("%s: sign-in failed (%s)" % (acct["name"], str(e)[:120]))
+        return []
+    if not token:
+        errors.append("%s: no access token (re-add the account in System Settings?)" % acct["name"])
+        return []
+    return _fetch_google_events(token, acct["name"], "kde", time_min, time_max, errors)
+
+
+def fetch_pill_google(acc, creds, time_min, time_max, errors):
+    token = _pill_google_token(acc, creds, errors)
+    if not token:
+        return []
+    return _fetch_google_events(token, acc.get("label", acc["id"]), "pill",
+                                time_min, time_max, errors)
+
+
+# ------------------------------------------------------------- Proton / ICS feed
+def _ics_unfold(text):
+    # RFC5545 line unfolding: a line beginning with space/tab continues the prior.
+    out = []
+    for raw in text.replace("\r\n", "\n").replace("\r", "\n").split("\n"):
+        if raw[:1] in (" ", "\t") and out:
+            out[-1] += raw[1:]
+        else:
+            out.append(raw)
+    return out
+
+
+def _ics_unescape(v):
+    return (v.replace("\\n", "\n").replace("\\N", "\n").replace("\\,", ",")
+             .replace("\\;", ";").replace("\\\\", "\\"))
+
+
+def _ics_prop(line):
+    # "NAME;PARAM=x;PARAM2=y:VALUE" -> (NAME, {params}, VALUE)
+    if ":" not in line:
+        return None
+    head, value = line.split(":", 1)
+    parts = head.split(";")
+    name = parts[0].upper()
+    params = {}
+    for p in parts[1:]:
+        if "=" in p:
+            k, v = p.split("=", 1)
+            params[k.upper()] = v.strip('"')
+    return name, params, value
+
+
+def _ics_dt(value, params):
+    # returns (datetime|date, is_date)
+    from dateutil import tz as _tz
+
+    if params.get("VALUE") == "DATE" or (len(value) == 8 and "T" not in value):
+        return date(int(value[0:4]), int(value[4:6]), int(value[6:8])), True
+    v = value
+    utc = v.endswith("Z")
+    if utc:
+        v = v[:-1]
+    dt = datetime.strptime(v, "%Y%m%dT%H%M%S")
+    if utc:
+        dt = dt.replace(tzinfo=_tz.UTC)
+    elif params.get("TZID"):
+        dt = dt.replace(tzinfo=_tz.gettz(params["TZID"]) or _tz.tzlocal())
+    else:
+        dt = dt.replace(tzinfo=_tz.tzlocal())  # floating -> local
+    return dt, False
+
+
+def _local_keys(dt, is_date):
+    from dateutil import tz as _tz
+
+    if is_date:
+        return dt.isoformat(), ""
+    lo = dt.astimezone(_tz.tzlocal())
+    return lo.strftime("%Y-%m-%d"), lo.strftime("%H:%M")
+
+
+def _ics_person(value, params):
+    name = params.get("CN") or value.replace("mailto:", "").replace("MAILTO:", "")
+    return name, (params.get("PARTSTAT", "") or "").lower()
+
+
+def _parse_vevents(lines):
+    events, cur = [], None
+    for line in lines:
+        u = line.upper()
+        if u == "BEGIN:VEVENT":
+            cur = {"attendees": []}
+        elif u == "END:VEVENT":
+            if cur is not None:
+                events.append(cur)
+            cur = None
+        elif cur is not None:
+            p = _ics_prop(line)
+            if not p:
+                continue
+            name, params, value = p
+            if name == "UID":
+                cur["uid"] = value
+            elif name == "SUMMARY":
+                cur["summary"] = _ics_unescape(value)
+            elif name == "LOCATION":
+                cur["location"] = _ics_unescape(value)
+            elif name == "DESCRIPTION":
+                cur["description"] = _ics_unescape(value)
+            elif name == "DTSTART":
+                cur["start"], cur["all_day"] = _ics_dt(value, params)
+            elif name == "DTEND":
+                cur["end"], _ = _ics_dt(value, params)
+            elif name == "RRULE":
+                cur["rrule"] = value
+            elif name == "EXDATE":
+                cur.setdefault("exdate", []).append((value, params))
+            elif name == "ORGANIZER":
+                cur["organizer"] = _ics_person(value, params)[0]
+            elif name == "ATTENDEE":
+                nm, st = _ics_person(value, params)
+                cur["attendees"].append({"name": nm, "response": st, "self": False})
+            elif name in ("COLOR", "X-APPLE-CALENDAR-COLOR") and value:
+                cur["color"] = value.strip()
+    return events
+
+
+def _expand_occurrences(ve, win_start, win_end):
+    # yields (start_dt_or_date, is_date) occurrences within [win_start, win_end]
+    from dateutil import tz as _tz
+    from dateutil.rrule import rrulestr
+
+    start = ve.get("start")
+    if start is None:
+        return []
+    is_date = ve.get("all_day", False)
+    base = (datetime(start.year, start.month, start.day, tzinfo=_tz.tzlocal())
+            if is_date else start)
+    if not ve.get("rrule"):
+        if win_start <= base <= win_end:
+            return [(start, is_date)]
+        return []
+    text = "DTSTART:" + base.astimezone(_tz.UTC).strftime("%Y%m%dT%H%M%SZ") + \
+           "\nRRULE:" + ve["rrule"]
+    for val, params in ve.get("exdate", []):
+        for piece in val.split(","):
+            try:
+                edt, ed_date = _ics_dt(piece, params)
+                eb = (datetime(edt.year, edt.month, edt.day, tzinfo=_tz.tzlocal())
+                      if ed_date else edt)
+                text += "\nEXDATE:" + eb.astimezone(_tz.UTC).strftime("%Y%m%dT%H%M%SZ")
+            except Exception:
+                pass
+    try:
+        rs = rrulestr(text, forceset=True)
+        occ = rs.between(win_start, win_end, inc=True)
+    except Exception:
+        return []
+    out = []
+    for o in occ[:366]:
+        if is_date:
+            out.append((o.date(), True))
+        else:
+            out.append((o, False))
+    return out
+
+
+def fetch_proton(acc, a, b, errors):
+    import requests
+    from dateutil import tz as _tz
+
+    url = _secret_lookup(acc["id"])
+    if not url:
+        errors.append("%s: missing iCal URL (re-add)" % acc.get("label", ""))
+        return []
+    try:
+        r = requests.get(url, timeout=25)
+        r.raise_for_status()
+        text = r.text
+    except Exception as e:
+        errors.append("%s: iCal fetch failed (%s)" % (acc.get("label", ""), str(e)[:100]))
+        return []
+    if "BEGIN:VCALENDAR" not in text[:4000]:
+        errors.append("%s: not an iCal feed" % acc.get("label", ""))
+        return []
+
+    win_start = datetime(*map(int, a.split("-")), 0, 0, tzinfo=_tz.tzlocal())
+    win_end = datetime(*map(int, b.split("-")), 23, 59, 59, tzinfo=_tz.tzlocal())
+    label = acc.get("label", "Proton")
+    out = []
+    for ve in _parse_vevents(_ics_unfold(text)):
+        start = ve.get("start")
+        if start is None:
+            continue
+        is_date = ve.get("all_day", False)
+        end = ve.get("end") or start
+        # duration between the (original) start and end
+        if is_date:
+            dur = timedelta(days=1)
+            try:
+                dur = date(end.year, end.month, end.day) - date(start.year, start.month, start.day)
+                if dur.days < 1:
+                    dur = timedelta(days=1)
+            except Exception:
+                dur = timedelta(days=1)
+        else:
+            try:
+                dur = end - start
+            except Exception:
+                dur = timedelta(hours=1)
+        for occ_start, occ_is_date in _expand_occurrences(ve, win_start, win_end):
+            if occ_is_date:
+                s_key = occ_start.isoformat()
+                e_key = (occ_start + dur).isoformat()
+                s_time = e_time = ""
+            else:
+                occ_end = occ_start + dur
+                s_key, s_time = _local_keys(occ_start, False)
+                e_key, e_time = _local_keys(occ_end, False)
+            uid = ve.get("uid", "")
+            out.append({
+                "id": (uid + "|" + s_key + s_time) if uid else (s_key + s_time + (ve.get("summary", ""))),
+                "uid": uid,
+                "access": "owner", "source": "proton", "provider": "proton",
+                "account": label, "calendar": label,
+                "color": ve.get("color", "") or PROTON_COLOR,
+                "summary": ve.get("summary", "") or "(no title)",
+                "allDay": occ_is_date,
+                "days": _day_span(s_key, e_key, occ_is_date),
+                "startKey": s_key, "endKey": e_key,
+                "startTime": s_time, "endTime": e_time,
+                "location": ve.get("location", ""),
+                "description": ve.get("description", ""),
+                "attendees": ve.get("attendees", []),
+                "organizer": ve.get("organizer", ""),
+                "joinLink": _join_from_text(ve.get("location", ""), ve.get("description", "")),
+                "htmlLink": "", "status": "",
+            })
+    return out
+
+
+# ------------------------------------------------------------------------ dedup
+_ACCESS_RANK = {"owner": 3, "writer": 2, "reader": 1, "freeBusyReader": 0}
+# source preference: a Proton original beats a Google-imported copy; a pill-added
+# Google account beats the same account read from KDE ("ignore the KDE one").
+_SOURCE_BONUS = {"proton": 3, "pill": 2, "kde": 1}
+
+
+def _score(e):
+    return _ACCESS_RANK.get(e.get("access", ""), 0) * 10 + _SOURCE_BONUS.get(e.get("source", ""), 0)
+
+
+def _dedup(events):
+    # Collapse copies of the same instance that show up on more than one calendar,
+    # account or provider. Key = normalized iCalUID/UID (domain stripped, so a
+    # Google-imported Proton event folds with the Proton original) + the instance
+    # start — so distinct recurring instances (same UID, different start) survive.
+    # The higher-scoring copy wins (access role, then source preference).
+    best, order = {}, []
+    for e in events:
+        uid = e.get("uid", "") or e.get("id", "")
+        if "@" in uid:
+            uid = uid.rsplit("@", 1)[0]
+        base = uid or e.get("id", "") or ("obj%d" % id(e))
+        key = base + "|" + e.get("startKey", "") + "|" + e.get("startTime", "")
+        if key not in best:
+            best[key] = e
+            order.append(key)
+        elif _score(e) > _score(best[key]):
+            best[key] = e
+    return [best[k] for k in order]
+
+
+# ------------------------------------------------------------------ commands
+def fetch(a, b):
+    errors = []
+    creds = provider_creds()
+    time_min = a + "T00:00:00Z"
+    time_max = b + "T23:59:59Z"
+    events, names = [], []
+
+    for acc in _load_accounts():
+        names.append(acc.get("label", acc["id"]))
+        if acc.get("provider") == "google":
+            events += fetch_pill_google(acc, creds, time_min, time_max, errors)
+        elif acc.get("provider") == "proton":
+            events += fetch_proton(acc, a, b, errors)
+
+    for acct in list_accounts(errors):
+        names.append(acct["name"])
+        events += fetch_account(acct, creds, time_min, time_max, errors)
+
+    events = _dedup(events)
+    events.sort(key=lambda e: (e["startKey"], 0 if e["allDay"] else 1,
+                               e["startTime"], e["summary"]))
+    env = {"events": events, "window": [a, b],
+           "fetched": datetime.now().strftime("%Y-%m-%d %H:%M"),
+           "errors": errors, "accounts": names}
+    try:
+        os.makedirs(CACHE_DIR, exist_ok=True)
+        fd, tmp = tempfile.mkstemp(dir=CACHE_DIR, prefix=".gcal-", suffix=".json")
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            json.dump(env, fh, ensure_ascii=False)
+        os.replace(tmp, CACHE)
+    except Exception as e:
+        env["errors"].append("cache write: %s" % e)
+    return env
+
+
+def read():
+    try:
+        with open(CACHE, encoding="utf-8") as fh:
+            return json.load(fh)
+    except Exception:
+        return _empty()
+
+
+def cmd_accounts():
+    errors, out = [], []
+    for a in list_accounts(errors):
+        out.append({"id": "kde-%s" % a["cred_id"], "provider": "google",
+                    "label": a["name"], "source": "kde", "removable": False})
+    for a in _load_accounts():
+        out.append({"id": a["id"], "provider": a.get("provider", "google"),
+                    "label": a.get("label", a["id"]), "source": "pill", "removable": True})
+    return {"accounts": out, "errors": errors}
+
+
+def _oauth_google(creds, errors):
+    # Loopback OAuth: spin a localhost listener, open the browser, wait for the
+    # redirect with the code, exchange it for a refresh token, resolve the email.
+    import http.server
+    import urllib.parse
+    import secrets
+    import time as _t
+    import requests
+
+    holder = {}
+
+    class H(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            q = urllib.parse.urlparse(self.path)
+            if not q.path.startswith("/oauth2callback"):
+                self.send_response(404)
+                self.end_headers()
+                return
+            qs = urllib.parse.parse_qs(q.query)
+            holder["code"] = qs.get("code", [""])[0]
+            holder["error"] = qs.get("error", [""])[0]
+            holder["state"] = qs.get("state", [""])[0]
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(b"<html><body style='font-family:sans-serif;padding:3em'>"
+                             b"<h2>Signed in.</h2><p>You can close this tab and return "
+                             b"to the pill.</p></body></html>")
+
+        def log_message(self, *a):
+            pass
+
+    srv = http.server.HTTPServer(("127.0.0.1", 0), H)
+    srv.timeout = 1
+    port = srv.server_port
+    redirect = "http://localhost:%d/oauth2callback" % port
+    state = secrets.token_urlsafe(16)
+    auth = AUTH_URL + "?" + urllib.parse.urlencode({
+        "client_id": creds["ClientId"], "redirect_uri": redirect,
+        "response_type": "code", "scope": "openid email profile " + CAL_SCOPE,
+        "access_type": "offline", "prompt": "consent", "state": state})
+    try:
+        subprocess.Popen(["xdg-open", auth], stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL)
+    except Exception:
+        errors.append("could not open the browser; visit: " + auth)
+
+    deadline = _t.time() + 180
+    while "code" not in holder and "error" not in holder and _t.time() < deadline:
+        srv.handle_request()
+    srv.server_close()
+
+    if holder.get("error"):
+        errors.append("google auth: " + holder["error"])
+        return None
+    if holder.get("state") != state:
+        errors.append("google auth: state mismatch")
+        return None
+    code = holder.get("code")
+    if not code:
+        errors.append("google auth: timed out")
+        return None
+    try:
+        r = requests.post(TOKEN_URL, data={
+            "client_id": creds["ClientId"], "client_secret": creds["ClientSecret"],
+            "code": code, "redirect_uri": redirect,
+            "grant_type": "authorization_code"}, timeout=30)
+    except Exception as e:
+        errors.append("google token: %s" % str(e)[:120])
+        return None
+    if r.status_code != 200:
+        errors.append("google token: %s" % r.text[:150])
+        return None
+    tok = r.json()
+    refresh = tok.get("refresh_token", "")
+    access = tok.get("access_token", "")
+    if not refresh:
+        errors.append("google: no refresh token returned (revoke the app's prior "
+                      "access at myaccount.google.com and retry)")
+        return None
+    email = ""
+    try:
+        ui = requests.get(USERINFO, headers={"Authorization": "Bearer " + access}, timeout=15)
+        if ui.status_code == 200:
+            email = ui.json().get("email", "")
+    except Exception:
+        pass
+    return {"refresh": refresh, "email": email or "Google account"}
+
+
+def cmd_add_google():
+    errors = []
+    res = _oauth_google(provider_creds(), errors)
+    if not res:
+        return {"ok": False, "error": errors[0] if errors else "sign-in failed"}
+    acc_id = "g-" + hashlib.sha1(res["email"].encode()).hexdigest()[:10]
+    if not _secret_store(acc_id, res["refresh"]):
+        return {"ok": False, "error": "keyring store failed (is a keyring running?)"}
+    accs = [a for a in _load_accounts() if a.get("id") != acc_id]
+    accs.append({"id": acc_id, "provider": "google", "label": res["email"]})
+    _save_accounts(accs)
+    return {"ok": True, "label": res["email"]}
+
+
+def cmd_add_proton(url, label):
+    import requests
+
+    url = (url or "").strip()
+    if not url:
+        return {"ok": False, "error": "empty URL"}
+    if url.startswith("webcal://"):
+        url = "https://" + url[len("webcal://"):]
+    try:
+        r = requests.get(url, timeout=25)
+    except Exception as e:
+        return {"ok": False, "error": "fetch failed: %s" % str(e)[:100]}
+    if r.status_code != 200 or "BEGIN:VCALENDAR" not in r.text[:4000]:
+        return {"ok": False, "error": "not an iCal feed (HTTP %s)" % r.status_code}
+    acc_id = "p-" + hashlib.sha1(url.encode()).hexdigest()[:10]
+    if not _secret_store(acc_id, url):
+        return {"ok": False, "error": "keyring store failed (is a keyring running?)"}
+    accs = [a for a in _load_accounts() if a.get("id") != acc_id]
+    accs.append({"id": acc_id, "provider": "proton", "label": label or "Proton"})
+    _save_accounts(accs)
+    return {"ok": True, "label": label or "Proton"}
+
+
+def cmd_remove(acc_id):
+    accs = [a for a in _load_accounts() if a.get("id") != acc_id]
+    _save_accounts(accs)
+    _secret_clear(acc_id)
+    return {"ok": True}
+
+
+def _default_window():
+    t = date.today()
+    return (t - timedelta(days=14)).isoformat(), (t + timedelta(days=60)).isoformat()
+
+
+def main():
+    cmd = sys.argv[1] if len(sys.argv) > 1 else "read"
+    if cmd == "fetch":
+        a, b = (sys.argv[2], sys.argv[3]) if len(sys.argv) > 3 else _default_window()
+        try:
+            out = fetch(a, b)
+        except Exception as e:
+            out = _empty(["fetch: %s" % e])
+        sys.stdout.write(json.dumps(out, ensure_ascii=False))
+    elif cmd == "accounts":
+        sys.stdout.write(json.dumps(cmd_accounts(), ensure_ascii=False))
+    elif cmd == "add-google":
+        try:
+            out = cmd_add_google()
+        except Exception as e:
+            out = {"ok": False, "error": str(e)[:150]}
+        sys.stdout.write(json.dumps(out, ensure_ascii=False))
+    elif cmd == "add-proton" and len(sys.argv) > 2:
+        label = sys.argv[3] if len(sys.argv) > 3 else ""
+        try:
+            out = cmd_add_proton(sys.argv[2], label)
+        except Exception as e:
+            out = {"ok": False, "error": str(e)[:150]}
+        sys.stdout.write(json.dumps(out, ensure_ascii=False))
+    elif cmd == "remove" and len(sys.argv) > 2:
+        sys.stdout.write(json.dumps(cmd_remove(sys.argv[2]), ensure_ascii=False))
+    else:  # read
+        sys.stdout.write(json.dumps(read(), ensure_ascii=False))
 
 
 if __name__ == "__main__":
@@ -14204,6 +16209,7 @@ ShellRoot {
     <<init-notifications>>
     <<init-clipboard>>
     <<init-org>>
+    <<init-calendar-events>>
     <<init-finance>>
     <<init-network>>
     <<init-brightness>>
@@ -14463,6 +16469,25 @@ Shared Org-agenda state ([[*OrgAgenda.qml][=OrgAgenda=]], over [[*orgbridge.py][
 // ---- org agenda state (Emacs daemon via orgbridge.py), shared with the calendar ----
 OrgAgenda {
     id: orgAgenda
+}
+#+end_src
+
+**** init.qml — calendar events
+Shared Google-Calendar state ([[*CalendarEvents.qml][=CalendarEvents=]], over
+[[*gcalbridge.py][=gcalbridge.py=]] → KDE Online Accounts + signond) — owned once at
+root and handed to the calendar menu, mirroring =orgAgenda=. It self-drives a startup
++ hourly background fetch; the calendar's refetch button triggers extra fetches.
+#+name: init-calendar-events
+#+begin_src qml
+// ---- Google Calendar events (KDE accounts + signond via gcalbridge.py), shared ----
+CalendarEvents {
+    id: calEvents
+}
+// ---- calendar account manager (KDE + pill Google/Proton accounts), shared with the
+//      launcher's settings page; refetches calEvents whenever accounts change ----
+AccountsState {
+    id: accounts
+    cal: calEvents
 }
 #+end_src
 
@@ -16235,9 +18260,11 @@ Variants {
                     settings: settings
                     notifs: notifs
                     fin: finance
+                    acc: accounts
                     onLaunched: win.launcher = false
                     onCloseRequested: {
                         win.launcher = false;
+                        settingsOpen = false;
                         root.restoreFocus();
                     }
                     // right-click on an app: show the floating AppMenu at the click.
@@ -16525,7 +18552,7 @@ Component { id: cVol;  VolumeMenu    { theme: theme; settings: settings; setup: 
 Component { id: cBt;   BluetoothMenu { theme: theme } }
 Component { id: cBatt; BatteryMenu   { theme: theme; brightness: brightness } }
 Component { id: cClip; ClipboardMenu { theme: theme; clip: clipboard; memos: memos } }
-Component { id: cCal;  CalendarMenu  { theme: theme; org: orgAgenda; fin: finance } }
+Component { id: cCal;  CalendarMenu  { theme: theme; org: orgAgenda; fin: finance; cal: calEvents } }
 Component { id: cFin;  FinanceMenu   { theme: theme; fin: finance } }
 Component { id: cVoice; VoiceMemoMenu { theme: theme; settings: settings; setup: voiceSetup } }
 Component { id: cNotif; NotificationHistory { theme: theme; notifs: notifs } }
