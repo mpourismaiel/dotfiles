@@ -2526,6 +2526,9 @@ Item {
     // the selected day's Google Calendar events (client-side filter of the cache)
     readonly property var calEvents: (root.cal && root.selKey)
         ? root.cal.dayEvents(root.selKey) : []
+    // hide every calendar signal (events + grid dots) while finance privacy / DND is
+    // on — reusing the same effective privacy state the finance section respects.
+    readonly property bool showCal: !!root.cal && !(root.fin && root.fin.privacy)
 
     Component.onCompleted: {
         var t = new Date();
@@ -2822,9 +2825,10 @@ Item {
                             border.width: 1
                             border.color: !cell.modelData.inMonth ? root.theme.faint : root.theme.money
                         }
-                        // soft-blue: the day has Google Calendar events
+                        // soft-blue: the day has Google Calendar events (hidden under
+                        // finance privacy / DND, like the finance dots)
                         Rectangle {
-                            visible: root.cal && root.cal.hasEvents(cell.modelData.key)
+                            visible: root.showCal && root.cal.hasEvents(cell.modelData.key)
                             width: 4
                             height: 4
                             radius: 2
@@ -3122,14 +3126,16 @@ Item {
 
                 // ---- the day's Google Calendar events (from CalendarEvents; each
                 //      row is collapsed by default and expands to its location,
-                //      description, guests and a Join button). Always shown so the
-                //      refetch button (top-right) has a home. ----
+                //      description, guests and a Join button). The whole section
+                //      hides under finance privacy / DND (root.showCal). ----
                 Rectangle {
+                    visible: root.showCal
                     width: agendaCol.width
                     height: 1
                     color: root.theme.divider
                 }
                 Item {
+                    visible: root.showCal
                     width: agendaCol.width
                     height: 20
                     Text {
@@ -3176,7 +3182,8 @@ Item {
                 }
                 // sign-in / fetch error, if any (helps spot a re-consent need)
                 Text {
-                    visible: !!(root.cal && root.cal.lastError) && root.calEvents.length === 0
+                    visible: root.showCal && !!(root.cal && root.cal.lastError)
+                          && root.calEvents.length === 0
                     width: agendaCol.width
                     wrapMode: Text.WordWrap
                     text: root.cal ? root.cal.lastError : ""
@@ -3185,7 +3192,7 @@ Item {
                     font.pixelSize: root.theme.fsSmall - 1
                 }
                 Text {
-                    visible: root.calEvents.length === 0
+                    visible: root.showCal && root.calEvents.length === 0
                           && !(root.cal && root.cal.lastError)
                     text: "No events."
                     color: root.theme.faint
@@ -3194,7 +3201,7 @@ Item {
                     font.pixelSize: root.theme.fsNormal
                 }
                 Repeater {
-                    model: root.calEvents
+                    model: root.showCal ? root.calEvents : []
                     delegate: Column {
                         id: evCard
                         required property var modelData
