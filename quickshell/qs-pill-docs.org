@@ -313,6 +313,13 @@ Item {
     property bool checked: false
     signal toggled(bool value)
 
+    // keyboard nav (MenuKbNav): Enter flips the switch like a click
+    readonly property bool kbFocusable: true
+    function keyClick() {
+        root.checked = !root.checked;
+        root.toggled(root.checked);
+    }
+
     implicitWidth: 34
     implicitHeight: 18
 
@@ -414,7 +421,9 @@ clickable) plus a trailing slot for the menu's own toggles. The chevron emits
 =win.open = false=. Children declared inside a =MenuHeader= land in its
 right-aligned trailing row. With =navArrows: true= a =← →= stepper sits right
 after the title (emitting =prev()= / =next()=) — used by the calendar to page
-between months.
+between months. The back button is tagged for [[*MenuKbNav.qml][=MenuKbNav=]]
+(=kbFocusable= + =kbDefault=), so it's every menu's initial keyboard focus; the
+stepper arrows are tagged too.
 *** Code
 #+begin_src qml :tangle ~/.config/quickshell/pill/MenuHeader.qml :mkdirp yes
 pragma ComponentBehavior: Bound
@@ -441,6 +450,10 @@ Item {
 
     Item {                                  // back chevron + title (left) — clickable together
         id: backArea
+        // keyboard nav (MenuKbNav): the back button is every menu's default focus
+        readonly property bool kbFocusable: true
+        readonly property bool kbDefault: true
+        function keyClick() { root.back(); }
         anchors.left: parent.left
         anchors.verticalCenter: parent.verticalCenter
         height: parent.height
@@ -482,6 +495,8 @@ Item {
         spacing: 2
 
         Rectangle {
+            readonly property bool kbFocusable: root.navArrows
+            function keyClick() { root.prev(); }
             width: 22
             height: 22
             radius: root.theme.radiusBtn
@@ -502,6 +517,8 @@ Item {
             Behavior on color { ColorAnimation { duration: root.theme.animFast } }
         }
         Rectangle {
+            readonly property bool kbFocusable: root.navArrows
+            function keyClick() { root.next(); }
             width: 22
             height: 22
             radius: root.theme.radiusBtn
@@ -528,6 +545,243 @@ Item {
         anchors.right: parent.right
         anchors.verticalCenter: parent.verticalCenter
         spacing: root.theme.gap
+    }
+}
+#+end_src
+
+** MenuKbNav.qml
+*** Description
+The keyboard-navigation overlay for the control-panel menus, hosted by =init.qml=
+over the menu loader and active only in *keyboard-nav mode* (=win.kbNav=, entered
+via the =expand= IPC — see [[*init.qml][§ init.qml]]). It scans the loaded menu's
+visual tree for items tagged =kbFocusable: true= (the =MenuHeader= back button —
+tagged =kbDefault= so it's every menu's initial focus — the header nav arrows,
+=PillToggle=, an interactive =ConnButton=, and each menu's own rows/tabs/chips),
+then:
+
+- *Arrows* move spatially: the nearest focusable in the pressed direction wins,
+  with the orthogonal offset weighted 3× so rows stay rows and the volume menu's
+  tab bar naturally becomes a left/right strip.
+- *Enter* calls the focused item's =keyClick()= (each tag carries one, mirroring
+  its =MouseArea='s click handler).
+- *Escape* emits =escaped()= (init returns to the expanded dashboard).
+- *Letter shortcuts* (=shortcuts: true=, calendar menu only): f/c/n/w/v/b emit
+  =shortcutRequested(menu)= — the same first-level menu jumps the dashboard offers.
+- *Hover overrides focus*: a =HoverHandler= hit-tests the focusable list on every
+  pointer move, so whatever the mouse touches becomes the keyboard focus.
+
+Focus is drawn as an accent *ring* (border-only rounded rectangle) around the
+focused item, re-mapped a few times a second (=tick=) so it tracks scrolling
+Flickables; moving focus also auto-scrolls the item into view (=ensureVisible=
+walks up to the nearest Flickable). Items inside an invisible subtree (a hidden
+tab, a collapsed section) are never collected, so the scan follows what's on
+screen. The calendar's month grid is deliberately *not* tagged — it keeps
+mouse-only interaction for now.
+*** Code
+#+begin_src qml :tangle ~/.config/quickshell/pill/MenuKbNav.qml :mkdirp yes
+pragma ComponentBehavior: Bound
+// MenuKbNav.qml — generic keyboard navigation for the control-panel menus (kbNav
+// mode only). Scans `target` for kbFocusable-tagged items, moves between them
+// spatially with the arrows, Enter fires the focused item's keyClick(), Escape
+// emits escaped() (back to the expanded dashboard) and — in the calendar menu —
+// f/c/n/w/v/b emit shortcutRequested(menu). Hovering any focusable re-focuses it.
+// The focused item wears an accent ring; a slow tick re-maps it so it follows
+// Flickable scrolls and layout changes.
+import QtQuick
+
+Item {
+    id: root
+    required property var theme
+    property Item target                 // the loaded menu to scan (menuLoader.item)
+    property bool active: false
+    property bool shortcuts: false       // letter shortcuts (calendar menu)
+    signal escaped()
+    signal shortcutRequested(int menu)
+
+    property Item cur: null              // focused item (a kbFocusable tag)
+    property int tick: 0                 // bumped to re-map the ring (scroll/layout)
+
+    focus: root.active
+    onActiveChanged: {
+        if (root.active)
+            Qt.callLater(root.focusDefault);
+        else
+            root.cur = null;
+    }
+    // a menu switch swaps the loader item under us — refocus its back button
+    onTargetChanged: if (root.active) Qt.callLater(root.focusDefault)
+
+    // every visible kbFocusable under `target`, in document order. Invisible
+    // subtrees (hidden tabs, collapsed sections) are skipped wholesale.
+    function collect() {
+        const out = [];
+        function walk(it) {
+            if (!it)
+                return ;
+
+            for (let i = 0; i < it.children.length; i++) {
+                const c = it.children[i];
+                if (!c.visible)
+                    continue;
+
+                if (c.kbFocusable === true && c.width > 0 && c.height > 0)
+                    out.push(c);
+
+                walk(c);
+            }
+        }
+        if (root.target && root.target.visible)
+            walk(root.target);
+
+        return out;
+    }
+
+    function focusDefault() {
+        const items = root.collect();
+        root.cur = items.find(i => i.kbDefault === true) || (items.length ? items[0] : null);
+    }
+
+    function rectOf(it) {
+        const p = it.mapToItem(root, 0, 0);
+        return {
+            "x": p.x,
+            "y": p.y,
+            "w": it.width,
+            "h": it.height,
+            "cx": p.x + it.width / 2,
+            "cy": p.y + it.height / 2
+        };
+    }
+
+    // nearest focusable in the pressed direction; the orthogonal offset weighs
+    // 3x so rows/columns feel "sticky" (tabs step left/right, lists step up/down)
+    function move(dx, dy) {
+        const items = root.collect();
+        if (!items.length)
+            return ;
+
+        if (!root.cur || items.indexOf(root.cur) < 0) {
+            root.cur = items.find(i => i.kbDefault === true) || items[0];
+            return ;
+        }
+        const c = root.rectOf(root.cur);
+        let best = null;
+        let bestScore = 1e9;
+        for (const it of items) {
+            if (it === root.cur)
+                continue;
+
+            const r = root.rectOf(it);
+            const fwd = dx !== 0 ? (r.cx - c.cx) * dx : (r.cy - c.cy) * dy;
+            if (fwd <= 2)
+                continue;
+
+            const ortho = dx !== 0 ? Math.abs(r.cy - c.cy) : Math.abs(r.cx - c.cx);
+            const score = fwd + ortho * 3;
+            if (score < bestScore) {
+                bestScore = score;
+                best = it;
+            }
+        }
+        if (best) {
+            root.cur = best;
+            root.ensureVisible(best);
+            root.tick++;
+        }
+    }
+
+    // scroll the focused item into view if it sits inside a Flickable
+    function ensureVisible(it) {
+        let f = it.parent;
+        while (f && f !== root.target && f.contentY === undefined) f = f.parent;
+        if (!f || f === root.target || f.contentY === undefined || f.contentHeight === undefined)
+            return ;
+
+        const p = it.mapToItem(f.contentItem, 0, 0);
+        if (p.y < f.contentY)
+            f.contentY = Math.max(0, p.y - 8);
+        else if (p.y + it.height > f.contentY + f.height)
+            f.contentY = Math.min(Math.max(0, f.contentHeight - f.height), p.y + it.height - f.height + 8);
+    }
+
+    Keys.onPressed: (event) => {
+        if (!root.active)
+            return ;
+
+        if (event.key === Qt.Key_Escape) {
+            root.escaped();
+            event.accepted = true;
+        } else if (event.key === Qt.Key_Left) {
+            root.move(-1, 0);
+            event.accepted = true;
+        } else if (event.key === Qt.Key_Right) {
+            root.move(1, 0);
+            event.accepted = true;
+        } else if (event.key === Qt.Key_Up) {
+            root.move(0, -1);
+            event.accepted = true;
+        } else if (event.key === Qt.Key_Down) {
+            root.move(0, 1);
+            event.accepted = true;
+        } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+            if (root.cur && root.cur.keyClick)
+                root.cur.keyClick();
+
+            event.accepted = true;
+        } else if (root.shortcuts) {
+            // same first-level jumps the expanded dashboard offers
+            const m = event.key === Qt.Key_F ? 8 : event.key === Qt.Key_C ? 6 : event.key === Qt.Key_N ? 4 : event.key === Qt.Key_W ? 0 : event.key === Qt.Key_V ? 1 : event.key === Qt.Key_B ? 2 : -1;
+            if (m >= 0) {
+                root.shortcutRequested(m);
+                event.accepted = true;
+            }
+        }
+    }
+
+    // hover overrides focus: whatever focusable the pointer is over becomes `cur`
+    HoverHandler {
+        enabled: root.active
+        onPointChanged: {
+            const items = root.collect();
+            const px = point.position.x;
+            const py = point.position.y;
+            for (const it of items) {
+                const r = root.rectOf(it);
+                if (px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h) {
+                    if (root.cur !== it) {
+                        root.cur = it;
+                        root.tick++;
+                    }
+                    return ;
+                }
+            }
+        }
+    }
+
+    // keep the ring glued through Flickable scrolls / animated layouts
+    Timer {
+        interval: 250
+        running: root.active && root.cur !== null
+        repeat: true
+        onTriggered: root.tick++
+    }
+
+    Rectangle {                              // the focus ring
+        readonly property var r: {
+            const _dep = [root.tick, root.cur, root.width, root.height];
+            return (root.cur && root.cur.visible) ? root.rectOf(root.cur) : null;
+        }
+
+        visible: root.active && r !== null
+        x: r ? r.x - 3 : 0
+        y: r ? r.y - 3 : 0
+        width: r ? r.w + 6 : 0
+        height: r ? r.h + 6 : 0
+        z: 500
+        radius: root.theme.radiusBtn + 2
+        color: "transparent"
+        border.width: 2
+        border.color: root.theme.accent
     }
 }
 #+end_src
@@ -617,6 +871,11 @@ Item {
     property bool busy: false
     property bool interactive: false
     signal clicked()
+
+    // keyboard nav (MenuKbNav): only an interactive chip is its own focus stop —
+    // a presentational one is covered by its row's focus
+    readonly property bool kbFocusable: root.interactive && !root.busy
+    function keyClick() { root.clicked(); }
 
     implicitWidth: Math.max(txt.implicitWidth + 22, 76)
     implicitHeight: 26
@@ -797,6 +1056,9 @@ Item {
         id: connRow
         required property var conn
         readonly property bool busy: root.netState.busyConn === conn.name
+        // keyboard nav: Enter = the row click (connect/disconnect)
+        readonly property bool kbFocusable: !connRow.busy
+        function keyClick() { root.netState.setConn(connRow.conn.name, !connRow.conn.active); }
         width: parent ? parent.width : 0
         height: root.theme.rowHeight
         radius: root.theme.radiusRow
@@ -845,6 +1107,8 @@ Item {
             title: "Network"
             onBack: root.closeRequested()
             MSym {                              // open KDE network settings
+                readonly property bool kbFocusable: true
+                function keyClick() { root.openNetworkSettings(); }
                 anchors.verticalCenter: parent.verticalCenter
                 icon: "settings"
                 size: 19
@@ -894,6 +1158,10 @@ Item {
                         property bool busyTarget: false
                         property bool expanded: false      // password field revealed
                         property bool showPw: false        // eye toggle
+                        // keyboard nav: Enter = the row click (connect / disconnect /
+                        // reveal the password field for a secured unknown net)
+                        readonly property bool kbFocusable: !netRow.busy
+                        function keyClick() { netRow.act(); }
                         width: netCol.width
                         height: rowCol.height
                         radius: root.theme.radiusRow
@@ -1112,6 +1380,11 @@ Column {
             font.pixelSize: root.theme.fsNormal
         }
         Rectangle {
+            readonly property bool kbFocusable: true
+            function keyClick() {
+                const i = cyc.options.indexOf(cyc.value);
+                cyc.picked(cyc.options[(i + 1) % cyc.options.length]);
+            }
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
             width: cycTxt.implicitWidth + 20
@@ -1134,10 +1407,7 @@ Column {
                 anchors.fill: parent
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
-                onClicked: {
-                    const i = cyc.options.indexOf(cyc.value);
-                    cyc.picked(cyc.options[(i + 1) % cyc.options.length]);
-                }
+                onClicked: parent.keyClick()
             }
         }
     }
@@ -1414,26 +1684,30 @@ Item {
                 visible: showDefault
                 readonly property bool isDefault: node === Pipewire.defaultAudioSink
                        || node === Pipewire.defaultAudioSource
+                readonly property bool kbFocusable: true
+                function keyClick() {
+                    if (root.cls(node) === "Audio/Sink")
+                        Pipewire.preferredDefaultAudioSink = node;
+                    else
+                        Pipewire.preferredDefaultAudioSource = node;
+                }
                 icon: isDefault ? "radio_button_checked" : "radio_button_unchecked"
                 size: 16
                 color: isDefault ? root.theme.accent : root.theme.faint
                 MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor
-                    onClicked: {
-                        if (root.cls(node) === "Audio/Sink")
-                            Pipewire.preferredDefaultAudioSink = node;
-                        else
-                            Pipewire.preferredDefaultAudioSource = node;
-                    } }
+                    onClicked: parent.keyClick() }
             }
             MSym {                       // mute toggle
                 anchors.verticalCenter: parent.verticalCenter
                 readonly property bool muted: node.audio && node.audio.muted
+                readonly property bool kbFocusable: true
+                function keyClick() { if (node.audio) node.audio.muted = !node.audio.muted; }
                 icon: muted ? "volume_off" : "volume_up"
                 size: 17
                 fill: muted ? 0 : 1
                 color: muted ? root.theme.faint : root.theme.textDim
                 MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor
-                    onClicked: if (node.audio) node.audio.muted = !node.audio.muted }
+                    onClicked: parent.keyClick() }
             }
         }
         PillSlider {
@@ -1497,6 +1771,11 @@ Item {
             font.pixelSize: root.theme.fsNormal
         }
         Rectangle {
+            readonly property bool kbFocusable: true
+            function keyClick() {
+                const i = cyc.options.indexOf(cyc.value);
+                cyc.picked(cyc.options[(i + 1) % cyc.options.length]);
+            }
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
             width: cycTxt.implicitWidth + 20
@@ -1519,10 +1798,7 @@ Item {
                 anchors.fill: parent
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
-                onClicked: {
-                    const i = cyc.options.indexOf(cyc.value);
-                    cyc.picked(cyc.options[(i + 1) % cyc.options.length]);
-                }
+                onClicked: parent.keyClick()
             }
         }
     }
@@ -1544,6 +1820,8 @@ Item {
                 ]
                 delegate: Text {
                     required property var modelData
+                    readonly property bool kbFocusable: true
+                    function keyClick() { root.openAudioSettings(modelData.kcm); }
                     anchors.verticalCenter: parent.verticalCenter
                     text: modelData.label
                     color: setMa.containsMouse ? root.theme.text : root.theme.faint
@@ -1568,6 +1846,9 @@ Item {
                 delegate: Text {
                     required property int index
                     required property string modelData
+                    // keyboard nav: the tab bar is a left/right strip; Enter picks
+                    readonly property bool kbFocusable: true
+                    function keyClick() { root.tab = index; }
                     text: modelData
                     color: root.tab === index ? root.theme.accent : root.theme.faint
                     font.family: root.theme.mono
@@ -1725,12 +2006,21 @@ Item {
         // silent failure, e.g. pairing that never completes).
         property bool busy: false
         property bool busyTarget: false
+        // keyboard nav: Enter = the row click (connect / disconnect / pair)
+        readonly property bool kbFocusable: !devRow.busy
+        function keyClick() { devRow.act(); }
         width: parent ? parent.width : 0
         height: root.theme.rowHeight
         radius: root.theme.radiusRow
         color: device.connected ? root.theme.accentDim : root.theme.row
 
         function begin(target) { devRow.busy = true; devRow.busyTarget = target; wd.restart(); }
+        function act() {
+            const d = devRow.device;
+            if (d.connected) { devRow.begin(false); d.disconnect(); }
+            else if (d.paired) { devRow.begin(true); d.connect(); }
+            else { devRow.begin(true); d.pair(); }
+        }
         Timer { id: wd; interval: 25000; onTriggered: devRow.busy = false }
         Connections {
             target: devRow.device
@@ -1782,12 +2072,7 @@ Item {
             anchors.fill: parent
             enabled: !devRow.busy
             cursorShape: Qt.PointingHandCursor
-            onClicked: {
-                const d = devRow.device;
-                if (d.connected) { devRow.begin(false); d.disconnect(); }
-                else if (d.paired) { devRow.begin(true); d.connect(); }
-                else { devRow.begin(true); d.pair(); }
-            }
+            onClicked: devRow.act()
         }
     }
 
@@ -2561,6 +2846,8 @@ Item {
 
         // wallet — switch to the finance menu (win.menu 8)
         Rectangle {
+            readonly property bool kbFocusable: true
+            function keyClick() { root.financeRequested(); }
             width: 24
             height: 24
             radius: root.theme.radiusBtn
@@ -2584,6 +2871,8 @@ Item {
 
         // Gregorian ⇄ Shamsi toggle
         Rectangle {
+            readonly property bool kbFocusable: true
+            function keyClick() { root.toggleCalendar(); }
             width: calToggleTxt.implicitWidth + 20
             height: 24
             radius: root.theme.radiusBtn
@@ -2611,6 +2900,8 @@ Item {
 
         // Today
         Rectangle {
+            readonly property bool kbFocusable: true
+            function keyClick() { root.goToday(); }
             width: todayTxt.implicitWidth + 20
             height: 24
             radius: root.theme.radiusBtn
@@ -5419,6 +5710,8 @@ Item {
         // Gregorian ⇄ Shamsi toggle (grid modes only)
         Rectangle {
             visible: root.calLike
+            readonly property bool kbFocusable: true
+            function keyClick() { root.toggleCalendar(); }
             width: calToggleTxt.implicitWidth + 20
             height: 24
             radius: root.theme.radiusBtn
@@ -5448,6 +5741,8 @@ Item {
         // hidden when there is only one book. A non-personal book is gold-badged.
         Rectangle {
             visible: root.fin && root.fin.entities && root.fin.entities.length > 1
+            readonly property bool kbFocusable: true
+            function keyClick() { if (root.fin) root.fin.cycleEntity(); }
             width: hdrBookRow.implicitWidth + 18
             height: 24
             radius: root.theme.radiusBtn
@@ -5490,6 +5785,8 @@ Item {
 
         // currency chip — cycles As-is → EUR → IRT (values every amount shown)
         Rectangle {
+            readonly property bool kbFocusable: true
+            function keyClick() { if (root.fin) root.fin.cycleCurrency(); }
             width: hdrCurTxt.implicitWidth + 20
             height: 24
             radius: root.theme.radiusBtn
@@ -5521,6 +5818,8 @@ Item {
 
         // privacy eye — same effective state the launcher toggle shows
         Rectangle {
+            readonly property bool kbFocusable: true
+            function keyClick() { if (root.fin) root.fin.togglePrivacy(); }
             width: 24
             height: 24
             radius: root.theme.radiusBtn
@@ -5546,6 +5845,8 @@ Item {
 
         // back to the calendar menu
         Rectangle {
+            readonly property bool kbFocusable: true
+            function keyClick() { root.calendarRequested(); }
             width: 24
             height: 24
             radius: root.theme.radiusBtn
@@ -5570,6 +5871,8 @@ Item {
         // Today (grid modes only)
         Rectangle {
             visible: root.calLike
+            readonly property bool kbFocusable: true
+            function keyClick() { root.goToday(); }
             width: todayTxt.implicitWidth + 20
             height: 24
             radius: root.theme.radiusBtn
@@ -13909,6 +14212,8 @@ reorders the =DelegateModel='s items live and, on release, emits =reordered(keys
 with the new full key order. The parent persists the pinned order and keeps the
 unpinned order for the session. Left-click =activated(group)=; the hover highlight is
 drawn by the dashboard's shared square (each tile reports itself via =itemEntered=).
+For keyboard-nav mode the tiles are exposed as an ordered strip (=tileCount= /
+=tileAt(i)=) and each carries a =keyClick()= (= the left-click).
 *** Code
 #+begin_src qml :tangle ~/.config/quickshell/pill/Taskbar.qml :mkdirp yes
 pragma ComponentBehavior: Bound
@@ -13941,6 +14246,10 @@ Item {
     // (so a plain click doesn't emit a spurious reorder).
     property var dragOrder: []
     property bool didReorder: false
+
+    // keyboard nav (init.qml's dashboard handler): the tiles as an ordered strip
+    readonly property int tileCount: taskList.count
+    function tileAt(i) { return taskList.itemAtIndex(i); }
 
     // app icons are bigger than the menu/tray glyphs, so the app row is spaced 1.5x
     // the base icon spacing to keep the tiles from crowding.
@@ -13983,6 +14292,8 @@ Item {
                 // the shared hover square wants a little extra padding around app
                 // tiles (their icons run larger than the menu/tray glyphs).
                 readonly property int hoverPad: 5
+                // keyboard nav: Enter = left-click (cycle windows / launch)
+                function keyClick() { root.activated(appMa.modelData); }
 
                 width: root.theme.appCell
                 height: root.theme.appCell
@@ -14109,7 +14420,8 @@ and the notifications bell carries a count badge for un-cleared history (=notifs
 While the evening finance nag is live (see [[*FinanceState.qml][=FinanceState=]]) a
 red piggy-bank glyph appears leftmost; clicking it opens the finance menu (id 8).
 Clicking one emits =menuRequested(menu)=; while the panel is open the active menu's
-icon is highlighted (=open= + =menu=).
+icon is highlighted (=open= + =menu=). For keyboard-nav mode the icons are exposed
+as an ordered strip (=iconCount= / =iconAt(i)=) and each carries a =keyClick()=.
 *** Code
 #+begin_src qml :tangle ~/.config/quickshell/pill/StatusIcons.qml :mkdirp yes
 pragma ComponentBehavior: Bound
@@ -14194,8 +14506,13 @@ Row {
 
     readonly property int unread: root.notifs ? root.notifs.unreadCount : 0
 
+    // keyboard nav (init.qml's dashboard handler): the icons as an ordered strip
+    readonly property int iconCount: statusRep.count
+    function iconAt(i) { return statusRep.itemAt(i); }
+
     spacing: root.theme.iconSpacing + 4
     Repeater {
+        id: statusRep
         model: {
             var m = [
                 { ic: root.netIcon(), fill: root.netFill(), menu: 0, warn: false, badge: 0, vpn: !!(root.netState && root.netState.vpnActive) },
@@ -14218,6 +14535,8 @@ Row {
             id: statusItem
             required property var modelData
             readonly property bool selected: root.open && root.menu === modelData.menu
+            // keyboard nav: Enter = click (open this icon's menu)
+            function keyClick() { root.menuRequested(statusItem.modelData.menu); }
             width: root.theme.iconCell + 4; height: root.theme.iconCell + 4; radius: root.theme.radiusBtn
             // only the open-menu selection is drawn here; hover is the shared square
             color: selected ? root.theme.accentDim : "transparent"
@@ -14884,6 +15203,8 @@ Item {
                     id: tile
                     required property var modelData
                     readonly property bool on: root.sel === modelData.key
+                    readonly property bool kbFocusable: true
+                    function keyClick() { root.sel = tile.modelData.key; }
                     width: (parent.width - root.theme.gap) / 2
                     height: 60
                     radius: root.theme.radiusRow
@@ -14961,6 +15282,8 @@ Item {
                     id: catChip
                     required property string modelData
                     readonly property bool on: root.effectiveCat === modelData
+                    readonly property bool kbFocusable: true
+                    function keyClick() { root.orgOverride = catChip.modelData; }
                     anchors.verticalCenter: parent.verticalCenter
                     width: catTxt.implicitWidth + 22
                     height: 22
@@ -14991,6 +15314,8 @@ Item {
 
         // ---- Start (only once a type is chosen) ----
         Rectangle {
+            readonly property bool kbFocusable: true
+            function keyClick() { root.startRequested(root.sel, root.polishOn, root.orgOn, root.effectiveCat); }
             width: parent.width
             height: root.sel !== "" ? 42 : 0
             visible: root.sel !== ""
@@ -16478,8 +16803,9 @@ fades to opacity 0. A notification still morphs through (=notifMorph= overrides
 field and want arrow-key nav), or *some* editable field inside the pill currently has
 focus (wifi password, notification reply) — detected by =kbInputFocused=, which reads
 the window's active-focus item via a small =kbProbe= =Item= (=Window.activeFocusItem=)
-and checks its =objectName === "pillKbInput"=. In all those cases the surface takes
-=Exclusive=; otherwise it stays =None=. So a menu you're only clicking toggles in never
+and checks its =objectName === "pillKbInput"=. Keyboard-nav mode (=win.kbNav=, via
+the =expand= IPC — see below) also grabs for its whole stay. In all those cases the
+surface takes =Exclusive=; otherwise it stays =None=. So a menu you're only clicking toggles in never
 steals focus from the active window, and a field pulls the keyboard the moment it takes
 focus (its own =focus:= or a click) with no stray grab. KWin does *not* restore focus
 when a layer surface releases the keyboard, so the pill remembers the last real active
@@ -16513,6 +16839,28 @@ stay), while =clearNotifications= (=notifs.clearAll()=) wipes the whole history.
 pane grabs the keyboard when open, so it can be triaged entirely from the keyboard
 (arrows / Enter / =i= / =x= / Delete / Escape — see
 [[*NotificationHistory.qml][§ NotificationHistory.qml]]).
+
+*Expanded view + keyboard nav (IPC).* The same =IpcHandler= exposes =expand= /
+=expandOn(screen)=, which open the expanded dashboard (like clicking the collapsed
+pill) in *keyboard-nav mode* (=win.kbNav=) — the one state where the pill grabs the
+keyboard without a text field. Bind a *Custom Shortcut* running
+=qs -p …/init.qml ipc call pill expand=. Focus rides the shared hover square
+(=win.hoverItem=), so mousing over any item re-focuses it; the clock/date block is
+focused first. Arrows move between the zones exactly as laid out — clock → right →
+taskbar tiles; clock → down → launcher icon; taskbar → down / launcher → right →
+the Row-2 strip (tray icons first, then the status icons, one left/right run);
+Enter "clicks" the focused item (each dashboard item carries a =keyClick()=).
+f/c/n/w/v/b jump straight to finance / calendar / notifications / network / volume
+/ bluetooth as a first level; the same jumps work inside the calendar menu. Open
+menus get generic keyboard focus from [[*MenuKbNav.qml][=MenuKbNav=]] (back button
+focused first, arrows spatial, Enter clicks, tab bars step left/right; the
+notification and clipboard panes keep their own richer handling, and the calendar
+grid stays mouse-only). *Escape steps back*: menu → expanded dashboard → closed
+(restoring focus to the previous window). The mode ends whenever the pill fully
+closes (Escape, backdrop click, launching an app), and it never engages for a
+mouse-opened pill — those keep the hands-off focus policy. The notification /
+clipboard / launcher IPC commands are unchanged: opened that way (no kbNav),
+their Escape still closes the pill outright.
 
 *Brightness shortcut (IPC).* The same =IpcHandler= exposes =brightnessUp= /
 =brightnessDown=, which step the *active monitor's* screen brightness by ≈5% via the
@@ -16702,6 +17050,11 @@ signal clipboardShortcut(string screen)
 // history pane (menu 4) for keyboard-driven triage. Same empty-screen / named-screen
 // rule as the clipboard shortcut.
 signal notifShortcut(string screen)
+// requested via IPC (`qs ipc call pill expand`) — opens the expanded dashboard
+// (like clicking the collapsed pill) in keyboard-nav mode: arrows move the focus
+// square between the dashboard items, Enter clicks, f/c/n/w/v/b jump to a menu,
+// Escape steps back (menu -> dashboard -> closed). Same screen rule as above.
+signal expandShortcut(string screen)
 IpcHandler {
     target: "pill"
     function clipboard(): void { root.clipboardShortcut(""); }
@@ -16711,6 +17064,11 @@ IpcHandler {
     // Enter to open, i to reply, x/Delete to dismiss — see NotificationHistory.qml).
     function notifications(): void { root.notifShortcut(""); }
     function notificationsOn(screen: string): void { root.notifShortcut(screen); }
+    // open (or toggle shut) the expanded dashboard in keyboard-nav mode — bind to
+    // a KDE custom shortcut to drive the whole pill from the keyboard (arrows /
+    // Enter / f c n w v b / Escape — see the per-monitor overlay notes).
+    function expand(): void { root.expandShortcut(""); }
+    function expandOn(screen: string): void { root.expandShortcut(screen); }
     // dismiss every popup currently on screen but KEEP them in history — the "I'm
     // busy, not now" one-key sweep (mirrors the deck's "Dismiss all"). Bind to a KDE
     // custom shortcut. Unlike clearNotifications this does NOT touch history, so the
@@ -17705,6 +18063,16 @@ Variants {
         // it (no hover reveal); it stays until a click elsewhere (backdrop) moves
         // focus away. Set true by the collapsed-pill click, cleared by the backdrop.
         property bool focused: false
+        // "keyboard-nav mode": entered via the `expand` IPC. The pill grabs the
+        // keyboard for the whole stay: arrows move the dashboard focus square
+        // (win.hoverItem — hover and keyboard share it, so mousing over anything
+        // re-focuses it), Enter clicks, f/c/n/w/v/b jump straight to a menu, and
+        // Escape steps back (menu -> dashboard -> closed). Menus opened while in
+        // this mode run MenuKbNav; closing them returns to the dashboard instead
+        // of dismissing the pill. Cleared automatically when the pill fully
+        // closes (dash false), so mouse-opened pills keep the hands-off focus
+        // policy.
+        property bool kbNav: false
         property bool dash: open || launcher || focused || ctxMode
         property int menu: 4 // 0 net, 1 vol, 2 bt, 3 batt, 5 clipboard, 6 calendar, 7 voice memo, 8 finance, 4 notif (default pane)
         // keyboard-focus gating. The pill grabs the compositor keyboard ONLY while
@@ -17722,7 +18090,7 @@ Variants {
         // The notification pane (menu 4) also grabs the keyboard: it drives its own
         // arrow/Enter/i/x navigation (see NotificationHistory.qml) and its inline-reply
         // field wants the keystrokes from the first press.
-        readonly property bool grabsKeyboard: win.launcher || (win.open && (win.menu === 5 || win.menu === 4)) || win.kbInputFocused
+        readonly property bool grabsKeyboard: win.launcher || (win.open && (win.menu === 5 || win.menu === 4)) || win.kbInputFocused || win.kbNav
         // open-state pill geometry, in ONE place: the control panel and the
         // launcher both lay out to these, so resizing the open/launcher pill here
         // can't leave the launcher mis-sized (the bug from the last resize).
@@ -17883,6 +18251,29 @@ Variants {
             }
         }
 
+        // open (or toggle shut) the expanded dashboard in keyboard-nav mode —
+        // bound to the IPC expand shortcut. Re-firing while any keyboard-nav pill
+        // is up closes everything (Escape does the same, stage by stage); firing
+        // over a mouse-opened dashboard upgrades it to keyboard-nav in place.
+        function openExpanded() {
+            if (win.kbNav) {
+                win.open = false;
+                win.launcher = false;
+                win.ctxGroup = null;
+                win.trayItem = null;
+                win.focused = false; // dash drops -> kbNav auto-clears
+                root.restoreFocus();
+            } else {
+                win.open = false;
+                win.launcher = false;
+                win.ctxGroup = null;
+                win.trayItem = null;
+                win.kbNav = true;
+                win.focused = true;
+                win.hoverItem = dateTimeBlock; // clock/calendar is the default focus
+            }
+        }
+
         // open (or toggle shut) the calendar pane — fired by clicking the dashboard
         // date/time. Mirrors openClipboard: re-firing while it's showing closes it.
         function openCalendar() {
@@ -17902,9 +18293,10 @@ Variants {
         }
 
         onDashChanged: {
-            if (!win.dash)
+            if (!win.dash) {
                 win.hoverItem = null;
-
+                win.kbNav = false;
+            }
         }
         screen: modelData
         WlrLayershell.layer: WlrLayer.Overlay
@@ -17952,6 +18344,14 @@ Variants {
                 win.openNotifications();
             }
 
+            // same active-screen rule; opens the expanded dashboard in kb-nav mode
+            function onExpandShortcut(screen) {
+                if (screen !== "" && Quickshell.screens.length > 1 && win.screen && screen !== win.screen.name)
+                    return ;
+
+                win.openExpanded();
+            }
+
             // voicePolishToggle (idle) opens the config panel on every pill (like
             // the clipboard shortcut); Start closes them all via onVoiceStateChanged.
             function onVoiceMemoRequested() {
@@ -17987,6 +18387,109 @@ Variants {
             id: kbProbe
 
             readonly property var focusItem: Window.activeFocusItem
+        }
+
+        // keyboard-nav mode: the expanded dashboard's key sink. Focused only while
+        // the dashboard itself shows — an open menu runs MenuKbNav (or, for the
+        // notification/clipboard panes and the launcher, its own key handling).
+        // Focus is win.hoverItem, so the roving hover square doubles as the focus
+        // square and mousing over any item re-focuses it. Zones per the layout:
+        // clock/date (default) | taskbar tiles (Row 1) | launcher icon (Row 2
+        // left) | tray + status icons as one strip (Row 2 right).
+        Item {
+            id: dashKb
+
+            focus: win.kbNav && !win.open && !win.launcher && !win.ctxMode && !win.confirmActive
+            Keys.onPressed: (event) => {
+                // zone lists, rebuilt per keypress (delegates churn freely)
+                const tasks = [];
+                for (let i = 0; i < taskbar.tileCount; i++) {
+                    const t = taskbar.tileAt(i);
+                    if (t)
+                        tasks.push(t);
+
+                }
+                const strip = [];
+                for (let i = 0; i < trayRep.count; i++) {
+                    const t = trayRep.itemAt(i);
+                    if (t)
+                        strip.push(t);
+
+                }
+                for (let i = 0; i < statusIcons.iconCount; i++) {
+                    const t = statusIcons.iconAt(i);
+                    if (t)
+                        strip.push(t);
+
+                }
+                let cur = win.hoverItem;
+                const iT = tasks.indexOf(cur);
+                const iS = strip.indexOf(cur);
+                if (cur !== dateTimeBlock && cur !== launcherIcon && iT < 0 && iS < 0)
+                    cur = dateTimeBlock; // stale / unset focus -> back to the clock
+
+                const go = (it) => {
+                    if (it)
+                        win.hoverItem = it;
+
+                };
+                if (event.key === Qt.Key_Escape) {
+                    // Escape on the dashboard closes the pill entirely
+                    win.open = false;
+                    win.launcher = false;
+                    win.ctxGroup = null;
+                    win.trayItem = null;
+                    win.focused = false; // dash drops -> kbNav auto-clears
+                    root.restoreFocus();
+                    event.accepted = true;
+                } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+                    if (cur && cur.keyClick)
+                        cur.keyClick();
+
+                    event.accepted = true;
+                } else if (event.key === Qt.Key_Left) {
+                    if (iT > 0)
+                        go(tasks[iT - 1]);
+                    else if (iT === 0)
+                        go(dateTimeBlock);
+                    else if (iS > 0)
+                        go(strip[iS - 1]);
+                    else if (iS === 0)
+                        go(launcherIcon);
+                    event.accepted = true;
+                } else if (event.key === Qt.Key_Right) {
+                    if (cur === dateTimeBlock)
+                        go(tasks.length ? tasks[0] : (strip.length ? strip[0] : null));
+                    else if (cur === launcherIcon)
+                        go(strip.length ? strip[0] : null);
+                    else if (iT >= 0 && iT < tasks.length - 1)
+                        go(tasks[iT + 1]);
+                    else if (iS >= 0 && iS < strip.length - 1)
+                        go(strip[iS + 1]);
+                    event.accepted = true;
+                } else if (event.key === Qt.Key_Down) {
+                    if (cur === dateTimeBlock)
+                        go(launcherIcon);
+                    else if (iT >= 0)
+                        go(strip.length ? strip[0] : launcherIcon);
+                    event.accepted = true;
+                } else if (event.key === Qt.Key_Up) {
+                    if (cur === launcherIcon)
+                        go(dateTimeBlock);
+                    else if (iS >= 0)
+                        go(tasks.length ? tasks[tasks.length - 1] : dateTimeBlock);
+                    event.accepted = true;
+                } else {
+                    // first-level menu jumps, mirrored in the calendar menu
+                    const m = event.key === Qt.Key_F ? 8 : event.key === Qt.Key_C ? 6 : event.key === Qt.Key_N ? 4 : event.key === Qt.Key_W ? 0 : event.key === Qt.Key_V ? 1 : event.key === Qt.Key_B ? 2 : -1;
+                    if (m >= 0) {
+                        win.launcher = false;
+                        win.menu = m;
+                        win.open = true;
+                        event.accepted = true;
+                    }
+                }
+            }
         }
 
         Region {
@@ -18410,6 +18913,9 @@ Variants {
                         readonly property int hoverPadY: 0
                         readonly property int hoverOffsetY: 2
 
+                        // keyboard nav: Enter = click (open the calendar pane)
+                        function keyClick() { win.openCalendar(); }
+
                         implicitWidth: dtCol.implicitWidth
                         implicitHeight: dtCol.implicitHeight
                         width: implicitWidth
@@ -18474,6 +18980,8 @@ Variants {
 
                 // grouped app icons (taskbar)
                 Taskbar {
+                    id: taskbar
+
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
                     theme: theme
@@ -18543,6 +19051,12 @@ Variants {
                     // the roving square asks for this tint when it sits behind us
                     readonly property color hoverColor: theme.accentSoft
 
+                    // keyboard nav: Enter = click (open the launcher)
+                    function keyClick() {
+                        win.open = false;
+                        win.launcher = true;
+                    }
+
                     anchors.left: parent.left
                     anchors.verticalCenter: parent.verticalCenter
                     width: 42
@@ -18586,12 +19100,24 @@ Variants {
 
                     // system tray — sits to the LEFT of the menu icons
                     Repeater {
+                        id: trayRep
+
                         model: SystemTray.items
 
                         delegate: Item {
                             id: trayItem
 
                             required property SystemTrayItem modelData
+
+                            // keyboard nav: Enter = left-click (activate, or open
+                            // the menu for menu-only items)
+                            function keyClick() {
+                                const it = trayItem.modelData;
+                                if (it.onlyMenu && it.hasMenu)
+                                    win.trayItem = it;
+                                else
+                                    it.activate();
+                            }
 
                             width: theme.iconCell + 4
                             height: theme.iconCell + 4
@@ -18640,6 +19166,8 @@ Variants {
 
                     // status icons -> open panel to that menu (active one highlighted)
                     StatusIcons {
+                        id: statusIcons
+
                         theme: theme
                         notifs: notifs
                         netState: netState
@@ -18694,6 +19222,11 @@ Variants {
                     function onCloseRequested() {
                         const wasGrabbing = win.grabsKeyboard;
                         win.open = false;
+                        // keyboard-nav mode: back to the expanded dashboard (the
+                        // pill keeps the keyboard); Escape there closes for real.
+                        if (win.kbNav)
+                            return ;
+
                         if (wasGrabbing)
                             root.restoreFocus();
 
@@ -18715,6 +19248,23 @@ Variants {
 
                     target: menuLoader.item
                     ignoreUnknownSignals: true
+                }
+
+                // keyboard-nav mode: generic arrows/Enter focus for the menus. The
+                // notification (4) and clipboard (5) panes run their own keyboard
+                // handling, so they're excluded; the calendar menu (6) also gets
+                // the f/c/n/w/v/b first-level jumps (its grid stays mouse-only).
+                MenuKbNav {
+                    anchors.fill: parent
+                    z: 50
+                    theme: theme
+                    target: menuLoader.item
+                    active: win.kbNav && win.open && win.menu !== 4 && win.menu !== 5
+                    shortcuts: win.menu === 6
+                    onEscaped: win.open = false // back to the expanded dashboard
+                    onShortcutRequested: (m) => {
+                        win.menu = m;
+                    }
                 }
 
                 Behavior on opacity {
@@ -18757,11 +19307,23 @@ Variants {
                     notifs: notifs
                     fin: finance
                     acc: accounts
-                    onLaunched: win.launcher = false
+                    onLaunched: {
+                        win.launcher = false;
+                        // keyboard-nav mode holds an Exclusive grab — drop the
+                        // whole pill so the launched app can take the keyboard.
+                        if (win.kbNav)
+                            win.focused = false;
+
+                    }
                     onCloseRequested: {
                         win.launcher = false;
                         settingsOpen = false;
-                        root.restoreFocus();
+                        // keyboard-nav mode: Escape returns to the expanded
+                        // dashboard instead of dismissing the pill (the Meta+D /
+                        // mouse-opened launcher still closes outright).
+                        if (!win.kbNav)
+                            root.restoreFocus();
+
                     }
                     // right-click on an app: show the floating AppMenu at the click.
                     // The point arrives in the Launcher's coordinates; map it into
@@ -18996,7 +19558,12 @@ Variants {
             onPinToggled: (e) => {
                 return launcherItem.togglePin(e);
             }
-            onLaunched: win.launcher = false
+            onLaunched: {
+                win.launcher = false;
+                if (win.kbNav)
+                    win.focused = false;
+
+            }
         }
 
         // ===================== notifications below an open pill =====================
