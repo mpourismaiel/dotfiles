@@ -313,8 +313,11 @@ Item {
     property bool checked: false
     signal toggled(bool value)
 
-    // keyboard nav (MenuKbNav): Enter flips the switch like a click
+    // keyboard nav (MenuKbNav): Enter flips the switch like a click. The track
+    // is translucent, so the floating square behind would drown it — the toggle
+    // self-styles focus with a bright track border instead (kbFocused).
     readonly property bool kbFocusable: true
+    property bool kbFocused: false
     function keyClick() {
         root.checked = !root.checked;
         root.toggled(root.checked);
@@ -327,7 +330,7 @@ Item {
         anchors.fill: parent
         radius: height / 2
         color: root.checked ? root.theme.accent : root.theme.track
-        border.color: root.checked ? root.theme.accent : root.theme.border
+        border.color: root.kbFocused ? root.theme.text : root.checked ? root.theme.accent : root.theme.border
         border.width: 1
         Behavior on color { ColorAnimation { duration: root.theme.animFast } }
 
@@ -450,9 +453,11 @@ Item {
 
     Item {                                  // back chevron + title (left) — clickable together
         id: backArea
-        // keyboard nav (MenuKbNav): the back button is every menu's default focus
+        // keyboard nav (MenuKbNav): the back button is every menu's default
+        // focus; focus brightens the chevron exactly like hover
         readonly property bool kbFocusable: true
         readonly property bool kbDefault: true
+        property bool kbFocused: false
         function keyClick() { root.back(); }
         anchors.left: parent.left
         anchors.verticalCenter: parent.verticalCenter
@@ -466,7 +471,7 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 icon: "chevron_left"
                 size: 20
-                color: backMa.containsMouse ? root.theme.text : root.theme.faint
+                color: (backMa.containsMouse || backArea.kbFocused) ? root.theme.text : root.theme.faint
             }
             Text {
                 anchors.verticalCenter: parent.verticalCenter
@@ -496,11 +501,12 @@ Item {
 
         Rectangle {
             readonly property bool kbFocusable: root.navArrows
+            property bool kbFocused: false
             function keyClick() { root.prev(); }
             width: 22
             height: 22
             radius: root.theme.radiusBtn
-            color: prevMa.containsMouse ? root.theme.row : "transparent"
+            color: (prevMa.containsMouse || kbFocused) ? root.theme.row : "transparent"
             MSym {
                 anchors.centerIn: parent
                 icon: "arrow_back"
@@ -518,11 +524,12 @@ Item {
         }
         Rectangle {
             readonly property bool kbFocusable: root.navArrows
+            property bool kbFocused: false
             function keyClick() { root.next(); }
             width: 22
             height: 22
             radius: root.theme.radiusBtn
-            color: nextMa.containsMouse ? root.theme.row : "transparent"
+            color: (nextMa.containsMouse || kbFocused) ? root.theme.row : "transparent"
             MSym {
                 anchors.centerIn: parent
                 icon: "arrow_forward"
@@ -568,15 +575,28 @@ then:
 - *Letter shortcuts* (=shortcuts: true=, calendar menu only): f/c/n/w/v/b emit
   =shortcutRequested(menu)= — the same first-level menu jumps the dashboard offers.
 - *Hover overrides focus*: a =HoverHandler= hit-tests the focusable list on every
-  pointer move, so whatever the mouse touches becomes the keyboard focus.
+  pointer move, so whatever the mouse touches becomes the keyboard focus. The
+  hit-test is *clip-aware* (=visRectOf= intersects each item with its clipping
+  ancestors), so a row scrolled out of a Flickable can't catch the pointer near
+  the pill's edge — only the arrows reach hidden rows, and those scroll them
+  into view (=ensureVisible= walks up to the nearest Flickable).
 
-Focus is drawn as an accent *ring* (border-only rounded rectangle) around the
-focused item, re-mapped a few times a second (=tick=) so it tracks scrolling
-Flickables; moving focus also auto-scrolls the item into view (=ensureVisible=
-walks up to the nearest Flickable). Items inside an invisible subtree (a hidden
-tab, a collapsed section) are never collected, so the scan follows what's on
-screen. The calendar's month grid is deliberately *not* tagged — it keeps
-mouse-only interaction for now.
+Focus is shown as *hover*: every tagged item declares =property bool kbFocused=
+(MenuKbNav sets it as focus moves) and styles itself exactly the way its own
+hover / the clipboard rows do — rows and chips fill =rowHi=, faint labels and
+icons brighten to =text=, a =PillToggle= gets a bright track border, the search
+field its accent border. Opaque =bgHover= behind translucent styling (a toggle's
+track, faint caps) *washes the control out*, which is why the items self-style
+rather than relying on a drawn square. A =bgHover= floating square (the
+dashboard's roving-hover look, drawn *under* the menu content — the overlay
+sits at =z: -1=) remains only as a fallback for any future =kbFocusable= tag
+without a =kbFocused= property; it re-maps a few times a second (=tick=) so it
+tracks scrolling Flickables. If a =pillKbInput= field (search, wifi password) takes the keys and
+later lets go, an active-focus watcher reclaims them (active focus lands on a
+focus scope, and the =focus:= binding alone never re-fires). Items inside an
+invisible subtree (a hidden tab, a collapsed section) are never collected, so
+the scan follows what's on screen. The calendar's month grid is deliberately
+*not* tagged — it keeps mouse-only interaction for now.
 *** Code
 #+begin_src qml :tangle ~/.config/quickshell/pill/MenuKbNav.qml :mkdirp yes
 pragma ComponentBehavior: Bound
@@ -599,7 +619,13 @@ Item {
     signal shortcutRequested(int menu)
 
     property Item cur: null              // focused item (a kbFocusable tag)
-    property int tick: 0                 // bumped to re-map the ring (scroll/layout)
+    property Item kbPrev: null           // last self-styling item we lit up
+    property int tick: 0                 // bumped to re-map the highlight (scroll/layout)
+
+    // the floating highlight square renders BELOW the menu content (init sets
+    // z: -1 on this overlay) — same trick as the dashboard's hover square — and
+    // must never paint outside the menu area (the pill doesn't clip).
+    clip: true
 
     focus: root.active
     onActiveChanged: {
@@ -610,6 +636,32 @@ Item {
     }
     // a menu switch swaps the loader item under us — refocus its back button
     onTargetChanged: if (root.active) Qt.callLater(root.focusDefault)
+
+    // an item that declares `kbFocused` styles its own focus (clipboard-style
+    // rowHi fill — opaque rows would hide the under-square); light it up / clear
+    // the previous one as the focus moves. try/catch guards a row destroyed by a
+    // model refresh between moves.
+    onCurChanged: {
+        try {
+            if (root.kbPrev && root.kbPrev !== root.cur && root.kbPrev.kbFocused !== undefined)
+                root.kbPrev.kbFocused = false;
+        } catch (e) {}
+        if (root.cur && root.cur.kbFocused !== undefined)
+            root.cur.kbFocused = true;
+        root.kbPrev = root.cur;
+    }
+
+    // an in-menu text field (search / wifi password) that takes focus gets the
+    // keys; when it lets go (its Escape), active focus lands on some focus
+    // scope (the menu Loader, the window content item) — reclaim the key
+    // handling (the `focus:` binding alone doesn't re-fire, its value never
+    // changed). Only a pillKbInput field may hold the keys away from us.
+    readonly property Item afi: Window.activeFocusItem
+    onAfiChanged: {
+        if (root.active && root.afi !== root && !(root.afi && root.afi.objectName === "pillKbInput"))
+            root.forceActiveFocus();
+
+    }
 
     // every visible kbFocusable under `target`, in document order. Invisible
     // subtrees (hidden tabs, collapsed sections) are skipped wholesale.
@@ -651,6 +703,28 @@ Item {
             "cx": p.x + it.width / 2,
             "cy": p.y + it.height / 2
         };
+    }
+
+    // rectOf clipped by every clipping ancestor (a Flickable's viewport): a row
+    // scrolled out of view has an empty visible rect. The hover hit-test uses
+    // this so the pointer near the pill's edge can't focus a hidden row (the
+    // arrows still reach them — they scroll into view via ensureVisible).
+    function visRectOf(it) {
+        let r = root.rectOf(it);
+        let a = it.parent;
+        while (a && a !== root.target) {
+            if (a.clip) {
+                const p = a.mapToItem(root, 0, 0);
+                const x2 = Math.min(r.x + r.w, p.x + a.width);
+                const y2 = Math.min(r.y + r.h, p.y + a.height);
+                r.x = Math.max(r.x, p.x);
+                r.y = Math.max(r.y, p.y);
+                r.w = Math.max(0, x2 - r.x);
+                r.h = Math.max(0, y2 - r.y);
+            }
+            a = a.parent;
+        }
+        return r;
     }
 
     // nearest focusable in the pressed direction; the orthogonal offset weighs
@@ -739,6 +813,7 @@ Item {
     }
 
     // hover overrides focus: whatever focusable the pointer is over becomes `cur`
+    // (clip-aware, so a row scrolled out of a Flickable can't catch the pointer)
     HoverHandler {
         enabled: root.active
         onPointChanged: {
@@ -746,8 +821,8 @@ Item {
             const px = point.position.x;
             const py = point.position.y;
             for (const it of items) {
-                const r = root.rectOf(it);
-                if (px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h) {
+                const r = root.visRectOf(it);
+                if (r.w > 0 && r.h > 0 && px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h) {
                     if (root.cur !== it) {
                         root.cur = it;
                         root.tick++;
@@ -758,7 +833,7 @@ Item {
         }
     }
 
-    // keep the ring glued through Flickable scrolls / animated layouts
+    // keep the highlight glued through Flickable scrolls / animated layouts
     Timer {
         interval: 250
         running: root.active && root.cur !== null
@@ -766,22 +841,171 @@ Item {
         onTriggered: root.tick++
     }
 
-    Rectangle {                              // the focus ring
+    // the floating hover square (same look as the dashboard's roving square),
+    // sliding between the unfilled focusables — back button, toggles, tabs,
+    // icons. It renders under the menu content (the overlay is z: -1), so an
+    // opaque row would hide it; those style themselves via `kbFocused` instead
+    // and the square stays hidden.
+    Rectangle {
         readonly property var r: {
             const _dep = [root.tick, root.cur, root.width, root.height];
             return (root.cur && root.cur.visible) ? root.rectOf(root.cur) : null;
         }
+        readonly property bool selfStyled: root.cur !== null && root.cur.kbFocused !== undefined
 
-        visible: root.active && r !== null
-        x: r ? r.x - 3 : 0
-        y: r ? r.y - 3 : 0
-        width: r ? r.w + 6 : 0
-        height: r ? r.h + 6 : 0
-        z: 500
-        radius: root.theme.radiusBtn + 2
-        color: "transparent"
-        border.width: 2
-        border.color: root.theme.accent
+        visible: root.active && r !== null && !selfStyled
+        x: r ? r.x - 4 : 0
+        y: r ? r.y - 4 : 0
+        width: r ? r.w + 8 : 0
+        height: r ? r.h + 8 : 0
+        radius: root.theme.radiusSmall
+        color: root.theme.bgHover
+
+        Behavior on x {
+            NumberAnimation {
+                duration: root.theme.animFast
+                easing.type: Easing.OutCubic
+            }
+
+        }
+
+        Behavior on y {
+            NumberAnimation {
+                duration: root.theme.animFast
+                easing.type: Easing.OutCubic
+            }
+
+        }
+
+        Behavior on width {
+            NumberAnimation {
+                duration: root.theme.animFast
+                easing.type: Easing.OutCubic
+            }
+
+        }
+
+        Behavior on height {
+            NumberAnimation {
+                duration: root.theme.animFast
+                easing.type: Easing.OutCubic
+            }
+
+        }
+
+    }
+}
+#+end_src
+
+** SearchField.qml
+*** Description
+The compact search row shared by the network / bluetooth / volume menus, styled
+after the clipboard menu's search strip (icon + inline =TextInput=). It does *not*
+auto-focus: clicking it (or, in keyboard-nav mode, arrowing to it and pressing
+Enter — it's =kbFocusable=, =keyClick()= focuses the input) pulls the keyboard via
+the usual =pillKbInput= mechanism, so browsing the menu never grabs. *Escape*
+clears the query and drops focus — in keyboard-nav mode [[*MenuKbNav.qml][=MenuKbNav=]]
+reclaims the keys (its active-focus watcher), otherwise the pill releases the
+keyboard. A trailing ✕ appears while a query is set. The owning menu reads =text=
+and filters its sections with it, keeping each section label / divider only while
+the section still has matches.
+*** Code
+#+begin_src qml :tangle ~/.config/quickshell/pill/SearchField.qml :mkdirp yes
+pragma ComponentBehavior: Bound
+// SearchField.qml — compact search row shared by the network/bluetooth/volume
+// menus. No auto-focus: a click (or keyboard-nav Enter, via keyClick) focuses the
+// input, which pulls the keyboard through the pillKbInput mechanism. Escape clears
+// the query and hands the keyboard back. The menu reads `text` and filters its
+// sections, keeping labels/dividers only where matches remain.
+import QtQuick
+
+Rectangle {
+    id: root
+    required property var theme
+    property string placeholder: "Search"
+    readonly property alias text: input.text
+
+    // keyboard nav: Enter = click (focus the input and start typing). The row is
+    // opaque, so it self-styles focus (kbFocused) with the same accent border it
+    // shows while the input holds focus.
+    readonly property bool kbFocusable: true
+    property bool kbFocused: false
+    function keyClick() { input.forceActiveFocus(); }
+
+    implicitHeight: 34
+    height: 34
+    radius: root.theme.radiusRow
+    color: root.theme.row
+    border.width: 1
+    border.color: (input.activeFocus || root.kbFocused) ? root.theme.accent : root.theme.border
+
+    // clicking anywhere in the row (icon, padding) focuses the input; the input
+    // sits on top of this, so text selection still works normally.
+    MouseArea {
+        anchors.fill: parent
+        onClicked: input.forceActiveFocus()
+    }
+
+    MSym {
+        id: searchIcon
+        anchors.left: parent.left
+        anchors.leftMargin: 10
+        anchors.verticalCenter: parent.verticalCenter
+        icon: "search"
+        size: 17
+        color: input.activeFocus ? root.theme.accent : root.theme.faint
+    }
+
+    TextInput {
+        id: input
+        objectName: "pillKbInput"
+        anchors.left: searchIcon.right
+        anchors.leftMargin: 8
+        anchors.right: clearBtn.visible ? clearBtn.left : parent.right
+        anchors.rightMargin: 8
+        anchors.verticalCenter: parent.verticalCenter
+        verticalAlignment: TextInput.AlignVCenter
+        color: root.theme.text
+        font.family: root.theme.family
+        font.pixelSize: root.theme.fsNormal
+        clip: true
+        selectByMouse: true
+        selectionColor: root.theme.accentDim
+        // Escape: clear the query and drop focus (keyboard-nav reclaims the keys,
+        // a mouse-opened menu releases the pill's keyboard grab)
+        Keys.onEscapePressed: {
+            input.text = "";
+            input.focus = false;
+        }
+        Text {
+            anchors.fill: parent
+            verticalAlignment: Text.AlignVCenter
+            visible: input.text.length === 0
+            text: root.placeholder
+            color: root.theme.faint
+            font.family: root.theme.family
+            font.pixelSize: root.theme.fsNormal
+            elide: Text.ElideRight
+        }
+    }
+
+    MSym {                       // ✕ — clear the query (shown while one is set)
+        id: clearBtn
+        visible: input.text.length > 0
+        anchors.right: parent.right
+        anchors.rightMargin: 8
+        anchors.verticalCenter: parent.verticalCenter
+        icon: "close"
+        size: 16
+        color: clearMa.containsMouse ? root.theme.text : root.theme.faint
+        MouseArea {
+            id: clearMa
+            anchors.fill: parent
+            anchors.margins: -4
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: input.text = ""
+        }
     }
 }
 #+end_src
@@ -873,8 +1097,10 @@ Item {
     signal clicked()
 
     // keyboard nav (MenuKbNav): only an interactive chip is its own focus stop —
-    // a presentational one is covered by its row's focus
+    // a presentational one is covered by its row's focus. Self-styles focus as a
+    // rowHi fill (chip-style), keeping the label fully legible.
     readonly property bool kbFocusable: root.interactive && !root.busy
+    property bool kbFocused: false
     function keyClick() { root.clicked(); }
 
     implicitWidth: Math.max(txt.implicitWidth + 22, 76)
@@ -884,7 +1110,7 @@ Item {
         anchors.fill: parent
         radius: root.theme.radiusBtn
         clip: true
-        color: root.busy ? root.theme.row : "transparent"
+        color: root.busy ? root.theme.row : root.kbFocused ? root.theme.rowHi : "transparent"
         Behavior on color { ColorAnimation { duration: root.theme.animFast } }
         BusyStripe { anchors.fill: parent; theme: root.theme; active: root.busy }
     }
@@ -1015,7 +1241,10 @@ Wi-Fi list (signal bars + a lock on secured nets, sorted active-first then by
 =connectWithPsk()= for secured unknown networks; toggles =Networking.wifiEnabled=
 and runs the scanner only while visible. Uses native =Quickshell.Networking=.
 VPN/WireGuard connections are *not* in that binding, so they are listed and toggled
-via =nmcli= (=Process=). A header gear opens KDE's network KCM.
+via =nmcli= (=Process=). A header gear opens KDE's network KCM. A
+[[*SearchField.qml][=SearchField=]] under the header filters all three sections
+(wired / Wi-Fi / VPN) by name at once; a section's label stays only while it still
+has matches.
 *** Code
 #+begin_src qml :tangle ~/.config/quickshell/pill/NetworkMenu.qml :mkdirp yes
 pragma ComponentBehavior: Bound
@@ -1035,6 +1264,13 @@ Item {
     required property var theme
     required property var netState
     signal closeRequested()
+
+    // ---- search: one query filters every section (wired / wifi / vpn); a
+    // section's label survives only while it still has matches ----
+    function matches(s) { return search.text === "" || (s || "").toLowerCase().includes(search.text.toLowerCase()); }
+    readonly property var fLans: root.netState.lans.filter(c => root.matches(c.name))
+    readonly property var fNets: root.netState.nets.filter(n => root.matches(n.name))
+    readonly property var fVpns: root.netState.vpns.filter(c => root.matches(c.name))
 
     // open KDE's network settings — try Plasma 6 then older variants
     Process { id: settingsProc }
@@ -1056,13 +1292,15 @@ Item {
         id: connRow
         required property var conn
         readonly property bool busy: root.netState.busyConn === conn.name
-        // keyboard nav: Enter = the row click (connect/disconnect)
+        // keyboard nav: Enter = the row click (connect/disconnect); the opaque
+        // row self-styles focus like the clipboard rows (rowHi)
         readonly property bool kbFocusable: !connRow.busy
+        property bool kbFocused: false
         function keyClick() { root.netState.setConn(connRow.conn.name, !connRow.conn.active); }
         width: parent ? parent.width : 0
         height: root.theme.rowHeight
         radius: root.theme.radiusRow
-        color: conn.active ? root.theme.accentDim : root.theme.row
+        color: connRow.kbFocused ? root.theme.rowHi : conn.active ? root.theme.accentDim : root.theme.row
         Text {
             anchors.left: parent.left; anchors.leftMargin: 12
             anchors.right: connBtn.left; anchors.rightMargin: 8
@@ -1108,11 +1346,12 @@ Item {
             onBack: root.closeRequested()
             MSym {                              // open KDE network settings
                 readonly property bool kbFocusable: true
+                property bool kbFocused: false
                 function keyClick() { root.openNetworkSettings(); }
                 anchors.verticalCenter: parent.verticalCenter
                 icon: "settings"
                 size: 19
-                color: gearMa.containsMouse ? root.theme.text : root.theme.faint
+                color: (gearMa.containsMouse || kbFocused) ? root.theme.text : root.theme.faint
                 MouseArea {
                     id: gearMa
                     anchors.fill: parent; anchors.margins: -4
@@ -1128,9 +1367,16 @@ Item {
             }
         }
 
+        SearchField {
+            id: search
+            width: parent.width
+            theme: root.theme
+            placeholder: "Search networks"
+        }
+
         Flickable {                             // network list
             width: parent.width
-            height: parent.height - 36
+            height: parent.height - 36 - 34 - root.theme.gap
             contentHeight: netCol.height
             clip: true
             Column {
@@ -1139,16 +1385,16 @@ Item {
                 spacing: 4
 
                 // ---- wired (LAN) — nmcli, shown first ----
-                NetLabel { text: "Wired"; visible: root.netState.lans.length > 0 }
+                NetLabel { text: "Wired"; visible: root.fLans.length > 0 }
                 Repeater {
-                    model: root.netState.lans
+                    model: root.fLans
                     delegate: ConnRow { required property var modelData; width: netCol.width; conn: modelData }
                 }
 
                 // ---- Wi-Fi ----
-                NetLabel { text: "Wi-Fi"; visible: root.netState.nets.length > 0 }
+                NetLabel { text: "Wi-Fi"; visible: root.fNets.length > 0 }
                 Repeater {
-                    model: root.netState.nets
+                    model: root.fNets
                     delegate: Rectangle {
                         id: netRow
                         required property var modelData
@@ -1159,13 +1405,15 @@ Item {
                         property bool expanded: false      // password field revealed
                         property bool showPw: false        // eye toggle
                         // keyboard nav: Enter = the row click (connect / disconnect /
-                        // reveal the password field for a secured unknown net)
+                        // reveal the password field for a secured unknown net); the
+                        // opaque row self-styles focus like the clipboard rows
                         readonly property bool kbFocusable: !netRow.busy
+                        property bool kbFocused: false
                         function keyClick() { netRow.act(); }
                         width: netCol.width
                         height: rowCol.height
                         radius: root.theme.radiusRow
-                        color: modelData.connected ? root.theme.accentDim : root.theme.row
+                        color: netRow.kbFocused ? root.theme.rowHi : modelData.connected ? root.theme.accentDim : root.theme.row
 
                         function begin(target) { netRow.busy = true; netRow.busyTarget = target; wd.restart(); }
                         function act() {
@@ -1313,9 +1561,9 @@ Item {
                 }
 
                 // ---- VPN — nmcli, shown last ----
-                NetLabel { text: "VPN"; visible: root.netState.vpns.length > 0 }
+                NetLabel { text: "VPN"; visible: root.fVpns.length > 0 }
                 Repeater {
-                    model: root.netState.vpns
+                    model: root.fVpns
                     delegate: ConnRow { required property var modelData; width: netCol.width; conn: modelData }
                 }
             }
@@ -1381,6 +1629,7 @@ Column {
         }
         Rectangle {
             readonly property bool kbFocusable: true
+            property bool kbFocused: false
             function keyClick() {
                 const i = cyc.options.indexOf(cyc.value);
                 cyc.picked(cyc.options[(i + 1) % cyc.options.length]);
@@ -1390,7 +1639,7 @@ Column {
             width: cycTxt.implicitWidth + 20
             height: 22
             radius: root.theme.radiusBtn
-            color: cycMa.containsMouse ? root.theme.rowHi : root.theme.row
+            color: (cycMa.containsMouse || kbFocused) ? root.theme.rowHi : root.theme.row
             border.width: 1
             border.color: root.theme.border
             Text {
@@ -1593,7 +1842,11 @@ volume/mute/set-default, and Applications tab (=Stream/Output/Audio=) with
 per-stream volume/mute. Uses native =Quickshell.Services.Pipewire=; a
 =PwObjectTracker= over every node keeps audio live and nodes are classified by
 =media.class=. Header shortcuts open KDE's Audio (=kcm_pulseaudio=) and Multimedia
-(=kcm_phonon=) settings.
+(=kcm_phonon=) settings. A [[*SearchField.qml][=SearchField=]] under the tab bar
+filters the visible tab's sections by display name (Speakers + Microphones
+together on Devices, the app list on Applications); a section label stays only
+while it still has matches. The Transcribe tab is settings, not a list, so the
+search row hides there.
 
 A third *Transcribe* tab holds the voice-to-text pipeline's knobs (see
 [[*init.qml — voice recording][the voice state machine]] and
@@ -1655,6 +1908,22 @@ Item {
     readonly property var sources:  allNodes.filter(n => root.cls(n) === "Audio/Source")
     readonly property var streams:  allNodes.filter(n => root.cls(n) === "Stream/Output/Audio")
 
+    // the display name a row shows — the same string the search matches against
+    function nodeLabel(n, isStream) {
+        if (isStream)
+            return (n.properties && (n.properties["application.name"] || n.properties["media.name"])) || n.name;
+        return n.description || n.nickname || n.name;
+    }
+
+    // ---- search: one query filters every section (speakers / microphones on the
+    // Devices tab, the Applications tab); a section's label survives only while
+    // it still has matches. The Transcribe tab is settings, not a list — the
+    // search row hides there ----
+    function matches(s) { return search.text === "" || (s || "").toLowerCase().includes(search.text.toLowerCase()); }
+    readonly property var fSinks:   sinks.filter(n => root.matches(root.nodeLabel(n, false)))
+    readonly property var fSources: sources.filter(n => root.matches(root.nodeLabel(n, false)))
+    readonly property var fStreams: streams.filter(n => root.matches(root.nodeLabel(n, true)))
+
     // one device/stream row: name + (default marker) + mute over a volume slider,
     // reused by the Speakers / Microphones / Applications sections.
     component NodeRow: Column {
@@ -1669,12 +1938,7 @@ Item {
             Text {
                 width: parent.width - 46
                 elide: Text.ElideRight
-                text: {
-                    const n = node;
-                    if (isStream)
-                        return (n.properties && (n.properties["application.name"] || n.properties["media.name"])) || n.name;
-                    return n.description || n.nickname || n.name;
-                }
+                text: root.nodeLabel(node, isStream)
                 color: root.theme.text
                 font.family: root.theme.family
                 font.pixelSize: root.theme.fsNormal
@@ -1685,6 +1949,7 @@ Item {
                 readonly property bool isDefault: node === Pipewire.defaultAudioSink
                        || node === Pipewire.defaultAudioSource
                 readonly property bool kbFocusable: true
+                property bool kbFocused: false
                 function keyClick() {
                     if (root.cls(node) === "Audio/Sink")
                         Pipewire.preferredDefaultAudioSink = node;
@@ -1693,7 +1958,7 @@ Item {
                 }
                 icon: isDefault ? "radio_button_checked" : "radio_button_unchecked"
                 size: 16
-                color: isDefault ? root.theme.accent : root.theme.faint
+                color: isDefault ? root.theme.accent : kbFocused ? root.theme.text : root.theme.faint
                 MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor
                     onClicked: parent.keyClick() }
             }
@@ -1701,11 +1966,12 @@ Item {
                 anchors.verticalCenter: parent.verticalCenter
                 readonly property bool muted: node.audio && node.audio.muted
                 readonly property bool kbFocusable: true
+                property bool kbFocused: false
                 function keyClick() { if (node.audio) node.audio.muted = !node.audio.muted; }
                 icon: muted ? "volume_off" : "volume_up"
                 size: 17
                 fill: muted ? 0 : 1
-                color: muted ? root.theme.faint : root.theme.textDim
+                color: kbFocused ? root.theme.text : muted ? root.theme.faint : root.theme.textDim
                 MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor
                     onClicked: parent.keyClick() }
             }
@@ -1772,6 +2038,7 @@ Item {
         }
         Rectangle {
             readonly property bool kbFocusable: true
+            property bool kbFocused: false
             function keyClick() {
                 const i = cyc.options.indexOf(cyc.value);
                 cyc.picked(cyc.options[(i + 1) % cyc.options.length]);
@@ -1781,7 +2048,7 @@ Item {
             width: cycTxt.implicitWidth + 20
             height: 22
             radius: root.theme.radiusBtn
-            color: cycMa.containsMouse ? root.theme.rowHi : root.theme.row
+            color: (cycMa.containsMouse || kbFocused) ? root.theme.rowHi : root.theme.row
             border.width: 1
             border.color: root.theme.border
             Text {
@@ -1821,10 +2088,11 @@ Item {
                 delegate: Text {
                     required property var modelData
                     readonly property bool kbFocusable: true
+                    property bool kbFocused: false
                     function keyClick() { root.openAudioSettings(modelData.kcm); }
                     anchors.verticalCenter: parent.verticalCenter
                     text: modelData.label
-                    color: setMa.containsMouse ? root.theme.text : root.theme.faint
+                    color: (setMa.containsMouse || kbFocused) ? root.theme.text : root.theme.faint
                     font.family: root.theme.mono
                     font.pixelSize: root.theme.fsSmall
                     font.letterSpacing: root.theme.labelSpacing
@@ -1846,11 +2114,14 @@ Item {
                 delegate: Text {
                     required property int index
                     required property string modelData
-                    // keyboard nav: the tab bar is a left/right strip; Enter picks
+                    // keyboard nav: the tab bar is a left/right strip; Enter picks.
+                    // Focus brightens the label (the floating square would sit
+                    // behind the faint caps and wash them out).
                     readonly property bool kbFocusable: true
+                    property bool kbFocused: false
                     function keyClick() { root.tab = index; }
                     text: modelData
-                    color: root.tab === index ? root.theme.accent : root.theme.faint
+                    color: root.tab === index ? root.theme.accent : kbFocused ? root.theme.text : root.theme.faint
                     font.family: root.theme.mono
                     font.pixelSize: root.theme.fsSmall
                     font.letterSpacing: root.theme.labelSpacing
@@ -1861,9 +2132,17 @@ Item {
             }
         }
 
+        SearchField {
+            id: search
+            visible: root.tab !== 2
+            width: parent.width
+            theme: root.theme
+            placeholder: root.tab === 1 ? "Search apps" : "Search devices"
+        }
+
         Flickable {
             width: parent.width
-            height: parent.height - 34 - 26 - root.theme.gap
+            height: parent.height - 34 - 26 - root.theme.gap - (root.tab === 2 ? 0 : 34 + root.theme.gap)
             contentHeight: col.height
             clip: true
             Column {
@@ -1873,20 +2152,20 @@ Item {
 
                 // ---- Devices tab: Speakers (sinks) then Microphones (sources),
                 //      kept in separate labelled sections ----
-                VolLabel { text: "Speakers"; visible: root.tab === 0 && root.sinks.length > 0 }
+                VolLabel { text: "Speakers"; visible: root.tab === 0 && root.fSinks.length > 0 }
                 Repeater {
-                    model: root.tab === 0 ? root.sinks : []
+                    model: root.tab === 0 ? root.fSinks : []
                     delegate: NodeRow { required property var modelData; width: col.width; node: modelData; showDefault: true }
                 }
-                VolLabel { text: "Microphones"; visible: root.tab === 0 && root.sources.length > 0 }
+                VolLabel { text: "Microphones"; visible: root.tab === 0 && root.fSources.length > 0 }
                 Repeater {
-                    model: root.tab === 0 ? root.sources : []
+                    model: root.tab === 0 ? root.fSources : []
                     delegate: NodeRow { required property var modelData; width: col.width; node: modelData; showDefault: true }
                 }
 
                 // ---- Applications tab ----
                 Repeater {
-                    model: root.tab === 1 ? root.streams : []
+                    model: root.tab === 1 ? root.fStreams : []
                     delegate: NodeRow { required property var modelData; width: col.width; node: modelData; isStream: true }
                 }
 
@@ -1957,8 +2236,9 @@ Item {
                 }
 
                 Text {
-                    visible: root.tab !== 2 && (root.tab === 0 ? (root.sinks.length + root.sources.length) : root.streams.length) === 0
-                    text: root.tab === 0 ? "No audio devices" : "No apps playing audio"
+                    visible: root.tab !== 2 && (root.tab === 0 ? (root.fSinks.length + root.fSources.length) : root.fStreams.length) === 0
+                    text: search.text !== "" ? "No matches"
+                        : root.tab === 0 ? "No audio devices" : "No apps playing audio"
                     color: root.theme.textDim
                     font.family: root.theme.family
                     font.pixelSize: root.theme.fsNormal
@@ -1974,7 +2254,10 @@ Item {
 Adapter power + scan toggles (=defaultAdapter.enabled= / =.discovering=), then three
 filtered sections — Connected, Paired, Available — each row connect/disconnect/pair
 via the device methods, with battery % when =batteryAvailable=. Uses native
-=Quickshell.Bluetooth=.
+=Quickshell.Bluetooth=. A [[*SearchField.qml][=SearchField=]] under the header
+filters all three sections by name/address at once; a section's label and the
+dividers between sections stay only while the sections around them still have
+matches.
 *** Code
 #+begin_src qml :tangle ~/.config/quickshell/pill/BluetoothMenu.qml :mkdirp yes
 pragma ComponentBehavior: Bound
@@ -1996,6 +2279,17 @@ Item {
     readonly property var paired:    devices.filter(d => d.paired && !d.connected)
     readonly property var found:     devices.filter(d => !d.paired && !d.connected)
 
+    // ---- search: one query filters every section (connected / paired /
+    // available); a section's label and its dividers survive only while the
+    // section still has matches ----
+    function matches(d) {
+        const s = d.name || d.deviceName || d.address || "";
+        return search.text === "" || s.toLowerCase().includes(search.text.toLowerCase());
+    }
+    readonly property var fConnected: connected.filter(d => root.matches(d))
+    readonly property var fPaired:    paired.filter(d => root.matches(d))
+    readonly property var fFound:     found.filter(d => root.matches(d))
+
     // a single device row, reused by all three sections
     component DevRow: Rectangle {
         id: devRow
@@ -2006,13 +2300,15 @@ Item {
         // silent failure, e.g. pairing that never completes).
         property bool busy: false
         property bool busyTarget: false
-        // keyboard nav: Enter = the row click (connect / disconnect / pair)
+        // keyboard nav: Enter = the row click (connect / disconnect / pair); the
+        // opaque row self-styles focus like the clipboard rows (rowHi)
         readonly property bool kbFocusable: !devRow.busy
+        property bool kbFocused: false
         function keyClick() { devRow.act(); }
         width: parent ? parent.width : 0
         height: root.theme.rowHeight
         radius: root.theme.radiusRow
-        color: device.connected ? root.theme.accentDim : root.theme.row
+        color: devRow.kbFocused ? root.theme.rowHi : device.connected ? root.theme.accentDim : root.theme.row
 
         function begin(target) { devRow.busy = true; devRow.busyTarget = target; wd.restart(); }
         function act() {
@@ -2115,9 +2411,16 @@ Item {
             }
         }
 
+        SearchField {
+            id: search
+            width: parent.width
+            theme: root.theme
+            placeholder: "Search devices"
+        }
+
         Flickable {
             width: parent.width
-            height: parent.height - 36
+            height: parent.height - 36 - 34 - root.theme.gap
             contentHeight: col.height
             clip: true
             Column {
@@ -2125,20 +2428,20 @@ Item {
                 width: parent.width
                 spacing: 4
 
-                SectionLabel { text: "Connected"; visible: root.connected.length > 0 }
-                Repeater { model: root.connected; delegate: DevRow { required property var modelData; device: modelData } }
+                SectionLabel { text: "Connected"; visible: root.fConnected.length > 0 }
+                Repeater { model: root.fConnected; delegate: DevRow { required property var modelData; device: modelData } }
 
                 Rectangle { width: parent.width; height: 1; color: root.theme.divider
-                    visible: root.connected.length > 0 && root.paired.length > 0 }
+                    visible: root.fConnected.length > 0 && root.fPaired.length > 0 }
 
-                SectionLabel { text: "Paired"; visible: root.paired.length > 0 }
-                Repeater { model: root.paired; delegate: DevRow { required property var modelData; device: modelData } }
+                SectionLabel { text: "Paired"; visible: root.fPaired.length > 0 }
+                Repeater { model: root.fPaired; delegate: DevRow { required property var modelData; device: modelData } }
 
                 Rectangle { width: parent.width; height: 1; color: root.theme.divider
-                    visible: root.found.length > 0 && (root.connected.length + root.paired.length) > 0 }
+                    visible: root.fFound.length > 0 && (root.fConnected.length + root.fPaired.length) > 0 }
 
-                SectionLabel { text: "Available"; visible: root.found.length > 0 }
-                Repeater { model: root.found; delegate: DevRow { required property var modelData; device: modelData } }
+                SectionLabel { text: "Available"; visible: root.fFound.length > 0 }
+                Repeater { model: root.fFound; delegate: DevRow { required property var modelData; device: modelData } }
             }
         }
     }
@@ -2847,12 +3150,13 @@ Item {
         // wallet — switch to the finance menu (win.menu 8)
         Rectangle {
             readonly property bool kbFocusable: true
+            property bool kbFocused: false
             function keyClick() { root.financeRequested(); }
             width: 24
             height: 24
             radius: root.theme.radiusBtn
             anchors.verticalCenter: parent.verticalCenter
-            color: finBtnMa.containsMouse ? root.theme.rowHi : "transparent"
+            color: (finBtnMa.containsMouse || kbFocused) ? root.theme.rowHi : "transparent"
             MSym {
                 anchors.centerIn: parent
                 icon: "account_balance_wallet"
@@ -2872,12 +3176,13 @@ Item {
         // Gregorian ⇄ Shamsi toggle
         Rectangle {
             readonly property bool kbFocusable: true
+            property bool kbFocused: false
             function keyClick() { root.toggleCalendar(); }
             width: calToggleTxt.implicitWidth + 20
             height: 24
             radius: root.theme.radiusBtn
             anchors.verticalCenter: parent.verticalCenter
-            color: calToggleMa.containsMouse ? root.theme.rowHi : root.theme.row
+            color: (calToggleMa.containsMouse || kbFocused) ? root.theme.rowHi : root.theme.row
             Text {
                 id: calToggleTxt
                 anchors.centerIn: parent
@@ -2900,18 +3205,20 @@ Item {
 
         // Today
         Rectangle {
+            id: todayBtn
             readonly property bool kbFocusable: true
+            property bool kbFocused: false
             function keyClick() { root.goToday(); }
             width: todayTxt.implicitWidth + 20
             height: 24
             radius: root.theme.radiusBtn
             anchors.verticalCenter: parent.verticalCenter
-            color: todayMa.containsMouse ? root.theme.accent : root.theme.accentSoft
+            color: (todayMa.containsMouse || todayBtn.kbFocused) ? root.theme.accent : root.theme.accentSoft
             Text {
                 id: todayTxt
                 anchors.centerIn: parent
                 text: "Today"
-                color: todayMa.containsMouse ? "#ffffff" : root.theme.accent
+                color: (todayMa.containsMouse || todayBtn.kbFocused) ? "#ffffff" : root.theme.accent
                 font.family: root.theme.mono
                 font.pixelSize: root.theme.fsSmall
                 font.letterSpacing: root.theme.labelSpacing
@@ -5711,12 +6018,13 @@ Item {
         Rectangle {
             visible: root.calLike
             readonly property bool kbFocusable: true
+            property bool kbFocused: false
             function keyClick() { root.toggleCalendar(); }
             width: calToggleTxt.implicitWidth + 20
             height: 24
             radius: root.theme.radiusBtn
             anchors.verticalCenter: parent.verticalCenter
-            color: calToggleMa.containsMouse ? root.theme.rowHi : root.theme.row
+            color: (calToggleMa.containsMouse || kbFocused) ? root.theme.rowHi : root.theme.row
             Text {
                 id: calToggleTxt
                 anchors.centerIn: parent
@@ -5742,12 +6050,13 @@ Item {
         Rectangle {
             visible: root.fin && root.fin.entities && root.fin.entities.length > 1
             readonly property bool kbFocusable: true
+            property bool kbFocused: false
             function keyClick() { if (root.fin) root.fin.cycleEntity(); }
             width: hdrBookRow.implicitWidth + 18
             height: 24
             radius: root.theme.radiusBtn
             anchors.verticalCenter: parent.verticalCenter
-            color: hdrBookMa.containsMouse ? root.theme.rowHi : root.theme.row
+            color: (hdrBookMa.containsMouse || kbFocused) ? root.theme.rowHi : root.theme.row
             border.width: 1
             border.color: root.fin && root.fin.entity !== "personal"
                         ? root.theme.money : "transparent"
@@ -5786,12 +6095,13 @@ Item {
         // currency chip — cycles As-is → EUR → IRT (values every amount shown)
         Rectangle {
             readonly property bool kbFocusable: true
+            property bool kbFocused: false
             function keyClick() { if (root.fin) root.fin.cycleCurrency(); }
             width: hdrCurTxt.implicitWidth + 20
             height: 24
             radius: root.theme.radiusBtn
             anchors.verticalCenter: parent.verticalCenter
-            color: hdrCurMa.containsMouse ? root.theme.rowHi : root.theme.row
+            color: (hdrCurMa.containsMouse || kbFocused) ? root.theme.rowHi : root.theme.row
             border.width: 1
             border.color: root.fin && root.fin.displayCurrency !== "native"
                         ? root.theme.money : "transparent"
@@ -5819,12 +6129,13 @@ Item {
         // privacy eye — same effective state the launcher toggle shows
         Rectangle {
             readonly property bool kbFocusable: true
+            property bool kbFocused: false
             function keyClick() { if (root.fin) root.fin.togglePrivacy(); }
             width: 24
             height: 24
             radius: root.theme.radiusBtn
             anchors.verticalCenter: parent.verticalCenter
-            color: eyeMa.containsMouse ? root.theme.rowHi : "transparent"
+            color: (eyeMa.containsMouse || kbFocused) ? root.theme.rowHi : "transparent"
             MSym {
                 anchors.centerIn: parent
                 icon: root.fin && root.fin.privacy ? "visibility_off" : "visibility"
@@ -5846,12 +6157,13 @@ Item {
         // back to the calendar menu
         Rectangle {
             readonly property bool kbFocusable: true
+            property bool kbFocused: false
             function keyClick() { root.calendarRequested(); }
             width: 24
             height: 24
             radius: root.theme.radiusBtn
             anchors.verticalCenter: parent.verticalCenter
-            color: calBtnMa.containsMouse ? root.theme.rowHi : "transparent"
+            color: (calBtnMa.containsMouse || kbFocused) ? root.theme.rowHi : "transparent"
             MSym {
                 anchors.centerIn: parent
                 icon: "calendar_month"
@@ -5870,19 +6182,21 @@ Item {
 
         // Today (grid modes only)
         Rectangle {
+            id: todayBtn
             visible: root.calLike
             readonly property bool kbFocusable: true
+            property bool kbFocused: false
             function keyClick() { root.goToday(); }
             width: todayTxt.implicitWidth + 20
             height: 24
             radius: root.theme.radiusBtn
             anchors.verticalCenter: parent.verticalCenter
-            color: todayMa.containsMouse ? root.theme.accent : root.theme.accentSoft
+            color: (todayMa.containsMouse || todayBtn.kbFocused) ? root.theme.accent : root.theme.accentSoft
             Text {
                 id: todayTxt
                 anchors.centerIn: parent
                 text: "Today"
-                color: todayMa.containsMouse ? "#ffffff" : root.theme.accent
+                color: (todayMa.containsMouse || todayBtn.kbFocused) ? "#ffffff" : root.theme.accent
                 font.family: root.theme.mono
                 font.pixelSize: root.theme.fsSmall
                 font.letterSpacing: root.theme.labelSpacing
@@ -15204,11 +15518,12 @@ Item {
                     required property var modelData
                     readonly property bool on: root.sel === modelData.key
                     readonly property bool kbFocusable: true
+                    property bool kbFocused: false
                     function keyClick() { root.sel = tile.modelData.key; }
                     width: (parent.width - root.theme.gap) / 2
                     height: 60
                     radius: root.theme.radiusRow
-                    color: on ? root.theme.accentSoft : (tileMa.containsMouse ? root.theme.rowHi : root.theme.row)
+                    color: on ? root.theme.accentSoft : ((tileMa.containsMouse || tile.kbFocused) ? root.theme.rowHi : root.theme.row)
                     border.width: 1
                     border.color: on ? root.theme.accent : root.theme.border
                     Behavior on color { ColorAnimation { duration: root.theme.animFast } }
@@ -15283,12 +15598,13 @@ Item {
                     required property string modelData
                     readonly property bool on: root.effectiveCat === modelData
                     readonly property bool kbFocusable: true
+                    property bool kbFocused: false
                     function keyClick() { root.orgOverride = catChip.modelData; }
                     anchors.verticalCenter: parent.verticalCenter
                     width: catTxt.implicitWidth + 22
                     height: 22
                     radius: root.theme.radiusBtn
-                    color: on ? root.theme.accent : (catMa.containsMouse ? root.theme.rowHi : root.theme.row)
+                    color: on ? root.theme.accent : ((catMa.containsMouse || catChip.kbFocused) ? root.theme.rowHi : root.theme.row)
                     border.width: 1
                     border.color: on ? root.theme.accent : root.theme.border
                     Text {
@@ -15315,12 +15631,13 @@ Item {
         // ---- Start (only once a type is chosen) ----
         Rectangle {
             readonly property bool kbFocusable: true
+            property bool kbFocused: false
             function keyClick() { root.startRequested(root.sel, root.polishOn, root.orgOn, root.effectiveCat); }
             width: parent.width
             height: root.sel !== "" ? 42 : 0
             visible: root.sel !== ""
             radius: root.theme.radiusRow
-            color: startMa.containsMouse ? root.theme.danger : root.theme.accent
+            color: (startMa.containsMouse || kbFocused) ? root.theme.danger : root.theme.accent
             Behavior on color { ColorAnimation { duration: root.theme.animFast } }
             Row {
                 anchors.centerIn: parent
@@ -19256,7 +19573,9 @@ Variants {
                 // the f/c/n/w/v/b first-level jumps (its grid stays mouse-only).
                 MenuKbNav {
                     anchors.fill: parent
-                    z: 50
+                    // below the menu loader: the floating highlight square draws
+                    // BEHIND the menu content (opaque rows self-style instead)
+                    z: -1
                     theme: theme
                     target: menuLoader.item
                     active: win.kbNav && win.open && win.menu !== 4 && win.menu !== 5
