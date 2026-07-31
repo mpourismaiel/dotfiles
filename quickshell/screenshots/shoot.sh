@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # shoot.sh — regenerate off-screen, mock-data screenshots of the pill + emaqs.
 #
-# Safe by construction: tangles the org sources to a BUILD dir (default /tmp/shot —
-# NEVER the live ~/.config/quickshell), neuters the python bridges, copies the mock
-# state objects + harnesses from this repo dir into the build tree, and renders via
-# FloatingWindow harnesses that never instantiate a NotificationServer / winbridge /
-# DBus name. Output PNGs + contact sheets land in $SHOT_DIR/out.
+# Safe by construction: copies the repo sources (quickshell/{pill,emaqs}/) to a
+# BUILD dir (default /tmp/shot — NEVER the live ~/.config/quickshell), neuters the
+# python bridges, copies the mock state objects + harnesses from this repo dir into
+# the build tree, and renders via FloatingWindow harnesses that never instantiate a
+# NotificationServer / winbridge / DBus name. Output PNGs + contact sheets land in
+# $SHOT_DIR/out.
 #
 # Usage:  quickshell/screenshots/shoot.sh          # build dir = /tmp/shot
 #         SHOT_DIR=/path/to/build shoot.sh
@@ -17,11 +18,9 @@ SHOT="${SHOT_DIR:-/tmp/shot}"
 PW="$SHOT/pill" EW="$SHOT/emaqs" OUT="$SHOT/out"
 mkdir -p "$PW" "$EW" "$OUT"
 
-echo "==> tangling org sources to $SHOT (temp build dir, not live)"
-sed 's#~/.config/quickshell/pill/#'"$PW"'/#g'  "$REPO/quickshell/qs-pill-docs.org"  > "$SHOT/pill-src.org"
-sed 's#~/.config/quickshell/emaqs/#'"$EW"'/#g' "$REPO/quickshell/qs-emaqs-docs.org" > "$SHOT/emaqs-src.org"
-emacs --batch -Q -l org "$SHOT/pill-src.org"  --eval '(org-babel-tangle)' 2>&1 | tail -1
-emacs --batch -Q -l org "$SHOT/emaqs-src.org" --eval '(org-babel-tangle)' 2>&1 | tail -1
+echo "==> copying repo sources to $SHOT (temp build dir, not live)"
+for f in "$REPO"/quickshell/pill/*;  do case "$(basename "$f")" in deploy.sh|check.sh|README.md|CLAUDE.md) ;; *) cp -p "$f" "$PW"/ ;; esac; done
+for f in "$REPO"/quickshell/emaqs/*; do case "$(basename "$f")" in deploy.sh|check.sh|README.md|CLAUDE.md) ;; *) cp -p "$f" "$EW"/ ;; esac; done
 
 echo "==> installing mock state objects + harnesses from the repo"
 cp "$HERE"/pill/*.qml  "$PW"/

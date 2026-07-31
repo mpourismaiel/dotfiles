@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # check.sh — regression smoke test for the pill + emaqs screenshot harnesses.
-# Re-tangles + renders (via shoot.sh) and asserts: both harnesses loaded, every
+# Re-copies sources + renders (via shoot.sh) and asserts: both harnesses loaded, every
 # expected stage produced a non-trivial PNG, and qs emitted no ERROR/WARNING.
 # Exit non-zero on any failure — a broken component fails to load its stage and the
 # PNG goes missing / tiny. Usage: quickshell/screenshots/check.sh
