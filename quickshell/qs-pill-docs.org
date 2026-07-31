@@ -4717,7 +4717,7 @@ QtObject {
         root.settings.financeNagDismissedUntil = d.toISOString();
     }
     onTodayKeyChanged: checkToday()        // midnight rollover: fresh day, fresh check
-    Component.onCompleted: { checkToday(); loadEntities(); }
+    Component.onCompleted: { checkToday(); loadEntities(); loadGit(); }
 
     // catch entries added outside the pill (Emacs) during the nag window
     property Timer freshTimer: Timer {
@@ -4846,9 +4846,76 @@ QtObject {
                     if (root.dayKey) root.loadDay(root.dayKey);
                     if (root.lastRangeA) root.loadForecastRange(root.lastRangeA, root.lastRangeB);
                     root.checkToday();
+                    root.loadGit();   // the new entry shows up as unsaved
                     root.entryAdded();
                 }
                 root.addFinished(ok, err);
+            }
+        }
+    }
+    // --- git: the finance dir is one git repo (shared with shledger/web).
+    // The pill offers status + ff-pull + commit&push; anything messier
+    // (diverged branches, conflicts) is fixed in a terminal. ----------------
+    property var gitInfo: ({ repo: false })
+    property bool gitBusy: false
+    property string gitError: ""
+    function loadGit() {
+        gitStatusProc.command = root.bridge(["git-status"]);
+        if (!gitStatusProc.running) gitStatusProc.running = true;
+    }
+    function gitSync() {
+        if (root.gitBusy) return;
+        root.gitBusy = true;
+        root.gitError = "";
+        gitSyncProc.command = root.bridge(["git-sync"]);
+        if (!gitSyncProc.running) gitSyncProc.running = true;
+    }
+    function gitPush() {
+        if (root.gitBusy) return;
+        root.gitBusy = true;
+        root.gitError = "";
+        gitPushProc.command = root.bridge(["git-push"]);
+        if (!gitPushProc.running) gitPushProc.running = true;
+    }
+    property Process gitStatusProc: Process {
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try { root.gitInfo = JSON.parse(this.text) || { repo: false }; }
+                catch (e) { root.gitInfo = { repo: false }; }
+            }
+        }
+    }
+    property Process gitSyncProc: Process {
+        stdout: StdioCollector {
+            onStreamFinished: {
+                root.gitBusy = false;
+                var r = null;
+                try { r = JSON.parse(this.text); } catch (e) { r = null; }
+                if (r && r.ok) {
+                    if (r.changed) {   // remote had new entries — reload views
+                        if (root.dayKey) root.loadDay(root.dayKey);
+                        if (root.lastRangeA) {
+                            root.loadRange(root.lastRangeA, root.lastRangeB);
+                            root.loadForecastRange(root.lastRangeA, root.lastRangeB);
+                        }
+                        root.checkToday();
+                    }
+                } else {
+                    root.gitError = (r && r.error) ? r.error : "sync failed";
+                }
+                root.loadGit();
+            }
+        }
+    }
+    property Process gitPushProc: Process {
+        stdout: StdioCollector {
+            onStreamFinished: {
+                root.gitBusy = false;
+                var r = null;
+                try { r = JSON.parse(this.text); } catch (e) { r = null; }
+                if (!(r && r.ok))
+                    root.gitError = (r && r.error) ? r.error : "push failed";
+                root.loadGit();
             }
         }
     }
@@ -4898,6 +4965,20 @@ While the evening nag is live (=fin.nag=) the =cal= panel grows a dismiss card:
 *1 hour* / *2 hours* / *until tomorrow*, the last needing a second confirming
 click (it restyles to a red "Sure?" for 3 s) since it silences the reminder for
 the whole evening.
+
+A slim *git strip* sits between the day list and the report tiles (hidden when
+the finance dir isn't a git repo): =branch · N unsaved · N↑/N↓= on the left,
+and two buttons on the right — *sync* (=git-sync=: fetch + ff-only pull; on new
+remote entries it reloads the day/range/forecast views) and *push*
+(=git-push=: commit-everything-if-dirty + push; the cloud glyph turns gold
+while there's anything unsaved or unpushed). This is how the local journals
+stay in step with the shledger web app sharing the same remote. Anything the
+strip can't do safely — a diverged branch, a rejected push, a conflict — it
+only *reports* (red text in place of the status); resolution is a terminal
+job, by design. Backed by =fin.gitInfo/gitSync()/gitPush()= in
+[[*FinanceState.qml][=FinanceState=]] over the bridge's =git-status= /
+=git-sync= / =git-push= commands, which run git at the *base* finance dir (the
+whole dir is one repo; books are folders inside it).
 *** Code
 #+begin_src qml :tangle ~/.config/quickshell/pill/FinanceMenu.qml :mkdirp yes
 pragma ComponentBehavior: Bound
@@ -5886,7 +5967,7 @@ Item {
         Flickable {
             anchors.top: topCol.bottom
             anchors.topMargin: 6
-            anchors.bottom: switcher.top
+            anchors.bottom: gitRow.top
             anchors.bottomMargin: root.theme.gap
             width: parent.width
             contentHeight: dayCol.height
@@ -5933,6 +6014,89 @@ Item {
                     font.family: root.theme.family
                     font.italic: true
                     font.pixelSize: root.theme.fsNormal
+                }
+            }
+        }
+
+        // git strip: branch + local/remote counts, ff-pull + commit&push.
+        // Conflicts stay a terminal job — the strip only reports them.
+        Item {
+            id: gitRow
+            visible: !!(root.fin && root.fin.gitInfo && root.fin.gitInfo.repo)
+            anchors.bottom: switcher.top
+            anchors.bottomMargin: 6
+            width: parent.width
+            height: visible ? 22 : 0
+            Text {
+                anchors.left: parent.left
+                anchors.right: gitButtons.left
+                anchors.rightMargin: 8
+                anchors.verticalCenter: parent.verticalCenter
+                elide: Text.ElideRight
+                text: {
+                    if (!root.fin || !root.fin.gitInfo || !root.fin.gitInfo.repo) return "";
+                    if (root.fin.gitError) return root.fin.gitError;
+                    var g = root.fin.gitInfo;
+                    var bits = [g.branch || "?"];
+                    if (g.dirty) bits.push(g.dirty + " unsaved");
+                    if (g.ahead) bits.push(g.ahead + "↑");
+                    if (g.behind) bits.push(g.behind + "↓");
+                    return bits.join(" · ");
+                }
+                color: (root.fin && root.fin.gitError) ? root.theme.danger : root.theme.faint
+                font.family: root.theme.mono
+                font.pixelSize: root.theme.fsSmall - 1
+            }
+            Row {
+                id: gitButtons
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: 4
+                Rectangle {
+                    width: 22
+                    height: 22
+                    radius: root.theme.radiusBtn
+                    color: gitSyncMa.containsMouse ? root.theme.rowHi : "transparent"
+                    opacity: (root.fin && root.fin.gitBusy) ? 0.4 : 1
+                    MSym {
+                        anchors.centerIn: parent
+                        icon: "sync"
+                        size: 14
+                        color: gitSyncMa.containsMouse ? root.theme.text : root.theme.textDim
+                    }
+                    MouseArea {
+                        id: gitSyncMa
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: if (root.fin && !root.fin.gitBusy) root.fin.gitSync()
+                    }
+                }
+                Rectangle {
+                    width: 22
+                    height: 22
+                    radius: root.theme.radiusBtn
+                    color: gitPushMa.containsMouse ? root.theme.rowHi : "transparent"
+                    opacity: (root.fin && root.fin.gitBusy) ? 0.4 : 1
+                    MSym {
+                        anchors.centerIn: parent
+                        icon: "cloud_upload"
+                        size: 14
+                        color: {
+                            if (!root.fin) return root.theme.textDim;
+                            var g = root.fin.gitInfo || {};
+                            return (g.dirty || g.ahead)
+                                ? root.theme.money
+                                : (gitPushMa.containsMouse ? root.theme.text : root.theme.textDim);
+                        }
+                    }
+                    MouseArea {
+                        id: gitPushMa
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: if (root.fin && !root.fin.gitBusy) root.fin.gitPush()
+                    }
                 }
             }
         }
@@ -8578,6 +8742,13 @@ hint the bridge attaches (so copying is exact, not the markup-escaped body). The
 countdown and expire on the normal 5s like every other popup (hover the deck to
 pause it), and the copy is there for when 5s isn't enough — the transcript is
 also already on the clipboard from the bridge.
+
+In the history pane the card also reflects *keyboard selection* pushed down from
+[[*NotificationHistory.qml][=NotificationHistory=]]: =selected= rings it in accent (and
+tints the surface), =focusedAction= (an index into the non-default =actionButtons=)
+rings one action button, and =replyActive= focuses the inline-reply field. The reply
+field's Escape emits =replyEscaped= (the pane returns focus to the card), and a body
+click emits =cardClicked= so the mouse and keyboard selections stay in sync.
 *** Code
 #+begin_src qml :tangle ~/.config/quickshell/pill/NotificationView.qml :mkdirp yes
 pragma ComponentBehavior: Bound
@@ -8606,6 +8777,19 @@ Rectangle {
     property bool showProgress: false      // show the countdown bar
     property bool inHistory: false          // X forgets instead of dismissing
     property bool surface: true             // draw own bg/border
+
+    // ---- keyboard-selection state (driven by NotificationHistory) ----
+    property bool selected: false           // this card is the pane's selection (highlight)
+    property int focusedAction: -1          // index into `actionButtons` to ring; -1 = none
+    property bool replyActive: false        // request focus for the inline-reply field
+    signal replyEscaped()                   // reply field escaped (return focus to the card)
+    signal cardClicked()                    // the card body was clicked (sync the selection)
+    // non-default actions, in order — the buttons shown AND the Left/Right nav order
+    readonly property var actionButtons: {
+        const as = notification ? (notification.actions || []) : [];
+        return as.filter(a => a && a.identifier !== "default");
+    }
+    onReplyActiveChanged: if (replyActive) reply.forceActiveFocus()
 
     // Resolve the image robustly: prefer an explicit file-path hint loaded as a
     // file:// URL (Flameshot & co. send the screenshot via `image-path`, which
@@ -8663,10 +8847,11 @@ Rectangle {
     readonly property real timeoutMs: notifs ? notifs.timeoutFor(notification) : 0
     readonly property real progress: notifs ? notifs.progressFor(notification) : 0
 
-    color: surface ? theme.card : "transparent"
+    color: surface ? (selected ? theme.rowHi : theme.card) : "transparent"
     radius: theme.radiusCard
     border.width: surface ? 1 : 0
-    border.color: critical ? theme.danger : (transcribe ? theme.accentSoft : theme.border)
+    // a keyboard selection rings the card in accent (no width change, so no layout jump)
+    border.color: selected ? theme.accent : (critical ? theme.danger : (transcribe ? theme.accentSoft : theme.border))
     implicitWidth: 420
     implicitHeight: (root.transcribe ? tCard.height : Math.max(leftCol.height, rightCol.implicitHeight)) + theme.pad * 2
 
@@ -8678,9 +8863,13 @@ Rectangle {
     }
     MouseArea {
         anchors.fill: parent
-        enabled: root.defaultAction !== null
+        // stay hit-testable even with no default action so a click can still sync the
+        // keyboard selection; only show the hand cursor when there IS a default action
         cursorShape: root.defaultAction ? Qt.PointingHandCursor : Qt.ArrowCursor
-        onClicked: { if (root.defaultAction) { root.defaultAction.invoke(); root.notifs.drop(root.notification); } }
+        onClicked: {
+            root.cardClicked();
+            if (root.defaultAction) { root.defaultAction.invoke(); root.notifs.drop(root.notification); }
+        }
     }
 
     // ---- left column: image (≤100px box, aspect kept) or app icon ----
@@ -8838,18 +9027,20 @@ Rectangle {
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: 7
                 Repeater {
-                    model: root.notification ? root.notification.actions : []
+                    model: root.actionButtons
                     delegate: Rectangle {
                         required property var modelData
                         required property int index
-                        visible: modelData.identifier !== "default"
                         // first action reads as the primary (accent) button
                         readonly property bool primary: index === 0
-                        width: visible ? actLabel.implicitWidth + 24 : 0
+                        // keyboard-focused action: an accent ring (Left/Right nav)
+                        readonly property bool focused: root.focusedAction === index
+                        width: actLabel.implicitWidth + 24
                         height: 26; radius: root.theme.radiusBtn
                         color: primary ? (actMa.containsMouse ? root.theme.danger : root.theme.accent)
                                        : (actMa.containsMouse ? root.theme.rowHi : root.theme.row)
-                        border.color: root.theme.border; border.width: primary ? 0 : 1
+                        border.color: focused ? root.theme.accent : root.theme.border
+                        border.width: focused ? 2 : (primary ? 0 : 1)
                         Text {
                             id: actLabel
                             anchors.centerIn: parent
@@ -8889,6 +9080,9 @@ Rectangle {
                 font.family: root.theme.family
                 font.pixelSize: root.theme.fsNormal
                 clip: true
+                // Escape hands focus back to the card (the pane refocuses its key
+                // sink); it does NOT close the pane while the field is focused.
+                Keys.onEscapePressed: root.replyEscaped()
                 onAccepted: {
                     if (text.length > 0) {
                         root.notification.sendInlineReply(text);
@@ -9244,14 +9438,37 @@ Item {
 
 ** NotificationHistory.qml
 *** Description
-The control-panel pane (=win.menu === 4=) — grouped, newest-first history.
+The control-panel pane (=win.menu === 4=) — grouped, newest-first history. Opened
+from the Row-2 notification status icon or the =notifications= IPC shortcut (=qs ipc
+call pill notifications=). When open it *grabs the keyboard* for triage: it keeps one
+*flat* selection across all groups (=sel=), =Up=/=Down= move it, =Left=/=Right= focus
+the selected card's action buttons (=actionSel=, none by default), =Enter= fires the
+focused action or — with none focused — opens the notification (its =default= action,
+exactly like a click), =i= focuses the inline-reply field, and =x=/=Delete= forget the
+card. =Escape= steps back one level (focused action/reply → card, then card/none →
+close the pane). Selection state is pushed down to each [[*NotificationView.qml][=NotificationView=]]
+delegate (=selected=/=focusedAction=/=replyActive=), which renders the accent ring and
+focuses the reply field; a mouse click on a card syncs the selection (=cardClicked=).
+The =clearNotifications= IPC verb wipes the whole history without opening the pane.
 *** Code
 #+begin_src qml :tangle ~/.config/quickshell/pill/NotificationHistory.qml :mkdirp yes
 pragma ComponentBehavior: Bound
 // NotificationHistory.qml — notification history pane. Notifications are grouped
 // by app (newest-first within each group; a group floats to the top when it gets
 // a fresh notification), each rendered as a NotificationView row. "Clear all"
-// empties the history. Opened from the Row-2 notification status icon.
+// empties the history. Opened from the Row-2 notification status icon or the
+// `notifications` IPC shortcut.
+//
+// Keyboard triage (the pane grabs the keyboard when open — see init.qml
+// `grabsKeyboard`): the pane keeps ONE flat selection across all groups (`sel`,
+// -1 = nothing focused). Up/Down move the selection; Left/Right focus the selected
+// card's action buttons (`actionSel`, -1 = none, the default); Enter triggers the
+// focused action, or — with no action focused — opens the notification (its
+// `default` action, exactly like clicking the card); `i` focuses the inline-reply
+// field (Telegram &c.); `x`/Delete forget the selected card. Escape steps back one
+// level: an focused action/reply first returns focus to the card, then a second
+// Escape (card or nothing focused) closes the pane. While the reply field holds
+// focus the letter/Delete keys type into it (they never reach this handler).
 import QtQuick
 
 Item {
@@ -9260,8 +9477,108 @@ Item {
     required property var notifs
     signal closeRequested()
 
-    // the pane is (re)created each time it opens; refresh the grouping then
-    Component.onCompleted: if (root.notifs) root.notifs.rebuild()
+    // the pane is (re)created each time it opens; refresh the grouping then grab
+    // keyboard focus so arrow-key navigation works from the first keystroke.
+    Component.onCompleted: {
+        if (root.notifs) root.notifs.rebuild();
+        keyHandler.forceActiveFocus();
+    }
+
+    // ---- keyboard navigation state ------------------------------------------
+    // A flat list of every notification in display order (group by group, newest
+    // first within each), so one index walks the whole pane regardless of grouping.
+    readonly property var flat: {
+        const out = [];
+        for (const g of (root.notifs ? root.notifs.grouped : []))
+            for (const n of g.items) out.push(n);
+        return out;
+    }
+    property int sel: -1                    // index into `flat`; -1 = nothing focused
+    property int actionSel: -1              // index into selActions; -1 = none (default)
+    property bool replyFocused: false       // the selected card's reply field has focus
+    readonly property var selNotif: (root.sel >= 0 && root.sel < root.flat.length) ? root.flat[root.sel] : null
+    // the selected card's non-default actions (Left/Right walk these; Enter fires one)
+    readonly property var selActions: {
+        const n = root.selNotif;
+        if (!n) return [];
+        return (n.actions || []).filter(a => a && a.identifier !== "default");
+    }
+
+    // move the selection (d = ±1); a fresh move drops any focused action
+    function moveSel(d) {
+        const n = root.flat.length;
+        if (n === 0) { root.sel = -1; return; }
+        let i = root.sel < 0 ? 0 : Math.max(0, Math.min(n - 1, root.sel + d));
+        root.sel = i;
+        root.actionSel = -1;
+    }
+    // Enter: fire the focused action, else open the notification (its `default`
+    // action) exactly like clicking the card; drop it from the active popup stack
+    // (the history copy stays — matches the card's own click handlers).
+    function activateSel() {
+        const n = root.selNotif;
+        if (!n) return;
+        if (root.actionSel >= 0) {
+            const a = root.selActions[root.actionSel];
+            if (a) { a.invoke(); root.notifs.drop(n); }
+            return;
+        }
+        for (const a of (n.actions || []))
+            if (a && a.identifier === "default") { a.invoke(); root.notifs.drop(n); return; }
+    }
+    // x / Delete: forget the selected card; keep the selection on the same slot
+    // (now the next card) so repeated presses clear down the list.
+    function deleteSel() {
+        const n = root.selNotif;
+        if (!n) return;
+        const at = root.sel;
+        root.actionSel = -1;
+        root.notifs.forget(n);              // rebuilds `grouped` synchronously
+        root.sel = root.flat.length === 0 ? -1 : Math.min(at, root.flat.length - 1);
+    }
+    // keep the selected card scrolled into view inside the Flickable
+    function ensureVisible(item) {
+        if (!item) return;
+        const p = item.mapToItem(groupsCol, 0, 0);
+        const top = p.y;
+        const bot = top + item.height;
+        if (top < flick.contentY)
+            flick.contentY = top;
+        else if (bot > flick.contentY + flick.height)
+            flick.contentY = Math.max(0, bot - flick.height);
+    }
+
+    // the always-focused key sink for the pane (a plain Item is transparent to the
+    // mouse, so the cards' own click handlers still work). Focus returns here when a
+    // reply field is escaped. Letter/Delete keys only reach here while no reply field
+    // holds focus — so they can't clobber a reply mid-typing.
+    Item {
+        id: keyHandler
+        anchors.fill: parent
+        focus: true
+        Keys.onPressed: (event) => {
+            if (event.key === Qt.Key_Escape) {
+                if (root.actionSel >= 0) root.actionSel = -1;   // action -> card
+                else root.closeRequested();                     // card/none -> close
+                event.accepted = true;
+            } else if (event.key === Qt.Key_Down) {
+                root.moveSel(1); event.accepted = true;
+            } else if (event.key === Qt.Key_Up) {
+                root.moveSel(-1); event.accepted = true;
+            } else if (event.key === Qt.Key_Left) {
+                if (root.selNotif) { root.actionSel = Math.max(-1, root.actionSel - 1); event.accepted = true; }
+            } else if (event.key === Qt.Key_Right) {
+                const c = root.selActions.length;
+                if (root.selNotif && c > 0) { root.actionSel = Math.min(c - 1, root.actionSel + 1); event.accepted = true; }
+            } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+                root.activateSel(); event.accepted = true;
+            } else if (event.key === Qt.Key_I) {
+                if (root.selNotif && root.selNotif.hasInlineReply) { root.replyFocused = true; event.accepted = true; }
+            } else if (event.key === Qt.Key_X || event.key === Qt.Key_Delete) {
+                root.deleteSel(); event.accepted = true;
+            }
+        }
+    }
 
     Column {
         anchors.fill: parent
@@ -9290,6 +9607,7 @@ Item {
         }
 
         Flickable {
+            id: flick
             width: parent.width
             height: parent.height - 26 - root.theme.gap
             contentHeight: groupsCol.height
@@ -9341,12 +9659,26 @@ Item {
                         Repeater {
                             model: modelData.items
                             delegate: NotificationView {
+                                id: nv
                                 required property var modelData
                                 width: groupsCol.width
                                 theme: root.theme
                                 notifs: root.notifs
                                 notification: modelData
                                 inHistory: true
+                                // keyboard-selection state pushed down from the pane
+                                selected: root.selNotif === modelData
+                                focusedAction: root.selNotif === modelData ? root.actionSel : -1
+                                replyActive: root.selNotif === modelData && root.replyFocused
+                                // reply Escape: return focus to the card (not close)
+                                onReplyEscaped: {
+                                    root.replyFocused = false;
+                                    keyHandler.forceActiveFocus();
+                                }
+                                // clicking a card with the mouse also becomes the
+                                // keyboard selection, so the two stay in sync
+                                onCardClicked: root.sel = root.flat.indexOf(modelData)
+                                onSelectedChanged: if (selected) root.ensureVisible(nv)
                             }
                         }
                     }
@@ -11878,6 +12210,9 @@ missing, data commands print =[]= / empty shapes and the UI just shows nothing.
 #                      wishlist-purchase schedule (see cmd_plan)
 #   entities           print JSON [{name, default}] — the available books
 #   today-has-entry    print JSON {has, count}
+#   git-status         print JSON {repo, branch, dirty, ahead, behind, last}
+#   git-sync           fetch + ff-only pull, print {ok, changed} or {ok, error}
+#   git-push           commit-if-dirty + push, print {ok, committed, pushed}
 #
 # A LEADING `--entity NAME` (or `-E NAME`) selects the book; default "personal".
 #   python hledgerbridge.py --entity company balances EUR
@@ -12466,6 +12801,73 @@ def cmd_today_has_entry():
     return {"has": n > 0, "count": n}
 
 
+def run_git(args, timeout=30):
+    """(rc, stdout, stderr) of git run at BASE_DIR — the whole finance dir is
+    one repo; books are folders inside it. Never raises."""
+    try:
+        r = subprocess.run(["git", "-C", BASE_DIR] + args,
+                           capture_output=True, text=True, timeout=timeout)
+        return r.returncode, r.stdout.strip(), r.stderr.strip()
+    except Exception as e:
+        return 1, "", str(e)
+
+
+def cmd_git_status():
+    """Offline snapshot for the pill's git row: branch, dirty file count,
+    ahead/behind origin (as of the last fetch), last commit subject."""
+    rc, _, _ = run_git(["rev-parse", "--git-dir"])
+    if rc != 0:
+        return {"repo": False}
+    _, branch, _ = run_git(["rev-parse", "--abbrev-ref", "HEAD"])
+    _, porcelain, _ = run_git(["status", "--porcelain"])
+    dirty = len([l for l in porcelain.splitlines() if l.strip()])
+    ahead = behind = 0
+    rc, counts, _ = run_git(["rev-list", "--left-right", "--count",
+                             "HEAD...@{upstream}"])
+    if rc == 0 and counts:
+        parts = counts.split()
+        if len(parts) == 2:
+            ahead, behind = int(parts[0]), int(parts[1])
+    _, last, _ = run_git(["log", "-1", "--format=%h %s"])
+    return {"repo": True, "branch": branch, "dirty": dirty,
+            "ahead": ahead, "behind": behind, "last": last}
+
+
+def cmd_git_sync():
+    """Fetch + fast-forward pull. Refuses to merge: a diverged branch is
+    reported for fixing in a terminal."""
+    rc, _, err = run_git(["fetch", "--quiet"], timeout=60)
+    if rc != 0:
+        return {"ok": False, "error": err[-200:] or "fetch failed"}
+    before_rc, before, _ = run_git(["rev-parse", "HEAD"])
+    rc, _, err = run_git(["merge", "--ff-only", "@{upstream}"], timeout=60)
+    if rc != 0:
+        return {"ok": False, "error": "diverged — merge in a terminal"}
+    _, after, _ = run_git(["rev-parse", "HEAD"])
+    return {"ok": True, "changed": before != after}
+
+
+def cmd_git_push():
+    """Commit everything (if dirty) and push. A rejected push is reported, not
+    resolved — pull or branch in a terminal."""
+    _, porcelain, _ = run_git(["status", "--porcelain"])
+    committed = False
+    if porcelain.strip():
+        run_git(["add", "-A"])
+        today = datetime.date.today().isoformat()
+        rc, _, err = run_git(["commit", "-m", "pill: finance entries %s" % today])
+        if rc != 0:
+            return {"ok": False, "error": err[-200:] or "commit failed"}
+        committed = True
+    rc, _, err = run_git(["push", "--quiet"], timeout=60)
+    if rc != 0:
+        tail = err[-200:]
+        if "rejected" in err or "non-fast-forward" in err or "fetch first" in err:
+            tail = "push rejected — pull first (sync), or fix in a terminal"
+        return {"ok": False, "committed": committed, "error": tail}
+    return {"ok": True, "committed": committed, "pushed": True}
+
+
 def main():
     global FINANCE_DIR, MAIN, WISHLIST
     argv = sys.argv[1:]
@@ -12505,6 +12907,12 @@ def main():
         out = cmd_entities()
     elif cmd == "today-has-entry":
         out = cmd_today_has_entry()
+    elif cmd == "git-status":
+        out = cmd_git_status()
+    elif cmd == "git-sync":
+        out = cmd_git_sync()
+    elif cmd == "git-push":
+        out = cmd_git_push()
     else:
         out = []
     sys.stdout.write(json.dumps(out))
@@ -16093,6 +16501,19 @@ assign it e.g. *Super+V* (free it from Klipper first). The call fires
 =clipboardShortcut("")= → =openClipboard()= on every pill (an empty screen name);
 =clipboardOn(screen)= targets one monitor. Re-firing while it's up toggles it shut.
 
+*Notifications shortcut (IPC).* The same =IpcHandler= exposes =notifications= /
+=notificationsOn(screen)=, which open (or toggle shut) the notification history pane
+(=win.menu === 4=) — mirroring =clipboard= — plus two one-key sweeps that need no
+menu: =dismissNotifications= (=notifs.dismissAll()=) clears every popup off the screen
+but *keeps* them in history (the "I'm busy, not now" sweep — the unread strip/badge
+stay), while =clearNotifications= (=notifs.clearAll()=) wipes the whole history. Bind
+*Custom Shortcuts* (System Settings ▸ Shortcuts) running
+=qs -p …/init.qml ipc call pill notifications= (e.g. *Super+N*),
+=… ipc call pill dismissNotifications=, and =… ipc call pill clearNotifications=. The
+pane grabs the keyboard when open, so it can be triaged entirely from the keyboard
+(arrows / Enter / =i= / =x= / Delete / Escape — see
+[[*NotificationHistory.qml][§ NotificationHistory.qml]]).
+
 *Brightness shortcut (IPC).* The same =IpcHandler= exposes =brightnessUp= /
 =brightnessDown=, which step the *active monitor's* screen brightness by ≈5% via the
 shared [[*Brightness.qml][=Brightness=]] state (KDE's =org.kde.ScreenBrightness=, i.e.
@@ -16277,10 +16698,29 @@ signal launcherShortcut(string screen)
 // that command (e.g. Super+V) to open the clipboard-history menu. Empty screen ->
 // every pill responds (right for a single monitor); a name targets one monitor.
 signal clipboardShortcut(string screen)
+// requested via IPC (`qs ipc call pill notifications`) — opens the notification
+// history pane (menu 4) for keyboard-driven triage. Same empty-screen / named-screen
+// rule as the clipboard shortcut.
+signal notifShortcut(string screen)
 IpcHandler {
     target: "pill"
     function clipboard(): void { root.clipboardShortcut(""); }
     function clipboardOn(screen: string): void { root.clipboardShortcut(screen); }
+    // open (or toggle shut) the notification history pane — bind to a KDE custom
+    // shortcut to review/triage notifications from the keyboard (arrows to move,
+    // Enter to open, i to reply, x/Delete to dismiss — see NotificationHistory.qml).
+    function notifications(): void { root.notifShortcut(""); }
+    function notificationsOn(screen: string): void { root.notifShortcut(screen); }
+    // dismiss every popup currently on screen but KEEP them in history — the "I'm
+    // busy, not now" one-key sweep (mirrors the deck's "Dismiss all"). Bind to a KDE
+    // custom shortcut. Unlike clearNotifications this does NOT touch history, so the
+    // unread strip / badge stays and they're still reviewable in the pane later.
+    // (`notifs` is an id, not a property of root — `root.notifs` is undefined.)
+    function dismissNotifications(): void { notifs.dismissAll(); }
+    // clear every notification from history at once (no menu needed) — bind to a
+    // KDE custom shortcut for a one-key "clear all". Mirrors the pane's "Clear all";
+    // this DOES wipe history (the harder sweep vs dismissNotifications above).
+    function clearNotifications(): void { notifs.clearAll(); }
     // step the *active monitor's* brightness up/down by ~5% and flash a level burst
     // (icon + Brightness title + from->to bar). Bind these to KDE custom-command
     // shortcuts; the active monitor is the focused window's output (activeScreen).
@@ -17268,9 +17708,9 @@ Variants {
         property bool dash: open || launcher || focused || ctxMode
         property int menu: 4 // 0 net, 1 vol, 2 bt, 3 batt, 5 clipboard, 6 calendar, 7 voice memo, 8 finance, 4 notif (default pane)
         // keyboard-focus gating. The pill grabs the compositor keyboard ONLY while
-        // it actually needs it: the launcher or clipboard menu is up (both auto-focus
-        // a search field and want arrow-key nav), or *some* editable field inside the
-        // pill currently has focus (wifi password, notification reply). Otherwise it
+        // it actually needs it: the launcher, clipboard, or notification menu is up
+        // (they auto-focus a field / drive arrow-key nav), or *some* editable field
+        // inside the pill currently has focus (wifi password, notification reply). Otherwise it
         // stays hands-off (KeyboardFocus.None), so browsing menus/toggles never steals
         // focus from the active window — and there's nothing to "restore" on dismiss.
         // `kbProbe` (below) reports the window's current focus item; our editable
@@ -17279,7 +17719,10 @@ Variants {
             const it = kbProbe.focusItem;
             return !!it && it.objectName === "pillKbInput";
         }
-        readonly property bool grabsKeyboard: win.launcher || (win.open && win.menu === 5) || win.kbInputFocused
+        // The notification pane (menu 4) also grabs the keyboard: it drives its own
+        // arrow/Enter/i/x navigation (see NotificationHistory.qml) and its inline-reply
+        // field wants the keystrokes from the first press.
+        readonly property bool grabsKeyboard: win.launcher || (win.open && (win.menu === 5 || win.menu === 4)) || win.kbInputFocused
         // open-state pill geometry, in ONE place: the control panel and the
         // launcher both lay out to these, so resizing the open/launcher pill here
         // can't leave the launcher mis-sized (the bug from the last resize).
@@ -17405,6 +17848,26 @@ Variants {
             }
         }
 
+        // open (or toggle shut) the notification history pane (menu 4) — bound to the
+        // IPC notifications shortcut. Mirrors openClipboard: re-firing while it's up
+        // closes it and restores focus. The pane grabs the keyboard (see grabsKeyboard)
+        // so its arrow/Enter/i/x navigation works from the first keystroke.
+        function openNotifications() {
+            if (win.open && win.menu === 4) {
+                const wasGrabbing = win.grabsKeyboard;
+                win.open = false;
+                if (wasGrabbing)
+                    root.restoreFocus();
+
+            } else {
+                win.launcher = false;
+                win.ctxGroup = null;
+                win.trayItem = null;
+                win.menu = 4;
+                win.open = true;
+            }
+        }
+
         // open the voice-memo config panel (menu 7) — fired by voicePolishToggle
         // when idle. Re-firing while it's showing closes it (the shortcut also
         // stops a running take, handled in the IPC handler).
@@ -17479,6 +17942,14 @@ Variants {
                     return ;
 
                 win.openClipboard();
+            }
+
+            // same active-screen rule; opens the notification history pane (menu 4)
+            function onNotifShortcut(screen) {
+                if (screen !== "" && Quickshell.screens.length > 1 && win.screen && screen !== win.screen.name)
+                    return ;
+
+                win.openNotifications();
             }
 
             // voicePolishToggle (idle) opens the config panel on every pill (like

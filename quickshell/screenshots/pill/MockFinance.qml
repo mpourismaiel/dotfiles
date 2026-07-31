@@ -77,6 +77,14 @@ QtObject {
     // books (entities) — a second one so the header chip shows
     property string entity: "personal"
     property var entities: [{ name: "personal", default: true }, { name: "company", default: false }]
+    // git strip — unsaved entries + one unpushed commit so both cues show
+    property var gitInfo: ({ repo: true, branch: "main", dirty: 2, ahead: 1, behind: 0,
+                             last: "a1b2c3d groceries" })
+    property bool gitBusy: false
+    property string gitError: ""
+    function loadGit() {}
+    function gitSync() {}
+    function gitPush() {}
     function loadEntities() {}
     function loadPlan() {}
     function switchEntity(name) { if (name) root.entity = name; }
