@@ -1362,10 +1362,12 @@ ShellRoot {
                 id: backdrop
     
                 anchors.fill: parent
-                enabled: win.open || win.launcher || win.ctxMode || win.focused
+                enabled: win.open || win.launcher || win.ctxMode || win.focused || win.deadlines
                 // dismiss without launching -> hand focus back to the active window, but
                 // only if the pill actually held the keyboard (otherwise there's nothing
                 // to restore and re-activating the last window is just disruptive).
+                // (deadlines is cleared here too as a safety net — its own popup
+                // backdrop normally handles the outside click first.)
                 onClicked: {
                     const wasGrabbing = win.grabsKeyboard;
                     win.open = false;
@@ -1373,6 +1375,7 @@ ShellRoot {
                     win.ctxGroup = null;
                     win.trayItem = null;
                     win.focused = false;
+                    win.deadlines = false;
                     if (wasGrabbing)
                         root.restoreFocus();
     

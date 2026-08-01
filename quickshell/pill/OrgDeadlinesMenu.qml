@@ -48,7 +48,11 @@ Item {
     // keep the cursor in range as items tick away underneath it
     onFlatChanged: if (sel >= flat.length) sel = Math.max(0, flat.length - 1)
 
-    function close() { root.open = false; root.dismissed(); }
+    // NB: never assign root.open here — it is *bound* to win.deadlines in init.qml,
+    // and a direct assignment would destroy that binding (leaving open stuck false
+    // while win.deadlines still flips true → an invisible full-screen mask that eats
+    // every click). Just signal; init clears win.deadlines, which flows back to open.
+    function close() { root.dismissed(); }
     function toggleAt(i) {
         const it = root.flat[i];
         if (it && it.file) root.org.toggleDone(it.file, it.pos);
