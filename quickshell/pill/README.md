@@ -55,6 +55,7 @@ Control-panel menus (opened via `win.menu` index in init.qml):
 - `BluetoothMenu.qml` — adapter, scan, connect/pair.
 - `Brightness.qml` + `BatteryMenu.qml` — per-display brightness (KDE DBus) and power devices.
 - `CalendarMenu.qml` (menu 6) — Shamsi/Gregorian month grid + org agenda + Google events; state in `OrgAgenda.qml` and `CalendarEvents.qml`.
+- `OrgDeadlinesMenu.qml` — floating org-deadline list (LATE/TODAY/AHEAD), opened by right-clicking the resting pill or its deadline under-line; `OrgAgenda.qml` deadline buckets feed it.
 - `AccountsState.qml` + `AccountsMenu.qml` — calendar account manager (KDE, Google OAuth, Proton ICS).
 - `FinanceState.qml` + `FinanceMenu.qml` (menu 8) — hledger calendar/forecast/register/balances/wishlist, privacy + evening-nag machines.
 - `Clipboard.qml` + `ClipboardMenu.qml` — cliphist history + fuzzy search.

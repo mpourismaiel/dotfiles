@@ -8,7 +8,12 @@ import QtQuick
 import Quickshell
 import Quickshell.Widgets
 
-Row {
+// A vertical stack: the clock row (clock + notification/privacy glyphs) on top,
+// and — only when an org DEADLINE is due or overdue — a compact under-line
+// beneath it ("⚑ 3 LATE · 2 TODAY"). The under-line grows the pill and shrinks
+// the clock 2px; clicking it (or right-clicking the pill) opens the deadlines
+// popup (see deadlinesActivated / OrgDeadlinesMenu.qml).
+Column {
     id: root
     required property var theme
     property string clock: ""
@@ -22,7 +27,21 @@ Row {
     // icons show before a "+N" overflow chip.
     property var notifGroups: []
     property int iconsMax: 4
+    // org-deadline watch (from OrgAgenda): overdue ("late") and due-today counts.
+    // The under-line shows only while one of these is non-zero.
+    property int lateCount: 0
+    property int todayCount: 0
+    readonly property bool hasDue: lateCount > 0 || todayCount > 0
+    // the under-line was clicked (open the full deadlines list).
+    signal deadlinesActivated()
 
+    spacing: 2
+
+    // ---- clock row: hh:mm clock + notification / privacy glyphs (the original
+    // resting layout, unchanged apart from the 2px clock shrink while due) ----
+    Row {
+    id: clockRow
+    anchors.horizontalCenter: parent.horizontalCenter
     spacing: 6
     // unread-notifications dot (left of the clock): a small filled accent circle
     // while notifications sit un-cleared in history. Normally the per-app icon
@@ -60,7 +79,9 @@ Row {
         color: root.solid ? root.theme.text
              : Qt.rgba(root.theme.text.r, root.theme.text.g, root.theme.text.b, 0.78)
         font.family: root.theme.serif
-        font.pixelSize: root.theme.fsLarge
+        // shrink 2px while the deadline under-line shows, so the two lines fit the
+        // resting pill without it feeling cramped.
+        font.pixelSize: root.theme.fsLarge - (root.hasDue ? 2 : 0)
     }
     // ---- notification app-icon strip: one icon per app that has un-cleared
     // notifications (deduped via notifGroups, newest app first), so a glance shows
@@ -199,6 +220,79 @@ Row {
                 Behavior on opacity { NumberAnimation { duration: root.theme.animFast } }
                 Behavior on scale  { NumberAnimation { duration: root.theme.anim; easing.type: Easing.OutBack } }
             }
+        }
+    }
+    } // clockRow
+
+    // ---- deadline under-line: "⚑ N LATE · M TODAY" beneath the clock. Present
+    // only when something is due/overdue (takes no vertical space otherwise, so
+    // the resting pill stays a plain clock). The flag + "LATE" glow accent when
+    // overdue; "TODAY" stays muted. Clicking anywhere on it opens the deadlines
+    // popup (right-clicking the whole pill does the same, wired in init.qml).
+    Item {
+        id: dueLine
+        anchors.horizontalCenter: parent.horizontalCenter
+        visible: root.hasDue
+        implicitWidth: dueRow.implicitWidth
+        implicitHeight: root.hasDue ? dueRow.implicitHeight : 0
+        width: implicitWidth
+        height: implicitHeight
+
+        Row {
+            id: dueRow
+            anchors.centerIn: parent
+            spacing: 5
+
+            MSym {
+                anchors.verticalCenter: parent.verticalCenter
+                icon: "flag"
+                size: 12
+                fill: 1
+                weight: 600
+                // accent (alarm) while overdue, muted when only due-today items remain
+                color: root.lateCount > 0 ? root.theme.accent : root.theme.textDim
+            }
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                visible: root.lateCount > 0
+                text: root.lateCount + " LATE"
+                color: root.theme.accent
+                font.family: root.theme.mono
+                font.pixelSize: root.theme.fsSmall
+                font.letterSpacing: root.theme.labelSpacing
+                font.capitalization: Font.AllUppercase
+            }
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                visible: root.lateCount > 0 && root.todayCount > 0
+                text: "·"
+                color: root.theme.faint
+                font.family: root.theme.mono
+                font.pixelSize: root.theme.fsSmall
+            }
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                visible: root.todayCount > 0
+                // "N DUE TODAY" on its own, but just "N TODAY" once "N LATE"
+                // already carries the "due" sense to its left (matches the spec).
+                text: root.todayCount + (root.lateCount > 0 ? " TODAY" : " DUE TODAY")
+                color: root.theme.textDim
+                font.family: root.theme.mono
+                font.pixelSize: root.theme.fsSmall
+                font.letterSpacing: root.theme.labelSpacing
+                font.capitalization: Font.AllUppercase
+            }
+        }
+        // click the message to open the full deadlines list. z lifts it above the
+        // pill's resting focus MouseArea (CollapsedPill is stacked over it in
+        // init.qml, so only this rectangle intercepts — the clock passes through).
+        MouseArea {
+            anchors.fill: parent
+            z: 5
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            acceptedButtons: Qt.LeftButton | Qt.RightButton
+            onClicked: root.deadlinesActivated()
         }
     }
 }

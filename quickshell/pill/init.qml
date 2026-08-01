@@ -913,6 +913,10 @@ ShellRoot {
             // closes (dash false), so mouse-opened pills keep the hands-off focus
             // policy.
             property bool kbNav: false
+            // the floating org-deadlines list is up (right-click the resting pill or
+            // click its deadline under-line). NOT part of `dash`: the pill stays a
+            // collapsed clock while the panel floats below it (see OrgDeadlinesMenu).
+            property bool deadlines: false
             property bool dash: open || launcher || focused || ctxMode
             property int menu: 4 // 0 net, 1 vol, 2 bt, 3 batt, 5 clipboard, 6 calendar, 7 voice memo, 8 finance, 4 notif (default pane)
             // keyboard-focus gating. The pill grabs the compositor keyboard ONLY while
@@ -930,7 +934,7 @@ ShellRoot {
             // The notification pane (menu 4) also grabs the keyboard: it drives its own
             // arrow/Enter/i/x navigation (see NotificationHistory.qml) and its inline-reply
             // field wants the keystrokes from the first press.
-            readonly property bool grabsKeyboard: win.launcher || (win.open && (win.menu === 5 || win.menu === 4)) || win.kbInputFocused || win.kbNav
+            readonly property bool grabsKeyboard: win.launcher || (win.open && (win.menu === 5 || win.menu === 4)) || win.kbInputFocused || win.kbNav || win.deadlines
             // open-state pill geometry, in ONE place: the control panel and the
             // launcher both lay out to these, so resizing the open/launcher pill here
             // can't leave the launcher mis-sized (the bug from the last resize).
@@ -1152,7 +1156,7 @@ ShellRoot {
             WlrLayershell.keyboardFocus: win.grabsKeyboard ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
             exclusionMode: ExclusionMode.Ignore
             color: "transparent"
-            mask: (win.open || win.launcher || win.ctxMode || win.confirmActive || win.focused) ? fullRegion : (win.fsHide ? emptyRegion : pillRegion)
+            mask: (win.open || win.launcher || win.ctxMode || win.confirmActive || win.focused || win.deadlines) ? fullRegion : (win.fsHide ? emptyRegion : pillRegion)
     
             Process {
                 id: confirmProc
@@ -1386,10 +1390,10 @@ ShellRoot {
                 y: (win.notifMorph || win.showBurst) ? 6 : 0
                 // the voice recorder leads the chains: a larger resting pill (220x36,
                 // iPhone-memo style) — voiceMorph already yields to open/launcher/ctx.
-                width: win.voiceMorph ? 220 : win.showBurst ? (burstLoader.item ? burstLoader.item.implicitWidth : 96) : win.launcher ? win.launcherWidth : win.ctxMode ? 520 : (win.notifMorph ? (morphStack.item ? morphStack.item.implicitWidth : 420) : (win.open ? (win.menu === 6 || win.menu === 8 ? win.calWidth : 520) : (win.dash ? win.hoverWidth : (56 + root.privacyCount * 20 + root.notifRestWidth))))
+                width: win.voiceMorph ? 220 : win.showBurst ? (burstLoader.item ? burstLoader.item.implicitWidth : 96) : win.launcher ? win.launcherWidth : win.ctxMode ? 520 : (win.notifMorph ? (morphStack.item ? morphStack.item.implicitWidth : 420) : (win.open ? (win.menu === 6 || win.menu === 8 ? win.calWidth : 520) : (win.dash ? win.hoverWidth : Math.max(56 + root.privacyCount * 20 + root.notifRestWidth, orgAgenda.hasDue ? collapsedPill.implicitWidth + 28 : 0))))
                 // in ctx mode the pill sizes to whichever menu loader is active (app
                 // context menu or tray menu).
-                height: win.voiceMorph ? 36 : win.showBurst ? (burstLoader.item ? burstLoader.item.implicitHeight : 28) : (win.open || win.launcher) ? win.openPaneHeight : win.ctxMode ? Math.min(win.openHeight, ((ctxLoader.item || trayLoader.item) ? (ctxLoader.item || trayLoader.item).implicitHeight + theme.pad * 2 : 300)) : (win.notifMorph ? morphStack.implicitHeight : (win.dash ? win.hoverHeight : 28))
+                height: win.voiceMorph ? 36 : win.showBurst ? (burstLoader.item ? burstLoader.item.implicitHeight : 28) : (win.open || win.launcher) ? win.openPaneHeight : win.ctxMode ? Math.min(win.openHeight, ((ctxLoader.item || trayLoader.item) ? (ctxLoader.item || trayLoader.item).implicitHeight + theme.pad * 2 : 300)) : (win.notifMorph ? morphStack.implicitHeight : (win.dash ? win.hoverHeight : (orgAgenda.hasDue ? 48 : 28)))
                 // resting (collapsed, un-hovered) pill is dimmed; full opacity once
                 // hovered / open / a notification is morphing it (or a camera/recording
                 // is live, or a voice take is recording); fully hidden while a
@@ -1516,7 +1520,12 @@ ShellRoot {
     
                 // ---- collapsed: clock (hh:mm) + privacy icons (camera / screen) ----
                 CollapsedPill {
+                    id: collapsedPill
                     anchors.centerIn: parent
+                    // lifted above the resting focus MouseArea below so the deadline
+                    // under-line's own MouseArea intercepts its clicks (the clock /
+                    // glyphs don't accept mouse, so those still fall through to focus).
+                    z: 1
                     visible: !win.dash && !win.notifMorph && !win.showBurst && !win.voiceMorph
                     theme: theme
                     clock: root.clockShort
@@ -1531,6 +1540,10 @@ ShellRoot {
                     // newest-app-first) → an app-icon glance strip before the privacy icons
                     notifGroups: notifs.grouped
                     iconsMax: root.notifAppIconsMax
+                    // org-deadline under-line (overdue / due-today counts)
+                    lateCount: orgAgenda.lateCount
+                    todayCount: orgAgenda.todayCount
+                    onDeadlinesActivated: win.deadlines = true
                 }
     
                 // focus mode: click the collapsed pill to reveal + hold the dashboard.
@@ -1541,7 +1554,16 @@ ShellRoot {
                     anchors.fill: parent
                     enabled: !win.dash && !win.notifMorph && !win.showBurst && !win.voiceMorph
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: win.focused = true
+                    acceptedButtons: Qt.LeftButton | Qt.RightButton
+                    // left-click reveals the dashboard; right-click anywhere on the
+                    // resting pill opens the org-deadlines list (available even when
+                    // nothing is due — it then shows the "nothing due" empty state).
+                    onClicked: (mouse) => {
+                        if (mouse.button === Qt.RightButton)
+                            win.deadlines = true;
+                        else
+                            win.focused = true;
+                    }
                 }
     
                 // ---- notification morph: the collapsed pill becomes a stack ----
@@ -2408,6 +2430,29 @@ ShellRoot {
                 }
             }
     
+            // ===================== org deadlines list (floating) =====================
+            // The right-click / under-line deadlines panel, hosted here at the
+            // full-screen `win` level (like AppMenu) so it drops below the resting
+            // pill without being clipped. Centred under the pill and clamped on
+            // screen by the component. Backdrop / Esc / opening an item closes it.
+            OrgDeadlinesMenu {
+                id: deadlinesMenu
+                anchors.fill: parent
+                z: 1000
+                theme: theme
+                org: orgAgenda
+                open: win.deadlines
+                // centre the 400px panel under the pill (component clamps on screen)
+                px: pill.x + pill.width / 2 - 200
+                py: pill.y + pill.height + 8
+                onDismissed: {
+                    const wasGrabbing = win.grabsKeyboard;
+                    win.deadlines = false;
+                    if (wasGrabbing)
+                        root.restoreFocus();
+                }
+            }
+
             // ===================== notifications below an open pill =====================
             // When the pill is clicked-open / launcher / app-menu — or briefly while
             // an action burst takes over the pill — notifications don't morph it: the

@@ -54,6 +54,8 @@ FloatingWindow {
     property var _states: [
         { name: "resting",       comp: cResting },
         { name: "resting-rec",   comp: cRestingRec },
+        { name: "resting-due",   comp: cRestingDue },
+        { name: "deadlines",     comp: cDeadlines },
         { name: "dashboard",     comp: cDashboard },
         { name: "menu-network",  comp: cNet },
         { name: "menu-volume",   comp: cVol },
@@ -128,6 +130,36 @@ FloatingWindow {
                 clock: win.clockShort; solid: true; recordingOn: true; cameraOn: true
                 // a screencast auto-enters DND → app strip hidden, generic dot shown
                 dnd: true; hasUnread: true; notifGroups: notifs.grouped; iconsMax: 4
+            }
+        }
+    }
+
+    // resting pill with an org-deadline under-line (overdue + due-today counts).
+    // Taller pill, 2px-smaller clock, "⚑ N LATE · M TODAY" beneath it.
+    Component {
+        id: cRestingDue
+        Item {
+            width: 200; height: 48
+            PillSurface {
+                anchors.fill: parent; theme: theme
+                radius: Math.min(theme.radiusPanel, height / 2); wing: 12
+                fillColor: theme.bgTranslucent
+            }
+            CollapsedPill {
+                anchors.centerIn: parent; theme: theme
+                clock: win.clockShort
+                lateCount: org.lateCount; todayCount: org.todayCount
+            }
+        }
+    }
+    // the floating deadlines list (right-click / under-line target)
+    Component {
+        id: cDeadlines
+        Item {
+            width: 420; height: 520
+            OrgDeadlinesMenu {
+                anchors.fill: parent; theme: theme; org: org
+                open: true; px: 8; py: 8
             }
         }
     }

@@ -15,6 +15,23 @@ QtObject {
     property var rangeDays: []            // [{ date, done }, …] within the loaded range that have dated entries
     property var rangeMap: ({})           // date -> allDone (every dated entry that day is done)
 
+    // ---- deadline watch (the collapsed pill's under-line + the deadlines popup) ----
+    // Every undone DEADLINE todo due within `aheadDays`, sorted most-overdue-first.
+    // Each item is a dayItem shape plus `delta` (deadline-day − today: <0 overdue,
+    // 0 due today, >0 ahead) and `date` (the deadline's ISO date). Loaded from
+    // orgbridge `deadlines`, polled on a timer, and reloaded after a toggle.
+    property int  aheadDays: 30
+    property var  deadlines: []
+    // three buckets by delta, in the popup's display order (late → today → ahead).
+    readonly property var lateItems:  deadlines.filter(function (d) { return d.delta < 0; })
+    readonly property var todayItems: deadlines.filter(function (d) { return d.delta === 0; })
+    readonly property var aheadItems: deadlines.filter(function (d) { return d.delta > 0; })
+    readonly property int lateCount:  lateItems.length
+    readonly property int todayCount: todayItems.length
+    readonly property int aheadCount: aheadItems.length
+    // the under-line only appears for things that are actually due/overdue.
+    readonly property bool hasDue: (lateCount + todayCount) > 0
+
     function loadDay(key) {
         root.dayKey = key;
         dayProc.command = ["python", Quickshell.shellPath("orgbridge.py"), "day", key];
@@ -27,6 +44,21 @@ QtObject {
     function openAgenda(key) {
         openProc.command = ["python", Quickshell.shellPath("orgbridge.py"), "open", key];
         if (!openProc.running) openProc.running = true;
+    }
+    // (re)load the deadline watch list; called on a timer, on popup open, and after
+    // a toggle. Skips if a fetch is already in flight so the timer can't stack them.
+    function loadDeadlines() {
+        if (deadlinesProc.running) return;
+        deadlinesProc.command = ["python", Quickshell.shellPath("orgbridge.py"),
+                                 "deadlines", "" + root.aheadDays];
+        deadlinesProc.running = true;
+    }
+    // open FILE at headline POS in a visible Emacs frame (the popup's "open" action).
+    function gotoItem(file, pos) {
+        if (!file || gotoProc.running) return;
+        gotoProc.command = ["python", Quickshell.shellPath("orgbridge.py"),
+                            "goto", file, "" + pos];
+        gotoProc.running = true;
     }
     // flip a headline's TODO/DONE state (file+pos come from the loaded item),
     // then reload the current day so the list re-sorts (done drops to the end).
@@ -62,6 +94,15 @@ QtObject {
         }
     }
     property Process openProc: Process {}
+    property Process gotoProc: Process {}
+    property Process deadlinesProc: Process {
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try { root.deadlines = JSON.parse(this.text) || []; }
+                catch (e) { root.deadlines = []; }
+            }
+        }
+    }
     property Process toggleProc: Process {
         // reload once Emacs has flipped + saved, but give the row's tick / strike
         // animation a beat to finish before the model rebuilds and re-sorts.
@@ -71,6 +112,15 @@ QtObject {
     }
     property Timer reloadTimer: Timer {
         interval: 260
-        onTriggered: root.loadDay(root.dayKey)
+        onTriggered: { root.loadDay(root.dayKey); root.loadDeadlines(); }
+    }
+    // keep the deadline watch warm: fetch on startup and re-poll every 5 minutes
+    // (dates roll over, deadlines pass) so the under-line stays current on its own.
+    property Timer deadlinesPoll: Timer {
+        interval: 300000
+        running: true
+        repeat: true
+        triggeredOnStart: true
+        onTriggered: root.loadDeadlines()
     }
 }

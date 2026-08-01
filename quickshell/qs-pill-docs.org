@@ -385,6 +385,15 @@ fills =rangeDays= (the set of dates in =[a,b]= that have any entry — drives th
 calendar dots, queried once per shown month grid), and =openAgenda(key)= opens the Org
 agenda in Emacs (reusing an existing frame). All are best-effort: if Emacs isn't
 reachable the parses fall back to empty, so the calendar still works.
+
+It also drives the *deadline watch* behind the collapsed pill's under-line and the
+[[*OrgDeadlinesMenu.qml][=OrgDeadlinesMenu=]] popup: =loadDeadlines()= fills =deadlines=
+(every undone =DEADLINE= todo due within =aheadDays=, sorted most-overdue-first), which
+a 5-minute =Timer= re-polls (dates roll over on their own) and the toggle-reload
+refreshes. =deadlines= is bucketed into =lateItems= (overdue, =delta<0=), =todayItems=
+(=delta=0=) and =aheadItems= (=delta>0=) with matching counts and a =hasDue= flag (the
+under-line shows only while late+today \gt 0). =gotoItem(file, pos)= opens a headline in
+a visible Emacs frame (the popup's "open" action).
 *** Code
 Code: [[file:pill/OrgAgenda.qml][=pill/OrgAgenda.qml=]]
 
@@ -863,9 +872,14 @@ script is self-contained and needs no =.el= file on the load-path. Commands:
 file, pos\}= — the day's scheduled/deadline/timestamp entries plus the undated TODOs
 (shown on every day; done ones only on their CLOSED day). =range A B= prints a JSON
 array of the =YYYY-MM-DD= dates in =[A,B]= that have a *dated* entry (the calendar
-dots — undated TODOs never light a dot; one call per shown grid); =open YYYY-MM-DD=
-raises an existing Emacs frame (or makes one) and opens the agenda; =toggle FILE POS=
-flips a headline's TODO/DONE state (the checkbox in the pill) and saves the file.
+dots — undated TODOs never light a dot; one call per shown grid); =deadlines [N]=
+prints the same item shape *plus* =delta= (deadline-day − today) and =date= for every
+undone =DEADLINE= todo due within =N= days ahead (default 30; overdue always kept),
+sorted most-overdue-first — this feeds the pill's deadline under-line and the deadlines
+popup; =open YYYY-MM-DD= raises an existing Emacs frame (or makes one) and opens the
+agenda; =goto FILE POS= raises a frame and jumps to the headline (the popup's "open");
+=toggle FILE POS= flips a headline's TODO/DONE state (the checkbox in the pill) and
+saves the file.
 =day=/=range= results are written by Emacs to a temp file whose path is returned, so
 Unicode headings survive the round-trip intact. Everything is best-effort: if the
 daemon is down (=emacsclient= fails), the data commands print =[]= and the calendar
@@ -1121,8 +1135,35 @@ ring once every 5s). The icons *pop in* / *shrink out* (scale overshoot via
 =OutBack=, an animated slot width so the clock slides over). =solid= (a live
 camera/recording) shows the clock at full opacity; otherwise it is slightly
 translucent.
+
+Beneath the clock row sits an optional *deadline under-line*: when =lateCount= or
+=todayCount= (from [[*OrgAgenda.qml][=OrgAgenda=]]) is non-zero it shows =⚑ N LATE ·
+M TODAY= (the flag + "LATE" glow accent while overdue, "TODAY" stays muted; just =M
+DUE TODAY= when nothing is late). Its presence grows the resting pill and shrinks the
+clock 2px so both lines fit. Clicking the under-line emits =deadlinesActivated()= (init
+opens the [[*OrgDeadlinesMenu.qml][=OrgDeadlinesMenu=]]); right-clicking anywhere on the
+resting pill does the same. The whole component is stacked one above the pill's resting
+focus =MouseArea= so only the under-line intercepts — the clock/glyphs are non-clickable
+and fall through to the focus click.
 *** Code
 Code: [[file:pill/CollapsedPill.qml][=pill/CollapsedPill.qml=]]
+
+** OrgDeadlinesMenu.qml
+*** Description
+The floating *Org deadlines* list, opened by right-clicking the resting pill or clicking
+its deadline under-line (=win.deadlines= in =init.qml=). Like [[*AppMenu.qml][=AppMenu=]]
+it is a full-overlay =Item= (=anchors.fill= its host at =win= level, so it drops below the
+pill without being clipped) with an outside-click backdrop; the panel is centred under the
+pill and clamped on screen. It reads [[*OrgAgenda.qml][=OrgAgenda=]]'s buckets and renders
+them in spec order — *LATE* (overdue, accent-tinted rows with a =−Nd= days-late label),
+*TODAY* (due today) and *AHEAD* (upcoming, capped at =aheadMax= with a "+N more" line),
+each row labelled by weekday+day from its deadline date. A checkbox ticks the item done
+(=toggleDone=, which reloads the buckets so it drops off), and clicking a row opens the
+headline in Emacs (=gotoItem=). When nothing is due/overdue an empty-state card shows
+"Nothing due." plus the next deadline. Keyboard (the pill grabs the keyboard while open):
+↑/↓ move the cursor over the flat visible list, Space ticks done, Enter opens, Esc closes.
+*** Code
+Code: [[file:pill/OrgDeadlinesMenu.qml][=pill/OrgDeadlinesMenu.qml=]]
 
 ** OnAirWave.qml
 *** Description

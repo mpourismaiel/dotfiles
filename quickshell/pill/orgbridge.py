@@ -3,7 +3,11 @@
 #
 #   day YYYY-MM-DD    print JSON [{text, todo, type, priority, done, dated, file, pos}, …]
 #   range A B         print JSON ["YYYY-MM-DD", …] of dates in [A,B] with dated entries
+#   deadlines [N]     print JSON [{…, delta, date}, …] undone DEADLINE todos due
+#                     within N days ahead (default 30); overdue always included,
+#                     sorted most-overdue-first (delta = deadline-day - today)
 #   open YYYY-MM-DD   open the Org agenda in Emacs (reuse an existing frame)
+#   goto FILE POS     open FILE at headline POS in a visible frame, reveal subtree
 #   toggle FILE POS   flip the TODO/DONE state of the headline at FILE:POS, save
 #
 # All calls talk to the running Emacs daemon with emacsclient, so the user's real
@@ -153,6 +157,55 @@ HELPERS = r"""
                (org-todo 'done)))
            (save-buffer)))))
     nil)
+  (defun pill--iso-from-abs (abs)                ; day number -> "YYYY-MM-DD"
+    (let ((g (calendar-gregorian-from-absolute abs)))
+      (format "%04d-%02d-%02d" (nth 2 g) (nth 0 g) (nth 1 g))))
+  ;; All undone TODOs that carry a DEADLINE, as flat items sorted by how many
+  ;; days away the deadline is (most overdue first). `delta' is (deadline-day -
+  ;; today): negative = overdue ("late"), 0 = due today, positive = ahead. Only
+  ;; items due at most AHEAD days out are returned; every overdue item is kept.
+  ;; `date' is the deadline's own ISO date so the pill can label it (weekday +
+  ;; day). Reuses pill--item for the clean heading + file/pos handle (so the
+  ;; pill can tick it done or jump to it), exactly like the day list.
+  (defun pill-deadlines (ahead)
+    (let* ((today (calendar-absolute-from-gregorian (calendar-current-date)))
+           (out '()))
+      (ignore-errors
+        (org-map-entries
+         (lambda ()
+           (let* ((todo (org-get-todo-state))
+                  (done (and todo (member todo org-done-keywords)))
+                  (dl (org-entry-get nil "DEADLINE")))
+             (when (and todo (not done) dl)
+               (let* ((abs (ignore-errors (org-time-string-to-absolute dl)))
+                      (delta (and abs (- abs today))))
+                 (when (and delta (<= delta ahead))
+                   (push (append (pill--item)
+                                 (list (cons "delta" delta)
+                                       (cons "date" (pill--iso-from-abs abs))))
+                         out))))))
+         t 'agenda))
+      (setq out (sort out (lambda (a b) (< (cdr (assoc "delta" a))
+                                           (cdr (assoc "delta" b))))))
+      (json-encode (vconcat out))))
+  ;; Open FILE at buffer position POS (a headline) in a visible Emacs frame and
+  ;; reveal the subtree — the pill's "open this deadline" action.
+  (defun pill-goto (file pos)
+    (when (and file (not (string= file "")) (file-exists-p file))
+      (let ((f (or (seq-find #'frame-visible-p (frame-list))
+                   (car (frame-list))
+                   (make-frame '((name . "pill-agenda"))))))
+        (when (frame-live-p f)
+          (make-frame-visible f)
+          (raise-frame f)
+          (select-frame-set-input-focus f)
+          (with-selected-frame f
+            (find-file file)
+            (goto-char (min (max pos (point-min)) (point-max)))
+            (ignore-errors (org-back-to-heading t))
+            (ignore-errors (org-fold-show-entry))
+            (ignore-errors (org-fold-show-children))))))
+    nil)
   (defun pill-open ()
     (let ((f (or (seq-find #'frame-visible-p (frame-list))
                  (car (frame-list))
@@ -223,6 +276,20 @@ def main():
         # flip a headline's TODO/DONE state; POS is a plain integer buffer pos
         _emacs(
             "(progn %s (pill-toggle %s %s))" % (HELPERS, _esc(sys.argv[2]), sys.argv[3])
+        )
+        sys.stdout.write("[]")
+    elif cmd == "deadlines":
+        # all undone DEADLINE todos within AHEAD days (default 30); overdue always
+        try:
+            ahead = int(sys.argv[2]) if len(sys.argv) > 2 else 30
+        except ValueError:
+            ahead = 30
+        sys.stdout.write(_eval_to_file("(pill-deadlines %d)" % ahead))
+    elif cmd == "goto" and len(sys.argv) > 3:
+        # open FILE at headline POS in a visible frame (fire-and-forget)
+        _emacs(
+            "(progn %s (pill-goto %s %s))" % (HELPERS, _esc(sys.argv[2]), sys.argv[3]),
+            wait=False,
         )
         sys.stdout.write("[]")
     elif cmd == "open":
