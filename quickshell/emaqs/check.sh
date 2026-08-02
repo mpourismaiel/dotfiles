@@ -26,8 +26,12 @@ echo "ok: shell ($(ls *.sh | wc -l) files)"
 # loaded". Any other ERROR/WARN line is a real problem. This compiles and
 # type-checks every referenced component (but not children inside the
 # PanelWindow delegate — see ../qs-emaqs-docs.org "Validating").
+#
+# Unset WAYLAND_DISPLAY for this run: when present (i.e. run from your live Wayland
+# session) qs prints a benign "WAYLAND_DISPLAY is present but QT_QPA_PLATFORM is
+# offscreen" WARNING that the WARN filter below would otherwise flag as a failure.
 LOG=$(mktemp)
-timeout 60 env QT_QPA_PLATFORM=offscreen qs -p "$PWD/init.qml" >"$LOG" 2>&1 || true
+timeout 60 env -u WAYLAND_DISPLAY QT_QPA_PLATFORM=offscreen qs -p "$PWD/init.qml" >"$LOG" 2>&1 || true
 sed -i 's/\x1b\[[0-9;]*m//g' "$LOG"
 BAD=$(grep -E 'ERROR|WARN' "$LOG" | grep -v 'Failed to load configuration' \
         | grep -v 'No PanelWindow backend loaded' || true)

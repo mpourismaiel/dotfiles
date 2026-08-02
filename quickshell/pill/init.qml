@@ -952,10 +952,20 @@ ShellRoot {
             // from the open menu's 520 so the two rows can breathe).
             readonly property int hoverWidth: 640
             readonly property int hoverHeight: 150
-            // a notification is showing AND the pill isn't in a clicked/menu state:
-            // the collapsed pill morphs into the notification card (hover holds it).
-            // While clicked/launcher/ctx, notifications float *below* the pill instead.
-            property bool notifMorph: notifs.current !== null && !open && !launcher && !ctxMode && !showBurst && !root.voiceActive
+            // NOTE: the pill no longer morphs into the notification card — that took
+            // the pill over and made it inaccessible (no clock, no dashboard hover,
+            // burst UI had to appear elsewhere). Instead, at rest a water droplet
+            // drops out of the pill's bottom lip and the deck floats below (see
+            // `notifRest` + the "resting notification" block). `notifMorph` is kept as
+            // a hard-false so the many `!notifMorph` gates below (which keep the normal
+            // resting/dashboard pill enabled) all read true; its old takeover branches
+            // in the pill's width/height/y are now dead.
+            property bool notifMorph: false
+            // a notification is showing at true rest (no panel / launcher / ctx menu /
+            // burst / voice take): the deck floats below the pill and, on arrival, a
+            // droplet detaches from the pill. While clicked/launcher/ctx/burst/voice,
+            // the deck floats below via the other stack (no droplet) instead.
+            readonly property bool notifRest: notifs.current !== null && !open && !launcher && !ctxMode && !showBurst && !voiceMorph
             // a transient action burst (desktop switch / layout change) takes over
             // the *resting* pill for 1s; it yields to hover/open/launcher/ctx
             // (those already show richer UI) and suppresses the notification morph,
@@ -968,7 +978,7 @@ ShellRoot {
             // (privacy indicator); a hot mic is not treated as a privacy indicator.
             // A running voice take also wins — without this the mask would go
             // emptyRegion and the recorder would render unclickable over fullscreen.
-            property bool fsHide: root.activeFullscreen && !dash && !notifMorph && !root.privacyActive && !root.voiceActive
+            property bool fsHide: root.activeFullscreen && !dash && !notifRest && !root.privacyActive && !root.voiceActive
             // resting pill with a live camera/recording: solid (no idle translucency),
             // clock paired with the privacy icon(s).
             property bool privacyRest: root.privacyActive && !dash && !notifMorph && !showBurst && !root.voiceActive
@@ -1345,8 +1355,14 @@ ShellRoot {
                 Region {
                     item: voiceCancelLoader
                 }
+                // and the resting notification deck floating below the pill, but only
+                // while it is actually shown (else its rect would eat clicks in the
+                // empty space below the resting pill).
+                Region {
+                    item: win.notifRest ? restDeck : null
+                }
             }
-    
+
             Region {
                 id: fullRegion
     
@@ -2469,7 +2485,83 @@ ShellRoot {
                 active: ((win.open || win.launcher || win.ctxMode) || win.showBurst || win.voiceMorph) && notifs.active.length > 0
                 sourceComponent: cStack
             }
-    
+
+            // ===================== resting notification (droplet drop-out) =====================
+            // At true rest a notification no longer morphs the pill (which hid the
+            // clock / dashboard). Instead a water droplet wells out of the pill's
+            // bottom lip and *expands into* the notification card floating `dropGap`
+            // (a tight 8px) below it: the droplet's final rectangle matches the card's
+            // size/colour, and the real card fades in over it on `landed()` so the
+            // rectangle becomes the notification. Fires only while `notifRest` (the
+            // other stack above owns the open/launcher/burst/voice cases, no droplet).
+            Item {
+                id: restNotif
+                anchors.fill: parent
+                z: 900
+                readonly property int dropGap: 8
+                // the card is revealed when the drop lands (or a short fallback, so a
+                // notification always shows even if the droplet is skipped); reset when
+                // the resting notification goes away so the next one re-animates.
+                property bool cardIn: false
+
+                Timer { id: cardFallback; interval: 640; onTriggered: restNotif.cardIn = true }
+
+                Connections {
+                    target: win
+                    function onNotifRestChanged() {
+                        if (win.notifRest) cardFallback.restart();
+                        else { restNotif.cardIn = false; cardFallback.stop(); notifDroplet.reset(); }
+                    }
+                }
+                // a genuine popup arrived: drop a droplet, but only when we're actually
+                // at rest (open/launcher/etc. show the deck above without a droplet).
+                Connections {
+                    target: notifs
+                    function onPopped(n) { if (win.notifRest) notifDroplet.play(); }
+                }
+
+                // droplet first so it renders BEHIND the deck — the real card fades in
+                // over the expanded rect and covers it (both are the card colour).
+                NotificationDroplet {
+                    id: notifDroplet
+                    x: pill.x
+                    width: pill.width
+                    y: pill.y + pill.height
+                    height: restNotif.dropGap
+                    theme: theme
+                    fallDistance: restNotif.dropGap
+                    // expand into the top card's actual footprint / colour
+                    cardWidth: restDeck.topCardWidth
+                    cardHeight: restDeck.topCardHeight
+                    cardRadius: theme.radiusCard
+                    bgColor: theme.bg
+                    accentColor: theme.accent
+                    cardColor: theme.card
+                    onLanded: restNotif.cardIn = true
+                }
+
+                NotificationStack {
+                    id: restDeck
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    y: pill.y + pill.height + restNotif.dropGap
+                    theme: theme
+                    notifs: notifs
+                    // just fade in over the droplet's expanded rect (the droplet does
+                    // the growth, so no scale here — a scale would fight the expand).
+                    // A short lead PAUSE lets the accent rect finish growing to the
+                    // card footprint before the card content resolves over it, so the
+                    // rectangle reads as *becoming* the notification.
+                    opacity: (win.notifRest && restNotif.cardIn) ? 1 : 0
+                    visible: opacity > 0
+                    Behavior on opacity {
+                        SequentialAnimation {
+                            PauseAnimation { duration: 150 }
+                            NumberAnimation { duration: theme.anim; easing.type: Easing.OutCubic }
+                        }
+                    }
+                }
+            }
+
             // ===================== power confirmation (full-screen) =====================
             // Full-screen shutdown / reboot / logout confirmation — four interchangeable
             // designs, selected per-open by theme.confirmation (see PowerConfirm.qml).

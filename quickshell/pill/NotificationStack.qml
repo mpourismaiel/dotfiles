@@ -41,6 +41,14 @@ Item {
         const base = it ? it.implicitHeight : 0;
         return base + Math.max(0, Math.min(rep.count, stack.maxDeck) - 1) * stack.peek;
     }
+    // the top (newest) card's footprint — the NotificationDroplet expands into this
+    // so the droplet's final rectangle matches the card it becomes.
+    readonly property real topCardWidth: cardWidth
+    readonly property real topCardHeight: {
+        stack.relayout;
+        const it = rep.itemAt(0);
+        return it ? it.implicitHeight : 0;
+    }
     readonly property real expandedH: {
         stack.relayout;
         let yy = 0;

@@ -664,8 +664,9 @@ Code: [[file:pill/AppMenu.qml][=pill/AppMenu.qml=]]
 ** Notifications.qml
 *** Description
 The freedesktop notification *server* + popup/history *state*. Instantiated once
-in =init.qml= and shared with every monitor (the morph card, the floating cards
-and the history menu). Requires Plasma's own notifications disabled first — see
+in =init.qml= and shared with every monitor (the resting deck that drops out of the
+pill, the floating cards under an open pill, and the history menu). Requires Plasma's
+own notifications disabled first — see
 [[*Taking over notifications from Plasma][§ Taking over notifications from Plasma]].
 
 Every notification is kept =tracked= so it survives as *history*; =grouped= buckets
@@ -685,12 +686,16 @@ While a screencast is live (=screenShare=, bound by =init.qml= to =screenRecordi
 the server auto-enters DND so nothing pops over the shared screen; it tallies what it
 silenced and, when sharing stops, restores the *prior* DND state and posts a single
 "you missed N notifications" summary (via =notify-send= back to our own server).
+
+It emits =popped(n)= from =onArrived= whenever a *genuine* popup is pushed onto
+=active= (not a DND/history-only arrival, nor a reload-restore) — the resting pill
+listens to cue the [[*NotificationDroplet.qml][water-droplet drop-out]].
 *** Code
 Code: [[file:pill/Notifications.qml][=pill/Notifications.qml=]]
 
 ** NotificationView.qml
 *** Description
-One notification card, reused three ways: the pill *morph* (=autoExpire:true=),
+One notification card, reused three ways: the *resting deck* dropped out of the pill,
 *floating* cards under an open pill, and rows in the *history* menu
 (=inHistory:true=, so the X forgets instead of dismissing). Two columns: the
 notification *image* (200px, aspect kept) or app icon on the left; on the right
@@ -727,12 +732,55 @@ Code: [[file:pill/NotificationView.qml][=pill/NotificationView.qml=]]
 The deck of active (un-closed) popups: at rest the newest is on top and the rest
 peek out below it (offset + scaled, capped at =maxDeck=); hovering drops them into a
 full vertical list and sets =notifs.held= (which pauses + resets every countdown).
-=implicitHeight= reports the laid-out height so the morphing pill grows with it.
+=implicitHeight= reports the laid-out height so its host sizes to the deck.
 Once more than one popup is active a floating *"Dismiss all"* pill appears to the
 right and calls =notifs.dismissAll()= (closes every popup, keeps them in history). Used
-for the pill *morph* and the cards *below* an open pill.
+for the *resting deck* that drops out of the pill and the cards *below* an open pill.
 *** Code
 Code: [[file:pill/NotificationStack.qml][=pill/NotificationStack.qml=]]
+
+** NotificationDroplet.qml
+*** Description
+A stylised *water droplet* that wells out of the resting pill's bottom lip when a
+notification arrives and then *expands into the notification card* just below it. This
+replaced the old pill *morph* (=notifMorph=), where the collapsed pill *became* the card:
+that took the pill over and made it *inaccessible* — no clock, no dashboard hover, and
+action bursts had to appear elsewhere. Now the pill stays put and the notification
+visibly grows out of it, so nothing has to appear from nowhere.
+
+The drop is deliberately *short* — its top never falls more than =fallDistance= (a tight
+8px) below the pill — and runs the pill's own *colour sequence*: it starts as the pill
+background (=bgColor=), tints to the *accent* (=accentColor=, brick orange) as it pinches
+off and falls, then settles to the *card colour* (=cardColor=) as it expands. =play()=
+runs a =SequentialAnimation= over animated scalars (=by= blob-top, =bw=/=bh= blob size,
+=nw= neck width, =blobColor=): *swell* into a hanging teardrop (=OutQuad=, bg colour) →
+*pinch* the neck off + =ColorAnimation= to accent (=InQuad=) → short *fall* to the card
+top → emit =landed()= → *expand* to the top card's =cardWidth=×=cardHeight= footprint with
+=cardRadius= corners, colour easing accent→card (=OutCubic=). =radius: cardRadius= is
+Qt-clamped to half the smaller side, so the small blob reads round and the expanded rect
+gets proper card corners. The expanded rect stays as an *opaque card-colour backing*; the
+real card fades in over it (both are =cardColor=, so no flash), which is what makes the
+rectangle *become* the notification. =reset()= clears the backing when the notification
+goes away.
+
+*Wiring (=init.qml=).* =notifMorph= is now a hard-=false= (its old width/height/y takeover
+branches are dead; the many =!notifMorph= gates that keep the normal resting/dashboard
+pill enabled all read true). A new =notifRest= (a notification at true rest — no panel /
+launcher / ctx / burst / voice) drives the *"resting notification"* block: a
+[[*NotificationStack.qml][=NotificationStack=]] floating =dropGap= (8px) below the pill
+(=opacity= gated on =cardIn=; no scale — the droplet does the growth), plus a
+=NotificationDroplet= declared *before* it (so it renders behind, as the card's backing)
+fed the top card's size/colour (=NotificationStack= exposes =topCardWidth=/=topCardHeight=)
+and =bgColor=/=accentColor=/=cardColor=. =notifs.popped= → =play()= (only while
+=notifRest=); =onLanded= sets =cardIn= (with a 640ms fallback =Timer= so a notification
+always shows even if the droplet is skipped); the card's =opacity= =Behavior= carries a
+150ms lead =PauseAnimation= so the accent rect finishes growing *before* the card content
+resolves over it. =onNotifRestChanged= clears =cardIn= + calls =reset()= so the next
+arrival re-animates. The deck's rect is unioned into =pillRegion= only while =notifRest=
+(else it would eat clicks below the resting pill); =fsHide= now yields to =notifRest= so
+notifications still surface over a fullscreen window.
+*** Code
+Code: [[file:pill/NotificationDroplet.qml][=pill/NotificationDroplet.qml=]]
 
 ** NotificationHistory.qml
 *** Description
@@ -1162,6 +1210,12 @@ each row labelled by weekday+day from its deadline date. A checkbox ticks the it
 headline in Emacs (=gotoItem=). When nothing is due/overdue an empty-state card shows
 "Nothing due." plus the next deadline. Keyboard (the pill grabs the keyboard while open):
 ↑/↓ move the cursor over the flat visible list, Space ticks done, Enter opens, Esc closes.
+
+*Entrance.* Each time it opens the panel drops in from the pill: a =theme.anim= =OutCubic=
+drive (=appear= 0→1, restarted in =onOpenChanged=) fades it in, slides it down ~12px from
+above its rest position, and scales it up from =0.96= anchored to its top edge — so the
+list reads as spilling out of the pill rather than snapping into place. Closing just clears
+=appear= (=visible: open= cuts the panel, no exit animation).
 *** Code
 Code: [[file:pill/OrgDeadlinesMenu.qml][=pill/OrgDeadlinesMenu.qml=]]
 
@@ -1313,8 +1367,9 @@ clicks (the rest passes through); open/launcher/right-click → the whole window
 a backdrop =MouseArea= swallows outside clicks to close (never passed through);
 fullscreen-hide (=win.fsHide=, set while a fullscreen window is focused and the pill
 is at true rest) → an empty region, so the window is fully click-through and the pill
-fades to opacity 0. A notification still morphs through (=notifMorph= overrides
-=fsHide=).
+fades to opacity 0. A resting notification still surfaces over fullscreen (=notifRest=
+overrides =fsHide=, and its floating deck's rect joins =pillRegion= while shown — see
+[[*NotificationDroplet.qml][=NotificationDroplet=]]).
 
 *Stages.* A single =pill= =Item= animates =width=/=height= between stages via
 =Behavior=, cross-fading content layers per stage:
@@ -1476,8 +1531,8 @@ reverts to the clock, driven from =root= so every monitor shows it (=burstDesk= 
 =burstLang= / =burstPhase=; one =Timer= runs settle 100ms → animate 300ms → settle
 600ms). Each kind is a mini-pill carrying the hovered surface; both kinds at once sit
 side by side and *pop apart* on entry (=Translate=, =OutBack=). A burst takes over
-only the resting pill (yields to hover/open/launcher/right-click) and overrides
-=notifMorph= so an active notification deck floats below instead of being replaced.
+only the resting pill (yields to hover/open/launcher/right-click) and suppresses
+=notifRest= so an active notification deck floats below (no droplet) during the burst.
 Two events fire bursts, each guarding its initial value on startup:
 - *desktop switch* (=onCurrentDesktopChanged=) — a filled dot slides from the old
   slot to the new across the animate phase; the hovered Row-1 dots use the same slide.

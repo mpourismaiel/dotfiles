@@ -150,7 +150,13 @@ QtObject {
         root.active = a;
         root.remaining[n.id] = root.timeoutFor(n);   // start (or restart) its countdown
         root.tick++;
+        root.popped(n);                               // a real popup was pushed → cue the drop
     }
+
+    // emitted when a notification is pushed onto the active popup stack (a genuine
+    // popup, not a DND/history-only or reload-restore arrival). The resting pill
+    // listens to trigger the water-droplet drop-out (see NotificationDroplet.qml).
+    signal popped(var n)
 
     readonly property int defaultTimeoutMs: 5000   // hard ceiling for non-critical popups
     function timeoutFor(n) {

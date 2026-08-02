@@ -38,11 +38,25 @@ Item {
     readonly property bool nothingDue: (lateItems.length + todayItems.length) === 0
     property int sel: 0
 
+    // entrance driver: 0 hidden -> 1 fully in. The panel drops down from just under
+    // the pill (slides + fades + scales up from its top edge) each time it opens, so
+    // the list reads as spilling out of the pill rather than snapping into place.
+    property real appear: 0
+    NumberAnimation {
+        id: appearAnim
+        target: root; property: "appear"; from: 0; to: 1
+        duration: root.theme.anim; easing.type: Easing.OutCubic
+    }
+
     onOpenChanged: {
         if (open) {
             sel = 0;
             if (org && org.loadDeadlines) org.loadDeadlines();   // freshen on open
+            appear = 0;
+            appearAnim.restart();
             forceActiveFocus();
+        } else {
+            appear = 0;
         }
     }
     // keep the cursor in range as items tick away underneath it
@@ -176,6 +190,19 @@ Item {
         color: root.theme.bgElevated
         border.color: root.theme.border
         border.width: 1
+
+        // drop-in entrance: fade + slide down from ~12px above the rest position +
+        // a small scale-up anchored to the top edge (the pill it drops out of).
+        opacity: root.appear
+        transformOrigin: Item.Top
+        transform: [
+            Translate { y: (1 - root.appear) * -12 },
+            Scale {
+                origin.x: panel.width / 2; origin.y: 0
+                xScale: 0.96 + 0.04 * root.appear
+                yScale: 0.96 + 0.04 * root.appear
+            }
+        ]
 
         Column {
             id: panelCol
