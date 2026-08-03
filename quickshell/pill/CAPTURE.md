@@ -92,6 +92,79 @@ the FULLSCREEN part is a separate layer window.
     with the captured stderr and the pill shows a "Recording failed" toast instead of
     copying/notifying a phantom file. (If your Record button "instantly saves", read
     that toast — it's the gpsr/portal error to fix.)
+- **Annotation fixes (2026-08-03, fourth round):**
+  - The screenshot region grips no longer steal annotation drags: the region
+    `ResizeHandles` now lives INSIDE `annLayer`, declared before the annotations
+    (which `createObject` appends after it), so annotations always stack on top and
+    win the click. `ResizeHandles`' move area is also `visible:false` when
+    `moveEnabled` is off, so it can never intercept (same win for the webcam pass-through).
+  - A selected annotation **raises to the top** of the stack via a monotonic
+    `CaptureState.nextAnnZ()` (bumped in `AnnItem.onIsSelectedChanged`) — no reparent,
+    so the in-place drag grab survives.
+  - The **arrow** now draws a real chevron. The second barb's `PathLine` referenced
+    `parent.len`/`parent.a`, but a `PathLine` is a non-Item `Path` element with no
+    visual `parent`, so those were undefined and only one diagonal line drew; the
+    arrowhead now references the `ShapePath` by id (`head.*`).
+- **Record-control dropdowns (2026-08-03, fifth round):**
+  - Every record dropdown now renders in a **shared `dropLayer` overlay** (the last
+    child of `RecordControls`, `z:1000`), instead of each `Select` drawing its own list
+    inline — a nested list can't paint above later sibling rows (z only orders within a
+    parent), so it used to appear *behind* the controls below it. The open `Select`
+    registers as `ctl.openSel`; `dropLayer` draws its list at the mapped position, on
+    top of everything, with a click-away catcher.
+  - Webcam **roundness is a dropdown** (`10 px` / `20 px` / `Full round` / `Custom…`)
+    backed by `RecordController.webcamRoundMode`; `webcamRoundEff` is the applied radius
+    (WebcamOverlay reads it), so **Full round tracks the size** (stays circular as W/H
+    change) and **Custom** reveals a px stepper editing `webcamRound`.
+- **Movable / self-dodging capture pill + image card (2026-08-03, eighth round):**
+  - The exported PNG no longer bakes in the crop grips: `CaptureOverlay.exporting`
+    hides the region `ResizeHandles` (which live inside the exported `shot`) for the
+    `grabToImage` pass, then restores them.
+  - Screenshots no longer `notify-send`. When the cropped PNG lands, `CaptureState`
+    emits `shotReady(path)` and the host calls `Notifications.postLocal({…})`, which
+    pushes a SYNTHETIC card straight onto the active stack — same `NotificationView` +
+    water-droplet as any app's — with a live **thumbnail** (via the `image-path` hint)
+    and a synthetic `default` action that runs `xdg-open` on body-click. It never
+    enters the freedesktop server / history; it just pops, counts down, and dismisses.
+  - **The capture pill is movable** so the controls never block the shot:
+    - `DragHandler` on the pill (enabled only during `capShow`): buttons still click
+      (the handler steals the grab only past the drag threshold). Drop within
+      `capSnapY` of the top → dock with wings at the drop x (`capAttached`); drop
+      lower → float (`capFloating` → wings off, fully-rounded via `PillSurface`).
+      Manual placement sets `capManual`, which locks out auto-avoid for the session.
+    - **Auto-avoid** (`win.capAutoAvoid()`, run on region/mode/capShow change): while a
+      crop / record region is set and the pill isn't hand-placed, it HUGS the selection
+      — if the top-centre home doesn't cover it, stay; otherwise try just above it, then
+      BELOW it (the "go below if above collides" rule), then to its right/left, each
+      centred on the selection and clamped on-screen; huge selections fall back to the
+      least-overlapping clamped spot. Positions near the top dock with wings; the rest
+      float.
+    - A floating/detached pill draws a UNIFORMLY-rounded rectangle (`PillSurface.rounded`
+      → all four corners = the bottom radius) instead of the winged top-attached shape,
+      whose top arc was sharp at `wing=0`. The `CaptureHeader` shows a `drag_indicator`
+      grip next to the title (and an open-hand cursor) to advertise the drag.
+    - The pill uses a manual `x` (not `anchors.horizontalCenter`) so the drag can set
+      it; `pillRegion { item: pill }` makes the input mask follow it. Everything resets
+      to the top-centre home when the capture ends.
+- **Screenshot region redraw (2026-08-03, seventh round):** a persisted crop was
+  jumping straight to annotating, so there was no way to draw a *fresh* crop (the region
+  felt "stuck"). Now every grab enters **region-select**: the remembered crop shows as
+  the starting selection, a plain **click reuses** it (quick same-area shot) and a
+  click-**drag replaces** it. The crop-region resize grips are also gated to the SELECT
+  tool now, so a creation tool (rect/arrow/text) has the whole crop — edges included —
+  free to draw on (the grips no longer eat presses near the border).
+  - Follow-up: the crop is redrawable **any number of times**, not just once. The
+    rubber-band is now live in annotating too — with the SELECT tool, a drag that
+    STARTS on the dimmed area OUTSIDE the crop draws a fresh one (Flameshot-style);
+    presses inside the crop (+ a grip margin) and all creation-tool drags fall through
+    (via `mouse.accepted = false`) so annotating and the resize grips keep working. A
+    plain click on the dim just deselects. `hoverEnabled` stays false so the crosshair
+    only shows while dragging and annotations keep their own cursors.
+- **Region-record fix (2026-08-03, sixth round):** "Select area" + Record no longer
+  errors with *"-region can only be used when -w region is used"*. `buildArgs` now uses
+  gpsr's non-deprecated `-w WxH+X+Y` KMS region capture for a sub-region (omitting the
+  portal/restore args, which region mode doesn't use) and keeps `-w portal` for
+  whole-screen. Verified against the real `gpu-screen-recorder` binary's arg parser.
 - Bug fixes (earlier round): annotations are NO LONGER clipped to the region (drawn over
   the whole image; region only crops the exported result via ImageMagick); the region
   PERSISTS across screenshots (next grab reuses it → straight to annotating; "reselect"
@@ -240,5 +313,9 @@ Pill integration (`quickshell/pill/`):
 - Always copy on any finish (image bytes / video uri) so it's immediately pasteable.
 - Phase-1 annotation tools exactly: text, arrow, rectangle-stroke, rectangle-filled (+ color & width).
   Line/pen/highlight deferred to 2.5.
-- Region-record = full-output record + ffmpeg crop (no native sub-region record in gpsr).
+- Region-record = gpsr **native KMS region capture** — `-w WxH+X+Y` directly (NOT the
+  deprecated `-region`, which only works with `-w region` and errored against `-w portal`).
+  Region mode uses KMS, not the portal, so the portal/restore-token args are omitted for
+  it; whole-screen still goes through `-w portal`. (Earlier plan assumed a post ffmpeg
+  crop; gpsr does it natively, so no crop pass is needed.)
 - Resting pill baked into screenshots AND recordings is accepted/expected.

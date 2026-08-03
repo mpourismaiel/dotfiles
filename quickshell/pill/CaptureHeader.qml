@@ -16,6 +16,10 @@ Item {
     implicitWidth: hrow.implicitWidth
     implicitHeight: 26
 
+    // the header doubles as the drag grip for the movable capture pill (the actual
+    // DragHandler lives on the pill); hint it with an open-hand cursor over the title.
+    HoverHandler { cursorShape: Qt.OpenHandCursor }
+
     Row {
         id: hrow
         anchors.left: parent.left
@@ -42,6 +46,11 @@ Item {
             anchors.verticalCenter: parent.verticalCenter
             text: root.title; color: root.theme.text
             font.family: root.theme.serif; font.pixelSize: root.theme.fsLarge + 2
+        }
+        // drag-handle affordance — the pill is movable by dragging its body/header
+        MSym {
+            anchors.verticalCenter: parent.verticalCenter
+            icon: "drag_indicator"; size: 18; color: root.theme.faint
         }
     }
 }

@@ -42,6 +42,9 @@ Item {
 
     readonly property rect r: overlay.state.region
     readonly property bool showRegion: overlay.state.hasRegion
+    // true only during the grabToImage pass: hides the crop grips (which live inside
+    // the exported `shot`) so they don't bake into the saved/copied PNG.
+    property bool exporting: false
 
     Rectangle { anchors.fill: parent; color: "black" }   // letterbox under the grab
 
@@ -103,6 +106,26 @@ Item {
                     if (d.bw < 4 && d.bh < 4) { d.destroy(); overlay.state.selected = null; }
                 }
             }
+
+            // ---- crop-region 8-point resize (annotating) --------------------
+            // Border grips fine-tune the crop without a full re-select. It lives
+            // INSIDE annLayer, declared before the annotations (which createObject
+            // appends after it), so annotations always stack ON TOP — grabbing one
+            // to drag/resize is preferred over the region grips. Resize-only (no
+            // middle drag) keeps the interior free for annotating.
+            ResizeHandles {
+                theme: overlay.theme
+                // only with the SELECT tool — a creation tool (rect/arrow/text) needs
+                // the whole crop, borders included, free to draw on, so the grips get
+                // out of the way (they'd otherwise eat presses near the crop edge).
+                active: overlay.state.mode === "annotating" && overlay.showRegion
+                        && overlay.state.tool === "select" && !overlay.exporting
+                rect_: overlay.state.region
+                boundW: overlay.width; boundH: overlay.height
+                minW: 20; minH: 20
+                moveEnabled: false
+                onChanged: (r) => overlay.state.region = r
+            }
         }
     }
 
@@ -127,34 +150,55 @@ Item {
         color: "transparent"; border.color: overlay.theme.accent; border.width: 1
     }
 
-    // ---- rubber-band region select (mode: selecting) -----------------------
+    // ---- rubber-band region select ----------------------------------------
+    // Active in BOTH selecting and annotating so the crop is never one-shot:
+    //   • selecting  — a click-DRAG draws a fresh crop, a plain CLICK reuses the
+    //                  region already shown (quick same-area shot).
+    //   • annotating — a drag that STARTS on the dimmed area OUTSIDE the crop draws a
+    //                  fresh crop (redraw as often as you like); presses inside the
+    //                  crop (plus a grip margin) fall through to annotating / the
+    //                  resize grips. A plain click on the dim just deselects.
+    // The persisted region is never wiped on press, so a click can still reuse it.
     property real _sx: 0
     property real _sy: 0
+    property bool _dragging: false
     MouseArea {
         id: rubber
         anchors.fill: parent
-        enabled: overlay.state.mode === "selecting"
+        enabled: overlay.state.mode === "selecting" || overlay.state.mode === "annotating"
+        // hoverEnabled stays false so this never claims the cursor on hover (annotations
+        // keep their own); the crosshair only shows while actually dragging a crop.
         cursorShape: Qt.CrossCursor
-        onPressed: (e) => { overlay._sx = e.x; overlay._sy = e.y;
-                            overlay.state.region = Qt.rect(e.x, e.y, 0, 0); }
+        onPressed: (e) => {
+            overlay._dragging = false;
+            if (overlay.state.mode === "annotating") {
+                // only the SELECT tool redraws the crop by dragging the dim; a creation
+                // tool always draws (falls through), as does any press inside the crop
+                // (+ a grip margin) so annotating / the resize grips keep working.
+                const m = 16;
+                const inside = overlay.showRegion
+                    && e.x >= overlay.r.x - m && e.x <= overlay.r.x + overlay.r.width + m
+                    && e.y >= overlay.r.y - m && e.y <= overlay.r.y + overlay.r.height + m;
+                if (overlay.state.tool !== "select" || inside) { e.accepted = false; return; }
+            }
+            overlay._sx = e.x; overlay._sy = e.y;
+        }
         onPositionChanged: (e) => {
+            if (!overlay._dragging && Math.abs(e.x - overlay._sx) + Math.abs(e.y - overlay._sy) < 6)
+                return;                       // ignore sub-pixel jitter so a click stays a click
+            overlay._dragging = true;
             overlay.state.region = Qt.rect(Math.min(overlay._sx, e.x), Math.min(overlay._sy, e.y),
                                            Math.abs(e.x - overlay._sx), Math.abs(e.y - overlay._sy));
         }
-        onReleased: overlay.state.commitRegion(overlay.state.region)
-    }
-
-    // ---- crop-region 8-point resize (annotating) ---------------------------
-    // Border grips let you fine-tune the crop without a full re-select; the
-    // interior stays free for annotating, so this is resize-only (no middle drag).
-    ResizeHandles {
-        theme: overlay.theme
-        active: overlay.state.mode === "annotating" && overlay.showRegion
-        rect_: overlay.state.region
-        boundW: overlay.width; boundH: overlay.height
-        minW: 20; minH: 20
-        moveEnabled: false
-        onChanged: (r) => overlay.state.region = r
+        onReleased: () => {
+            if (overlay._dragging)
+                overlay.state.commitRegion(overlay.state.region);            // new crop
+            else if (overlay.state.mode === "selecting" && overlay.showRegion)
+                overlay.state.commitRegion(overlay.state.region);            // click reuses
+            else if (overlay.state.mode === "annotating")
+                overlay.state.selected = null;                               // click on dim deselects
+            overlay._dragging = false;
+        }
     }
 
     Component { id: annProto; AnnItem { } }
@@ -182,15 +226,22 @@ Item {
 
     // ---- export: grab the full composite, crop to the region, copy / save ---
     // driven by state.exportRequested (from the pill toolbar / Ctrl+C/S).
+    property string _shotPath: ""
     function _export(savePath) {
         if (!overlay.showRegion) return;
         overlay.state.selected = null;        // drop handles before the grab
+        overlay.exporting = true;             // hide the crop grips for the grab
         Qt.callLater(function() {
             shot.grabToImage(function(res) {
+                overlay.exporting = false;    // grab rendered -> grips can come back
                 if (!res) return;
                 res.saveToFile(overlay.fullPath);
                 const rx = Math.round(overlay.r.x), ry = Math.round(overlay.r.y);
                 const rw = Math.round(overlay.r.width), rh = Math.round(overlay.r.height);
+                // the crop always lands at outPath (+ copied); a save also cp's it to
+                // the Screenshots dir. The in-pill "screenshot ready" card opens THIS
+                // file, so prefer the persistent savePath when there is one.
+                overlay._shotPath = savePath ? savePath : overlay.outPath;
                 let cmd = "magick '" + overlay.fullPath + "' -crop " + rw + "x" + rh + "+" + rx + "+" + ry
                         + " +repage '" + overlay.outPath + "' && wl-copy --type image/png < '" + overlay.outPath + "'";
                 if (savePath)
@@ -201,5 +252,10 @@ Item {
             });
         });
     }
-    Process { id: exporter }
+    // when the crop/copy/save shell finishes, hand the final PNG to the host so it can
+    // raise the in-pill "screenshot ready" notification (with a live thumbnail).
+    Process {
+        id: exporter
+        onExited: (code) => { if (code === 0 && overlay._shotPath) overlay.state.shotReady(overlay._shotPath); }
+    }
 }

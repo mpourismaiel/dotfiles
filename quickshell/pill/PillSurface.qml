@@ -13,12 +13,26 @@ Item {
     property color fillColor: "transparent"
     property color strokeColor: "transparent"
     property real strokeWidth: 0
+    // detached/floating: draw a uniformly-rounded rectangle (all four corners = radius)
+    // instead of the top-attached winged shape, so the top corners match the bottom.
+    property bool rounded: false
 
     Behavior on radius { NumberAnimation { duration: root.theme.anim; easing.type: Easing.OutCubic } }
     Behavior on wing   { NumberAnimation { duration: root.theme.anim; easing.type: Easing.OutCubic } }
 
+    // floating pill: a plain rounded rect (equal top/bottom radius)
+    Rectangle {
+        anchors.fill: parent
+        visible: root.rounded
+        radius: Math.min(root.radius, Math.min(width, height) / 2)
+        color: root.fillColor
+        border.color: root.strokeColor
+        border.width: root.strokeWidth
+    }
+
     Shape {
         anchors.fill: parent
+        visible: !root.rounded
         preferredRendererType: Shape.CurveRenderer
 
         ShapePath {

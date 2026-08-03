@@ -158,6 +158,46 @@ QtObject {
     // listens to trigger the water-droplet drop-out (see NotificationDroplet.qml).
     signal popped(var n)
 
+    // ---- locally-authored popups (NOT freedesktop) ---------------------------
+    // A synthetic card pushed straight onto the active stack so the pill renders it
+    // with the SAME NotificationView + droplet as any app's — used for the
+    // "screenshot ready" card (thumbnail via the image-path hint, click-to-open via
+    // a synthetic `default` action). It never enters the server / history (there is
+    // no real Notification to track); it just pops, counts down, and dismisses like
+    // the others. `opts`: { summary, body, appName, appIcon, imagePath, openPath }.
+    property int _localSeq: 0
+    readonly property Process openProc: Process { }
+    function postLocal(opts) {
+        root._localSeq += 1;
+        const id = "local-" + root._localSeq;
+        const self = root;
+        const open = opts.openPath || "";
+        const n = {
+            id: id,
+            summary: opts.summary || "",
+            body: opts.body || "",
+            appName: opts.appName || "",
+            appIcon: opts.appIcon || "",
+            urgency: 1,                         // Normal (not Critical → it counts down)
+            expireTimeout: opts.timeout || -1,  // default cap (5s) via timeoutFor
+            image: "",
+            hints: opts.imagePath ? { "image-path": opts.imagePath } : ({}),
+            hasInlineReply: false,
+            inlineReplyPlaceholder: "",
+            tracked: false,
+            // body-click "default" action → open the file with the desktop opener
+            actions: open ? [{
+                identifier: "default", text: "Open",
+                invoke: function() { self.openProc.command = ["xdg-open", open]; self.openProc.running = true; }
+            }] : []
+        };
+        root.stamps[id] = (new Date()).getTime();
+        const a = root.active.slice(); a.unshift(n); root.active = a;
+        root.remaining[id] = root.timeoutFor(n);
+        root.tick++;
+        root.popped(n);
+    }
+
     readonly property int defaultTimeoutMs: 5000   // hard ceiling for non-critical popups
     function timeoutFor(n) {
         if (!n) return 0;

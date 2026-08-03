@@ -41,6 +41,9 @@ Item {
     MouseArea {
         id: moveMa
         anchors.fill: parent
+        // invisible (not just disabled) when move is off, so it can never intercept
+        // clicks meant for whatever sits under the frame (annotations / the webcam).
+        visible: h.moveEnabled && h.active
         enabled: h.moveEnabled && h.active
         hoverEnabled: h.moveEnabled && h.active
         cursorShape: Qt.OpenHandCursor

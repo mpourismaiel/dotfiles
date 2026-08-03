@@ -44,6 +44,11 @@ QtObject {
         "#3aa0ff", "#b06bff", "#ffffff", "#1b1712"
     ]
 
+    // monotonic z for annotations: bumped each time one is selected so the selected
+    // annotation rises to the top of the stack (AnnItem.onIsSelectedChanged).
+    property int _annZ: 0
+    function nextAnnZ() { root._annZ += 1; return root._annZ; }
+
     // the currently selected annotation Item (a live object — NOT an index into a
     // rebuilt array; mutated in place so drags survive, per the pill's slider rule)
     property var selected: null
@@ -67,6 +72,7 @@ QtObject {
     // ---- signals for the host (pill) ---------------------------------------
     signal copied()                        // finished -> image on clipboard
     signal saved(string path)              // finished -> written to disk (+copied)
+    signal shotReady(string path)          // cropped PNG written -> host shows the card
     signal cancelled()
     signal grabFailed(string why)
     signal clearAnnotations()              // overlay destroys all placed annotations
@@ -169,9 +175,11 @@ QtObject {
                 root.frozenW = 0; root.frozenH = 0;
                 root.frozenSource = "";
                 root.frozenSource = "file://" + root.grabPath + "#" + root._grabSeq;
-                // reuse a persisted region (quick same-area shot) -> straight to
-                // annotating; otherwise draw a fresh region first.
-                root.mode = root.hasRegion ? "annotating" : "selecting";
+                // always enter region-select. A persisted region (quick same-area
+                // shot) is shown as the starting crop: a plain CLICK reuses it (→
+                // annotating), a click-DRAG replaces it with a fresh one. So the crop
+                // is never "stuck" — you can always redraw it.
+                root.mode = "selecting";
             } else if (root.mode === "grabbing") {
                 root.grabFailed("grabber exit " + code);
                 root.reset();

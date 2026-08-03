@@ -29,6 +29,10 @@ Item {
     property real y2: 0
 
     readonly property bool isSelected: state.selected === ann
+    // raise to the top of the annotation stack whenever selected (so it's the one
+    // you grab/edit, and it stays in front afterwards) — a monotonic counter, not a
+    // reparent, so the stable-object drag grab is never dropped.
+    onIsSelectedChanged: if (ann.isSelected && ann.state.nextAnnZ) ann.z = ann.state.nextAnnZ()
     readonly property bool isArrow: annType === "arrow"
     readonly property bool isText: annType === "text"
     readonly property real minx: Math.min(x1, x2)
@@ -78,22 +82,26 @@ Item {
             startX: ann.lx1; startY: ann.ly1
             PathLine { x: ann.lx2; y: ann.ly2 }
         }
-        // arrowhead (two barbs at the head)
+        // arrowhead — a V chevron (barb → tip → barb). Coordinates reference the
+        // ShapePath by id (`head`): a PathLine is a non-Item Path element with no
+        // visual `parent`, so `parent.len`/`parent.a` were undefined and the second
+        // barb never drew (leaving just one diagonal line at the tip).
         ShapePath {
+            id: head
             readonly property real a: Math.atan2(ann.ly2 - ann.ly1, ann.lx2 - ann.lx1)
-            readonly property real len: Math.max(10, ann.annWidth * 3.2)
+            readonly property real len: Math.max(12, ann.annWidth * 3.4)
             readonly property real spread: 0.5
             strokeColor: ann.annColor
             strokeWidth: ann.annWidth
-            fillColor: ann.annColor
+            fillColor: "transparent"
             capStyle: ShapePath.RoundCap
             joinStyle: ShapePath.RoundJoin
-            startX: ann.lx2 - len * Math.cos(a - spread)
-            startY: ann.ly2 - len * Math.sin(a - spread)
+            startX: ann.lx2 - head.len * Math.cos(head.a - head.spread)
+            startY: ann.ly2 - head.len * Math.sin(head.a - head.spread)
             PathLine { x: ann.lx2; y: ann.ly2 }
             PathLine {
-                x: ann.lx2 - parent.len * Math.cos(parent.a + parent.spread)
-                y: ann.ly2 - parent.len * Math.sin(parent.a + parent.spread)
+                x: ann.lx2 - head.len * Math.cos(head.a + head.spread)
+                y: ann.ly2 - head.len * Math.sin(head.a + head.spread)
             }
         }
     }

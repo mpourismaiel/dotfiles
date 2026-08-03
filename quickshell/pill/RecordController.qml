@@ -37,7 +37,16 @@ QtObject {
     property real   webcamY: 40
     property real   webcamW: 260
     property real   webcamH: 195
-    property real   webcamRound: 18
+    // roundness is a MODE ("10" | "20" | "full" | "custom"); `webcamRound` is only the
+    // custom px value. `webcamRoundEff` is what the overlay actually applies — "full"
+    // tracks the size so it stays circular as W/H change.
+    property string webcamRoundMode: "20"
+    property real   webcamRound: 18            // custom px (used when mode === "custom")
+    readonly property real webcamRoundEff: {
+        if (webcamRoundMode === "full") return Math.round(Math.min(webcamW, webcamH) / 2);
+        if (webcamRoundMode === "custom") return webcamRound;
+        return parseInt(webcamRoundMode);      // "10" / "20"
+    }
     property bool   webcamShadow: true
     property real   webcamOpacity: 1.0
 
@@ -102,21 +111,30 @@ QtObject {
              + "_" + p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds()) + ".mp4";
     }
     function buildArgs(out) {
-        const a = ["gpu-screen-recorder",
-            "-w", "portal",
-            "-restore-portal-session", "yes",
-            "-portal-session-token-filepath", rc.tokenFile,
-            "-f", String(rc.fps),
-            "-k", rc.codec,
-            "-q", rc.quality,
-            "-encoder", "gpu",
-            "-fallback-cpu-encoding", "yes",
-            "-cursor", rc.cursor ? "yes" : "no"];
-        // optional region crop of the portal frame (WxH+X+Y)
         const r = rc.state.region;
-        if (rc.useRegion && r.width > 1 && r.height > 1)
-            a.push("-region", Math.round(r.width) + "x" + Math.round(r.height)
-                            + "+" + Math.round(r.x) + "+" + Math.round(r.y));
+        const useR = rc.useRegion && r.width > 1 && r.height > 1;
+        const a = ["gpu-screen-recorder"];
+        if (useR) {
+            // sub-region = gpsr's KMS region capture. `-w` takes the geometry
+            // (WxH+X+Y) DIRECTLY — the old `-region` flag is deprecated and, more to
+            // the point, only valid with `-w region`, which is why pairing it with
+            // `-w portal` errored ("-region can only be used when -w region is used").
+            // Region capture goes through KMS, not the portal, so the portal/restore
+            // args are intentionally omitted here.
+            a.push("-w", Math.round(r.width) + "x" + Math.round(r.height)
+                       + "+" + Math.round(r.x) + "+" + Math.round(r.y));
+        } else {
+            // whole screen via the ScreenCast portal (restore token remembers the pick)
+            a.push("-w", "portal",
+                   "-restore-portal-session", "yes",
+                   "-portal-session-token-filepath", rc.tokenFile);
+        }
+        a.push("-f", String(rc.fps),
+               "-k", rc.codec,
+               "-q", rc.quality,
+               "-encoder", "gpu",
+               "-fallback-cpu-encoding", "yes",
+               "-cursor", rc.cursor ? "yes" : "no");
         if (rc.micOn) a.push("-a", rc.micDev);
         if (rc.spkOn) a.push("-a", rc.spkDev);
         a.push("-o", out);

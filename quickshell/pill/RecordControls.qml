@@ -18,6 +18,17 @@ Item {
     implicitWidth: content.implicitWidth
     implicitHeight: content.implicitHeight
 
+    // the Select whose list is open (rendered by dropLayer, above all controls)
+    property var openSel: null
+
+    // roundness dropdown selection == the controller's mode
+    readonly property string roundTok: ctl.rc.webcamRoundMode
+    function pickRound(t) {
+        // switching to custom seeds the px field from the current effective radius
+        if (t === "custom") ctl.rc.webcamRound = Math.round(ctl.rc.webcamRoundEff);
+        ctl.rc.webcamRoundMode = t;
+    }
+
     MediaDevices { id: media }
     readonly property var cameras: {
         const out = [], vs = media.videoInputs || [];
@@ -69,55 +80,38 @@ Item {
             }
         }
     }
-    // dropdown over [{token,label}] — drops DOWN (the pill sits at the top edge).
+    // dropdown over [{token,label}]. The LIST is not drawn here — a nested popup
+    // can't paint above later sibling rows (z only orders within a parent), so it
+    // would appear behind the controls below it. Instead the open Select registers
+    // itself as `ctl.openSel` and the shared `dropLayer` overlay (last child of the
+    // root, top of everything) renders its list at the mapped position.
     component Select: Item {
         id: sel
         property var options: []
         property string currentToken: ""
         property string placeholder: "—"
         signal picked(string token)
-        property bool openList: false
+        readonly property bool openList: ctl.openSel === sel
         readonly property string curLabel: {
             for (const o of options) if (o.token === currentToken) return o.label;
             return placeholder;
         }
+        function pick(t) { sel.picked(t); ctl.openSel = null; }
         implicitWidth: 190; height: 30
         Rectangle {
             anchors.fill: parent; radius: ctl.theme.radiusBtn
-            color: dma.containsMouse ? ctl.theme.bgHover : ctl.theme.row
-            border.color: ctl.theme.border; border.width: 1
+            color: (sel.openList || dma.containsMouse) ? ctl.theme.bgHover : ctl.theme.row
+            border.color: sel.openList ? ctl.theme.accent : ctl.theme.border; border.width: 1
             Text { anchors.left: parent.left; anchors.leftMargin: 10; anchors.right: chev.left
                    anchors.verticalCenter: parent.verticalCenter; elide: Text.ElideRight
                    text: sel.curLabel; color: ctl.theme.text
                    font.family: ctl.theme.family; font.pixelSize: ctl.theme.fsSmall }
             MSym { id: chev; anchors.right: parent.right; anchors.rightMargin: 6
-                   anchors.verticalCenter: parent.verticalCenter; icon: "expand_more"; size: 18; color: ctl.theme.textDim }
+                   anchors.verticalCenter: parent.verticalCenter
+                   icon: sel.openList ? "expand_less" : "expand_more"; size: 18; color: ctl.theme.textDim }
             MouseArea { id: dma; anchors.fill: parent; hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor; onClicked: sel.openList = !sel.openList }
-        }
-        Rectangle {
-            visible: sel.openList; z: 50
-            anchors.top: parent.bottom; anchors.topMargin: 4; width: parent.width
-            height: Math.min(col.implicitHeight + 8, 200); radius: ctl.theme.radiusBtn
-            color: ctl.theme.bgElevated; border.color: ctl.theme.border; border.width: 1
-            clip: true
-            Column { id: col; width: parent.width; y: 4
-                Repeater {
-                    model: sel.options
-                    Rectangle {
-                        required property var modelData
-                        width: parent.width; height: 28
-                        color: oma.containsMouse ? ctl.theme.bgHover : "transparent"
-                        Text { anchors.left: parent.left; anchors.leftMargin: 10; anchors.right: parent.right
-                               anchors.rightMargin: 10; anchors.verticalCenter: parent.verticalCenter
-                               elide: Text.ElideRight; text: parent.modelData.label; color: ctl.theme.text
-                               font.family: ctl.theme.family; font.pixelSize: ctl.theme.fsSmall }
-                        MouseArea { id: oma; anchors.fill: parent; hoverEnabled: true
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: { sel.picked(parent.modelData.token); sel.openList = false; } }
-                    }
-                }
-            }
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: ctl.openSel = (ctl.openSel === sel ? null : sel) }
         }
     }
 
@@ -192,9 +186,17 @@ Item {
                       min: 120; max: 960; step: 20; onChanged: (v) => ctl.rc.webcamW = v }
             Stepper { anchors.verticalCenter: parent.verticalCenter; label: "H"; value: ctl.rc.webcamH
                       min: 90; max: 720; step: 20; onChanged: (v) => ctl.rc.webcamH = v }
-            Stepper { anchors.verticalCenter: parent.verticalCenter; label: "RADIUS"
-                      value: ctl.rc.webcamRound; min: 0; max: Math.round(Math.min(ctl.rc.webcamW, ctl.rc.webcamH) / 2)
-                      step: 4; onChanged: (v) => ctl.rc.webcamRound = v }
+            // roundness: a dropdown of presets + a custom px input
+            Text { anchors.verticalCenter: parent.verticalCenter; text: "ROUND"; color: ctl.theme.textDim
+                   font.family: ctl.theme.mono; font.pixelSize: ctl.theme.fsSmall }
+            Select { anchors.verticalCenter: parent.verticalCenter; implicitWidth: 130
+                     options: [{token:"10",label:"10 px"},{token:"20",label:"20 px"},
+                               {token:"full",label:"Full round"},{token:"custom",label:"Custom…"}]
+                     currentToken: ctl.roundTok; onPicked: (t) => ctl.pickRound(t) }
+            Stepper { visible: ctl.rc.webcamRoundMode === "custom"; anchors.verticalCenter: parent.verticalCenter
+                      label: "PX"; value: ctl.rc.webcamRound; min: 0
+                      max: Math.round(Math.min(ctl.rc.webcamW, ctl.rc.webcamH) / 2)
+                      step: 2; onChanged: (v) => ctl.rc.webcamRound = v }
             Rectangle { width: 1; height: 30; color: ctl.theme.divider }
             Text { anchors.verticalCenter: parent.verticalCenter; text: "OPACITY"; color: ctl.theme.textDim
                    font.family: ctl.theme.mono; font.pixelSize: ctl.theme.fsSmall }
@@ -278,6 +280,51 @@ Item {
                            font.family: ctl.theme.family; font.pixelSize: ctl.theme.fsNormal; font.bold: true }
                     MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor
                                 onClicked: { ctl.warn = false; ctl.rc.start(); } }
+                }
+            }
+        }
+    }
+
+    // ---- shared dropdown overlay (last child → paints ABOVE every control) ----
+    // Renders the open Select's list at its mapped position so the popup's
+    // background + rows sit on top of everything, instead of behind the rows below.
+    Item {
+        id: dropLayer
+        anchors.fill: parent
+        z: 1000
+        visible: ctl.openSel !== null
+        // click-away: anywhere outside the list closes the dropdown
+        MouseArea { anchors.fill: parent; onClicked: ctl.openSel = null }
+        Rectangle {
+            id: dropBox
+            readonly property var sel: ctl.openSel
+            readonly property point p: sel ? sel.mapToItem(dropLayer, 0, sel.height) : Qt.point(0, 0)
+            visible: sel !== null
+            x: p.x; y: p.y + 4
+            width: sel ? sel.width : 0
+            height: Math.min(dropCol.implicitHeight + 8, 220)
+            radius: ctl.theme.radiusBtn
+            color: ctl.theme.bgElevated; border.color: ctl.theme.border; border.width: 1
+            clip: true
+            Column {
+                id: dropCol
+                width: parent.width; y: 4
+                Repeater {
+                    model: dropBox.sel ? dropBox.sel.options : []
+                    Rectangle {
+                        required property var modelData
+                        width: parent.width; height: 28
+                        readonly property bool cur: dropBox.sel && dropBox.sel.currentToken === modelData.token
+                        color: oma.containsMouse ? ctl.theme.bgHover : (cur ? ctl.theme.accentSoft : "transparent")
+                        Text { anchors.left: parent.left; anchors.leftMargin: 10; anchors.right: parent.right
+                               anchors.rightMargin: 10; anchors.verticalCenter: parent.verticalCenter
+                               elide: Text.ElideRight; text: modelData.label
+                               color: parent.cur ? ctl.theme.accent : ctl.theme.text
+                               font.family: ctl.theme.family; font.pixelSize: ctl.theme.fsSmall }
+                        MouseArea { id: oma; anchors.fill: parent; hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: dropBox.sel.pick(modelData.token) }
+                    }
                 }
             }
         }

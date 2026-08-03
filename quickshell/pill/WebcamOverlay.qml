@@ -73,7 +73,7 @@ Item {
         anchors.fill: parent
         layer.enabled: true
         visible: false
-        Rectangle { anchors.fill: parent; radius: web.rc.webcamRound; color: "black" }
+        Rectangle { anchors.fill: parent; radius: web.rc.webcamRoundEff; color: "black" }
     }
 
     MultiEffect {
@@ -91,7 +91,7 @@ Item {
     // hairline border (follows the rounding)
     Rectangle {
         anchors.fill: parent
-        radius: web.rc.webcamRound
+        radius: web.rc.webcamRoundEff
         color: "transparent"
         border.color: web.theme.border
         border.width: 1

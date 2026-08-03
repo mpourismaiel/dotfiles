@@ -286,7 +286,14 @@ ShellRoot {
     CaptureState {
         id: capture
         onCancelled: { /* overlay hides via captureVars visibility */ }
-        onSaved: (p) => root.captureNotify("Screenshot saved", p)
+        // no notify-send for screenshots — when the cropped PNG is on disk we raise an
+        // in-pill card (same NotificationView + droplet as any notification) showing a
+        // live thumbnail; clicking it opens the shot with the desktop opener.
+        onShotReady: (p) => notifs.postLocal({
+            appName: "Screenshot", appIcon: "image",
+            summary: "Screenshot ready", body: "Copied to clipboard — click to open",
+            imagePath: "file://" + p, openPath: p
+        })
     }
     RecordController {
         id: capRec
@@ -1054,12 +1061,98 @@ ShellRoot {
             property bool capMenu: false
             // the pill shows capture UI (chooser OR controls); drives the morph gates.
             readonly property bool capShow: capCtl || capMenu
+
+            // ---- movable capture pill (so the controls never block the shot) ----
+            // The capture controls can leave their top-centre home two ways:
+            //   • MANUAL drag (capManual): grab the pill and drop it. Near the top edge
+            //     it re-attaches with wings at the drop x; elsewhere it floats fully
+            //     rounded. Overrides auto-avoid for the rest of the session.
+            //   • AUTO-avoid (capAutoAvoid): while a crop / record region is set, the
+            //     pill slides to the first screen slot that doesn't cover it.
+            // `capPositioned` = "not at the default top-centre"; `capAttached` = docked
+            // to the top edge (wings) vs floating (no wings, fully rounded). Everything
+            // resets when the capture ends.
+            property bool capPositioned: false
+            property bool capManual: false
+            property bool capAttached: true
+            property bool capDragging: false
+            property real capPosX: 0
+            property real capPosY: 0
+            readonly property int capSnapY: 44        // drop within this of the top → dock
+            // whether the pill is currently floating (rounded, no wings)
+            readonly property bool capFloating: capDragging || (capShow && capPositioned && !capAttached)
+
+            // Keep the controls near the selection but off it. If the default
+            // top-centre home doesn't cover the selection, stay there. Otherwise hug
+            // the selection: try just ABOVE it, then just BELOW (per the "go below if
+            // above collides" rule), then to its right / left — each horizontally (or
+            // vertically) centred on the selection and clamped on-screen. If nothing
+            // clean fits (huge selection), take the least-overlapping clamped spot.
+            // A manual drag or no region leaves it alone.
+            function capAutoAvoid() {
+                if (!win.capShow || win.capManual) return;
+                const reg = capture.region;
+                const hasReg = reg.width > 1 && reg.height > 1;
+                const pw = pill.width, ph = pill.height;
+                if (!hasReg || pw < 1 || ph < 1) {
+                    win.capPositioned = false; win.capAttached = true; return;
+                }
+                const W = win.width, H = win.height, m = 12, gap = 12;
+                const rl = reg.x, rt = reg.y, rr = reg.x + reg.width, rb = reg.y + reg.height;
+                const area = (x, y) => {
+                    const ix = Math.min(x + pw, rr) - Math.max(x, rl);
+                    const iy = Math.min(y + ph, rb) - Math.max(y, rt);
+                    return Math.max(0, ix) * Math.max(0, iy);
+                };
+                const homeX = (W - pw) / 2;
+                if (area(homeX, 0) === 0) {          // top-centre home is already clear
+                    win.capPositioned = false; win.capAttached = true; return;
+                }
+                // hug the selection, centred on it, clamped on-screen
+                const cxx = Math.max(m, Math.min(rl + reg.width / 2 - pw / 2, W - pw - m));
+                const cyy = Math.max(m, Math.min(rt + reg.height / 2 - ph / 2, H - ph - m));
+                const above = { x: cxx, y: rt - gap - ph };
+                const below = { x: cxx, y: rb + gap };
+                const right = { x: rr + gap, y: cyy };
+                const left  = { x: rl - gap - pw, y: cyy };
+                const fits = (c) => c.x >= m && c.y >= m && c.x + pw <= W - m
+                                 && c.y + ph <= H - m && area(c.x, c.y) === 0;
+                let best = null;
+                for (const c of [above, below, right, left]) if (fits(c)) { best = c; break; }
+                if (!best) {                          // nothing clean fits — least overlap, clamped
+                    let bo = Infinity;
+                    for (const c of [below, above, right, left, { x: homeX, y: 0 }]) {
+                        const x = Math.max(m, Math.min(c.x, W - pw - m));
+                        const y = Math.max(m, Math.min(c.y, H - ph - m));
+                        const o = area(x, y);
+                        if (o < bo) { bo = o; best = { x: x, y: y }; }
+                    }
+                }
+                win.capPosX = best.x; win.capPosY = best.y;
+                win.capAttached = best.y <= win.capSnapY;   // near the top edge → dock with wings
+                win.capPositioned = true;
+            }
+            // re-evaluate auto-avoid when the region, the controls' size, or the capture
+            // mode changes (cheap; only acts while capShow and not manually placed).
+            Connections {
+                target: capture
+                function onRegionChanged() { win.capAutoAvoid(); }
+                function onModeChanged() { win.capAutoAvoid(); }
+            }
+            onCapShowChanged: win.capAutoAvoid()
+
             // entering a capture collapses every other expanded state so the pill
-            // shows ONLY the capture controls (never the dashboard/menu underneath).
+            // shows ONLY the capture controls (never the dashboard/menu underneath);
+            // leaving it resets the movable-pill position back to the top-centre home.
             Connections {
                 target: capture
                 function onActiveChanged() {
-                    if (!capture.active) return;
+                    if (!capture.active) {
+                        win.capPositioned = false; win.capManual = false;
+                        win.capAttached = true; win.capDragging = false;
+                        win.capPosX = 0; win.capPosY = 0;
+                        return;
+                    }
                     win.open = false; win.launcher = false; win.focused = false;
                     win.kbNav = false; win.deadlines = false;
                     win.ctxGroup = null; win.trayItem = null; win.capMenu = false;
@@ -1479,12 +1572,49 @@ ShellRoot {
             Item {
                 id: pill
     
-                anchors.horizontalCenter: parent.horizontalCenter
+                // horizontally centred in every normal state; while the capture pill is
+                // dragged / auto-avoided it uses an explicit x (movable-capture block
+                // above). Manual x (not anchors) so the drag can set it directly.
+                x: (win.capShow && win.capPositioned) ? win.capPosX : (parent.width - width) / 2
                 // attached flush to the top edge in every stage — the resting clock pill
                 // AND the expanded dashboard / panel — growing downward, "rounded out"
                 // via the PillSurface background below. Only a notification card or an
-                // action burst floats 6px below the edge (those aren't "the pill").
-                y: (win.notifMorph || (win.showBurst && !win.capShow)) ? 6 : 0
+                // action burst floats 6px below the edge (those aren't "the pill"); a
+                // positioned capture pill uses its own y.
+                y: (win.capShow && win.capPositioned) ? win.capPosY
+                   : (win.notifMorph || (win.showBurst && !win.capShow)) ? 6 : 0
+                Behavior on x { enabled: win.capShow && !win.capDragging; NumberAnimation { duration: theme.anim; easing.type: Easing.OutCubic } }
+                Behavior on y { enabled: win.capShow && !win.capDragging; NumberAnimation { duration: theme.anim; easing.type: Easing.OutCubic } }
+
+                // drag the capture pill by its body (buttons still click — the handler
+                // only steals the grab once you drag past threshold). Drop near the top
+                // → dock with wings at that x; drop lower → float rounded. Sets capManual
+                // so auto-avoid yields to the hand-placed spot until the capture ends.
+                DragHandler {
+                    id: capDrag
+                    enabled: win.capShow
+                    target: null
+                    property real _ox: 0
+                    property real _oy: 0
+                    onActiveChanged: {
+                        if (capDrag.active) {
+                            capDrag._ox = capDrag.centroid.position.x;
+                            capDrag._oy = capDrag.centroid.position.y;
+                            win.capPosX = pill.x; win.capPosY = pill.y;   // seed → no jump
+                            win.capManual = true; win.capPositioned = true; win.capDragging = true;
+                        } else {
+                            win.capDragging = false;
+                            win.capAttached = win.capPosY <= win.capSnapY;
+                            if (win.capAttached) win.capPosY = 0;
+                        }
+                    }
+                    onCentroidChanged: {
+                        if (!capDrag.active) return;
+                        const sp = capDrag.centroid.scenePosition;
+                        win.capPosX = Math.max(0, Math.min(sp.x - capDrag._ox, win.width - pill.width));
+                        win.capPosY = Math.max(0, Math.min(sp.y - capDrag._oy, win.height - pill.height));
+                    }
+                }
                 // the voice recorder leads the chains: a larger resting pill (220x36,
                 // iPhone-memo style) — voiceMorph already yields to open/launcher/ctx.
                 width: win.capShow ? (captureLoader.item ? captureLoader.item.implicitWidth + theme.pad * 2 : 520) : win.voiceMorph ? 220 : win.showBurst ? (burstLoader.item ? burstLoader.item.implicitWidth : 96) : win.launcher ? win.launcherWidth : win.ctxMode ? 520 : (win.notifMorph ? (morphStack.item ? morphStack.item.implicitWidth : 420) : (win.open ? (win.menu === 6 || win.menu === 8 ? win.calWidth : 520) : (win.dash ? win.hoverWidth : Math.max(56 + root.privacyCount * 20 + root.notifRestWidth, win.restUnderline ? collapsedPill.implicitWidth + 28 : 0))))
@@ -1545,15 +1675,19 @@ ShellRoot {
                     id: surface
     
                     // small flare on the narrow resting pill, a big one on the wide
-                    // dashboard so the "rounded out" reads at 640px.
-                    readonly property int wingW: win.dash ? 34 : 12
+                    // dashboard so the "rounded out" reads at 640px. A floating capture
+                    // pill (dragged, or dropped away from the top edge) drops its wings
+                    // entirely and becomes a plain fully-rounded rectangle.
+                    readonly property int wingW: win.capFloating ? 0 : (win.dash ? 34 : 12)
     
                     anchors.fill: parent
                     anchors.leftMargin: -wingW
                     anchors.rightMargin: -wingW
                     theme: theme
-                    radius: win.dash ? theme.radiusPanel : Math.min(theme.radiusPanel, height / 2)
+                    radius: (win.dash || win.capFloating) ? theme.radiusPanel : Math.min(theme.radiusPanel, height / 2)
                     wing: wingW
+                    // detached capture pill → uniformly rounded (top corners = bottom)
+                    rounded: win.capFloating
                     // solid when expanded, a camera/recording is live, a voice take is
                     // running, or the agenda popup is up; translucent at rest.
                     fillColor: (win.capShow || win.dash || win.privacyRest || win.voiceMorph || win.deadlines) ? theme.bg : theme.bgTranslucent
