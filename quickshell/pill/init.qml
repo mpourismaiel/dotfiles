@@ -63,6 +63,15 @@ ShellRoot {
         // Enter / f c n w v b / Escape — see the per-monitor overlay notes).
         function expand(): void { root.expandShortcut(""); }
         function expandOn(screen: string): void { root.expandShortcut(screen); }
+        // ---- capture (screenshot + screen-record) ----
+        // screenshot: grab the current monitor, then region-select + annotate in the
+        // full-screen overlay with the toolbar in the pill. record: transparent
+        // overlay to pick a region + sources, then record via gpu-screen-recorder;
+        // recordStop finalizes. Bind these to KDE custom shortcuts.
+        function screenshot(): void { capture.beginScreenshot(); }
+        function record(): void { capture.beginRecord(); }
+        function recordStop(): void { capRec.stop(); }
+        function captureCancel(): void { if (capture.mode !== "recording") capture.cancel(); }
         // dismiss every popup currently on screen but KEEP them in history — the "I'm
         // busy, not now" one-key sweep (mirrors the deck's "Dismiss all"). Bind to a KDE
         // custom shortcut. Unlike clearNotifications this does NOT touch history, so the
@@ -270,7 +279,37 @@ ShellRoot {
     Brightness {
         id: brightness
     }
-    
+
+    // ---- capture (screenshot + screen-record), shared. The canvas lives in the
+    // full-screen captureVars window below; the pill hosts the toolbar/menu button.
+    // See ../capture/PLAN.md. Driven by the IPC verbs + the row-2 capture button.
+    CaptureState {
+        id: capture
+        onCancelled: { /* overlay hides via captureVars visibility */ }
+        onSaved: (p) => root.captureNotify("Screenshot saved", p)
+    }
+    RecordController {
+        id: capRec
+        state: capture
+        onFinished: (p) => root.captureNotify("Recording saved", p)
+        // a gpsr run that dies immediately (portal denied / no encoder / stale
+        // restore token) surfaces here instead of a phantom "saved" toast
+        onFailed: (why) => root.captureNotify("Recording failed", why || "gpu-screen-recorder could not start")
+    }
+    // a resettable close after a screenshot copy/save lands
+    Timer { id: captureReset; interval: 250; onTriggered: capture.reset() }
+    Connections {
+        target: capture
+        function onCopied() { captureReset.restart(); }
+        function onSaved(p) { captureReset.restart(); }
+    }
+    // best-effort desktop note when a file lands (uses our own notification server)
+    function captureNotify(summary, path) {
+        captureNotifyProc.command = ["notify-send", "-a", "Capture", "-i", "camera-photo", summary, path];
+        captureNotifyProc.running = true;
+    }
+    Process { id: captureNotifyProc }
+
     // ---- KWin virtual desktops over DBus (org.kde.KWin /VirtualDesktopManager) ----
     Process {
         id: fetchDesktops
@@ -1000,7 +1039,32 @@ ShellRoot {
             // launcher / ctx menu — the take keeps running underneath; the recorder
             // face returns when the panel closes. Starting a take also clears
             // `focused` (Connections below) so the dashboard can't sit over it.
-            readonly property bool voiceMorph: root.voiceActive && !dash
+            // the capture morph is a self-contained menu mode: it suppresses the
+            // voice-recorder face too (the take keeps running underneath, like it
+            // does for open/launcher/ctx) so nothing but the capture controls shows.
+            readonly property bool voiceMorph: root.voiceActive && !dash && !capShow
+            // capture "control" morph: the pill becomes the screenshot toolbar
+            // (annotating) or the record settings (recConfig). The fullscreen canvas
+            // (region/annotations/webcam) is a separate window; this is just the
+            // controls, sized to captureLoader. Recording/grabbing/selecting keep the
+            // pill normal (no timer while recording).
+            readonly property bool capCtl: capture.mode === "annotating" || capture.mode === "recConfig"
+            // the capture button opens a small chooser first (screenshot vs record,
+            // or stop while recording) — like opening a status menu, not a direct fire.
+            property bool capMenu: false
+            // the pill shows capture UI (chooser OR controls); drives the morph gates.
+            readonly property bool capShow: capCtl || capMenu
+            // entering a capture collapses every other expanded state so the pill
+            // shows ONLY the capture controls (never the dashboard/menu underneath).
+            Connections {
+                target: capture
+                function onActiveChanged() {
+                    if (!capture.active) return;
+                    win.open = false; win.launcher = false; win.focused = false;
+                    win.kbNav = false; win.deadlines = false;
+                    win.ctxGroup = null; win.trayItem = null; win.capMenu = false;
+                }
+            }
             // ---- shared hover indicator ----
             // One rounded faded square (drawn once, below the rows) jumps to whatever
             // dashboard item — app tile, launcher, status icon, tray icon — the pointer
@@ -1177,6 +1241,9 @@ ShellRoot {
             WlrLayershell.keyboardFocus: win.grabsKeyboard ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
             exclusionMode: ExclusionMode.Ignore
             color: "transparent"
+            // capShow deliberately falls through to pillRegion (NOT fullRegion): the
+            // pill captures input only over its controls, so clicks elsewhere reach
+            // the fullscreen capture canvas below (region draw / annotation).
             mask: (win.open || win.launcher || win.ctxMode || win.confirmActive || win.focused || win.deadlines) ? fullRegion : (win.fsHide ? emptyRegion : pillRegion)
     
             Process {
@@ -1417,35 +1484,36 @@ ShellRoot {
                 // AND the expanded dashboard / panel — growing downward, "rounded out"
                 // via the PillSurface background below. Only a notification card or an
                 // action burst floats 6px below the edge (those aren't "the pill").
-                y: (win.notifMorph || win.showBurst) ? 6 : 0
+                y: (win.notifMorph || (win.showBurst && !win.capShow)) ? 6 : 0
                 // the voice recorder leads the chains: a larger resting pill (220x36,
                 // iPhone-memo style) — voiceMorph already yields to open/launcher/ctx.
-                width: win.voiceMorph ? 220 : win.showBurst ? (burstLoader.item ? burstLoader.item.implicitWidth : 96) : win.launcher ? win.launcherWidth : win.ctxMode ? 520 : (win.notifMorph ? (morphStack.item ? morphStack.item.implicitWidth : 420) : (win.open ? (win.menu === 6 || win.menu === 8 ? win.calWidth : 520) : (win.dash ? win.hoverWidth : Math.max(56 + root.privacyCount * 20 + root.notifRestWidth, win.restUnderline ? collapsedPill.implicitWidth + 28 : 0))))
+                width: win.capShow ? (captureLoader.item ? captureLoader.item.implicitWidth + theme.pad * 2 : 520) : win.voiceMorph ? 220 : win.showBurst ? (burstLoader.item ? burstLoader.item.implicitWidth : 96) : win.launcher ? win.launcherWidth : win.ctxMode ? 520 : (win.notifMorph ? (morphStack.item ? morphStack.item.implicitWidth : 420) : (win.open ? (win.menu === 6 || win.menu === 8 ? win.calWidth : 520) : (win.dash ? win.hoverWidth : Math.max(56 + root.privacyCount * 20 + root.notifRestWidth, win.restUnderline ? collapsedPill.implicitWidth + 28 : 0))))
                 // in ctx mode the pill sizes to whichever menu loader is active (app
                 // context menu or tray menu).
-                height: win.voiceMorph ? 36 : win.showBurst ? (burstLoader.item ? burstLoader.item.implicitHeight : 28) : (win.open || win.launcher) ? win.openPaneHeight : win.ctxMode ? Math.min(win.openHeight, ((ctxLoader.item || trayLoader.item) ? (ctxLoader.item || trayLoader.item).implicitHeight + theme.pad * 2 : 300)) : (win.notifMorph ? morphStack.implicitHeight : (win.dash ? win.hoverHeight : (win.restUnderline ? 48 : 28)))
+                height: win.capShow ? (captureLoader.item ? captureLoader.item.implicitHeight + theme.pad * 2 : 120) : win.voiceMorph ? 36 : win.showBurst ? (burstLoader.item ? burstLoader.item.implicitHeight : 28) : (win.open || win.launcher) ? win.openPaneHeight : win.ctxMode ? Math.min(win.openHeight, ((ctxLoader.item || trayLoader.item) ? (ctxLoader.item || trayLoader.item).implicitHeight + theme.pad * 2 : 300)) : (win.notifMorph ? morphStack.implicitHeight : (win.dash ? win.hoverHeight : (win.restUnderline ? 48 : 28)))
                 // resting (collapsed, un-hovered) pill is dimmed; full opacity once
                 // hovered / open / a notification is morphing it (or a camera/recording
                 // is live, or a voice take is recording, or the agenda popup is up);
                 // fully hidden while a fullscreen window is focused (fsHide)
-                opacity: win.voiceMorph ? 1 : win.showBurst ? 1 : (win.fsHide ? 0 : ((win.dash || win.notifMorph || win.privacyRest || win.deadlines) ? 1 : theme.idleOpacity))
+                opacity: win.capShow ? 1 : win.voiceMorph ? 1 : win.showBurst ? 1 : (win.fsHide ? 0 : ((win.dash || win.notifMorph || win.privacyRest || win.deadlines) ? 1 : theme.idleOpacity))
     
                 HoverHandler {
                     id: hover
                 }
     
-                // scroll anywhere over the *hovered dashboard* to nudge the active
-                // speaker's volume up/down. Gated to the plain hover stage only — not
-                // the open control panel / menus, not the launcher, not a ctx menu,
-                // and not the notification morph (those either scroll their own
-                // content or shouldn't hijack the wheel). Forced topmost (z) so it
-                // sees the wheel before the Row 2 status icons; acceptedButtons
-                // NoButton so clicks + hover fall straight through to the body (open
+                // scroll anywhere over the pill — the resting clock pill OR the
+                // hovered dashboard — to nudge the active speaker's volume up/down.
+                // Gated OUT of the open control panel / menus, the launcher, a ctx
+                // menu, the notification morph, and the action-burst / voice-recorder
+                // takes (those either scroll their own content or shouldn't hijack the
+                // wheel). Forced topmost (z) so it sees the wheel before the Row 2
+                // status icons / the resting clock; acceptedButtons NoButton so clicks
+                // + hover fall straight through to the body (reveal dashboard / open
                 // launcher) and the icons underneath — this only claims the wheel.
                 MouseArea {
                     anchors.fill: parent
                     z: 100
-                    enabled: win.dash && !win.open && !win.launcher && !win.ctxMode && !win.notifMorph
+                    enabled: !win.open && !win.launcher && !win.ctxMode && !win.notifMorph && !win.showBurst && !win.voiceMorph && !win.capShow
                     acceptedButtons: Qt.NoButton
                     onWheel: (wheel) => {
                         const sink = Pipewire.defaultAudioSink;
@@ -1488,8 +1556,11 @@ ShellRoot {
                     wing: wingW
                     // solid when expanded, a camera/recording is live, a voice take is
                     // running, or the agenda popup is up; translucent at rest.
-                    fillColor: (win.dash || win.privacyRest || win.voiceMorph || win.deadlines) ? theme.bg : theme.bgTranslucent
-                    visible: !win.notifMorph && !win.showBurst
+                    fillColor: (win.capShow || win.dash || win.privacyRest || win.voiceMorph || win.deadlines) ? theme.bg : theme.bgTranslucent
+                    // a burst during a capture must NOT strip the controls' surface —
+                    // it floats below the pill instead (see burstLoader), so keep the
+                    // surface up whenever the capture UI owns the pill.
+                    visible: !win.notifMorph && (!win.showBurst || win.capShow)
                     opacity: visible ? 1 : 0
     
                     Behavior on opacity {
@@ -1543,7 +1614,7 @@ ShellRoot {
                 OnAirWave {
                     anchors.fill: parent
                     theme: theme
-                    active: !win.dash && !win.notifMorph && !win.showBurst && !win.voiceMorph && root.privacyActive
+                    active: !win.dash && !win.notifMorph && !win.showBurst && !win.voiceMorph && !win.capShow && root.privacyActive
                     micOn: root.micUnmuted
                     level: micPeak.peak
                 }
@@ -1556,7 +1627,7 @@ ShellRoot {
                     // under-line's own MouseArea intercepts its clicks (the clock /
                     // glyphs don't accept mouse, so those still fall through to focus).
                     z: 1
-                    visible: !win.dash && !win.notifMorph && !win.showBurst && !win.voiceMorph
+                    visible: !win.dash && !win.notifMorph && !win.showBurst && !win.voiceMorph && !win.capShow
                     theme: theme
                     clock: root.clockShort
                     solid: win.privacyRest
@@ -1585,7 +1656,7 @@ ShellRoot {
                 // voice recorder owns the pill (its clicks stop the take, not expand).
                 MouseArea {
                     anchors.fill: parent
-                    enabled: !win.dash && !win.notifMorph && !win.showBurst && !win.voiceMorph
+                    enabled: !win.dash && !win.notifMorph && !win.showBurst && !win.voiceMorph && !win.capShow
                     cursorShape: Qt.PointingHandCursor
                     acceptedButtons: Qt.LeftButton | Qt.RightButton
                     // left-click reveals the dashboard; right-click anywhere on the
@@ -1635,8 +1706,12 @@ ShellRoot {
                 // Replaces the collapsed clock for 1s; one mini-pill per burst kind.
                 Loader {
                     id: burstLoader
-    
-                    anchors.centerIn: parent
+
+                    // centered over the resting pill normally; while the capture UI
+                    // owns the pill, the burst floats just BELOW it (own surface) so
+                    // it never covers or strips the controls.
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    y: win.capShow ? parent.height + 8 : (parent.height - height) / 2
                     active: win.showBurst
                     sourceComponent: cBurst
                     opacity: win.showBurst ? 1 : 0
@@ -1679,11 +1754,46 @@ ShellRoot {
                         NumberAnimation {
                             duration: theme.animFast
                         }
-    
+
                     }
-    
+
                 }
-    
+
+                // ---- capture controls: the pill becomes the screenshot toolbar
+                // (annotating) or the record settings (recConfig). z high so it sits
+                // over the resting/dashboard content; the pill is sized to it by the
+                // width/height ternaries above. The fullscreen canvas is capWin.
+                Loader {
+                    id: captureLoader
+                    z: 50
+                    anchors.centerIn: parent
+                    active: win.capShow
+                    opacity: win.capShow ? 1 : 0
+                    visible: opacity > 0
+                    sourceComponent: win.capMenu ? cCaptureMenu
+                                   : (capture.mode === "recConfig" ? cRecordControls : cCaptureToolbar)
+                    Behavior on opacity { NumberAnimation { duration: theme.animFast } }
+                }
+                Component {
+                    id: cCaptureMenu
+                    CaptureMenu {
+                        theme: theme
+                        recording: capture.mode === "recording"
+                        onScreenshot: { win.capMenu = false; capture.beginScreenshot(); }
+                        onRecord: { win.capMenu = false; capture.beginRecord(); }
+                        onStop: { win.capMenu = false; capRec.stop(); }
+                        onDismiss: win.capMenu = false
+                    }
+                }
+                Component {
+                    id: cCaptureToolbar
+                    CaptureToolbar { state: capture; theme: theme }
+                }
+                Component {
+                    id: cRecordControls
+                    RecordControls { state: capture; theme: theme; rc: capRec }
+                }
+
                 // ---- shared hover indicator (one square that jumps between items) ----
                 // Declared before the rows so it sits *behind* their icons. Its target
                 // is the hovered item (win.hoverItem) or, when none, the launcher icon;
@@ -2061,6 +2171,41 @@ ShellRoot {
     
                         }
     
+                        // capture button (left of the status icons / network glyph):
+                        // left-click = screenshot, right-click = screen record, and
+                        // while recording = stop & save. (A dropdown menu of these is
+                        // the next refinement; the actions + IPC verbs work now.)
+                        Rectangle {
+                            id: captureBtn
+                            readonly property bool recording: capture.mode === "recording"
+                            width: theme.iconCell + 4; height: theme.iconCell + 4
+                            radius: theme.radiusBtn
+                            color: (capture.active || captureMa.containsMouse) ? theme.accentDim : "transparent"
+                            Behavior on color { ColorAnimation { duration: theme.animFast } }
+                            MSym {
+                                anchors.centerIn: parent
+                                icon: captureBtn.recording ? "stop_circle" : "screenshot_monitor"
+                                size: 21
+                                fill: captureBtn.recording ? 1 : 0
+                                color: capture.active ? theme.accent : theme.textDim
+                            }
+                            MouseArea {
+                                id: captureMa
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                acceptedButtons: Qt.LeftButton
+                                onContainsMouseChanged: if (containsMouse) win.hoverEnter(captureBtn)
+                                // open the chooser (screenshot / record / stop) — like
+                                // opening a status menu, not a direct fire. Collapse the
+                                // dashboard so only the menu shows.
+                                onClicked: {
+                                    win.open = false; win.launcher = false; win.focused = false;
+                                    win.capMenu = true;
+                                }
+                            }
+                        }
+
                         // status icons -> open panel to that menu (active one highlighted)
                         StatusIcons {
                             id: statusIcons
@@ -2403,8 +2548,10 @@ ShellRoot {
             // is 0x0, so no mask conditionals are needed.
             Loader {
                 id: voiceCancelLoader
-    
-                active: root.voiceActive
+
+                // hidden while the capture morph owns the pill (a self-contained menu
+                // mode) — the take keeps running underneath and its X returns after
+                active: root.voiceActive && !win.capShow
                 x: pill.x + pill.width + 22
                 y: pill.y + (pill.height - 26) / 2
                 width: active ? 26 : 0
@@ -2637,4 +2784,61 @@ ShellRoot {
     SystemClock { id: sysclock; precision: SystemClock.Minutes }
     readonly property string clockShort: Qt.formatDateTime(sysclock.date, "hh:mm")
     readonly property string clockDate:  Qt.formatDateTime(sysclock.date, "ddd, d MMM")
+
+    // ==================== capture canvas (screenshot + record) ==============
+    // The FULL-SCREEN part only — frozen grab + region select + annotations
+    // (screenshot), transparent region + webcam (record). The CONTROLS live in the
+    // pill (capture morph, below). Declared BEFORE the pill Variants so it maps
+    // first and the pill stacks ON TOP of it (both Overlay) — the pill shows the
+    // toolbar / record settings over this canvas. No REC timer here (the pill's
+    // capture button stops recording). See CAPTURE.md.
+    Variants {
+        model: Quickshell.screens
+
+        PanelWindow {
+            id: capWin
+            required property var modelData
+            screen: modelData
+
+            // hidden while "grabbing" so the grabber captures the real desktop, not
+            // our own overlay; hidden while "recording" the pill collapses but the
+            // canvas stays for the webcam — mask makes all-but-webcam click-through.
+            visible: capture.active && capture.mode !== "grabbing"
+            color: "transparent"
+            // Top (NOT Overlay): the pill is Overlay and is mapped permanently, so an
+            // Overlay canvas mapped on-demand would stack ABOVE the pill and hide the
+            // in-pill toolbar. Top sits above normal windows but BELOW the pill.
+            WlrLayershell.layer: WlrLayer.Top
+            WlrLayershell.namespace: "pill-capture"
+            exclusionMode: ExclusionMode.Ignore
+            // keyboard for screenshot editing + record config (Escape, Ctrl+C/S), but
+            // NOT while recording (the user is working in real apps).
+            WlrLayershell.keyboardFocus: (capture.active && capture.mode !== "recording")
+                                         ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+            anchors { top: true; bottom: true; left: true; right: true }
+
+            // while recording the canvas only carries the (non-interactive) webcam,
+            // so make the whole thing click-through; otherwise it's fully interactive.
+            mask: capture.mode === "recording" ? capEmptyRegion : null
+            Region { id: capEmptyRegion }        // no items -> click-through
+
+            CaptureOverlay {
+                id: capOv
+                anchors.fill: parent
+                visible: !capture.isRecord
+                focus: !capture.isRecord
+                state: capture
+                theme: theme
+            }
+            RecordCanvas {
+                id: capRecCv
+                anchors.fill: parent
+                visible: capture.isRecord
+                focus: capture.isRecord && capture.mode === "recConfig"
+                state: capture
+                theme: theme
+                rc: capRec
+            }
+        }
+    }
 }

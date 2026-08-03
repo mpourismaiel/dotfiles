@@ -1538,6 +1538,15 @@ burst. Bind three *Custom Shortcuts* (System Settings ▸ Shortcuts) running
 actions first*, so only our burst shows (no double OSD) and nothing else moves the
 volume.
 
+*Scroll to nudge (wheel).* A topmost =MouseArea= (=z:100=, =acceptedButtons:
+Qt.NoButton= so clicks + hover fall straight through — it only claims the wheel)
+lets you scroll *anywhere over the pill* — the resting clock pill OR the hovered
+dashboard — to raise/lower the active speaker's volume. The step scales by the
+actual =angleDelta= (120 eighths-of-a-degree = one notch = 5%) so hi-res /
+free-spinning wheels move smoothly. Gated OUT of the open control panel / menus,
+the launcher, a ctx menu, the notification morph, and the action-burst /
+voice-recorder takes (those scroll their own content or shouldn't hijack the wheel).
+
 *Level burst.* Both the brightness and volume shortcuts render through one *level*
 burst kind ([[*ActionBurstPill.qml][=ActionBurstPill=]]): a two-column mini-pill —
 glyph on the left, title (=Brightness= / =Volume= / =Muted=) over a progress bar on
