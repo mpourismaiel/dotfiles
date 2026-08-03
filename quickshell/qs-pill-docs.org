@@ -766,7 +766,7 @@ goes away.
 *Wiring (=init.qml=).* =notifMorph= is now a hard-=false= (its old width/height/y takeover
 branches are dead; the many =!notifMorph= gates that keep the normal resting/dashboard
 pill enabled all read true). A new =notifRest= (a notification at true rest — no panel /
-launcher / ctx / burst / voice) drives the *"resting notification"* block: a
+launcher / ctx / voice) drives the *"resting notification"* block: a
 [[*NotificationStack.qml][=NotificationStack=]] floating =dropGap= (8px) below the pill
 (=opacity= gated on =cardIn=; no scale — the droplet does the growth), plus a
 =NotificationDroplet= declared *before* it (so it renders behind, as the card's backing)
@@ -1531,8 +1531,10 @@ reverts to the clock, driven from =root= so every monitor shows it (=burstDesk= 
 =burstLang= / =burstPhase=; one =Timer= runs settle 100ms → animate 300ms → settle
 600ms). Each kind is a mini-pill carrying the hovered surface; both kinds at once sit
 side by side and *pop apart* on entry (=Translate=, =OutBack=). A burst takes over
-only the resting pill (yields to hover/open/launcher/right-click) and suppresses
-=notifRest= so an active notification deck floats below (no droplet) during the burst.
+only the resting pill (yields to hover/open/launcher/right-click). It is *independent
+of notifications*: the pill morphs in place and the resting notification droplet deck
+is left untouched (=notifRest= no longer excludes =showBurst=, and the float-below
+stack no longer activates on =showBurst=) — the two animate separately.
 Two events fire bursts, each guarding its initial value on startup:
 - *desktop switch* (=onCurrentDesktopChanged=) — a filled dot slides from the old
   slot to the new across the animate phase; the hovered Row-1 dots use the same slide.

@@ -962,14 +962,16 @@ ShellRoot {
             // in the pill's width/height/y are now dead.
             property bool notifMorph: false
             // a notification is showing at true rest (no panel / launcher / ctx menu /
-            // burst / voice take): the deck floats below the pill and, on arrival, a
-            // droplet detaches from the pill. While clicked/launcher/ctx/burst/voice,
-            // the deck floats below via the other stack (no droplet) instead.
-            readonly property bool notifRest: notifs.current !== null && !open && !launcher && !ctxMode && !showBurst && !voiceMorph
+            // voice take): the deck floats below the pill and, on arrival, a droplet
+            // detaches from the pill. While clicked/launcher/ctx/voice, the deck floats
+            // below via the other stack (no droplet) instead. Action bursts are
+            // independent — they morph the pill in place and no longer suppress this,
+            // so the resting deck stays put right through a burst.
+            readonly property bool notifRest: notifs.current !== null && !open && !launcher && !ctxMode && !voiceMorph
             // a transient action burst (desktop switch / layout change) takes over
-            // the *resting* pill for 1s; it yields to hover/open/launcher/ctx
-            // (those already show richer UI) and suppresses the notification morph,
-            // floating the deck below the burst pill instead.
+            // the *resting* pill for 1s; it yields to hover/open/launcher/ctx (those
+            // already show richer UI). It is independent of notifications: the pill
+            // morphs in place and the resting notification deck is left untouched.
             property bool showBurst: root.burstActive && !dash && !root.voiceActive
             // hide the resting pill while a fullscreen window is focused (games,
             // video, etc.) — only at true rest: hovering, opening, or a morphing
@@ -2473,16 +2475,15 @@ ShellRoot {
             }
 
             // ===================== notifications below an open pill =====================
-            // When the pill is clicked-open / launcher / app-menu — or briefly while
-            // an action burst takes over the pill — notifications don't morph it: the
-            // same deck floats below instead (so a burst pushes notifications down).
+            // When the pill is clicked-open / launcher / app-menu — or while the voice
+            // recorder owns it — there is no resting droplet, so the same deck floats
+            // below the taken-over pill instead (otherwise notifications would be
+            // invisible for the whole take). Action bursts are NOT routed through here:
+            // they morph the pill in place and leave the resting droplet deck alone.
             Loader {
                 anchors.horizontalCenter: parent.horizontalCenter
                 y: pill.y + pill.height + 8
-                // the voice recorder also suppresses the morph, so the deck floats
-                // below it too — otherwise notifications would be invisible for the
-                // whole take.
-                active: ((win.open || win.launcher || win.ctxMode) || win.showBurst || win.voiceMorph) && notifs.active.length > 0
+                active: ((win.open || win.launcher || win.ctxMode) || win.voiceMorph) && notifs.active.length > 0
                 sourceComponent: cStack
             }
 
@@ -2493,7 +2494,8 @@ ShellRoot {
             // (a tight 8px) below it: the droplet's final rectangle matches the card's
             // size/colour, and the real card fades in over it on `landed()` so the
             // rectangle becomes the notification. Fires only while `notifRest` (the
-            // other stack above owns the open/launcher/burst/voice cases, no droplet).
+            // other stack above owns the open/launcher/voice cases, no droplet); action
+            // bursts don't affect it — the droplet deck rests on through a burst.
             Item {
                 id: restNotif
                 anchors.fill: parent
