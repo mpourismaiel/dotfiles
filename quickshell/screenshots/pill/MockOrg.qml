@@ -14,15 +14,16 @@ QtObject {
     // ---- deadline watch (mirrors OrgAgenda's deadlines buckets) ----
     // delta = deadline-day − today: <0 overdue ("late"), 0 due today, >0 ahead.
     readonly property var deadlines: [
-        { text: "Refactor pill: extract shared components", delta: -9, date: "2026-07-23", file: "/home/mahdi/org/todo.org",  pos: 240 },
-        { text: "Review Quickshell 0.3 release notes",      delta: -4, date: "2026-07-28", file: "/home/mahdi/org/todo.org",  pos: 360 },
-        { text: "Renew domain",                             delta: -1, date: "2026-07-31", file: "/home/mahdi/org/todo.org",  pos: 400 },
-        { text: "Ship pill + emaqs screenshots",            delta:  0, date: "2026-08-01", file: "/home/mahdi/org/todo.org",  pos: 120 },
-        { text: "Weekly review",                            delta:  0, date: "2026-08-01", file: "/home/mahdi/org/notes.org", pos:  12 },
-        { text: "Invoice for July",                         delta:  2, date: "2026-08-03", file: "/home/mahdi/org/todo.org",  pos: 500 },
-        { text: "Team offsite notes",                       delta:  5, date: "2026-08-06", file: "/home/mahdi/org/notes.org", pos:  80 },
-        { text: "Pay rent",                                 delta:  9, date: "2026-08-10", file: "/home/mahdi/org/todo.org",  pos: 520 },
-        { text: "Quarterly report",                         delta: 20, date: "2026-08-21", file: "/home/mahdi/org/todo.org",  pos: 560 }
+        { text: "Refactor pill: extract shared components", delta: -9, priority: "B", date: "2026-07-25", file: "/home/mahdi/org/todo.org",  pos: 240 },
+        { text: "Review Quickshell 0.3 release notes",      delta: -4, priority: "",  date: "2026-07-30", file: "/home/mahdi/org/todo.org",  pos: 360 },
+        { text: "Renew domain",                             delta: -1, priority: "A", date: "2026-08-02", file: "/home/mahdi/org/todo.org",  pos: 400 },
+        { text: "Ship pill + emaqs screenshots",            delta:  0, priority: "A", date: "2026-08-03", file: "/home/mahdi/org/todo.org",  pos: 120 },
+        { text: "Weekly review",                            delta:  0, priority: "C", date: "2026-08-03", file: "/home/mahdi/org/notes.org", pos:  12 },
+        { text: "Invoice for July",                         delta:  1, priority: "B", date: "2026-08-04", file: "/home/mahdi/org/todo.org",  pos: 500 },
+        { text: "Prepare board deck",                       delta:  5, priority: "A", date: "2026-08-08", file: "/home/mahdi/org/todo.org",  pos: 620 },
+        { text: "Team offsite notes",                       delta:  5, priority: "",  date: "2026-08-08", file: "/home/mahdi/org/notes.org", pos:  80 },
+        { text: "Pay rent",                                 delta:  9, priority: "A", date: "2026-08-12", file: "/home/mahdi/org/todo.org",  pos: 520 },
+        { text: "Quarterly report",                         delta: 20, priority: "C", date: "2026-08-23", file: "/home/mahdi/org/todo.org",  pos: 560 }
     ]
     readonly property var lateItems:  deadlines.filter(function (d) { return d.delta < 0; })
     readonly property var todayItems: deadlines.filter(function (d) { return d.delta === 0; })

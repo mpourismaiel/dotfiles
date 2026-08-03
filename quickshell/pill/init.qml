@@ -915,8 +915,17 @@ ShellRoot {
             property bool kbNav: false
             // the floating org-deadlines list is up (right-click the resting pill or
             // click its deadline under-line). NOT part of `dash`: the pill stays a
-            // collapsed clock while the panel floats below it (see OrgDeadlinesMenu).
+            // collapsed clock while the panel floats below it (see AgendaMenu).
             property bool deadlines: false
+            // the org agenda / deadline signals hide under the finance privacy toggle
+            // (the launcher eye), so the resting-pill under-line and the deadlines popup
+            // go dark alongside the finance + calendar sections it already gates.
+            readonly property bool orgHidden: finance.privacy
+            onOrgHiddenChanged: if (orgHidden) deadlines = false
+            // the resting pill's under-line is present when a deadline is due/overdue
+            // OR a meeting is imminent — both suppressed under the privacy toggle.
+            readonly property bool restUnderline: !orgHidden
+                && (orgAgenda.hasDue || calEvents.hasMeetingSoon)
             property bool dash: open || launcher || focused || ctxMode
             property int menu: 4 // 0 net, 1 vol, 2 bt, 3 batt, 5 clipboard, 6 calendar, 7 voice memo, 8 finance, 4 notif (default pane)
             // keyboard-focus gating. The pill grabs the compositor keyboard ONLY while
@@ -1411,15 +1420,15 @@ ShellRoot {
                 y: (win.notifMorph || win.showBurst) ? 6 : 0
                 // the voice recorder leads the chains: a larger resting pill (220x36,
                 // iPhone-memo style) — voiceMorph already yields to open/launcher/ctx.
-                width: win.voiceMorph ? 220 : win.showBurst ? (burstLoader.item ? burstLoader.item.implicitWidth : 96) : win.launcher ? win.launcherWidth : win.ctxMode ? 520 : (win.notifMorph ? (morphStack.item ? morphStack.item.implicitWidth : 420) : (win.open ? (win.menu === 6 || win.menu === 8 ? win.calWidth : 520) : (win.dash ? win.hoverWidth : Math.max(56 + root.privacyCount * 20 + root.notifRestWidth, orgAgenda.hasDue ? collapsedPill.implicitWidth + 28 : 0))))
+                width: win.voiceMorph ? 220 : win.showBurst ? (burstLoader.item ? burstLoader.item.implicitWidth : 96) : win.launcher ? win.launcherWidth : win.ctxMode ? 520 : (win.notifMorph ? (morphStack.item ? morphStack.item.implicitWidth : 420) : (win.open ? (win.menu === 6 || win.menu === 8 ? win.calWidth : 520) : (win.dash ? win.hoverWidth : Math.max(56 + root.privacyCount * 20 + root.notifRestWidth, win.restUnderline ? collapsedPill.implicitWidth + 28 : 0))))
                 // in ctx mode the pill sizes to whichever menu loader is active (app
                 // context menu or tray menu).
-                height: win.voiceMorph ? 36 : win.showBurst ? (burstLoader.item ? burstLoader.item.implicitHeight : 28) : (win.open || win.launcher) ? win.openPaneHeight : win.ctxMode ? Math.min(win.openHeight, ((ctxLoader.item || trayLoader.item) ? (ctxLoader.item || trayLoader.item).implicitHeight + theme.pad * 2 : 300)) : (win.notifMorph ? morphStack.implicitHeight : (win.dash ? win.hoverHeight : (orgAgenda.hasDue ? 48 : 28)))
+                height: win.voiceMorph ? 36 : win.showBurst ? (burstLoader.item ? burstLoader.item.implicitHeight : 28) : (win.open || win.launcher) ? win.openPaneHeight : win.ctxMode ? Math.min(win.openHeight, ((ctxLoader.item || trayLoader.item) ? (ctxLoader.item || trayLoader.item).implicitHeight + theme.pad * 2 : 300)) : (win.notifMorph ? morphStack.implicitHeight : (win.dash ? win.hoverHeight : (win.restUnderline ? 48 : 28)))
                 // resting (collapsed, un-hovered) pill is dimmed; full opacity once
                 // hovered / open / a notification is morphing it (or a camera/recording
-                // is live, or a voice take is recording); fully hidden while a
-                // fullscreen window is focused (fsHide)
-                opacity: win.voiceMorph ? 1 : win.showBurst ? 1 : (win.fsHide ? 0 : ((win.dash || win.notifMorph || win.privacyRest) ? 1 : theme.idleOpacity))
+                // is live, or a voice take is recording, or the agenda popup is up);
+                // fully hidden while a fullscreen window is focused (fsHide)
+                opacity: win.voiceMorph ? 1 : win.showBurst ? 1 : (win.fsHide ? 0 : ((win.dash || win.notifMorph || win.privacyRest || win.deadlines) ? 1 : theme.idleOpacity))
     
                 HoverHandler {
                     id: hover
@@ -1477,9 +1486,9 @@ ShellRoot {
                     theme: theme
                     radius: win.dash ? theme.radiusPanel : Math.min(theme.radiusPanel, height / 2)
                     wing: wingW
-                    // solid when expanded, a camera/recording is live, or a voice take
-                    // is running; translucent at rest.
-                    fillColor: (win.dash || win.privacyRest || win.voiceMorph) ? theme.bg : theme.bgTranslucent
+                    // solid when expanded, a camera/recording is live, a voice take is
+                    // running, or the agenda popup is up; translucent at rest.
+                    fillColor: (win.dash || win.privacyRest || win.voiceMorph || win.deadlines) ? theme.bg : theme.bgTranslucent
                     visible: !win.notifMorph && !win.showBurst
                     opacity: visible ? 1 : 0
     
@@ -1561,9 +1570,12 @@ ShellRoot {
                     // newest-app-first) → an app-icon glance strip before the privacy icons
                     notifGroups: notifs.grouped
                     iconsMax: root.notifAppIconsMax
-                    // org-deadline under-line (overdue / due-today counts)
-                    lateCount: orgAgenda.lateCount
-                    todayCount: orgAgenda.todayCount
+                    // org-deadline under-line (overdue / due-today counts); zeroed
+                    // under the finance privacy toggle so the under-line disappears
+                    lateCount: win.orgHidden ? 0 : orgAgenda.lateCount
+                    todayCount: win.orgHidden ? 0 : orgAgenda.todayCount
+                    // imminent-meeting notice in the same under-line (also privacy-gated)
+                    meetingMins: win.orgHidden ? -1 : calEvents.nextMeetingMins
                     onDeadlinesActivated: win.deadlines = true
                 }
     
@@ -1580,9 +1592,11 @@ ShellRoot {
                     // resting pill opens the org-deadlines list (available even when
                     // nothing is due — it then shows the "nothing due" empty state).
                     onClicked: (mouse) => {
-                        if (mouse.button === Qt.RightButton)
-                            win.deadlines = true;
-                        else
+                        if (mouse.button === Qt.RightButton) {
+                            // org deadlines hide under the finance privacy toggle
+                            if (!win.orgHidden)
+                                win.deadlines = true;
+                        } else
                             win.focused = true;
                     }
                 }
@@ -2456,12 +2470,13 @@ ShellRoot {
             // full-screen `win` level (like AppMenu) so it drops below the resting
             // pill without being clipped. Centred under the pill and clamped on
             // screen by the component. Backdrop / Esc / opening an item closes it.
-            OrgDeadlinesMenu {
+            AgendaMenu {
                 id: deadlinesMenu
                 anchors.fill: parent
                 z: 1000
                 theme: theme
                 org: orgAgenda
+                cal: calEvents
                 open: win.deadlines
                 // centre the 400px panel under the pill (component clamps on screen)
                 px: pill.x + pill.width / 2 - 200

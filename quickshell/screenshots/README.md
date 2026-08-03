@@ -65,7 +65,7 @@ dashboard row layout (kept in sync by eye against `../pill/init.qml`).
 
 ## Animation scenes (`pill/anim.qml` `_scenes`)
 
-- **deadlines** — the `OrgDeadlinesMenu` drop-in entrance (fade + slide + scale from top).
+- **deadlines** — the `AgendaMenu` drop-in entrance (fade + slide + scale from top).
 - **droplet** — the notification **water-droplet drop-out**: a droplet detaches from the
   resting pill's bottom lip, falls, and splashes onto the deck floating below (the deck's
   entrance syncs to `NotificationDroplet.landed()`). See `../pill/NotificationDroplet.qml`.

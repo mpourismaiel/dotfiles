@@ -278,6 +278,9 @@ Item {
     // hide every calendar signal (events + grid dots) while finance privacy / DND is
     // on — reusing the same effective privacy state the finance section respects.
     readonly property bool showCal: !!root.cal && !(root.fin && root.fin.privacy)
+    // the org agenda hides under the same finance privacy / DND toggle (the eye),
+    // so nothing personal shows while it's on — matching the finance + Google sections.
+    readonly property bool showOrg: !!root.org && !(root.fin && root.fin.privacy)
 
     Component.onCompleted: {
         var t = new Date();
@@ -556,7 +559,7 @@ Item {
                         anchors.bottomMargin: 4
                         spacing: 3
                         Rectangle {
-                            visible: root.org && root.org.hasItems(cell.modelData.key)
+                            visible: root.showOrg && root.org.hasItems(cell.modelData.key)
                             width: 4
                             height: 4
                             radius: 2
@@ -656,9 +659,10 @@ Item {
         Item {
             id: agendaHead
             anchors.top: dRule.bottom
-            anchors.topMargin: root.theme.gap
+            anchors.topMargin: root.showOrg ? root.theme.gap : 0
             width: parent.width
-            height: 24
+            visible: root.showOrg
+            height: root.showOrg ? 24 : 0
             Text {
                 anchors.left: parent.left
                 anchors.verticalCenter: parent.verticalCenter
@@ -708,7 +712,7 @@ Item {
 
                 Repeater {
                     model: {
-                        var items = (root.org && root.org.dayItems) ? root.org.dayItems.slice() : [];
+                        var items = (root.showOrg && root.org.dayItems) ? root.org.dayItems.slice() : [];
                         // group order: dated (scheduled/deadline) first, then the
                         // active undated todos, then done undated todos last — a
                         // done dated item still sorts above the undated todos.
@@ -875,7 +879,7 @@ Item {
                 }
 
                 Text {
-                    visible: !root.org || !root.org.dayItems || root.org.dayItems.length === 0
+                    visible: root.showOrg && (!root.org.dayItems || root.org.dayItems.length === 0)
                     text: "Nothing scheduled."
                     color: root.theme.faint
                     font.family: root.theme.family
@@ -961,292 +965,13 @@ Item {
                 }
                 Repeater {
                     model: root.showCal ? root.calEvents : []
-                    delegate: Column {
-                        id: evCard
-                        required property var modelData
+                    delegate: EventCard {
+                        // the Repeater injects modelData into EventCard's required
+                        // property; the rest of the card's state comes from here.
+                        theme: root.theme
                         width: agendaCol.width
-                        spacing: 4
-                        // a fully-past event (now beyond its end) dims wholesale —
-                        // colour bar, times, title, description all fade together.
-                        opacity: evCard.past ? 0.45 : 1
-                        Behavior on opacity { NumberAnimation { duration: root.theme.anim } }
-                        property bool expanded: false
-                        // is there anything worth expanding into?
-                        readonly property bool hasDetail: !!(evCard.modelData.description
-                            || evCard.modelData.location || evCard.modelData.joinLink
-                            || (evCard.modelData.attendees && evCard.modelData.attendees.length))
-                        readonly property color barColor: (evCard.modelData.color
-                            && ("" + evCard.modelData.color).length)
-                            ? evCard.modelData.color : root.theme.event
-
-                        // minutes until this timed event starts (negative once it
-                        // has started); 9999 for all-day / undated so they never nag
-                        readonly property int minsToStart: {
-                            if (evCard.modelData.allDay || !evCard.modelData.startTime)
-                                return 9999;
-                            var p = ("" + evCard.modelData.startKey).split("-");
-                            var t = ("" + evCard.modelData.startTime).split(":");
-                            var start = new Date(+p[0], +p[1] - 1, +p[2],
-                                                 +t[0], +t[1], 0).getTime();
-                            return Math.round((start - root.nowMs) / 60000);
-                        }
-                        // "imminent": from 10 min before the start until 5 min after it
-                        readonly property bool imminent: evCard.minsToStart <= 10
-                                                      && evCard.minsToStart >= -5
-                        readonly property string imminentLabel:
-                              evCard.minsToStart > 0 ? ("Starts in " + evCard.minsToStart + " min")
-                            : evCard.minsToStart === 0 ? "Starting now"
-                            : ("Started " + (-evCard.minsToStart) + " min ago")
-
-                        // wall-clock (ms) of the event's end; a "past" event is one
-                        // now beyond it. All-day: end key is the exclusive next-day
-                        // date, so it turns past at that midnight.
-                        readonly property double endMs: {
-                            var p = ("" + evCard.modelData.endKey).split("-");
-                            if (evCard.modelData.allDay)
-                                return new Date(+p[0], +p[1] - 1, +p[2], 0, 0, 0).getTime();
-                            var et = evCard.modelData.endTime || evCard.modelData.startTime;
-                            if (!et) return NaN;
-                            var t = ("" + et).split(":");
-                            return new Date(+p[0], +p[1] - 1, +p[2], +t[0], +t[1], 0).getTime();
-                        }
-                        readonly property bool past: !isNaN(evCard.endMs) && root.nowMs > evCard.endMs
-
-                        // imminent-meeting banner — makes the current / next-up
-                        // event unmistakable at a glance
-                        Rectangle {
-                            visible: evCard.imminent
-                            width: evCard.width
-                            height: visible ? bannerRow.implicitHeight + 10 : 0
-                            radius: root.theme.radiusSmall
-                            color: root.theme.accentSoft
-                            border.width: 1
-                            border.color: root.theme.accent
-                            Row {
-                                id: bannerRow
-                                anchors.left: parent.left
-                                anchors.leftMargin: 8
-                                anchors.verticalCenter: parent.verticalCenter
-                                spacing: 6
-                                MSym {
-                                    icon: "notifications_active"
-                                    size: 14
-                                    fill: 1
-                                    color: root.theme.accent
-                                    anchors.verticalCenter: parent.verticalCenter
-                                }
-                                Text {
-                                    text: evCard.imminentLabel
-                                    color: root.theme.accent
-                                    font.family: root.theme.mono
-                                    font.pixelSize: root.theme.fsSmall
-                                    font.letterSpacing: root.theme.labelSpacing
-                                    font.capitalization: Font.AllUppercase
-                                    anchors.verticalCenter: parent.verticalCenter
-                                }
-                            }
-                        }
-
-                        // header row — click toggles expansion
-                        MouseArea {
-                            id: hdrMa
-                            width: evCard.width
-                            height: hdrRow.implicitHeight
-                            hoverEnabled: true
-                            cursorShape: evCard.hasDetail ? Qt.PointingHandCursor : Qt.ArrowCursor
-                            onClicked: if (evCard.hasDetail) evCard.expanded = !evCard.expanded
-                            Row {
-                                id: hdrRow
-                                width: hdrMa.width
-                                spacing: 8
-                                // per-calendar colour bar
-                                Rectangle {
-                                    width: 3
-                                    height: hdrCol.height
-                                    radius: 1.5
-                                    color: evCard.barColor
-                                }
-                                Column {
-                                    id: hdrCol
-                                    width: evCard.width - 3 - 16 - (evCard.hasDetail ? 24 : 0)
-                                    spacing: 1
-                                    Text {
-                                        text: evCard.modelData.allDay ? "All day"
-                                            : (evCard.modelData.startTime
-                                               + (evCard.modelData.endTime
-                                                  && evCard.modelData.endTime !== evCard.modelData.startTime
-                                                  ? " – " + evCard.modelData.endTime : ""))
-                                        color: root.theme.event
-                                        font.family: root.theme.mono
-                                        font.pixelSize: root.theme.fsSmall
-                                        font.letterSpacing: root.theme.labelSpacing
-                                        font.capitalization: Font.AllUppercase
-                                    }
-                                    Text {
-                                        width: parent.width
-                                        wrapMode: Text.WordWrap
-                                        text: evCard.modelData.summary
-                                        color: root.theme.text
-                                        font.family: root.theme.family
-                                        font.pixelSize: root.theme.fsNormal
-                                    }
-                                    // which calendar/account (only useful with >1 account)
-                                    Text {
-                                        visible: !!(root.cal && root.cal.accounts.length > 1)
-                                        width: parent.width
-                                        elide: Text.ElideRight
-                                        text: evCard.modelData.calendar || evCard.modelData.account
-                                        color: root.theme.faint
-                                        font.family: root.theme.mono
-                                        font.pixelSize: root.theme.fsSmall - 1
-                                    }
-                                }
-                                // chevron (only when there's detail)
-                                Item {
-                                    width: evCard.hasDetail ? 24 : 0
-                                    height: 24
-                                    visible: evCard.hasDetail
-                                    MSym {
-                                        anchors.centerIn: parent
-                                        icon: "expand_more"
-                                        size: 18
-                                        color: root.theme.textDim
-                                        rotation: evCard.expanded ? 180 : 0
-                                        Behavior on rotation { NumberAnimation { duration: root.theme.anim } }
-                                    }
-                                }
-                            }
-                        }
-
-                        // detail — animated open/close
-                        Item {
-                            width: evCard.width
-                            height: evCard.expanded ? detailCol.implicitHeight : 0
-                            clip: true
-                            opacity: evCard.expanded ? 1 : 0
-                            Behavior on height { NumberAnimation { duration: root.theme.anim; easing.type: Easing.OutCubic } }
-                            Behavior on opacity { NumberAnimation { duration: root.theme.animFast } }
-                            Column {
-                                id: detailCol
-                                width: parent.width
-                                spacing: 6
-
-                                // location
-                                Row {
-                                    visible: !!evCard.modelData.location
-                                    width: detailCol.width
-                                    spacing: 6
-                                    MSym {
-                                        icon: "place"
-                                        size: 14
-                                        color: root.theme.faint
-                                        anchors.top: parent.top
-                                        anchors.topMargin: 1
-                                    }
-                                    Text {
-                                        width: detailCol.width - 20
-                                        wrapMode: Text.WordWrap
-                                        text: evCard.modelData.location
-                                        color: root.theme.textDim
-                                        font.family: root.theme.family
-                                        font.pixelSize: root.theme.fsSmall
-                                    }
-                                }
-                                // description
-                                Text {
-                                    visible: !!evCard.modelData.description
-                                    width: detailCol.width
-                                    wrapMode: Text.WordWrap
-                                    textFormat: Text.PlainText
-                                    text: evCard.modelData.description
-                                    color: root.theme.textDim
-                                    font.family: root.theme.family
-                                    font.pixelSize: root.theme.fsSmall
-                                }
-                                // guests
-                                Column {
-                                    visible: !!(evCard.modelData.attendees
-                                             && evCard.modelData.attendees.length > 0)
-                                    width: detailCol.width
-                                    spacing: 3
-                                    Text {
-                                        text: "Guests"
-                                        color: root.theme.faint
-                                        font.family: root.theme.mono
-                                        font.pixelSize: root.theme.fsSmall - 1
-                                        font.letterSpacing: root.theme.labelSpacing
-                                        font.capitalization: Font.AllUppercase
-                                    }
-                                    Repeater {
-                                        model: evCard.modelData.attendees
-                                        delegate: Row {
-                                            id: att
-                                            required property var modelData
-                                            width: detailCol.width
-                                            spacing: 6
-                                            // response status dot
-                                            Rectangle {
-                                                width: 6
-                                                height: 6
-                                                radius: 3
-                                                anchors.verticalCenter: parent.verticalCenter
-                                                color: att.modelData.response === "accepted" ? root.theme.good
-                                                     : att.modelData.response === "declined" ? root.theme.danger
-                                                     : att.modelData.response === "tentative" ? root.theme.money
-                                                     : root.theme.faint
-                                            }
-                                            Text {
-                                                width: detailCol.width - 12
-                                                elide: Text.ElideRight
-                                                text: att.modelData.name
-                                                    + (att.modelData.self ? " (you)" : "")
-                                                color: root.theme.textDim
-                                                font.family: root.theme.family
-                                                font.pixelSize: root.theme.fsSmall
-                                            }
-                                        }
-                                    }
-                                }
-                                // join button → opens the meeting link in the browser
-                                Rectangle {
-                                    visible: !!evCard.modelData.joinLink
-                                    width: joinRow.implicitWidth + 22
-                                    height: 26
-                                    radius: root.theme.radiusBtn
-                                    color: joinMa.containsMouse ? root.theme.event : root.theme.row
-                                    border.width: 1
-                                    border.color: root.theme.event
-                                    Row {
-                                        id: joinRow
-                                        anchors.centerIn: parent
-                                        spacing: 6
-                                        MSym {
-                                            icon: "videocam"
-                                            size: 15
-                                            color: joinMa.containsMouse ? root.theme.bg : root.theme.event
-                                            anchors.verticalCenter: parent.verticalCenter
-                                        }
-                                        Text {
-                                            text: "Join"
-                                            color: joinMa.containsMouse ? root.theme.bg : root.theme.event
-                                            font.family: root.theme.mono
-                                            font.pixelSize: root.theme.fsSmall
-                                            font.letterSpacing: root.theme.labelSpacing
-                                            font.capitalization: Font.AllUppercase
-                                            anchors.verticalCenter: parent.verticalCenter
-                                        }
-                                    }
-                                    MouseArea {
-                                        id: joinMa
-                                        anchors.fill: parent
-                                        hoverEnabled: true
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: Qt.openUrlExternally(evCard.modelData.joinLink)
-                                    }
-                                    Behavior on color { ColorAnimation { duration: root.theme.animFast } }
-                                }
-                            }
-                        }
+                        nowMs: root.nowMs
+                        showAccount: !!(root.cal && root.cal.accounts.length > 1)
                     }
                 }
 

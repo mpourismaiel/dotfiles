@@ -12,7 +12,7 @@ import Quickshell.Widgets
 // and — only when an org DEADLINE is due or overdue — a compact under-line
 // beneath it ("⚑ 3 LATE · 2 TODAY"). The under-line grows the pill and shrinks
 // the clock 2px; clicking it (or right-clicking the pill) opens the deadlines
-// popup (see deadlinesActivated / OrgDeadlinesMenu.qml).
+// popup (see deadlinesActivated / AgendaMenu.qml).
 Column {
     id: root
     required property var theme
@@ -32,6 +32,13 @@ Column {
     property int lateCount: 0
     property int todayCount: 0
     readonly property bool hasDue: lateCount > 0 || todayCount > 0
+    // imminent-meeting watch (from CalendarEvents): minutes until the next meeting
+    // starting within 10 min, or -1 when none. Shown in the same under-line, in the
+    // urgent style, next to the deadline counts.
+    property int meetingMins: -1
+    readonly property bool hasMeeting: meetingMins >= 0
+    // the under-line is present whenever there's a deadline OR an imminent meeting.
+    readonly property bool hasUnderline: hasDue || hasMeeting
     // the under-line was clicked (open the full deadlines list).
     signal deadlinesActivated()
 
@@ -79,9 +86,9 @@ Column {
         color: root.solid ? root.theme.text
              : Qt.rgba(root.theme.text.r, root.theme.text.g, root.theme.text.b, 0.78)
         font.family: root.theme.serif
-        // shrink 2px while the deadline under-line shows, so the two lines fit the
+        // shrink 2px while the under-line shows, so the two lines fit the
         // resting pill without it feeling cramped.
-        font.pixelSize: root.theme.fsLarge - (root.hasDue ? 2 : 0)
+        font.pixelSize: root.theme.fsLarge - (root.hasUnderline ? 2 : 0)
     }
     // ---- notification app-icon strip: one icon per app that has un-cleared
     // notifications (deduped via notifGroups, newest app first), so a glance shows
@@ -224,17 +231,18 @@ Column {
     }
     } // clockRow
 
-    // ---- deadline under-line: "⚑ N LATE · M TODAY" beneath the clock. Present
-    // only when something is due/overdue (takes no vertical space otherwise, so
-    // the resting pill stays a plain clock). The flag + "LATE" glow accent when
-    // overdue; "TODAY" stays muted. Clicking anywhere on it opens the deadlines
-    // popup (right-clicking the whole pill does the same, wired in init.qml).
+    // ---- under-line: "⚑ N LATE · M TODAY · 🗓 K MIN TO MEETING" beneath the clock.
+    // Present only when a deadline is due/overdue OR a meeting is imminent (takes no
+    // vertical space otherwise, so the resting pill stays a plain clock). The flag +
+    // "LATE" and the meeting notice glow accent (urgent); "TODAY" stays muted.
+    // Clicking anywhere on it opens the deadlines popup (right-clicking the whole
+    // pill does the same, wired in init.qml).
     Item {
         id: dueLine
         anchors.horizontalCenter: parent.horizontalCenter
-        visible: root.hasDue
+        visible: root.hasUnderline
         implicitWidth: dueRow.implicitWidth
-        implicitHeight: root.hasDue ? dueRow.implicitHeight : 0
+        implicitHeight: root.hasUnderline ? dueRow.implicitHeight : 0
         width: implicitWidth
         height: implicitHeight
 
@@ -245,6 +253,7 @@ Column {
 
             MSym {
                 anchors.verticalCenter: parent.verticalCenter
+                visible: root.hasDue
                 icon: "flag"
                 size: 12
                 fill: 1
@@ -277,6 +286,39 @@ Column {
                 // already carries the "due" sense to its left (matches the spec).
                 text: root.todayCount + (root.lateCount > 0 ? " TODAY" : " DUE TODAY")
                 color: root.theme.textDim
+                font.family: root.theme.mono
+                font.pixelSize: root.theme.fsSmall
+                font.letterSpacing: root.theme.labelSpacing
+                font.capitalization: Font.AllUppercase
+            }
+            // separator before the meeting notice, only when a deadline count sits
+            // to its left.
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                visible: root.hasMeeting && root.hasDue
+                text: "·"
+                color: root.theme.faint
+                font.family: root.theme.mono
+                font.pixelSize: root.theme.fsSmall
+            }
+            // ---- imminent-meeting notice (urgent style): a calendar icon + "K MIN
+            // TO MEETING" (or "MEETING NOW" at zero). Shown whenever a meeting starts
+            // within the next 10 minutes.
+            MSym {
+                anchors.verticalCenter: parent.verticalCenter
+                visible: root.hasMeeting
+                icon: "event_upcoming"
+                size: 12
+                fill: 1
+                weight: 600
+                color: root.theme.accent
+            }
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                visible: root.hasMeeting
+                text: root.meetingMins === 0 ? "MEETING NOW"
+                    : root.meetingMins + " MIN TO MEETING"
+                color: root.theme.accent
                 font.family: root.theme.mono
                 font.pixelSize: root.theme.fsSmall
                 font.letterSpacing: root.theme.labelSpacing

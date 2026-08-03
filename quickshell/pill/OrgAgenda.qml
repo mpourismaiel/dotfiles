@@ -14,6 +14,8 @@ QtObject {
     property var dayItems: []             // [{ text, todo, type, priority, done, dated, file, pos }] for dayKey
     property var rangeDays: []            // [{ date, done }, …] within the loaded range that have dated entries
     property var rangeMap: ({})           // date -> allDone (every dated entry that day is done)
+    property string rangeA: ""            // last loaded range bounds, so the poll can refresh it
+    property string rangeB: ""
 
     // ---- deadline watch (the collapsed pill's under-line + the deadlines popup) ----
     // Every undone DEADLINE todo due within `aheadDays`, sorted most-overdue-first.
@@ -38,8 +40,16 @@ QtObject {
         if (!dayProc.running) dayProc.running = true;
     }
     function loadRange(a, b) {
+        root.rangeA = a; root.rangeB = b;
         rangeProc.command = ["python", Quickshell.shellPath("orgbridge.py"), "range", a, b];
         if (!rangeProc.running) rangeProc.running = true;
+    }
+    // re-pull whatever's currently shown (day list + month dots) without any UI
+    // action, so entries added in Emacs surface on their own. No-op for the parts
+    // that were never loaded yet.
+    function refresh() {
+        if (root.dayKey) root.loadDay(root.dayKey);
+        if (root.rangeA && root.rangeB) root.loadRange(root.rangeA, root.rangeB);
     }
     function openAgenda(key) {
         openProc.command = ["python", Quickshell.shellPath("orgbridge.py"), "open", key];
@@ -122,5 +132,14 @@ QtObject {
         repeat: true
         triggeredOnStart: true
         onTriggered: root.loadDeadlines()
+    }
+    // keep the agenda day list + month dots current too: re-pull the loaded day and
+    // range every 10 minutes so entries added in Emacs appear without reopening the
+    // calendar. Bindings on dayItems/rangeDays update the open menu reactively.
+    property Timer agendaPoll: Timer {
+        interval: 600000
+        running: true
+        repeat: true
+        onTriggered: root.refresh()
     }
 }

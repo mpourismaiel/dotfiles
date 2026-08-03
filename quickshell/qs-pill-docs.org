@@ -370,7 +370,9 @@ transactions in an *Upcoming* section — each with a gold checkbox that hands t
 row (=confirmForecast=, via =FinanceState.pendingPrefill=) to the finance menu's
 add form, prefilled with the date/amount/currency/category/account so the user can
 confirm or adjust it into a real transaction. All finance signals hide while
-privacy is on.
+privacy is on. The *org agenda* honours the same toggle (=showOrg=): its grid dots,
+the "Org agenda" heading, the day list and the empty-state line all disappear while
+finance privacy / DND is on, alongside the finance and Google-calendar sections.
 *** Code
 Code: [[file:pill/CalendarMenu.qml][=pill/CalendarMenu.qml=]]
 
@@ -386,8 +388,13 @@ calendar dots, queried once per shown month grid), and =openAgenda(key)= opens t
 agenda in Emacs (reusing an existing frame). All are best-effort: if Emacs isn't
 reachable the parses fall back to empty, so the calendar still works.
 
+The loaded day + range are re-pulled on their own: =loadRange= remembers its bounds
+(=rangeA=/=rangeB=), =refresh()= re-runs =loadDay(dayKey)= and =loadRange(rangeA, rangeB)=,
+and a 10-minute =agendaPoll= =Timer= calls it so entries added in Emacs surface without
+reopening the calendar (bindings on =dayItems=/=rangeDays= update the open menu reactively).
+
 It also drives the *deadline watch* behind the collapsed pill's under-line and the
-[[*OrgDeadlinesMenu.qml][=OrgDeadlinesMenu=]] popup: =loadDeadlines()= fills =deadlines=
+[[*AgendaMenu.qml][=AgendaMenu=]] popup: =loadDeadlines()= fills =deadlines=
 (every undone =DEADLINE= todo due within =aheadDays=, sorted most-overdue-first), which
 a 5-minute =Timer= re-polls (dates roll over on their own) and the toggle-reload
 refreshes. =deadlines= is bucketed into =lateItems= (overdue, =delta<0=), =todayItems=
@@ -413,6 +420,15 @@ fetch only when the shown month grid falls outside the cached window, growing it
 cover both. =loading= drives the refetch spinner; =lastError= / =fetched= / =accounts=
 surface status. Best-effort — if the bridge or sign-in fails the lists stay empty and
 the calendar still works.
+
+For the *imminent-meeting* notice on the collapsed pill, a =nowTick= =Timer= advances
+=nowMs= ~3×/min and =nextMeetingMins= scans the cached events for the soonest *timed*
+event starting within the next 10 minutes (0..10, all-day/undated excluded), returning
+its minutes or −1 (=hasMeetingSoon=). [[*init.qml — the resting pill][=init=]] feeds it to
+[[*CollapsedPill.qml][=CollapsedPill=]] as =meetingMins=, gated off under the finance
+privacy toggle like the rest of the calendar signals. [[*AgendaMenu.qml][=AgendaMenu=]] pulls
+a given day's events via =dayEvents(key)= to interleave today's / tomorrow's into its
+sections.
 *** Code
 Code: [[file:pill/CalendarEvents.qml][=pill/CalendarEvents.qml=]]
 
@@ -1184,40 +1200,83 @@ ring once every 5s). The icons *pop in* / *shrink out* (scale overshoot via
 camera/recording) shows the clock at full opacity; otherwise it is slightly
 translucent.
 
-Beneath the clock row sits an optional *deadline under-line*: when =lateCount= or
+Beneath the clock row sits an optional *under-line*: when =lateCount= or
 =todayCount= (from [[*OrgAgenda.qml][=OrgAgenda=]]) is non-zero it shows =⚑ N LATE ·
 M TODAY= (the flag + "LATE" glow accent while overdue, "TODAY" stays muted; just =M
-DUE TODAY= when nothing is late). Its presence grows the resting pill and shrinks the
-clock 2px so both lines fit. Clicking the under-line emits =deadlinesActivated()= (init
-opens the [[*OrgDeadlinesMenu.qml][=OrgDeadlinesMenu=]]); right-clicking anywhere on the
-resting pill does the same. The whole component is stacked one above the pill's resting
+DUE TODAY= when nothing is late). It also carries an *imminent-meeting* notice:
+=meetingMins= (from [[*CalendarEvents.qml][=CalendarEvents=]], ≥ 0 while a meeting starts
+within 10 min) adds =🗓 K MIN TO MEETING= (=MEETING NOW= at zero) in the same urgent
+accent, next to the deadline counts (=· K MIN TO MEETING= when a count sits to its
+left). =hasUnderline= (deadline OR meeting) drives the whole line — its presence grows
+the resting pill and shrinks the clock 2px so both lines fit. Clicking the under-line
+emits =deadlinesActivated()= (init opens the [[*AgendaMenu.qml][=AgendaMenu=]]);
+right-clicking anywhere on the resting pill does the same. The whole component is stacked one above the pill's resting
 focus =MouseArea= so only the under-line intercepts — the clock/glyphs are non-clickable
-and fall through to the focus click.
+and fall through to the focus click. Both are gated by =win.orgHidden= (the finance
+privacy toggle): while privacy is on =init= feeds =lateCount=/=todayCount= as 0 (so the
+under-line vanishes and the pill shrinks back) and swallows the right-click, so no org
+signal shows on the resting pill.
 *** Code
 Code: [[file:pill/CollapsedPill.qml][=pill/CollapsedPill.qml=]]
 
-** OrgDeadlinesMenu.qml
+** AgendaMenu.qml
 *** Description
-The floating *Org deadlines* list, opened by right-clicking the resting pill or clicking
-its deadline under-line (=win.deadlines= in =init.qml=). Like [[*AppMenu.qml][=AppMenu=]]
+The floating *Agenda* list, opened by right-clicking the resting pill or clicking
+its under-line (=win.deadlines= in =init.qml=). Like [[*AppMenu.qml][=AppMenu=]]
 it is a full-overlay =Item= (=anchors.fill= its host at =win= level, so it drops below the
 pill without being clipped) with an outside-click backdrop; the panel is centred under the
-pill and clamped on screen. It reads [[*OrgAgenda.qml][=OrgAgenda=]]'s buckets and renders
-them in spec order — *LATE* (overdue, accent-tinted rows with a =−Nd= days-late label),
-*TODAY* (due today) and *AHEAD* (upcoming, capped at =aheadMax= with a "+N more" line),
-each row labelled by weekday+day from its deadline date. A checkbox ticks the item done
-(=toggleDone=, which reloads the buckets so it drops off), and clicking a row opens the
-headline in Emacs (=gotoItem=). When nothing is due/overdue an empty-state card shows
-"Nothing due." plus the next deadline. Keyboard (the pill grabs the keyboard while open):
-↑/↓ move the cursor over the flat visible list, Space ticks done, Enter opens, Esc closes.
+pill and clamped on screen. It weaves [[*OrgAgenda.qml][=OrgAgenda=]]'s deadline buckets and
+[[*CalendarEvents.qml][=CalendarEvents=]]'s events into three time sections:
 
-*Entrance.* Each time it opens the panel drops in from the pill: a =theme.anim= =OutCubic=
-drive (=appear= 0→1, restarted in =onOpenChanged=) fades it in, slides it down ~12px from
-above its rest position, and scales it up from =0.96= anchored to its top edge — so the
-list reads as spilling out of the pill rather than snapping into place. Closing just clears
-=appear= (=visible: open= cuts the panel, no exit animation).
+- *OVERDUE* — only tasks due before today (=lateItems=, =delta<0=), accent-tinted rows with
+  a =−Nd= days-late label.
+- *TODAY* — today's calendar events first (full [[*EventCard.qml][=EventCard=]]s), then the
+  tasks due today (=todayItems=, =delta=0=).
+- *AHEAD* — faded back a touch (=dimAlpha=): it leads with EVERY *#A* high-priority upcoming
+  task (=aheadPriority=: any =delta>0= with priority A), pulled to the top and kept fully lit
+  with a solid accent "A" chip so it can't be missed; then tomorrow's events (dimmed cards);
+  then the remaining tasks due *tomorrow* (=tomorrowTasks=: =delta=1= minus the #A ones, so
+  nothing shows twice), dimmed.
+
+Each task row has a checkbox to tick it done (=toggleDone=, which reloads the buckets so it
+drops off) and opens the headline in Emacs on click (=gotoItem=); the event cards keep their
+full functionality (imminent banner, expand-to-detail, Join). The sections share a =Flickable=
+that scrolls once they pass =bodyMax=; the title/hint header stays pinned. When every section
+is empty an empty-state card shows "Nothing on your agenda." Keyboard (the pill grabs the
+keyboard while open) drives the *task* rows via the flat overdue→today→#A→tomorrow list: ↑/↓
+move, Space ticks done, Enter opens, Esc closes; events are mouse-driven. Opening reads both
+stores' caches (=loadDeadlines= + =cal.read=) so it freshens on open. Today/tomorrow day keys
+follow =cal.nowMs= so they roll over on their own. The whole popup is suppressed under the
+finance privacy toggle (the under-line that opens it is hidden and the right-click swallowed
+— see [[*init.qml — the resting pill][=init=]]).
+
+*Entrance.* Each time it opens the panel *wells out of the pill* as a water droplet — the
+same [[*NotificationDroplet.qml][=NotificationDroplet=]] the resting notification uses. A
+droplet detaches from the pill's bottom lip, pinches off (tinting to the accent), falls a
+=dropGap=, then expands into the panel footprint (=cardWidth=/=cardHeight= bound to the
+panel), and the panel content fades in over the expanded rect on =landed()= (=contentIn=,
+after a short lead pause so the rect finishes growing first — no scale, which would fight
+it). A =cardFallback= timer reveals the content even if the droplet is skipped. Closing
+resets the droplet and clears =contentIn= (=visible: open= cuts the panel, no exit animation).
 *** Code
-Code: [[file:pill/OrgDeadlinesMenu.qml][=pill/OrgDeadlinesMenu.qml=]]
+Code: [[file:pill/AgendaMenu.qml][=pill/AgendaMenu.qml=]]
+
+** EventCard.qml
+*** Description
+One calendar-event card, extracted from [[*CalendarMenu.qml][=CalendarMenu=]] so the same
+full-functionality card is reused in [[*AgendaMenu.qml][=AgendaMenu=]]. The caller sets
+=width= and hands it =modelData= (a normalized [[*CalendarEvents.qml][=CalendarEvents=]]
+event), a ticking =nowMs= (drives the *imminent* banner from 10 min before start to 5 after,
+and the wholesale-dim *past* state past the end), and =showAccount= (label which calendar it
+came from when >1 account is signed in). It renders the per-calendar colour bar, the time /
+"All day" line + summary, and a chevron that expands to location, description, guests
+(response-coloured dots) and a *Join* button opening the meeting link. A *finished* event
+collapses (=compact= = =past && !expanded=) to a single struck-through "=time  title=" line
+with no account/detail, so it reads as done at a glance beside still-live events; expanding it
+(if it has detail) restores the normal full card. =dimmed= layers an extra section-level fade
+(the AHEAD section) on top of the past-fade.
+*** Code
+Code: [[file:pill/EventCard.qml][=pill/EventCard.qml=]]
 
 ** OnAirWave.qml
 *** Description

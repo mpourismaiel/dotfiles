@@ -62,6 +62,30 @@ QtObject {
         }
     }
 
+    // ---- imminent-meeting watch (the collapsed pill's under-line) ----
+    // Ticked wall-clock (ms) so the countdown re-evaluates on its own; seeded at
+    // startup and advanced by `nowTick` below.
+    property double nowMs: 0
+    // Minutes until the soonest *timed* event starting within the next 10 minutes
+    // (0..10 inclusive), or -1 when nothing is imminent. All-day / undated events
+    // never count. Drives the pill's "N MIN TO MEETING" notice.
+    readonly property int nextMeetingMins: {
+        if (root.nowMs <= 0) return -1;
+        var best = -1;
+        for (var i = 0; i < root.events.length; i++) {
+            var e = root.events[i];
+            if (e.allDay || !e.startTime || !e.startKey) continue;
+            var p = ("" + e.startKey).split("-");
+            var t = ("" + e.startTime).split(":");
+            var start = new Date(+p[0], +p[1] - 1, +p[2], +t[0], +t[1], 0).getTime();
+            var mins = Math.round((start - root.nowMs) / 60000);
+            if (mins < 0 || mins > 10) continue;
+            if (best === -1 || mins < best) best = mins;
+        }
+        return best;
+    }
+    readonly property bool hasMeetingSoon: root.nextMeetingMins >= 0
+
     function hasEvents(key) { return root.dayMap.hasOwnProperty(key); }
     // the selected day's events (client-side filter of the cached window)
     function dayEvents(key) {
@@ -93,5 +117,14 @@ QtObject {
         running: true
         onTriggered: root.fetch()
     }
-    Component.onCompleted: root.read()
+    // tick the wall-clock ~3×/min so the "N MIN TO MEETING" countdown ticks down
+    // and clears on its own, without a heavy per-second tick.
+    property Timer nowTick: Timer {
+        interval: 20000
+        running: true
+        repeat: true
+        triggeredOnStart: true
+        onTriggered: root.nowMs = Date.now()
+    }
+    Component.onCompleted: { root.nowMs = Date.now(); root.read(); }
 }

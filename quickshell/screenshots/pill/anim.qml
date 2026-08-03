@@ -3,7 +3,7 @@ pragma ComponentBehavior: Bound
 // harness family). Sibling of harness.qml: where harness.qml grabs one still per
 // state, this one plays a named animation scene and grabs a burst of frames on a
 // timer, which animate.sh then encodes to mp4/gif (+ keeps the PNG frames for
-// visual inspection). It hosts the REAL animated components (OrgDeadlinesMenu,
+// visual inspection). It hosts the REAL animated components (AgendaMenu,
 // NotificationDroplet, NotificationStack) against Mock* state, inside a
 // FloatingWindow — it never instantiates a NotificationServer / winbridge / DBus
 // source, so it cannot touch the live pill.
@@ -87,19 +87,44 @@ FloatingWindow {
 
     Timer { id: startTimer; interval: 600; running: true; onTriggered: win._nextScene() }
 
-    // ---------------- scene: org-deadlines menu drop-in ----------------
+    // ---------------- scene: agenda menu droplet entrance ----------------
+    // Mirrors the live layout: a resting pill sits at the top, and on open the agenda
+    // panel wells out of its bottom lip as a droplet that expands into the window.
     Component {
         id: cDeadlines
         Item {
             id: dscene
-            width: 440; height: 300
+            width: 440; height: 520
+            readonly property int lip: 40           // pill bottom (y=10 + height 30)
             function play() { menu.open = false; reopen.restart(); }
             Timer { id: reopen; interval: 60; onTriggered: menu.open = true }
-            OrgDeadlinesMenu {
+
+            // resting pill (mock — surface + clock), attached to the top
+            Item {
+                anchors.horizontalCenter: parent.horizontalCenter
+                y: 10
+                width: 150; height: 30
+                Rectangle {
+                    anchors.fill: parent
+                    radius: height / 2
+                    color: theme.bg
+                    border.color: theme.border; border.width: 1
+                }
+                Text {
+                    anchors.centerIn: parent
+                    text: "09:41"
+                    color: theme.text; font.family: theme.serif; font.pixelSize: 17
+                }
+            }
+
+            AgendaMenu {
                 id: menu
                 anchors.fill: parent
                 theme: theme; org: org
-                open: false; px: 20; py: 8
+                // panel centred under the pill, its top a dropGap below the lip
+                open: false
+                px: dscene.width / 2 - 200
+                py: dscene.lip + 8
             }
         }
     }

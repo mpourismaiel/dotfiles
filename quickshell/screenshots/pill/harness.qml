@@ -55,6 +55,7 @@ FloatingWindow {
         { name: "resting",       comp: cResting },
         { name: "resting-rec",   comp: cRestingRec },
         { name: "resting-due",   comp: cRestingDue },
+        { name: "resting-meeting", comp: cRestingMeeting },
         { name: "deadlines",     comp: cDeadlines },
         { name: "dashboard",     comp: cDashboard },
         { name: "menu-network",  comp: cNet },
@@ -139,7 +140,7 @@ FloatingWindow {
     Component {
         id: cRestingDue
         Item {
-            width: 200; height: 48
+            width: 360; height: 48
             PillSurface {
                 anchors.fill: parent; theme: theme
                 radius: Math.min(theme.radiusPanel, height / 2); wing: 12
@@ -149,16 +150,39 @@ FloatingWindow {
                 anchors.centerIn: parent; theme: theme
                 clock: win.clockShort
                 lateCount: org.lateCount; todayCount: org.todayCount
+                // combined with an imminent meeting to show the full under-line
+                meetingMins: 7
             }
         }
     }
-    // the floating deadlines list (right-click / under-line target)
+    // resting pill with only an imminent-meeting notice (no deadlines) —
+    // "⚑-free" under-line: just the calendar icon + "N MIN TO MEETING".
+    Component {
+        id: cRestingMeeting
+        Item {
+            width: 200; height: 48
+            PillSurface {
+                anchors.fill: parent; theme: theme
+                radius: Math.min(theme.radiusPanel, height / 2); wing: 12
+                fillColor: theme.bgTranslucent
+            }
+            CollapsedPill {
+                anchors.centerIn: parent; theme: theme
+                clock: win.clockShort
+                meetingMins: 3
+            }
+        }
+    }
+    // the floating agenda list (right-click / under-line target): org deadlines + events
     Component {
         id: cDeadlines
         Item {
-            width: 420; height: 520
-            OrgDeadlinesMenu {
-                anchors.fill: parent; theme: theme; org: org
+            width: 420; height: 980
+            AgendaMenu {
+                // bodyMax raised so the whole list (deadlines + events) shows in the
+                // still; live it stays capped and scrolls.
+                anchors.fill: parent; theme: theme; org: org; cal: cal
+                bodyMax: 1200
                 open: true; px: 8; py: 8
             }
         }
