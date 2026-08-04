@@ -445,12 +445,19 @@ ShellRoot {
     property bool   burstLang: false
     property bool   burstLevel: false        // volume / brightness level burst
     readonly property bool burstActive: burstDesk || burstLang || burstLevel
-    readonly property var  burstKinds: {       // canonical order: desktops, language, level
-        const a = [];
-        if (burstDesk) a.push("desktops");
-        if (burstLang) a.push("language");
-        if (burstLevel) a.push("level");
-        return a;
+    // one row per live burst, NEWEST FIRST (index 0 = top of the column). A ListModel
+    // (not a rebuilt array) so inserting a new burst at the top animates the existing
+    // rows *rolling down* rather than recreating every delegate. burstAdd() puts the
+    // kind at the top (or lifts it there if it's already showing).
+    ListModel { id: burstModel }
+    function burstAdd(kind) {
+        for (let i = 0; i < burstModel.count; i++) {
+            if (burstModel.get(i).kind === kind) {
+                if (i !== 0) burstModel.move(i, 0, 1);
+                return;
+            }
+        }
+        burstModel.insert(0, { kind: kind });
     }
     property int    burstPhase: 0      // 0 idle, 1 pre, 2 animate, 3 post
     property string burstFromDesktop: ""
@@ -473,6 +480,7 @@ ShellRoot {
         if (kind === "desktops") burstDesk = true;
         else if (kind === "language") burstLang = true;
         else if (kind === "level") burstLevel = true;
+        burstAdd(kind);                // add / lift the row to the top of the column
         burstPhase = 1;                // (re)start the shared timeline from the top
         burstTimer.restart();
     }
@@ -492,7 +500,7 @@ ShellRoot {
         repeat: false
         onTriggered: {
             if (root.burstPhase < 3) { root.burstPhase++; burstTimer.restart(); }
-            else { root.burstPhase = 0; root.burstDesk = false; root.burstLang = false; root.burstLevel = false; }
+            else { root.burstPhase = 0; root.burstDesk = false; root.burstLang = false; root.burstLevel = false; burstModel.clear(); }
         }
     }
     // fire the bursts on a *real* change (skip the initial value on startup; QML
@@ -1629,14 +1637,15 @@ ShellRoot {
                 // (Binding x directly to an animating width made its Behavior chase a
                 // moving target and lag a full duration behind.)
                 x: win.pillCenterX - width / 2
-                // attached flush to the top edge in every stage — the resting clock pill
-                // AND the expanded dashboard / panel — growing downward, "rounded out"
-                // via the PillSurface background below. Only a notification card or an
-                // action burst floats 6px below the edge (those aren't "the pill"); a
-                // positioned capture pill, or a dragged idle pill, uses its own y.
+                // attached flush to the top edge in every stage — the resting clock pill,
+                // the expanded dashboard / panel, AND a burst (which now replaces the
+                // clock in place, so it stays pinned to the edge and grows downward) —
+                // "rounded out" via the PillSurface background below. Only a legacy
+                // notification morph floated 6px below the edge; a positioned capture
+                // pill, or a dragged idle pill, uses its own y.
                 y: win.capShow ? (win.capPositioned ? win.capPosY : 0)
                    : (win.idleMoved && !win.dash) ? win.idlePosY
-                   : (win.notifMorph || win.showBurst) ? 6 : 0
+                   : win.notifMorph ? 6 : 0
                 // animate y for every non-drag transition (expand, snap, reset-home) —
                 // matches pillCenterX so a reset glides both axes, not just x. Frozen
                 // only while a drag is live so the pill tracks the pointer 1:1.
@@ -1780,12 +1789,14 @@ ShellRoot {
                     // detached capture / idle pill → uniformly rounded (top corners = bottom)
                     rounded: win.pillFloating
                     // solid when expanded, a camera/recording is live, a voice take is
-                    // running, or the agenda popup is up; translucent at rest.
-                    fillColor: (win.capShow || win.dash || win.privacyRest || win.voiceMorph || win.deadlines) ? theme.bg : theme.bgTranslucent
-                    // a burst during a capture must NOT strip the controls' surface —
-                    // it floats below the pill instead (see burstLoader), so keep the
-                    // surface up whenever the capture UI owns the pill.
-                    visible: !win.notifMorph && (!win.showBurst || win.capShow)
+                    // running, the agenda popup is up, OR a burst is replacing the clock
+                    // (the burst now lives INSIDE the pill surface); translucent at rest.
+                    fillColor: (win.capShow || win.dash || win.privacyRest || win.voiceMorph || win.deadlines || win.showBurst) ? theme.bg : theme.bgTranslucent
+                    // the surface stays up through a burst now — the burst replaces the
+                    // clock in place and the pill resizes around it (only during a capture
+                    // does the burst float below in its own box; see burstLoader). Hidden
+                    // only while a notification morph owns the pill.
+                    visible: !win.notifMorph
                     opacity: visible ? 1 : 0
     
                     Behavior on opacity {
@@ -1852,7 +1863,18 @@ ShellRoot {
                     // under-line's own MouseArea intercepts its clicks (the clock /
                     // glyphs don't accept mouse, so those still fall through to focus).
                     z: 1
-                    visible: !win.dash && !win.notifMorph && !win.showBurst && !win.voiceMorph && !win.capShow
+                    // stays rendered through a burst (no showBurst gate) so it can
+                    // *revolve away* as the burst revolves in: it folds down about its
+                    // top edge (+90°) and fades, then unfolds back when the burst clears.
+                    visible: !win.dash && !win.notifMorph && !win.voiceMorph && !win.capShow
+                    opacity: win.showBurst ? 0 : 1
+                    Behavior on opacity { NumberAnimation { duration: theme.animFast } }
+                    transform: Rotation {
+                        origin.x: collapsedPill.width / 2; origin.y: 0
+                        axis { x: 1; y: 0; z: 0 }
+                        angle: win.showBurst ? 90 : 0
+                        Behavior on angle { NumberAnimation { duration: theme.anim; easing.type: Easing.OutCubic } }
+                    }
                     theme: theme
                     clock: root.clockShort
                     solid: win.privacyRest
@@ -1931,13 +1953,15 @@ ShellRoot {
                 }
     
                 // ---- action burst overlay (desktop switch / layout change) ----
-                // Replaces the collapsed clock for 1s; one mini-pill per burst kind.
+                // Replaces the collapsed clock: a vertical column of burst rows that
+                // fills the pill (which resizes to it). While the capture UI owns the
+                // pill the burst floats just BELOW it in its own box (boxed) instead, so
+                // it never covers or strips the controls. z above the resting content so
+                // the rows revolve in over the folding-away clock.
                 Loader {
                     id: burstLoader
+                    z: 5
 
-                    // centered over the resting pill normally; while the capture UI
-                    // owns the pill, the burst floats just BELOW it (own surface) so
-                    // it never covers or strips the controls.
                     anchors.horizontalCenter: parent.horizontalCenter
                     y: win.capShow ? parent.height + 8 : (parent.height - height) / 2
                     active: win.showBurst
@@ -1949,11 +1973,32 @@ ShellRoot {
                         NumberAnimation {
                             duration: theme.animFast
                         }
-    
+
                     }
-    
+
                 }
-    
+
+                // burst content, defined here in `win` scope so `boxed` can read this
+                // monitor's capShow (the burst gets its own surface only while floating
+                // below the capture pill; replacing the clock it uses the pill surface).
+                Component {
+                    id: cBurst
+                    ActionBurstPill {
+                        theme: theme
+                        model: burstModel
+                        desktops: root.desktops
+                        boxed: win.capShow
+                        phase: root.burstPhase
+                        fromLabel: root.burstFromLabel
+                        toLabel: root.burstToLabel
+                        dotIdx: root.burstDotIdx
+                        levelIcon: root.burstLevelIcon
+                        levelTitle: root.burstLevelTitle
+                        levelFrom: root.burstLevelFrom
+                        levelTo: root.burstLevelTo
+                    }
+                }
+
                 // ---- voice recorder: the resting pill becomes an iPhone-style memo
                 // recorder while a take records / transcribes (see § init.qml — voice
                 // recording). Clicks stop the take; the floating X beside the pill
@@ -2991,26 +3036,6 @@ ShellRoot {
     Component { id: cNotif; NotificationHistory { theme: theme; notifs: notifs } }
     // the active-notification deck, reused for the pill morph and the floating stack
     Component { id: cStack; NotificationStack { theme: theme; notifs: notifs } }
-    
-    // ---- action-burst content ----
-    // Hosted by burstLoader (which sizes the pill to the content's implicitWidth);
-    // reads the burst state machine's properties. See § ActionBurstPill.qml.
-    Component {
-        id: cBurst
-        ActionBurstPill {
-            theme: theme
-            kinds: root.burstKinds
-            desktops: root.desktops
-            phase: root.burstPhase
-            fromLabel: root.burstFromLabel
-            toLabel: root.burstToLabel
-            dotIdx: root.burstDotIdx
-            levelIcon: root.burstLevelIcon
-            levelTitle: root.burstLevelTitle
-            levelFrom: root.burstLevelFrom
-            levelTo: root.burstLevelTo
-        }
-    }
     
     // ---- clock ----
     SystemClock { id: sysclock; precision: SystemClock.Minutes }

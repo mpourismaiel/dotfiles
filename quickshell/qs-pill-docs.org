@@ -1334,12 +1334,25 @@ Code: [[file:pill/VoiceMemoMenu.qml][=pill/VoiceMemoMenu.qml=]]
 
 ** ActionBurstPill.qml
 *** Description
-The transient action-burst content: one mini-pill per active kind, side by side with
-a gap, each carrying the hovered-pill surface. When *both* kinds are live the two
-pills pop apart on entry (a quick =Translate=, =OutBack=). =language= shows
-=from → to= with the arrow flashing during the animate phase (=phase === 2=);
+The transient action-burst content, now *replacing the resting clock in place* rather
+than floating as separate mini-pills. It is a *vertical =Column=* of *surface-less*
+rows — one per active burst — so the pill's own surface is the background and the pill
+grows / shrinks to fit (see [[*init.qml][§ init.qml]] — the surface stays solid through a
+burst pinned to the top edge, the clock revolves away, and =pillCenterX=/=width=/=height=
+animate the resize). Rows are driven by a *=ListModel= (=model=), newest first* (index 0
+= top): a new burst is *inserted at the top* and *revolves in* from above (folds down
+from −90° about its top edge, fading) while the rows below *roll down* via the Column
+=move= transition. Using a ListModel (not a rebuilt array) is what makes the existing
+rows animate instead of being recreated — and makes two bursts fired in the *same tick*
+both render (the earlier =var= array occasionally dropped one). Rows *hug their content*
+(no fixed 28/44 height) so a stack sits tight. Row content is unchanged: =language=
+shows =from → to= with the arrow flashing during the animate phase (=phase === 2=);
 =desktops= shows the dot row (via [[*DesktopDots.qml][=DesktopDots=]]) with the filled
-dot sliding to =dotIdx=.
+dot sliding to =dotIdx=; =level= (volume / brightness) is an icon + a title over a
+from→to bar. All rows share one group life: the shared =burstTimer= restarts on every
+new burst, so stacked bursts *clear together* ~1s after the last one. =boxed= restores
+a self-contained rounded surface for the one case where the burst floats *below* the
+capture pill (=capShow=) instead of replacing the clock.
 *** Code
 Code: [[file:pill/ActionBurstPill.qml][=pill/ActionBurstPill.qml=]]
 
@@ -1622,15 +1635,25 @@ the menu for =onlyMenu= items); a menu-less item falls back to =secondaryActivat
 =current=, and =gdbus monitor= =currentChanged= to stay live; =switchDesktop(id)=
 sets the writable =current= property.
 
-*Action bursts.* A transient burst briefly (1s) takes over the resting pill then
-reverts to the clock, driven from =root= so every monitor shows it (=burstDesk= /
-=burstLang= / =burstPhase=; one =Timer= runs settle 100ms → animate 300ms → settle
-600ms). Each kind is a mini-pill carrying the hovered surface; both kinds at once sit
-side by side and *pop apart* on entry (=Translate=, =OutBack=). A burst takes over
-only the resting pill (yields to hover/open/launcher/right-click). It is *independent
-of notifications*: the pill morphs in place and the resting notification droplet deck
-is left untouched (=notifRest= no longer excludes =showBurst=, and the float-below
-stack no longer activates on =showBurst=) — the two animate separately.
+*Action bursts.* A transient burst briefly (~1s) *replaces the clock inside the resting
+pill*, which resizes around it, then reverts. Driven from =root= so every monitor shows
+it (=burstDesk= / =burstLang= / =burstLevel= / =burstPhase=; one =Timer= runs settle
+100ms → animate 300ms → settle 600ms, and *restarts from the top on every new burst* —
+so several bursts share one life and *clear together* ~1s after the last). Live bursts
+are tracked in a *=burstModel= =ListModel=* (=burstAdd()= inserts / lifts each kind to
+index 0, newest first); it is cleared when the group life ends. The presentation lives
+in the pill, which *stays pinned to the top edge* (no 6px float — a burst is the pill
+now, not an overlay): the =PillSurface= stays solid through a burst (=showBurst= joins
+the solid-fill set) and keeps whatever wings/rounding the pill currently has; the
+=CollapsedPill= clock *revolves away* (folds down +90° about its top edge, fading) while
+=burstLoader= (z 5) hosts the [[*ActionBurstPill.qml][=ActionBurstPill=]] *column* whose rows
+revolve in from above; the pill's =width=/=height= animate the resize (width from the
+centre via =pillCenterX=). Multiple bursts *stack vertically, newest on top*, the new
+one rolling the earlier rows down. A burst takes over only the resting pill
+(yields to hover/open/launcher/right-click). It is *independent of notifications*: the
+resting droplet deck is left untouched and simply sits below the now-taller pill — the
+two animate separately. While a *capture* owns the pill the burst can't replace the
+controls, so it floats just *below* them in its own =boxed= surface instead.
 Two events fire bursts, each guarding its initial value on startup:
 - *desktop switch* (=onCurrentDesktopChanged=) — a filled dot slides from the old
   slot to the new across the animate phase; the hovered Row-1 dots use the same slide.
