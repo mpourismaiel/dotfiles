@@ -17,7 +17,8 @@ the FULLSCREEN part is a separate layer window.
 - **Export is signal-driven**: pill toolbar → `CaptureState.requestCopy/Save` → `exportRequested` →
   `CaptureOverlay._export` (grabToImage full composite → `magick` crop to region → wl-copy / save).
 - **Capture button** in dashboard row 2 (left of the network glyph): left = screenshot, right = record,
-  click-while-recording = stop. IPC (`target: pill`): `screenshot` / `record` / `recordStop` / `captureCancel`.
+  click-while-recording = stop. IPC (`target: pill`): `screenshot` (full-screen) /
+  `screenshotRegion` (reuse last crop) / `record` / `recordStop` / `captureCancel`.
 - Grabber = `spectacle -b -n -m` (only one that works on this KWin; swappable via `CaptureState.grabCmd`).
 - Record = `gpu-screen-recorder -w portal` (restore token) with no-hardcode encoder.
 
@@ -92,6 +93,33 @@ the FULLSCREEN part is a separate layer window.
     with the captured stderr and the pill shows a "Recording failed" toast instead of
     copying/notifying a phantom file. (If your Record button "instantly saves", read
     that toast — it's the gpsr/portal error to fix.)
+- **Two screenshot verbs — full-screen vs region (2026-08-04):** both show the
+  controls **immediately** (no region draw needed first), differing only in the
+  starting crop, and both let you change it afterwards.
+  - **`screenshot`** IPC / "Take screenshot" (`beginScreenshot`, `shotMode="full"`):
+    pre-selects the WHOLE screen and jumps straight to `annotating` (toolbar up
+    instantly) for a fast full-screen copy / save / annotate.
+  - **`screenshotRegion`** IPC / "Screenshot region" (`beginScreenshotRegion`,
+    `shotMode="region"`): REUSES the last committed crop (straight to the toolbar);
+    draws a fresh one only if there is no previous region.
+  - Mechanics: the grabber reads `shotMode` on a clean exit — full sets
+    `pendingFull` and `CaptureOverlay._applyFullDefault()` commits
+    `Qt.rect(0,0,width,height)`; region goes to `annotating` if `hasRegion` else
+    `selecting`. The fullscreen canvas window is mapped/sized AFTER the grab lands
+    (and after the frozen image loads), and the exact "now sized" signal is unreliable
+    across compositors, so `_applyFullDefault()` runs from a 16 ms **retry timer**
+    gated on `pendingFull` (plus instant flag-change / image-ready paths); the timer
+    stops itself the moment it commits. This is the robust fix for the live bug where
+    the toolbar only appeared after a click (image-ready / width-change alone missed).
+  - Changing the crop (either verb): with the SELECT tool, a drag on **empty canvas**
+    (not over an annotation, not on a crop grip) draws a fresh region — the
+    rubber-band no longer needs the dim outside the crop (there is none at full
+    screen). `_annAt()` / `_nearCropBorder()` decide the pass-through; presses on an
+    annotation or the region grips still edit them. The toolbar has a single crop
+    button: **fullscreen** (`fullscreen` glyph → `selectFullScreen()`, re-selects the
+    whole screen via the same `pendingFull` seam, keeping annotations); the old
+    `crop_free` "reselect" button was removed (redundant with the empty-canvas drag). `capAutoAvoid()` keeps the top-centre home for a full-screen selection
+    (nothing to dodge) instead of fleeing to a corner. `pill/check.sh` PASS.
 - **Annotation fixes (2026-08-03, fourth round):**
   - The screenshot region grips no longer steal annotation drags: the region
     `ResizeHandles` now lives INSIDE `annLayer`, declared before the annotations
@@ -219,11 +247,13 @@ So the build is split by a file seam:
 
 ## 2. Modes & flow
 
-### Screenshot (grab-first)
+### Screenshot (grab-first, full-screen-first)
 1. Hotkey / IPC `screenshot` fires → **immediately** portal-grab the full screen to `/tmp/cap-<ts>.png`
    (resting pill baked in — accepted). No overlay is up yet, so nothing to hide.
-2. Show `CaptureOverlay` fullscreen = the frozen PNG, dimmed outside the (not-yet-drawn) region.
-3. Rubber-band region select on the frozen image (mouse click+drag). Pill **morphs** to show the tool row.
+2. Show `CaptureOverlay` fullscreen = the frozen PNG. The WHOLE screen is pre-selected and the pill
+   **morphs to the tool row immediately** (fast full-screen copy/save/annotate — no region draw needed).
+3. To crop: with the SELECT tool, click-drag on empty canvas to rubber-band a fresh region (redrawable
+   any number of times); the crop grips fine-tune it. The dim appears once the region is sub-full-screen.
 4. Annotate on the frozen image: tools = **text, arrow, rectangle (stroke), rectangle (filled)** [phase 1].
    Placed annotations are a **vector scene**: select, move, delete. Color + stroke-width picker.
 5. Finish: `Ctrl+C` / copy button → copy cropped-image bytes to clipboard.

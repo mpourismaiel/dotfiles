@@ -69,6 +69,8 @@ ShellRoot {
         // overlay to pick a region + sources, then record via gpu-screen-recorder;
         // recordStop finalizes. Bind these to KDE custom shortcuts.
         function screenshot(): void { capture.beginScreenshot(); }
+        // like screenshot, but REUSES the last selected crop (draws one if none yet).
+        function screenshotRegion(): void { capture.beginScreenshotRegion(); }
         function record(): void { capture.beginRecord(); }
         function recordStop(): void { capRec.stop(); }
         function captureCancel(): void { if (capture.mode !== "recording") capture.cancel(); }
@@ -1168,6 +1170,13 @@ ShellRoot {
                 if (!hasReg || pw < 1 || ph < 1) {
                     win.capPositioned = false; win.capAttached = true; return;
                 }
+                // a full-screen selection (the fast-shot default) covers everything, so
+                // there's no clear slot to dodge to — keep the top-centre home instead
+                // of fleeing to the least-bad corner.
+                if (reg.x <= 2 && reg.y <= 2 && reg.x + reg.width >= win.width - 2
+                        && reg.y + reg.height >= win.height - 2) {
+                    win.capPositioned = false; win.capAttached = true; return;
+                }
                 const W = win.width, H = win.height, m = 12, gap = 12;
                 const rl = reg.x, rt = reg.y, rr = reg.x + reg.width, rb = reg.y + reg.height;
                 const area = (x, y) => {
@@ -2068,6 +2077,7 @@ ShellRoot {
                         theme: theme
                         recording: capture.mode === "recording"
                         onScreenshot: { win.capMenu = false; capture.beginScreenshot(); }
+                        onScreenshotRegion: { win.capMenu = false; capture.beginScreenshotRegion(); }
                         onRecord: { win.capMenu = false; capture.beginRecord(); }
                         onStop: { win.capMenu = false; capRec.stop(); }
                         onDismiss: win.capMenu = false

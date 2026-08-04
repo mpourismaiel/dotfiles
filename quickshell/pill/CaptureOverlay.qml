@@ -23,6 +23,21 @@ Item {
     property string fullPath: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/qs-capture-full.png"
 
     focus: true
+    // apply the full-screen default as soon as the grab is flagged AND we're sized.
+    // The fullscreen window is mapped/sized AFTER the grab lands (and after the frozen
+    // image loads), and the exact "now sized" signal is unreliable across compositors,
+    // so instead of guessing which event arrives last a short timer retries while the
+    // flag is up and stops itself the moment it commits (clearing pendingFull). The
+    // instant paths below (flag-change + image-ready) usually win the race first.
+    Connections {
+        target: overlay.state
+        function onPendingFullChanged() { overlay._applyFullDefault(); }
+    }
+    Timer {
+        interval: 16; repeat: true
+        running: overlay.state.pendingFull
+        onTriggered: overlay._applyFullDefault()
+    }
     Keys.onEscapePressed: overlay.state.cancel()
     Keys.onPressed: (e) => {
         if (e.modifiers & Qt.ControlModifier) {
@@ -60,9 +75,12 @@ Item {
             fillMode: Image.Stretch
             asynchronous: false
             cache: false
-            onStatusChanged: if (status === Image.Ready && overlay.state.frozenW === 0) {
-                overlay.state.frozenW = sourceSize.width;
-                overlay.state.frozenH = sourceSize.height;
+            onStatusChanged: if (status === Image.Ready) {
+                if (overlay.state.frozenW === 0) {
+                    overlay.state.frozenW = sourceSize.width;
+                    overlay.state.frozenH = sourceSize.height;
+                }
+                overlay._applyFullDefault();
             }
         }
 
@@ -172,14 +190,17 @@ Item {
         onPressed: (e) => {
             overlay._dragging = false;
             if (overlay.state.mode === "annotating") {
-                // only the SELECT tool redraws the crop by dragging the dim; a creation
-                // tool always draws (falls through), as does any press inside the crop
-                // (+ a grip margin) so annotating / the resize grips keep working.
-                const m = 16;
-                const inside = overlay.showRegion
-                    && e.x >= overlay.r.x - m && e.x <= overlay.r.x + overlay.r.width + m
-                    && e.y >= overlay.r.y - m && e.y <= overlay.r.y + overlay.r.height + m;
-                if (overlay.state.tool !== "select" || inside) { e.accepted = false; return; }
+                // creation tools (rect/arrow/text) always draw an annotation — fall
+                // through to the layer below.
+                if (overlay.state.tool !== "select") { e.accepted = false; return; }
+                // SELECT tool: pass through when the press lands on an existing
+                // annotation (move / resize / select it) or on a crop-region grip
+                // (fine-tune the crop); anywhere else on empty canvas a drag draws a
+                // FRESH region — so a smaller crop is one drag away even from the
+                // full-screen default (which leaves no dim to grab).
+                if (overlay._annAt(e.x, e.y) || overlay._nearCropBorder(e.x, e.y)) {
+                    e.accepted = false; return;
+                }
             }
             overlay._sx = e.x; overlay._sy = e.y;
         }
@@ -222,6 +243,42 @@ Item {
     Connections {
         target: overlay.state
         function onClearAnnotations() { overlay.clearAnnotations(); }
+    }
+
+    // a fresh grab asks for the full-screen default: once we know our size, pre-select
+    // the whole screen and commit → annotating (toolbar up instantly). Region lives in
+    // overlay coords (export grabs `shot` at this size), so full = the overlay box.
+    function _applyFullDefault() {
+        if (!overlay.state.pendingFull) return;
+        if (overlay.width < 2 || overlay.height < 2) return;
+        overlay.state.pendingFull = false;
+        overlay.state.commitRegion(Qt.rect(0, 0, overlay.width, overlay.height));
+    }
+
+    // topmost annotation whose bounding box covers (px,py) — annLayer shares the
+    // overlay's origin, so its children's x/y are directly comparable. Used to let a
+    // press fall through to an annotation instead of starting a region draw.
+    function _annAt(px, py) {
+        const kids = annLayer.children;
+        for (let i = kids.length - 1; i >= 0; i--) {
+            const k = kids[i];
+            if (k && k.isAnnotation && k.visible
+                && px >= k.x && px <= k.x + k.width
+                && py >= k.y && py <= k.y + k.height)
+                return k;
+        }
+        return null;
+    }
+    // true when (px,py) sits in the grip band hugging the crop outline (within `m` of
+    // an edge) — those presses go to the region ResizeHandles, not a fresh draw.
+    function _nearCropBorder(px, py) {
+        if (!overlay.showRegion) return false;
+        const r = overlay.r, m = 16;
+        const inOuter = px >= r.x - m && px <= r.x + r.width + m
+                     && py >= r.y - m && py <= r.y + r.height + m;
+        const inInner = px >= r.x + m && px <= r.x + r.width - m
+                     && py >= r.y + m && py <= r.y + r.height - m;
+        return inOuter && !inInner;
     }
 
     // ---- export: grab the full composite, crop to the region, copy / save ---

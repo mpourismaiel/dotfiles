@@ -10,6 +10,7 @@ Item {
     required property var theme
     property bool recording: false
     signal screenshot()
+    signal screenshotRegion()
     signal record()
     signal stop()
     signal dismiss()
@@ -52,6 +53,11 @@ Item {
             visible: !menu.recording
             glyph: "screenshot_monitor"; label: "Take screenshot"
             onClicked: menu.screenshot()
+        }
+        Row_ {
+            visible: !menu.recording
+            glyph: "crop"; label: "Screenshot region"
+            onClicked: menu.screenshotRegion()
         }
         Row_ {
             visible: !menu.recording

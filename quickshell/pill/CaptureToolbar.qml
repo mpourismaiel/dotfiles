@@ -108,8 +108,9 @@ Item {
 
         Rectangle { width: 1; height: 24; color: bar.theme.divider; anchors.verticalCenter: parent.verticalCenter }
 
-        // ---- reselect the crop region (keeps annotations) ----
-        TBtn { glyph: "crop_free"; onClicked: bar.state.reselectRegion() }
+        // ---- select the whole screen as the crop ----
+        // (drawing a smaller crop is a drag on empty canvas with the select tool.)
+        TBtn { glyph: "fullscreen"; onClicked: bar.state.selectFullScreen() }
 
         Rectangle { width: 1; height: 24; color: bar.theme.divider; anchors.verticalCenter: parent.verticalCenter }
 

@@ -31,6 +31,16 @@ QtObject {
     // ---- region (in frozen-image pixels) ------------------------------------
     property rect region: Qt.rect(0, 0, 0, 0)
     readonly property bool hasRegion: region.width > 1 && region.height > 1
+    // set by a full-screen grab: the overlay pre-selects the WHOLE screen and jumps
+    // straight to annotating, so the toolbar is up instantly for a quick
+    // full-screen copy/save/annotate (drag on empty canvas to draw a smaller
+    // region). Cleared once applied, and by reselect/reset so those draw manually.
+    property bool pendingFull: false
+    // which flavour of screenshot is in flight, read by the grabber on a clean exit:
+    //   "full"   → pre-select the whole screen (screenshot IPC / "Take screenshot")
+    //   "region" → reuse the last committed crop, or draw one if there is none
+    //              (screenshotRegion IPC / "Screenshot region")
+    property string shotMode: "full"
 
     // ---- annotation tool + style -------------------------------------------
     // select = move/resize/delete existing; the rest create on press-drag.
@@ -93,8 +103,20 @@ QtObject {
     // ---- lifecycle ----------------------------------------------------------
     // Start a screenshot: fire the grabber, then freeze + let the user draw a
     // region. The pill hotkey / IPC verb calls this.
+    // full-screen-first: grab, then pre-select the whole screen + show the toolbar.
     function beginScreenshot() {
         root.reset();
+        root.shotMode = "full";
+        root.mode = "grabbing";
+        root.grab();
+    }
+
+    // region screenshot: grab, then REUSE the last committed crop (straight to the
+    // toolbar) — or draw a fresh one if there is no previous region. reset() keeps
+    // the region, so it's still there to reuse.
+    function beginScreenshotRegion() {
+        root.reset();
+        root.shotMode = "region";
         root.mode = "grabbing";
         root.grab();
     }
@@ -111,8 +133,15 @@ QtObject {
         root.mode = "recConfig";
     }
 
-    // re-draw the crop region without losing annotations (toolbar "reselect")
-    function reselectRegion() { root.mode = "selecting"; }
+    // re-draw the crop region without losing annotations (toolbar "reselect").
+    // an explicit reselect draws by hand, so it does NOT re-apply the full default.
+    function reselectRegion() { root.pendingFull = false; root.mode = "selecting"; }
+
+    // select the WHOLE screen as the crop (toolbar fullscreen button). Reuses the
+    // pendingFull seam: the overlay commits Qt.rect(0,0,width,height) the moment it
+    // sees the flag (it knows the screen size — the state doesn't). Stays in
+    // annotating so the toolbar keeps its place.
+    function selectFullScreen() { root.pendingFull = true; }
 
     // Feed a pre-grabbed image straight in (used by the headless harness and by
     // any alternate grabber that already has a file). Skips the live grab.
@@ -128,6 +157,7 @@ QtObject {
     function reset() {
         root.selected = null;
         root.tool = "select";
+        root.pendingFull = false;
         root.frozenSource = "";
         root.mode = "idle";
         root.clearAnnotations();
@@ -175,11 +205,21 @@ QtObject {
                 root.frozenW = 0; root.frozenH = 0;
                 root.frozenSource = "";
                 root.frozenSource = "file://" + root.grabPath + "#" + root._grabSeq;
-                // always enter region-select. A persisted region (quick same-area
-                // shot) is shown as the starting crop: a plain CLICK reuses it (→
-                // annotating), a click-DRAG replaces it with a fresh one. So the crop
-                // is never "stuck" — you can always redraw it.
-                root.mode = "selecting";
+                if (root.shotMode === "region") {
+                    // reuse the last crop (→ toolbar) if there is one; else draw fresh.
+                    root.pendingFull = false;
+                    root.mode = root.hasRegion ? "annotating" : "selecting";
+                } else {
+                    // full-screen: pre-select the WHOLE screen and jump to annotating so
+                    // the toolbar is up instantly (fast full-screen copy/save/annotate).
+                    // The overlay flips selecting → annotating once it knows its size
+                    // (`pendingFull`); if no overlay is present (headless) it stays in
+                    // region-select. A smaller crop is one drag away: with the select
+                    // tool, drag on empty canvas to draw a fresh region. (mode first so
+                    // the canvas is on its way visible when the flag change fires.)
+                    root.mode = "selecting";
+                    root.pendingFull = true;
+                }
             } else if (root.mode === "grabbing") {
                 root.grabFailed("grabber exit " + code);
                 root.reset();
