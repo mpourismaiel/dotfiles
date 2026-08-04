@@ -220,8 +220,26 @@ HELPERS = r"""
 """
 
 
+# Optional `--dir DIR` (leading): when set, org-agenda-files is rebound to every
+# .org file under DIR for the query, so the pill isn't tied to Emacs's own
+# org-agenda-files. Set in main() before any command runs.
+AGENDA_DIR = ""
+
+
 def _esc(s):
     return '"' + s.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def _wrap(call):
+    """Wrap a HELPERS call so org-agenda-files points at AGENDA_DIR's .org files.
+    A bad/empty dir yields nil (→ empty results), never an error."""
+    if not AGENDA_DIR:
+        return call
+    return (
+        "(let ((org-agenda-files "
+        "(ignore-errors (directory-files-recursively %s \"\\\\.org\\\\'\")))) %s)"
+        % (_esc(AGENDA_DIR), call)
+    )
 
 
 def _emacs(form, wait=True):
@@ -265,35 +283,39 @@ def _eval_to_file(call):
 
 
 def main():
-    cmd = sys.argv[1] if len(sys.argv) > 1 else ""
-    if cmd == "day" and len(sys.argv) > 2:
-        sys.stdout.write(_eval_to_file("(pill-day %s)" % _esc(sys.argv[2])))
-    elif cmd == "range" and len(sys.argv) > 3:
+    global AGENDA_DIR
+    argv = sys.argv[1:]
+    # optional leading `--dir DIR` overrides Emacs's org-agenda-files
+    if len(argv) >= 2 and argv[0] == "--dir":
+        AGENDA_DIR = os.path.expanduser(argv[1]) if argv[1] else ""
+        argv = argv[2:]
+    cmd = argv[0] if argv else ""
+    if cmd == "day" and len(argv) > 1:
+        sys.stdout.write(_eval_to_file(_wrap("(pill-day %s)" % _esc(argv[1]))))
+    elif cmd == "range" and len(argv) > 2:
         sys.stdout.write(
-            _eval_to_file("(pill-range %s %s)" % (_esc(sys.argv[2]), _esc(sys.argv[3])))
+            _eval_to_file(_wrap("(pill-range %s %s)" % (_esc(argv[1]), _esc(argv[2]))))
         )
-    elif cmd == "toggle" and len(sys.argv) > 3:
+    elif cmd == "toggle" and len(argv) > 2:
         # flip a headline's TODO/DONE state; POS is a plain integer buffer pos
-        _emacs(
-            "(progn %s (pill-toggle %s %s))" % (HELPERS, _esc(sys.argv[2]), sys.argv[3])
-        )
+        _emacs("(progn %s (pill-toggle %s %s))" % (HELPERS, _esc(argv[1]), argv[2]))
         sys.stdout.write("[]")
     elif cmd == "deadlines":
         # all undone DEADLINE todos within AHEAD days (default 30); overdue always
         try:
-            ahead = int(sys.argv[2]) if len(sys.argv) > 2 else 30
+            ahead = int(argv[1]) if len(argv) > 1 else 30
         except ValueError:
             ahead = 30
-        sys.stdout.write(_eval_to_file("(pill-deadlines %d)" % ahead))
-    elif cmd == "goto" and len(sys.argv) > 3:
+        sys.stdout.write(_eval_to_file(_wrap("(pill-deadlines %d)" % ahead)))
+    elif cmd == "goto" and len(argv) > 2:
         # open FILE at headline POS in a visible frame (fire-and-forget)
         _emacs(
-            "(progn %s (pill-goto %s %s))" % (HELPERS, _esc(sys.argv[2]), sys.argv[3]),
+            "(progn %s (pill-goto %s %s))" % (HELPERS, _esc(argv[1]), argv[2]),
             wait=False,
         )
         sys.stdout.write("[]")
     elif cmd == "open":
-        _emacs("(progn %s (pill-open))" % HELPERS, wait=False)
+        _emacs("(progn %s %s)" % (HELPERS, _wrap("(pill-open)")), wait=False)
     else:
         sys.stdout.write("[]")
 

@@ -687,8 +687,17 @@ def cmd_git_push():
 
 
 def main():
-    global FINANCE_DIR, MAIN, WISHLIST
+    global BASE_DIR, FINANCE_DIR, MAIN, WISHLIST
     argv = sys.argv[1:]
+    # optional leading `--dir DIR` overrides the base finance repo (default
+    # ~/Documents/finance) so the pill isn't tied to one path
+    if len(argv) >= 2 and argv[0] == "--dir":
+        if argv[1]:
+            BASE_DIR = os.path.expanduser(argv[1])
+            FINANCE_DIR = entity_dir("personal")
+            MAIN = os.path.join(FINANCE_DIR, "main.journal")
+            WISHLIST = os.path.join(FINANCE_DIR, "wishlist.journal")
+        argv = argv[2:]
     # optional leading `--entity NAME` / `-E NAME` selects the book
     if len(argv) >= 2 and argv[0] in ("--entity", "-E"):
         FINANCE_DIR = entity_dir(argv[1])

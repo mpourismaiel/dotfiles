@@ -10,6 +10,26 @@ import Quickshell.Io
 
 QtObject {
     id: root
+    // ---- feature gate (launcher Settings → Org Agenda) ----
+    // enabled=false → no orgbridge calls at all, and the model stays empty so the
+    // calendar dots, agenda list and deadline under-line all go dark. agendaDir, when
+    // set, is passed to orgbridge as `--dir` and overrides Emacs's org-agenda-files,
+    // so the pill isn't tied to one machine's org config.
+    property bool enabled: false
+    property string agendaDir: ""
+    // orgbridge invocation with the optional dir override prepended.
+    function _cmd(args) {
+        var base = ["python", Quickshell.shellPath("orgbridge.py")];
+        if (root.agendaDir) base = base.concat(["--dir", root.agendaDir]);
+        return base.concat(args);
+    }
+    // reloading whatever's live, or dropping everything when the feature is turned off.
+    onEnabledChanged: {
+        if (root.enabled) { root.loadDeadlines(); root.refresh(); }
+        else { root.dayItems = []; root.rangeDays = []; root.rangeMap = ({}); root.deadlines = []; }
+    }
+    onAgendaDirChanged: if (root.enabled) { root.loadDeadlines(); root.refresh(); }
+
     property string dayKey: ""            // day currently loaded ("YYYY-MM-DD")
     property var dayItems: []             // [{ text, todo, type, priority, done, dated, file, pos }] for dayKey
     property var rangeDays: []            // [{ date, done }, …] within the loaded range that have dated entries
@@ -36,12 +56,14 @@ QtObject {
 
     function loadDay(key) {
         root.dayKey = key;
-        dayProc.command = ["python", Quickshell.shellPath("orgbridge.py"), "day", key];
+        if (!root.enabled) { root.dayItems = []; return; }
+        dayProc.command = root._cmd(["day", key]);
         if (!dayProc.running) dayProc.running = true;
     }
     function loadRange(a, b) {
         root.rangeA = a; root.rangeB = b;
-        rangeProc.command = ["python", Quickshell.shellPath("orgbridge.py"), "range", a, b];
+        if (!root.enabled) { root.rangeDays = []; root.rangeMap = ({}); return; }
+        rangeProc.command = root._cmd(["range", a, b]);
         if (!rangeProc.running) rangeProc.running = true;
     }
     // re-pull whatever's currently shown (day list + month dots) without any UI
@@ -52,29 +74,29 @@ QtObject {
         if (root.rangeA && root.rangeB) root.loadRange(root.rangeA, root.rangeB);
     }
     function openAgenda(key) {
-        openProc.command = ["python", Quickshell.shellPath("orgbridge.py"), "open", key];
+        if (!root.enabled) return;
+        openProc.command = root._cmd(["open", key]);
         if (!openProc.running) openProc.running = true;
     }
     // (re)load the deadline watch list; called on a timer, on popup open, and after
     // a toggle. Skips if a fetch is already in flight so the timer can't stack them.
     function loadDeadlines() {
+        if (!root.enabled) { root.deadlines = []; return; }
         if (deadlinesProc.running) return;
-        deadlinesProc.command = ["python", Quickshell.shellPath("orgbridge.py"),
-                                 "deadlines", "" + root.aheadDays];
+        deadlinesProc.command = root._cmd(["deadlines", "" + root.aheadDays]);
         deadlinesProc.running = true;
     }
     // open FILE at headline POS in a visible Emacs frame (the popup's "open" action).
     function gotoItem(file, pos) {
-        if (!file || gotoProc.running) return;
-        gotoProc.command = ["python", Quickshell.shellPath("orgbridge.py"),
-                            "goto", file, "" + pos];
+        if (!root.enabled || !file || gotoProc.running) return;
+        gotoProc.command = root._cmd(["goto", file, "" + pos]);
         gotoProc.running = true;
     }
     // flip a headline's TODO/DONE state (file+pos come from the loaded item),
     // then reload the current day so the list re-sorts (done drops to the end).
     function toggleDone(file, pos) {
-        if (!file || toggleProc.running) return;
-        toggleProc.command = ["python", Quickshell.shellPath("orgbridge.py"), "toggle", file, "" + pos];
+        if (!root.enabled || !file || toggleProc.running) return;
+        toggleProc.command = root._cmd(["toggle", file, "" + pos]);
         toggleProc.running = true;
     }
     function hasItems(key) { return root.rangeMap.hasOwnProperty(key); }
@@ -128,7 +150,7 @@ QtObject {
     // (dates roll over, deadlines pass) so the under-line stays current on its own.
     property Timer deadlinesPoll: Timer {
         interval: 300000
-        running: true
+        running: root.enabled
         repeat: true
         triggeredOnStart: true
         onTriggered: root.loadDeadlines()
@@ -138,7 +160,7 @@ QtObject {
     // calendar. Bindings on dayItems/rangeDays update the open menu reactively.
     property Timer agendaPoll: Timer {
         interval: 600000
-        running: true
+        running: root.enabled
         repeat: true
         onTriggered: root.refresh()
     }

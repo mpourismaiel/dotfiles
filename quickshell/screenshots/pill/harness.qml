@@ -24,6 +24,14 @@ FloatingWindow {
     MockFinance   { id: fin }
     MockCal       { id: cal }
     MockBrightness { id: brightness }
+    // stand-in for the launcher settings JsonAdapter (feature flags + dirs)
+    QtObject {
+        id: mockSettings
+        property bool orgAgendaEnabled: true
+        property string orgAgendaDir: "~/org"
+        property bool financeEnabled: true
+        property string financeDir: "~/Documents/finance"
+    }
 
     // mock clock strings so the dashboard is deterministic
     readonly property string clockShort: "09:41"
@@ -69,6 +77,7 @@ FloatingWindow {
         { name: "menu-finance-wishlist", comp: cFinWish },
         { name: "menu-finance-forecast", comp: cFinFore },
         { name: "menu-finance-plan", comp: cFinPlan },
+        { name: "settings",      comp: cSettings },
         { name: "menu-notifhistory", comp: cNotifHist },
         { name: "notif-stack",   comp: cNotifStack },
         { name: "power-hush",    comp: cPowerHush },
@@ -259,6 +268,8 @@ FloatingWindow {
     Component { id: cClip; MenuHost { pillH: 670; ClipboardMenu { anchors.fill: parent; theme: theme; clip: clip; memos: memos } } }
     Component { id: cCal;  MenuHost { pillW: 760; CalendarMenu  { anchors.fill: parent; theme: theme; org: org; fin: fin; cal: cal } } }
     Component { id: cFin;  MenuHost { pillW: 760; FinanceMenu   { anchors.fill: parent; theme: theme; fin: fin } } }
+    // the launcher's Settings page (Org Agenda page shown: toggle + directory field)
+    Component { id: cSettings; MenuHost { pillW: 760; SettingsMenu { anchors.fill: parent; theme: theme; acc: null; settings: mockSettings; page: 1 } } }
     Component {
         id: cFinAdd
         MenuHost {

@@ -319,7 +319,9 @@ Item {
     
         // finance privacy: an open eye normally, a closed eye (accent = "on") while
         // amounts are masked — auto-on during screen shares (see FinanceState).
+        // Hidden unless the Finance feature is enabled (Settings).
         MSym {
+            visible: root.fin && root.fin.enabled
             icon: root.fin && root.fin.privacy ? "visibility_off" : "visibility"
             size: 18
             fill: root.fin && root.fin.privacy ? 1 : 0
@@ -931,7 +933,7 @@ Item {
         }
     
     }
-    // ================= calendar-account manager overlay =================
+    // ================= settings overlay (accounts + feature toggles) =================
     Item {
         id: accountsOverlay
     
@@ -945,10 +947,11 @@ Item {
             hoverEnabled: true
         }
     
-        AccountsMenu {
+        SettingsMenu {
             anchors.fill: parent
             theme: root.theme
             acc: root.acc
+            settings: root.settings
             onCloseRequested: root.settingsOpen = false
         }
     }

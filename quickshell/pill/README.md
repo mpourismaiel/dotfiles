@@ -57,7 +57,8 @@ Control-panel menus (opened via `win.menu` index in init.qml):
 - `CalendarMenu.qml` (menu 6) — Shamsi/Gregorian month grid + org agenda + Google events; state in `OrgAgenda.qml` and `CalendarEvents.qml`.
 - `EventCard.qml` — one calendar-event card (imminent banner, colour bar, expand-to-detail with location/guests/Join); shared by `CalendarMenu` and `AgendaMenu`.
 - `AgendaMenu.qml` — floating "Agenda" popup: org deadlines (LATE/TODAY/AHEAD) + not-yet-ended calendar events (`EventCard`s), opened by right-clicking the resting pill or its under-line; fed by `OrgAgenda.qml` + `CalendarEvents.qml`.
-- `AccountsState.qml` + `AccountsMenu.qml` — calendar account manager (KDE, Google OAuth, Proton ICS).
+- `AccountsState.qml` + `AccountsMenu.qml` — calendar account manager (KDE, Google OAuth, Proton ICS); `AccountsMenu` is the Online Accounts page of `SettingsMenu`.
+- `SettingsMenu.qml` + `FeaturePage.qml` — the launcher Settings page: sidebar (Online Accounts / Org Agenda / Finance) + per-feature enable toggle & directory field. Org Agenda + Finance ship off; their flags/dirs persist in the launcher settings JSON and gate `OrgAgenda`/`FinanceState`.
 - `FinanceState.qml` + `FinanceMenu.qml` (menu 8) — hledger calendar/forecast/register/balances/wishlist, privacy + evening-nag machines.
 - `Clipboard.qml` + `ClipboardMenu.qml` — cliphist history + fuzzy search.
 - `VoiceMemoMenu.qml` (menu 7), `VoiceRecorderPill.qml`, `VoiceSetup.qml`, `PolishConfig.qml`, `Memos.qml` — voice-memo config, recording face, transcription setup/state.

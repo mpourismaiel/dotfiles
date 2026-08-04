@@ -388,6 +388,13 @@ calendar dots, queried once per shown month grid), and =openAgenda(key)= opens t
 agenda in Emacs (reusing an existing frame). All are best-effort: if Emacs isn't
 reachable the parses fall back to empty, so the calendar still works.
 
+*Feature gate.* =enabled= (bound to =settings.orgAgendaEnabled=, off by default) short-
+circuits every load to a no-op + empty model and stops the poll timers, so with the
+feature off there are no =orgbridge= calls and no dots/deadlines. =agendaDir= (bound to
+=settings.orgAgendaDir=) is passed to =orgbridge= as =--dir= and rebinds
+=org-agenda-files= for the query, so the pill isn't tied to one machine's Emacs config.
+See [[*SettingsMenu.qml + FeaturePage.qml][=SettingsMenu=]].
+
 The loaded day + range are re-pulled on their own: =loadRange= remembers its bounds
 (=rangeA=/=rangeB=), =refresh()= re-runs =loadDay(dayKey)= and =loadRange(rangeA, rangeB)=,
 and a 10-minute =agendaPoll= =Timer= calls it so entries added in Emacs surface without
@@ -448,9 +455,12 @@ Code: [[file:pill/AccountsState.qml][=pill/AccountsState.qml=]]
 
 ** AccountsMenu.qml
 *** Description
-The calendar-account manager page, shown as an overlay inside the
-[[*Launcher.qml][launcher]] when its *settings gear* (in the bottom-left toggle row,
-after the DND / privacy icons) is clicked. Lists every account from
+The calendar-account manager, now the *Online Accounts* page inside
+[[*SettingsMenu.qml][=SettingsMenu=]] (opened by the launcher's *settings gear*).
+With =embedded: true= it drops its own backdrop + "Calendar accounts" header and
+fills the settings content pane from the top (=SettingsMenu= paints the chrome and
+the "Settings" title); standalone it still renders its own header. Lists every
+account from
 [[*AccountsState.qml][=AccountsState=]]: KDE Online-Accounts Google accounts are
 *read-only* (a lock, no remove), pill-added Google / Proton accounts get a *remove*
 button. An *Add* section signs in an extra *Google* account through the loopback OAuth
@@ -460,6 +470,34 @@ anyone" URL). Text fields tag themselves =pillKbInput= so the pill routes typing
 them. All actions are best-effort; =AccountsState.lastError= surfaces failures inline.
 *** Code
 Code: [[file:pill/AccountsMenu.qml][=pill/AccountsMenu.qml=]]
+
+** SettingsMenu.qml + FeaturePage.qml
+*** Description
+The launcher's *Settings* page, opened from the gear in the bottom-left toggle row.
+A "Settings" title, a left *sidebar* of page links, and a content pane on the right:
+- *Online Accounts* — the embedded [[*AccountsMenu.qml][=AccountsMenu=]]
+  (=embedded: true=).
+- *Org Agenda* / *Finance* — each a =FeaturePage= (title + blurb, an enable toggle,
+  and — once on — a *directory field*). =FeaturePage= is a pure view: it reads
+  =featureOn= / =path= in and emits =featureToggled(bool)= / =pathEdited(string)=;
+  =SettingsMenu= persists those to the launcher settings JSON.
+
+*Config model.* Both optional features ship *off* so a fresh checkout works without an
+org/hledger setup, and neither path is hard-coded — the design goal was a shareable
+project. The flags + dirs live on the settings =JsonAdapter= in =init.qml=
+(=orgAgendaEnabled= / =orgAgendaDir= / =financeEnabled= / =financeDir=), are bound
+into [[*OrgAgenda.qml][=OrgAgenda=]] (=enabled= / =agendaDir=) and
+[[*FinanceState.qml][=FinanceState=]] (=enabled= / =financeDir=), and every consumer
+gates on them: the calendar's org + finance sections/dots and the =CalendarMenu=
+*wallet* button (now moved to sit immediately left of *Today*), the launcher's finance
+*privacy eye*, the =StatusIcons= nag, and the =f= keyboard jump to the finance menu.
+Disabled → the state components make *no* bridge calls and expose empty data. The
+directory reaches the Python bridges as a leading =--dir=: =orgbridge= rebinds
+=org-agenda-files= to the =.org= files under it, =hledgerbridge= overrides its
+=BASE_DIR=.
+*** Code
+Code: [[file:pill/SettingsMenu.qml][=pill/SettingsMenu.qml=]] ·
+[[file:pill/FeaturePage.qml][=pill/FeaturePage.qml=]]
 
 ** FinanceState.qml
 *** Description
@@ -478,6 +516,13 @@ form), =loadAccounts= / =loadBalances= / =loadTimeline= / =loadRegister= /
 =addFinished(ok, error)= and =entryAdded()= on success) and =checkToday()= (the
 nag's "did I log anything today?"). All best-effort: empty shapes if hledger
 fails.
+
+*Feature gate.* =enabled= (bound to =settings.financeEnabled=, off by default) makes
+every load a no-op, disables the evening =nag=, and resets the derived state, so with
+the feature off there are no =hledger= calls and no finance signals anywhere.
+=financeDir= (bound to =settings.financeDir=) is prepended to every =bridge()= command
+as =--dir=, overriding =hledgerbridge='s =BASE_DIR= — the repo isn't hard-coded. See
+[[*SettingsMenu.qml + FeaturePage.qml][=SettingsMenu=]].
 
 Every money view is valued through one =displayCurrency= (=native= / =EUR= /
 =IRT=); =cycleCurrency()= steps it and the currency-bearing loaders re-run with

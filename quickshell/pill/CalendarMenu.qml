@@ -200,7 +200,7 @@ Item {
     }
     // the selected day's forecast occurrences (from the range already loaded for
     // the dots, so the list always matches them). Empty under privacy.
-    readonly property var selForecast: (root.fin && !root.fin.privacy && root.selKey)
+    readonly property var selForecast: (root.showFin && root.selKey)
         ? root.fin.forecastForDay(root.selKey) : []
     // hand a forecast occurrence to the finance menu's add form, prefilled, so
     // the user can confirm/adjust it into a real transaction.
@@ -280,7 +280,11 @@ Item {
     readonly property bool showCal: !!root.cal && !(root.fin && root.fin.privacy)
     // the org agenda hides under the same finance privacy / DND toggle (the eye),
     // so nothing personal shows while it's on — matching the finance + Google sections.
-    readonly property bool showOrg: !!root.org && !(root.fin && root.fin.privacy)
+    // Also gated by the Org Agenda feature toggle (Settings): off → no org section.
+    readonly property bool showOrg: !!root.org && root.org.enabled && !(root.fin && root.fin.privacy)
+    // the finance section/dots need the Finance feature enabled (Settings) and
+    // privacy off — the wallet header button and every finance signal key off this.
+    readonly property bool showFin: !!root.fin && root.fin.enabled && !root.fin.privacy
 
     Component.onCompleted: {
         var t = new Date();
@@ -311,32 +315,6 @@ Item {
         onPrev: root.shiftMonth(-1)
         onNext: root.shiftMonth(1)
 
-        // wallet — switch to the finance menu (win.menu 8)
-        Rectangle {
-            readonly property bool kbFocusable: true
-            property bool kbFocused: false
-            function keyClick() { root.financeRequested(); }
-            width: 24
-            height: 24
-            radius: root.theme.radiusBtn
-            anchors.verticalCenter: parent.verticalCenter
-            color: (finBtnMa.containsMouse || kbFocused) ? root.theme.rowHi : "transparent"
-            MSym {
-                anchors.centerIn: parent
-                icon: "account_balance_wallet"
-                size: 16
-                color: finBtnMa.containsMouse ? root.theme.text : root.theme.textDim
-            }
-            MouseArea {
-                id: finBtnMa
-                anchors.fill: parent
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                onClicked: root.financeRequested()
-            }
-            Behavior on color { ColorAnimation { duration: root.theme.animFast } }
-        }
-
         // Gregorian ⇄ Shamsi toggle
         Rectangle {
             readonly property bool kbFocusable: true
@@ -363,6 +341,34 @@ Item {
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
                 onClicked: root.toggleCalendar()
+            }
+            Behavior on color { ColorAnimation { duration: root.theme.animFast } }
+        }
+
+        // wallet — switch to the finance menu (win.menu 8); sits immediately left
+        // of Today. Only present when the Finance feature is enabled (Settings).
+        Rectangle {
+            visible: root.fin && root.fin.enabled
+            readonly property bool kbFocusable: root.fin && root.fin.enabled
+            property bool kbFocused: false
+            function keyClick() { root.financeRequested(); }
+            width: 24
+            height: 24
+            radius: root.theme.radiusBtn
+            anchors.verticalCenter: parent.verticalCenter
+            color: (finBtnMa.containsMouse || kbFocused) ? root.theme.rowHi : "transparent"
+            MSym {
+                anchors.centerIn: parent
+                icon: "account_balance_wallet"
+                size: 16
+                color: finBtnMa.containsMouse ? root.theme.text : root.theme.textDim
+            }
+            MouseArea {
+                id: finBtnMa
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.financeRequested()
             }
             Behavior on color { ColorAnimation { duration: root.theme.animFast } }
         }
@@ -571,7 +577,7 @@ Item {
                         }
                         // filled gold: the day has real finance entries
                         Rectangle {
-                            visible: root.fin && !root.fin.privacy && root.fin.hasItems(cell.modelData.key)
+                            visible: root.showFin && root.fin.hasItems(cell.modelData.key)
                             width: 4
                             height: 4
                             radius: 2
@@ -579,7 +585,7 @@ Item {
                         }
                         // hollow gold ring: a forecast entry falls on this day
                         Rectangle {
-                            visible: root.fin && !root.fin.privacy && root.fin.hasForecast(cell.modelData.key)
+                            visible: root.showFin && root.fin.hasForecast(cell.modelData.key)
                             width: 4
                             height: 4
                             radius: 2
@@ -978,13 +984,13 @@ Item {
                 // ---- the day's finance entries (from FinanceState; whole
                 //      section hides under privacy) ----
                 Rectangle {
-                    visible: root.fin && !root.fin.privacy && root.fin.dayItems.length > 0
+                    visible: root.showFin && root.fin.dayItems.length > 0
                     width: agendaCol.width
                     height: 1
                     color: root.theme.divider
                 }
                 Item {
-                    visible: root.fin && !root.fin.privacy && root.fin.dayItems.length > 0
+                    visible: root.showFin && root.fin.dayItems.length > 0
                     width: agendaCol.width
                     height: 20
                     Text {
@@ -1030,7 +1036,7 @@ Item {
                     }
                 }
                 Repeater {
-                    model: (root.fin && !root.fin.privacy) ? root.fin.dayItems : []
+                    model: root.showFin ? root.fin.dayItems : []
                     delegate: Item {
                         id: finRow
                         required property var modelData

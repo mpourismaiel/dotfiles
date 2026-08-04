@@ -6,6 +6,7 @@ import QtQuick
 
 QtObject {
     id: root
+    property bool enabled: true            // feature gate (mock: always on for the shot)
     property string dayKey: ""
     property var dayItems: [
         { date: "2026-07-22", description: "Groceries — supermarket", kind: "expense", amount: 1450000, currency: "IRT", postings: [] },

@@ -250,8 +250,12 @@ ShellRoot {
         command: ["python", Quickshell.shellPath("clipbridge.py"), "watch"]
     }
     // ---- org agenda state (Emacs daemon via orgbridge.py), shared with the calendar ----
+    // Gated by the Settings page: off → no orgbridge calls, no dots/deadlines; the
+    // configured dir overrides Emacs's org-agenda-files so it's not tied to one setup.
     OrgAgenda {
         id: orgAgenda
+        enabled: settings.orgAgendaEnabled
+        agendaDir: settings.orgAgendaDir
     }
     // ---- Google Calendar events (KDE accounts + signond via gcalbridge.py), shared ----
     CalendarEvents {
@@ -268,6 +272,8 @@ ShellRoot {
     FinanceState {
         id: finance
         settings: settings
+        enabled: settings.financeEnabled
+        financeDir: settings.financeDir
         screenShare: root.screenRecording
         now: sysclock.date
     }
@@ -921,6 +927,14 @@ ShellRoot {
             property bool grid: false
             property var favorites: []      // [DesktopEntry.id] — launcher favourites
             property var pinned: []         // [DesktopEntry.id] — taskbar pins, in order
+            // ---- optional features (configured from the launcher's Settings page) ----
+            // Both ship OFF so a fresh checkout works without an org/hledger setup;
+            // enabling them in Settings persists here and points the bridges at a
+            // user-chosen directory (nothing is hard-coded anymore).
+            property bool orgAgendaEnabled: false      // show org agenda in calendar + agenda popup
+            property string orgAgendaDir: ""           // dir of .org files (org-agenda-files override)
+            property bool financeEnabled: false        // enable the hledger finance menu + nag
+            property string financeDir: ""             // the hledger finance repo (BASE_DIR override)
             // ---- finance (see FinanceState) ----
             property bool financePrivacy: false        // manual privacy choice (masks amounts)
             property string financeNagDismissedUntil: "" // ISO timestamp; "" = not dismissed
@@ -1563,7 +1577,8 @@ ShellRoot {
                         event.accepted = true;
                     } else {
                         // first-level menu jumps, mirrored in the calendar menu
-                        const m = event.key === Qt.Key_F ? 8 : event.key === Qt.Key_C ? 6 : event.key === Qt.Key_N ? 4 : event.key === Qt.Key_W ? 0 : event.key === Qt.Key_V ? 1 : event.key === Qt.Key_B ? 2 : -1;
+                        // (finance is skipped when the feature is off)
+                        const m = event.key === Qt.Key_F ? (settings.financeEnabled ? 8 : -1) : event.key === Qt.Key_C ? 6 : event.key === Qt.Key_N ? 4 : event.key === Qt.Key_W ? 0 : event.key === Qt.Key_V ? 1 : event.key === Qt.Key_B ? 2 : -1;
                         if (m >= 0) {
                             win.launcher = false;
                             win.menu = m;
@@ -2580,6 +2595,8 @@ ShellRoot {
                         shortcuts: win.menu === 6
                         onEscaped: win.open = false // back to the expanded dashboard
                         onShortcutRequested: (m) => {
+                            if (m === 8 && !settings.financeEnabled)
+                                return; // finance feature is off
                             win.menu = m;
                         }
                     }

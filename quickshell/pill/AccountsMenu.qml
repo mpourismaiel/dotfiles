@@ -9,6 +9,10 @@ Item {
     id: root
     required property var theme
     property var acc                       // AccountsState (may be null)
+    // embedded=true when hosted inside SettingsMenu's content pane: the outer page
+    // already paints a backdrop and shows a "Settings" header + sidebar, so this
+    // component drops its own backdrop/header and fills the pane from the top.
+    property bool embedded: false
     signal closeRequested()
 
     property bool protonForm: false        // the Proton URL form is showing
@@ -35,11 +39,12 @@ Item {
     }
 
     // opaque backdrop so the launcher body doesn't bleed through
-    Rectangle { anchors.fill: parent; color: root.theme.bg }
+    Rectangle { visible: !root.embedded; anchors.fill: parent; color: root.theme.bg }
 
     // ---- header ----
     Item {
         id: header
+        visible: !root.embedded
         anchors.top: parent.top
         anchors.left: parent.left
         anchors.right: parent.right
@@ -79,6 +84,7 @@ Item {
     }
     Rectangle {
         id: headRule
+        visible: !root.embedded
         anchors.top: header.bottom
         anchors.topMargin: 4
         anchors.left: parent.left
@@ -89,7 +95,7 @@ Item {
 
     // ---- body ----
     Flickable {
-        anchors.top: headRule.bottom
+        anchors.top: root.embedded ? parent.top : headRule.bottom
         anchors.topMargin: root.theme.gap
         anchors.left: parent.left
         anchors.right: parent.right

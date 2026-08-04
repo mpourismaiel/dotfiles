@@ -13,6 +13,12 @@ QtObject {
     property var settings: null           // JsonAdapter (persisted privacy/nag fields)
     property bool screenShare: false      // bound to root.screenRecording
     property date now: new Date()         // bound to sysclock.date (reactive, minutes)
+    // ---- feature gate (launcher Settings → Finance) ----
+    // enabled=false → no hledger calls, no evening nag, empty views. financeDir, when
+    // set, is the repo every command targets (`--dir`, overriding the ~/Documents/finance
+    // default) so nothing is hard-coded and the project is shareable.
+    property bool enabled: false
+    property string financeDir: ""
 
     // ---- book (entity): which set of journals every command targets ----
     //   "personal" = the journals at the base dir; any other name = a subfolder
@@ -21,6 +27,7 @@ QtObject {
     property string entity: "personal"
     property var entities: [{ name: "personal", default: true }]
     function loadEntities() {
+        if (!root.enabled) return;
         entitiesProc.command = root.bridge(["entities"]);
         if (!entitiesProc.running) entitiesProc.running = true;
     }
@@ -88,24 +95,29 @@ QtObject {
     signal entryAdded()                   // fired after a successful add (reload hook)
 
     function bridge(args) {
-        // every command is scoped to the current book via a leading --entity.
-        return ["python", Quickshell.shellPath("hledgerbridge.py"),
-                "--entity", root.entity].concat(args);
+        // optional --dir picks the repo; every command is then scoped to the
+        // current book via --entity.
+        var base = ["python", Quickshell.shellPath("hledgerbridge.py")];
+        if (root.financeDir) base = base.concat(["--dir", root.financeDir]);
+        return base.concat(["--entity", root.entity]).concat(args);
     }
     // remembered so an entity switch can re-fire the same-span calendar loads
     property string lastRangeA: ""
     property string lastRangeB: ""
     function loadDay(key) {
         root.dayKey = key;
+        if (!root.enabled) { root.dayItems = []; return; }
         dayProc.command = root.bridge(["day", key, root.displayCurrency]);
         if (!dayProc.running) dayProc.running = true;
     }
     function loadRange(a, b) {
         root.lastRangeA = a; root.lastRangeB = b;
+        if (!root.enabled) { root.rangeMap = ({}); root.rangeDays = []; return; }
         rangeProc.command = root.bridge(["range", a, b]);
         if (!rangeProc.running) rangeProc.running = true;
     }
     function loadForecastRange(a, b) {
+        if (!root.enabled) { root.forecastMap = ({}); root.forecastRangeItems = []; return; }
         forecastRangeProc.command = root.bridge(["fentries", a, b]);
         if (!forecastRangeProc.running) forecastRangeProc.running = true;
     }
@@ -136,6 +148,7 @@ QtObject {
         if (!wishlistProc.running) wishlistProc.running = true;
     }
     function checkToday() {
+        if (!root.enabled) { root.todayHasEntry = true; return; }
         todayProc.command = root.bridge(["today-has-entry"]);
         if (!todayProc.running) todayProc.running = true;
     }
@@ -195,7 +208,7 @@ QtObject {
         var t = Date.parse(s);
         return !isNaN(t) && now.getTime() < t;
     }
-    readonly property bool nag: hour >= 20 && !todayHasEntry && !nagDismissed
+    readonly property bool nag: enabled && hour >= 20 && !todayHasEntry && !nagDismissed
     readonly property bool nagIcon: nag && !privacy
     // one-shot per day, deferred while sharing (fires when the share ends)
     readonly property bool notifyDue: hour >= 23 && nag && !screenShare
@@ -219,13 +232,23 @@ QtObject {
         root.settings.financeNagDismissedUntil = d.toISOString();
     }
     onTodayKeyChanged: checkToday()        // midnight rollover: fresh day, fresh check
-    Component.onCompleted: { checkToday(); loadEntities(); loadGit(); }
+    Component.onCompleted: if (root.enabled) { checkToday(); loadEntities(); loadGit(); }
+    // turning the feature on/off: warm or reset the derived state.
+    onEnabledChanged: {
+        if (root.enabled) { checkToday(); loadEntities(); loadGit(); }
+        else {
+            root.todayHasEntry = true;   // nag off
+            root.gitInfo = ({ repo: false });
+            root.dayItems = []; root.rangeMap = ({}); root.rangeDays = [];
+            root.forecastMap = ({}); root.forecastRangeItems = [];
+        }
+    }
 
     // catch entries added outside the pill (Emacs) during the nag window
     property Timer freshTimer: Timer {
         interval: 5 * 60 * 1000
         repeat: true
-        running: root.hour >= 19 && !root.todayHasEntry
+        running: root.enabled && root.hour >= 19 && !root.todayHasEntry
         onTriggered: root.checkToday()
     }
 
@@ -362,6 +385,7 @@ QtObject {
     property bool gitBusy: false
     property string gitError: ""
     function loadGit() {
+        if (!root.enabled) { root.gitInfo = ({ repo: false }); return; }
         gitStatusProc.command = root.bridge(["git-status"]);
         if (!gitStatusProc.running) gitStatusProc.running = true;
     }

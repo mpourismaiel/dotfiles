@@ -5,6 +5,7 @@ import QtQuick
 
 QtObject {
     id: root
+    property bool enabled: true            // feature gate (mock: always on for the shot)
     property var dayItems: [
         { text: "Ship pill + emaqs screenshots", todo: "TODO", done: false, dated: true,  type: "scheduled", priority: "A", file: "/home/mahdi/org/todo.org", pos: 120 },
         { text: "Refactor pill: extract shared components", todo: "TODO", done: false, dated: true, type: "deadline", priority: "B", file: "/home/mahdi/org/todo.org", pos: 240 },
