@@ -1452,6 +1452,34 @@ overrides =fsHide=, and its floating deck's rect joins =pillRegion= while shown 
 4. *launcher* (600×470): the launcher takes the menu pane's place — the rows fade
    out here too (see [[*Launcher.qml][§ Launcher.qml]]).
 
+*Movable idle pill.* The resting pill is *draggable anywhere on screen* by its body
+(an =idleDrag= =DragHandler= alongside the capture one; it only steals the grab past
+the drag threshold, so a plain click still reveals the dashboard / opens deadlines).
+The spot is *per-session only* — never persisted, so each launch starts top-centre —
+and it applies *only while idle/collapsed* (=idleMoved && !dash=). A *middle-click* on
+the resting pill (=idleReset()=) sends it home: clearing =idleMoved= re-points
+=pillCenterX= at screen-centre and =y= at 0, and both glide there via their Behaviors
+(=Behavior on y= is enabled for every non-drag transition for exactly this) while the
+wings grow back — one smooth motion, not a snap. The moment the pill
+*expands* (dashboard / any menu / launcher / capture / voice) it animates back to the
+top-centre home so panels always open from the same predictable place; *collapsing*
+restores the dragged spot. The expand/collapse move is *one fluid motion*, not
+grow-then-slide: =pill.x= is DERIVED as =pillCenterX - width/2= with *no Behavior of its
+own*, and it is the target *centre* (=pillCenterX=) that animates. So the width grows
+*symmetrically about the centre* (not from the left) while the centre itself glides to
+screen-middle, both on the same =theme.anim= curve. (Binding =x= straight to the
+animating =width= made its Behavior chase a moving target and lag a whole duration
+behind — width finished first at the old left, then x slid.) The dragged spot is tracked
+as a centre too (=idleCenterX=); =pillCenterX= freezes while either drag is live so the
+pill tracks the pointer 1:1. Like the capture pill it *re-attaches* when dropped within
+=idleSnapY= of the top edge (=idleAttached=, snapped flush to =y=0= with its concave
+*wings* at the dragged x); dropped lower it *floats* fully rounded with no wings
+(=idleFloating=). A shared =pillFloating= (=capFloating || idleFloating=) drives the
+=PillSurface= wing/radius morph for either pill. Because the notification droplet +
+deck, the action burst (a child of =pill=),
+and the Agenda popup all read =pill.x/pill.y=, they follow the parked pill and drop
+*below* it — at the top-centre home this is identical to the old screen-centre.
+
 *Keyboard focus.* The surface grabs the keyboard only when it genuinely needs it
 (=win.grabsKeyboard=): the launcher or clipboard menu is up (both auto-focus a search
 field and want arrow-key nav), or *some* editable field inside the pill currently has

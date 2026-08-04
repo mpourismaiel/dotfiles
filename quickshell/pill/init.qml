@@ -1082,6 +1082,55 @@ ShellRoot {
             // whether the pill is currently floating (rounded, no wings)
             readonly property bool capFloating: capDragging || (capShow && capPositioned && !capAttached)
 
+            // ---- movable idle pill ----
+            // The resting pill can be dragged anywhere on screen (X and Y). This is a
+            // convenience while working — park the pill wherever, still know where to
+            // look. The spot is per-session only (never persisted; each launch starts
+            // top-centre) and applies ONLY while the pill is idle/collapsed. Expanding
+            // it (dashboard / menu / launcher / capture) snaps it back to the top-centre
+            // home so panels always open from the same place; collapsing restores the
+            // dragged spot. Attached elements (notifications, action burst, agenda
+            // popup) all read pill.x/pill.y, so they follow the pill and drop below it.
+            // Like the capture pill: dropped near the top edge it re-attaches (flush,
+            // y=0, with wings at the dragged x); dropped lower it floats fully rounded.
+            property bool idleMoved: false      // dragged off top-centre this session
+            property bool idleDragging: false
+            property bool idleAttached: true    // docked to the top edge (wings) vs floating
+            property real idlePosX: 0
+            property real idlePosY: 0
+            property real idleCenterX: 0        // dragged spot as a CENTRE (drives pillCenterX)
+            readonly property int idleSnapY: capSnapY   // drop within this of the top → dock
+
+            // The pill's target horizontal CENTRE. Everything centres on screen except a
+            // dragged idle pill (its parked centre) and a positioned capture pill (its
+            // left + half width). pill.x = pillCenterX - pill.width/2, and it is THIS
+            // that animates (not x): so expand grows the width symmetrically about the
+            // centre while the centre glides to screen-middle — one fluid motion. Frozen
+            // while either drag is live so the pill tracks the pointer 1:1.
+            property real pillCenterX:
+                capShow ? (capPositioned ? capPosX + pill.width / 2 : width / 2)
+                : (idleMoved && !dash) ? idleCenterX
+                : width / 2
+            Behavior on pillCenterX {
+                enabled: !capDragging && !idleDragging
+                NumberAnimation { duration: theme.anim; easing.type: Easing.OutCubic }
+            }
+            // send the pill back to its top-centre home (middle-click on the resting
+            // pill). Clearing idleMoved re-points pillCenterX at screen-centre and y at
+            // 0; both animate there via their Behaviors, and the wings grow back as
+            // idleFloating drops — one smooth glide home.
+            function idleReset() {
+                win.idleMoved = false;
+                win.idleAttached = true;
+                win.idlePosX = 0; win.idlePosY = 0;
+                win.idleCenterX = width / 2;
+            }
+            // idle pill floating (rounded, no wings): while dragging, or parked away
+            // from the top edge. A shared `pillFloating` unions this with the capture
+            // case so the surface morph reacts to either.
+            readonly property bool idleFloating: idleDragging || (idleMoved && !dash && !capShow && !idleAttached)
+            readonly property bool pillFloating: capFloating || idleFloating
+
             // Keep the controls near the selection but off it. If the default
             // top-centre home doesn't cover the selection, stay there. Otherwise hug
             // the selection: try just ABOVE it, then just BELOW (per the "go below if
@@ -1572,19 +1621,26 @@ ShellRoot {
             Item {
                 id: pill
     
-                // horizontally centred in every normal state; while the capture pill is
-                // dragged / auto-avoided it uses an explicit x (movable-capture block
-                // above). Manual x (not anchors) so the drag can set it directly.
-                x: (win.capShow && win.capPositioned) ? win.capPosX : (parent.width - width) / 2
+                // x is DERIVED from the target centre (win.pillCenterX) minus half the
+                // current width, with NO Behavior of its own — so as the pill's width
+                // animates on expand/collapse it grows symmetrically about the centre,
+                // and the centre itself animates (see win.pillCenterX) so the grow and
+                // the move happen together instead of grow-from-the-left-then-slide.
+                // (Binding x directly to an animating width made its Behavior chase a
+                // moving target and lag a full duration behind.)
+                x: win.pillCenterX - width / 2
                 // attached flush to the top edge in every stage — the resting clock pill
                 // AND the expanded dashboard / panel — growing downward, "rounded out"
                 // via the PillSurface background below. Only a notification card or an
                 // action burst floats 6px below the edge (those aren't "the pill"); a
-                // positioned capture pill uses its own y.
-                y: (win.capShow && win.capPositioned) ? win.capPosY
-                   : (win.notifMorph || (win.showBurst && !win.capShow)) ? 6 : 0
-                Behavior on x { enabled: win.capShow && !win.capDragging; NumberAnimation { duration: theme.anim; easing.type: Easing.OutCubic } }
-                Behavior on y { enabled: win.capShow && !win.capDragging; NumberAnimation { duration: theme.anim; easing.type: Easing.OutCubic } }
+                // positioned capture pill, or a dragged idle pill, uses its own y.
+                y: win.capShow ? (win.capPositioned ? win.capPosY : 0)
+                   : (win.idleMoved && !win.dash) ? win.idlePosY
+                   : (win.notifMorph || win.showBurst) ? 6 : 0
+                // animate y for every non-drag transition (expand, snap, reset-home) —
+                // matches pillCenterX so a reset glides both axes, not just x. Frozen
+                // only while a drag is live so the pill tracks the pointer 1:1.
+                Behavior on y { enabled: !win.capDragging && !win.idleDragging; NumberAnimation { duration: theme.anim; easing.type: Easing.OutCubic } }
 
                 // drag the capture pill by its body (buttons still click — the handler
                 // only steals the grab once you drag past threshold). Drop near the top
@@ -1615,6 +1671,41 @@ ShellRoot {
                         win.capPosY = Math.max(0, Math.min(sp.y - capDrag._oy, win.height - pill.height));
                     }
                 }
+
+                // drag the resting pill anywhere by its body (clicks still open the
+                // dashboard / deadlines — the handler only steals the grab past the drag
+                // threshold). Enabled only while idle: expanding, the launcher/menus, a
+                // capture, or a voice take own the pill and place it themselves. Free
+                // move, clamped on-screen; no snap and no persistence (idleMoved just
+                // parks it for this session — expand recentres, collapse restores).
+                DragHandler {
+                    id: idleDrag
+                    enabled: !win.capShow && !win.dash && !win.voiceMorph
+                    target: null
+                    property real _ox: 0
+                    property real _oy: 0
+                    onActiveChanged: {
+                        if (idleDrag.active) {
+                            idleDrag._ox = idleDrag.centroid.position.x;
+                            idleDrag._oy = idleDrag.centroid.position.y;
+                            win.idlePosX = pill.x; win.idlePosY = pill.y;   // seed → no jump
+                            win.idleCenterX = pill.x + pill.width / 2;
+                            win.idleMoved = true; win.idleDragging = true;
+                        } else {
+                            win.idleDragging = false;
+                            // dropped near the top edge → dock flush with wings; lower → float
+                            win.idleAttached = win.idlePosY <= win.idleSnapY;
+                            if (win.idleAttached) win.idlePosY = 0;
+                        }
+                    }
+                    onCentroidChanged: {
+                        if (!idleDrag.active) return;
+                        const sp = idleDrag.centroid.scenePosition;
+                        win.idlePosX = Math.max(0, Math.min(sp.x - idleDrag._ox, win.width - pill.width));
+                        win.idlePosY = Math.max(0, Math.min(sp.y - idleDrag._oy, win.height - pill.height));
+                        win.idleCenterX = win.idlePosX + pill.width / 2;
+                    }
+                }
                 // the voice recorder leads the chains: a larger resting pill (220x36,
                 // iPhone-memo style) — voiceMorph already yields to open/launcher/ctx.
                 width: win.capShow ? (captureLoader.item ? captureLoader.item.implicitWidth + theme.pad * 2 : 520) : win.voiceMorph ? 220 : win.showBurst ? (burstLoader.item ? burstLoader.item.implicitWidth : 96) : win.launcher ? win.launcherWidth : win.ctxMode ? 520 : (win.notifMorph ? (morphStack.item ? morphStack.item.implicitWidth : 420) : (win.open ? (win.menu === 6 || win.menu === 8 ? win.calWidth : 520) : (win.dash ? win.hoverWidth : Math.max(56 + root.privacyCount * 20 + root.notifRestWidth, win.restUnderline ? collapsedPill.implicitWidth + 28 : 0))))
@@ -1625,7 +1716,7 @@ ShellRoot {
                 // hovered / open / a notification is morphing it (or a camera/recording
                 // is live, or a voice take is recording, or the agenda popup is up);
                 // fully hidden while a fullscreen window is focused (fsHide)
-                opacity: win.capShow ? 1 : win.voiceMorph ? 1 : win.showBurst ? 1 : (win.fsHide ? 0 : ((win.dash || win.notifMorph || win.privacyRest || win.deadlines) ? 1 : theme.idleOpacity))
+                opacity: win.capShow ? 1 : win.voiceMorph ? 1 : win.showBurst ? 1 : (win.fsHide ? 0 : ((win.dash || win.notifMorph || win.privacyRest || win.deadlines || win.idleDragging) ? 1 : theme.idleOpacity))
     
                 HoverHandler {
                     id: hover
@@ -1675,19 +1766,19 @@ ShellRoot {
                     id: surface
     
                     // small flare on the narrow resting pill, a big one on the wide
-                    // dashboard so the "rounded out" reads at 640px. A floating capture
-                    // pill (dragged, or dropped away from the top edge) drops its wings
-                    // entirely and becomes a plain fully-rounded rectangle.
-                    readonly property int wingW: win.capFloating ? 0 : (win.dash ? 34 : 12)
+                    // dashboard so the "rounded out" reads at 640px. A floating pill —
+                    // capture OR idle, dragged or dropped away from the top edge — drops
+                    // its wings entirely and becomes a plain fully-rounded rectangle.
+                    readonly property int wingW: win.pillFloating ? 0 : (win.dash ? 34 : 12)
     
                     anchors.fill: parent
                     anchors.leftMargin: -wingW
                     anchors.rightMargin: -wingW
                     theme: theme
-                    radius: (win.dash || win.capFloating) ? theme.radiusPanel : Math.min(theme.radiusPanel, height / 2)
+                    radius: (win.dash || win.pillFloating) ? theme.radiusPanel : Math.min(theme.radiusPanel, height / 2)
                     wing: wingW
-                    // detached capture pill → uniformly rounded (top corners = bottom)
-                    rounded: win.capFloating
+                    // detached capture / idle pill → uniformly rounded (top corners = bottom)
+                    rounded: win.pillFloating
                     // solid when expanded, a camera/recording is live, a voice take is
                     // running, or the agenda popup is up; translucent at rest.
                     fillColor: (win.capShow || win.dash || win.privacyRest || win.voiceMorph || win.deadlines) ? theme.bg : theme.bgTranslucent
@@ -1792,15 +1883,18 @@ ShellRoot {
                     anchors.fill: parent
                     enabled: !win.dash && !win.notifMorph && !win.showBurst && !win.voiceMorph && !win.capShow
                     cursorShape: Qt.PointingHandCursor
-                    acceptedButtons: Qt.LeftButton | Qt.RightButton
+                    acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
                     // left-click reveals the dashboard; right-click anywhere on the
                     // resting pill opens the org-deadlines list (available even when
-                    // nothing is due — it then shows the "nothing due" empty state).
+                    // nothing is due — it then shows the "nothing due" empty state);
+                    // middle-click sends a dragged pill back to its top-centre home.
                     onClicked: (mouse) => {
                         if (mouse.button === Qt.RightButton) {
                             // org deadlines hide under the finance privacy toggle
                             if (!win.orgHidden)
                                 win.deadlines = true;
+                        } else if (mouse.button === Qt.MiddleButton) {
+                            win.idleReset();
                         } else
                             win.focused = true;
                     }
@@ -2777,7 +2871,9 @@ ShellRoot {
             // invisible for the whole take). Action bursts are NOT routed through here:
             // they morph the pill in place and leave the resting droplet deck alone.
             Loader {
-                anchors.horizontalCenter: parent.horizontalCenter
+                // centred under the pill (follows a dragged idle pill; an expanded pill
+                // sits top-centre so this reads as screen-centre there too).
+                x: pill.x + (pill.width - width) / 2
                 y: pill.y + pill.height + 8
                 active: ((win.open || win.launcher || win.ctxMode) || win.voiceMorph) && notifs.active.length > 0
                 sourceComponent: cStack
@@ -2840,7 +2936,9 @@ ShellRoot {
 
                 NotificationStack {
                     id: restDeck
-                    anchors.horizontalCenter: parent.horizontalCenter
+                    // centred under the pill so the deck follows a dragged idle pill
+                    // (at the top-centre home this is identical to screen-centre).
+                    x: pill.x + (pill.width - width) / 2
                     y: pill.y + pill.height + restNotif.dropGap
                     theme: theme
                     notifs: notifs
