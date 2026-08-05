@@ -1,14 +1,38 @@
-# teamwork — Teamwork.com timesheet
+# teamwork — Teamwork.com from Org
 
-Log time to [Teamwork.com](https://teamwork.com) from an editable Org buffer.
-Pull the project / task-list / task tree plus your time logs for a date range,
-edit, then submit a reviewed diff (streamed, ordered, with retry + abort).
+Work with [Teamwork.com](https://teamwork.com) from editable Org buffers. Three
+buffer kinds share the same pull → edit → review-diff → streamed-apply flow:
+
+- **Timesheet** (`teamwork-timesheet`) — the project / task-list / task tree plus
+  your time logs for a date range; edit logs, then submit.
+- **Management** (`teamwork-management`) — the same tree with *no time filter*,
+  for creating / renaming / **deleting** task-lists, tasks and subtasks, and
+  editing task **properties** — `:TW_TAGS:`, `:TW_DUE:` (date), `:TW_PRIORITY:`
+  (low/medium/high) and `:TW_ASSIGNEE:` (by name) — plus a **description** as
+  plain text under the drawer. `C-c C-p` sets a property with completion over the
+  available values (project people, existing tags, the priority list, a calendar
+  for the due date). Removing a heading deletes it in Teamwork on submit (children
+  cascade); the preview lists every deletion. Deletion is management-only —
+  timesheet mode never deletes tasks/lists.
+- **Comments** (`teamwork-comments`) — the comments of the task under point, in a
+  new buffer you can edit, add to and delete from.
+
 Tasks nest to any depth: a heading demoted below a task (`****` or deeper) is a
-subtask, and subtasks take logs, renames and `[d]` completion like any task.
-Delete a project heading to stop fetching it (a local preference — it is never
-deleted in Teamwork). Credentials live in the system keyring.
+subtask, and subtasks take logs, renames, labels and `[d]` completion like any
+task. Label a task with a `:TW_TAGS: bug, backend` property line (comma
+separated; empty clears, a missing line leaves labels untouched).
 
-Previously a literate `teamwork.org`; now a plain package.
+Which projects appear is a **per-account filter** (`teamwork-filter`), persisted
+in prefs — switching accounts no longer resets it. Delete a project heading to
+stop fetching it (a local preference — it is never deleted in Teamwork).
+
+Every buffer shows **cached data instantly** while a fresh copy is fetched in the
+background; a header-line banner marks it stale, the buffer is replaced when
+fresh data arrives (edits discarded), and submit is refused while stale/errored
+so a diff is never computed against out-of-date data. `C-c C-r` forces a refresh.
+
+Credentials live in the system keyring. Previously a literate `teamwork.org`;
+now a plain package.
 
 ## Files
 

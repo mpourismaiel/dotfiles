@@ -7,17 +7,36 @@
 ;;
 ;; Commands:
 ;;   M-x teamwork-timesheet        pull the previous month (C-u = prompt dates)
+;;   M-x teamwork-management       edit the project structure (no time filter) + labels
+;;   M-x teamwork-comments         open comments of the task under point (edit/add/delete)
+;;   M-x teamwork-filter           pick which projects appear (stored per account)
 ;;   M-x teamwork-submit           review the diff, then apply on confirm
+;;   M-x teamwork-refresh          re-fetch the current buffer's data
 ;;   M-x teamwork-account-add      add a Teamwork account (name, site, API key)
 ;;   M-x teamwork-account-view     list the configured accounts
 ;;   M-x teamwork-account-delete   remove an account from the keyring
 ;;
 ;; Several accounts can be configured; when more than one exists the pull
-;; commands ask which to use and record it in a #+TEAMWORK_ACCOUNT header.
+;; commands ask which to use and record it in a #+TEAMWORK_ACCOUNT header.  Each
+;; account keeps its own project filter (teamwork-filter), so switching accounts
+;; never resets it.
 ;;
+;; Every buffer loads cached data instantly (a banner marks it STALE) then
+;; refreshes in the background; the buffer is replaced when fresh data arrives,
+;; and submit is refused while stale/errored (the diff would be against old data).
+;;
+;; Every editable buffer submits with C-c C-c (preview split + echo-line
+;; confirmation + live per-action progress) and previews pending changes in a
+;; side window with C-c C-l.
 ;; In the timesheet buffer:
-;;   C-c C-c   submit     C-c C-k   close
-;;   C-c C-d   set range  C-c C-l   toggle live log preview (right side window)
+;;   C-c C-c   submit     C-c C-k   close       C-c C-r   refresh
+;;   C-c C-d   set range  C-c C-l   live log + changes preview   C-c C-o   task comments
+;;   C-c C-p   set a task property (tags/due/priority/assignee) with completion
+;; In the management buffer:
+;;   C-c C-c submit  C-c C-l changes preview  C-c C-o comments  C-c C-f filter
+;;   C-c C-p set property (tags/due/priority/assignee w/ value completion)  C-c C-r refresh
+;; In a comments buffer:
+;;   C-c C-c submit  C-c C-l changes preview  C-c C-k close  C-c C-r refresh
 ;;
 ;;; Code:
 
@@ -42,6 +61,9 @@
 
 (defvar teamwork-logs-buffer "*teamwork-logs*"
   "Name of the live chronological log-list side buffer.")
+
+(defvar teamwork-changes-buffer "*teamwork-changes*"
+  "Name of the live pending-changes preview side buffer (management/comments).")
 
 ;; Icons for the submit preview (unicode by default; set to nerd-font glyphs if
 ;; you like).  One per node kind.
@@ -79,10 +101,11 @@ sole name when only one exists; otherwise prompt with completion using PROMPT."
           ((null (cdr names)) (car names))
           (t (completing-read (or prompt "Teamwork account: ") names nil t)))))
 
-(defun teamwork--buffer-account ()
-  "Return the buffer's #+TEAMWORK_ACCOUNT header value, or nil.
-So submit targets the same account the buffer was pulled from."
-  (let ((buf (get-buffer teamwork-buffer)))
+(defun teamwork--buffer-account (&optional buffer)
+  "Return BUFFER's #+TEAMWORK_ACCOUNT header value, or nil (default: the
+timesheet buffer).  So submit targets the same account the buffer was pulled
+from."
+  (let ((buf (or buffer (get-buffer teamwork-buffer))))
     (when (buffer-live-p buf)
       (with-current-buffer buf
         (save-excursion
@@ -99,6 +122,9 @@ So submit targets the same account the buffer was pulled from."
     (define-key m (kbd "C-c C-k") #'teamwork-quit)
     (define-key m (kbd "C-c C-d") #'teamwork-set-range)
     (define-key m (kbd "C-c C-l") #'teamwork-log-preview)
+    (define-key m (kbd "C-c C-r") #'teamwork-refresh)
+    (define-key m (kbd "C-c C-o") #'teamwork-comments)
+    (define-key m (kbd "C-c C-p") #'teamwork-set-property)
     m)
   "Keymap active in the timesheet buffer.")
 
@@ -107,14 +133,203 @@ So submit targets the same account the buffer was pulled from."
   :lighter " TW"
   :keymap teamwork-timesheet-mode-map)
 
+(defvar teamwork-management-buffer "teamwork-management"
+  "Name of the management buffer (project structure, no time filter).")
+
+(defvar teamwork-management-mode-map
+  (let ((m (make-sparse-keymap)))
+    (define-key m (kbd "C-c C-c") #'teamwork-submit)
+    (define-key m (kbd "C-c C-k") #'teamwork-quit)
+    (define-key m (kbd "C-c C-r") #'teamwork-refresh)
+    (define-key m (kbd "C-c C-l") #'teamwork-changes-preview)
+    (define-key m (kbd "C-c C-o") #'teamwork-comments)
+    (define-key m (kbd "C-c C-f") #'teamwork-filter)
+    (define-key m (kbd "C-c C-p") #'teamwork-set-property)
+    m)
+  "Keymap active in the management buffer.")
+
+(define-minor-mode teamwork-management-mode
+  "Minor mode for the Teamwork management buffer."
+  :lighter " TWm"
+  :keymap teamwork-management-mode-map)
+
+(defvar teamwork-comments-mode-map
+  (let ((m (make-sparse-keymap)))
+    (define-key m (kbd "C-c C-c") #'teamwork-submit)
+    (define-key m (kbd "C-c C-k") #'teamwork-quit)
+    (define-key m (kbd "C-c C-r") #'teamwork-refresh)
+    (define-key m (kbd "C-c C-l") #'teamwork-changes-preview)
+    m)
+  "Keymap active in a comments buffer.")
+
+(define-minor-mode teamwork-comments-mode
+  "Minor mode for a Teamwork task-comments buffer."
+  :lighter " TWc"
+  :keymap teamwork-comments-mode-map)
+
+(defun teamwork--enable-timesheet-mode () (teamwork-timesheet-mode 1))
+(defun teamwork--enable-management-mode () (teamwork-management-mode 1))
+(defun teamwork--enable-comments-mode () (teamwork-comments-mode 1))
+
+;; --------------------------------------------------------------------------- ;;
+;; Cached-first, background-refresh loading with a data-freshness banner
+;;
+;; Every teamwork buffer (timesheet / management / comments) is filled from a
+;; local cache instantly (marked STALE), then a fresh copy is fetched in the
+;; background and swapped in (FRESH).  A banner in the header-line tells you the
+;; state; while stale/errored, submit refuses (its diff would be against data
+;; that is about to be — or already has been — replaced).
+;;
+;; The per-buffer state below is `permanent-local' so it survives the `org-mode'
+;; call inside `teamwork--fill-buffer' (which otherwise wipes local variables).
+;; --------------------------------------------------------------------------- ;;
+(defvar-local teamwork--kind nil "This buffer's kind: \"timesheet\"|\"manage\"|\"comments\".")
+(defvar-local teamwork--key nil "Cache key: range \"FROM_TO\" / \"manage\" / task id.")
+(defvar-local teamwork--account nil "Account this buffer was pulled from.")
+(defvar-local teamwork--fresh-args nil "Sidecar argv (sans --account/--out/--prev) for a live fetch.")
+(defvar-local teamwork--submit-cmd nil "Sidecar subcommand submit uses (\"submit\"|\"comments-submit\").")
+(defvar-local teamwork--mode-fn nil "Function enabling this buffer's teamwork minor mode.")
+(defvar-local teamwork--use-prev nil "Whether to pass the old buffer as --prev on refresh.")
+(defvar-local teamwork--data-state nil "One of nil, `stale', `fresh', `error'.")
+(defvar-local teamwork--return-to nil "Buffer to switch back to when this one is closed.")
+(dolist (v '(teamwork--kind teamwork--key teamwork--account teamwork--fresh-args
+             teamwork--submit-cmd teamwork--mode-fn teamwork--use-prev teamwork--data-state
+             teamwork--return-to))
+  (put v 'permanent-local t))
+
 (defun teamwork-quit ()
-  "Close the timesheet buffer (and any preview / log windows)."
+  "Close this teamwork buffer (and any preview / log / changes windows).
+If the buffer was opened over another teamwork buffer (e.g. comments opened from
+the management buffer), switch back to that buffer instead of leaving whatever
+Emacs happens to surface."
   (interactive)
   (teamwork--stop-log-timer)
-  (dolist (name (list teamwork-preview-buffer teamwork-logs-buffer))
-    (when-let ((w (get-buffer-window name))) (delete-window w))
-    (when (get-buffer name) (kill-buffer name)))
-  (kill-buffer (current-buffer)))
+  (let ((back (and (buffer-live-p teamwork--return-to) teamwork--return-to)))
+    (dolist (name (list teamwork-preview-buffer teamwork-logs-buffer teamwork-changes-buffer))
+      (when-let ((w (get-buffer-window name))) (delete-window w))
+      (when (get-buffer name) (kill-buffer name)))
+    (kill-buffer (current-buffer))
+    (when back (switch-to-buffer back))))
+
+(defun teamwork--banner (state &optional msg)
+  "Header-line string for data STATE, or nil for none."
+  (pcase state
+    ('stale
+     (propertize
+      " ⟳ Showing existing data — refreshing in the background.  This buffer will be REPLACED when fresh data arrives; edits made now are discarded. "
+      'face '(:background "#3a2f00" :foreground "#ffd479" :weight bold)))
+    ('error
+     (propertize
+      (concat " ⚠ Refresh FAILED — this data is not current, so submit is disabled (edits would not be sent)."
+              (if (and msg (not (string-empty-p msg)))
+                  (format "  [%s] " (car (split-string msg "\n"))) " "))
+      'face '(:background "#3a0000" :foreground "#ff9a9a" :weight bold)))
+    (_ nil)))
+
+(defun teamwork--set-state (state &optional msg)
+  "Set the current buffer's data STATE and update its banner."
+  (setq teamwork--data-state state)
+  (setq header-line-format (teamwork--banner state msg))
+  (force-mode-line-update))
+
+(defun teamwork--cached (kind key account)
+  "Return cached org text for KIND/KEY/ACCOUNT from the sidecar, or nil."
+  (with-temp-buffer
+    (let ((code (apply #'call-process teamwork-python nil t nil
+                       teamwork-script "cached" "--kind" kind "--key" key
+                       (when account (list "--account" account)))))
+      (when (zerop code) (buffer-string)))))
+
+(defun teamwork--snapshot-prev (buffer)
+  "Write BUFFER to a temp file if it looks like a teamwork buffer; return the
+path or nil.  Passed to pull/manage as --prev so a deleted project heading
+updates the hidden-project prefs."
+  (when (buffer-live-p buffer)
+    (with-current-buffer buffer
+      (when (save-excursion (goto-char (point-min))
+                            (re-search-forward "^#\\+TEAMWORK\\(_MANAGE\\)?:" nil t))
+        (let ((f (make-temp-file "teamwork-prev" nil ".org")))
+          (write-region (point-min) (point-max) f nil 'silent)
+          f)))))
+
+(defun teamwork--fill-from-string (buffer text mode-fn)
+  "Fill BUFFER with TEXT via a scratch buffer, enabling MODE-FN."
+  (let ((ob (generate-new-buffer " *teamwork-fill*")))
+    (with-current-buffer ob (insert text))
+    (teamwork--fill-buffer buffer ob mode-fn)
+    (kill-buffer ob)))
+
+(defun teamwork--run-fresh (buffer)
+  "Fetch BUFFER's data fresh (async) using its buffer-local fetch spec, then swap
+it in on success (state FRESH) or leave it and warn (state ERROR)."
+  (with-current-buffer buffer
+    (let* ((args teamwork--fresh-args)
+           (account teamwork--account)
+           (mode-fn teamwork--mode-fn)
+           (prev (and teamwork--use-prev (teamwork--snapshot-prev buffer)))
+           (tmp-out (make-temp-file "teamwork-fresh" nil ".org"))
+           (errbuf (get-buffer-create " *teamwork-fetch-stderr*")))
+      (with-current-buffer errbuf (erase-buffer))
+      (make-process
+       :name "teamwork-fetch" :buffer (get-buffer-create " *teamwork-fetch-out*")
+       :stderr errbuf :noquery t
+       :command (append (list teamwork-python teamwork-script) args
+                        (when account (list "--account" account))
+                        (when prev (list "--prev" prev))
+                        (list "--out" tmp-out))
+       :sentinel
+       (lambda (proc _event)
+         (when (memq (process-status proc) '(exit signal))
+           (if (and (eq (process-status proc) 'exit)
+                    (zerop (process-exit-status proc))
+                    (file-readable-p tmp-out))
+               (when (buffer-live-p buffer)
+                 (teamwork--fill-from-string
+                  buffer (with-temp-buffer (insert-file-contents tmp-out) (buffer-string))
+                  mode-fn)
+                 (with-current-buffer buffer (teamwork--set-state 'fresh))
+                 (message "Teamwork: refreshed — buffer is now current."))
+             (when (buffer-live-p buffer)
+               (with-current-buffer buffer
+                 (teamwork--set-state
+                  'error (with-current-buffer errbuf (string-trim (buffer-string))))))
+             (message "Teamwork: refresh failed — showing existing data (submit disabled)."))
+           (ignore-errors (delete-file tmp-out))
+           (when prev (ignore-errors (delete-file prev)))))))))
+
+(defun teamwork--fetch (buffer kind key account fresh-args submit-cmd mode-fn use-prev
+                               &optional return-to)
+  "Populate BUFFER for KIND/KEY: show cache instantly (STALE), refresh in the
+background.  FRESH-ARGS is the sidecar argv for the live fetch; SUBMIT-CMD the
+subcommand submit uses; MODE-FN enables the buffer's minor mode; USE-PREV passes
+the old buffer as --prev.  RETURN-TO, if given, is the buffer to switch back to
+when this one is closed (so opening comments over a management buffer returns to
+it on quit)."
+  (with-current-buffer buffer
+    (setq teamwork--kind kind teamwork--key key teamwork--account account
+          teamwork--fresh-args fresh-args teamwork--submit-cmd submit-cmd
+          teamwork--mode-fn mode-fn teamwork--use-prev use-prev
+          teamwork--return-to (and (buffer-live-p return-to) return-to))
+    (let ((cached (teamwork--cached kind key account)))
+      (teamwork--fill-from-string
+       buffer (or cached (format "loading %s ...\n" key)) mode-fn)
+      ;; the fill re-created local bindings via org-mode; re-assert the spec
+      (setq teamwork--kind kind teamwork--key key teamwork--account account
+            teamwork--fresh-args fresh-args teamwork--submit-cmd submit-cmd
+            teamwork--mode-fn mode-fn teamwork--use-prev use-prev
+            teamwork--return-to (and (buffer-live-p return-to) return-to))
+      (teamwork--set-state 'stale)))
+  (switch-to-buffer buffer)
+  (teamwork--run-fresh buffer))
+
+;;;###autoload
+(defun teamwork-refresh ()
+  "Re-fetch the current teamwork buffer's data in the background."
+  (interactive)
+  (unless teamwork--kind (user-error "Not a teamwork buffer"))
+  (teamwork--set-state 'stale)
+  (teamwork--run-fresh (current-buffer))
+  (message "Teamwork: refreshing…"))
 
 ;; --------------------------------------------------------------------------- ;;
 ;; Live log preview — a chronological list of the buffer's time logs
@@ -415,6 +630,101 @@ non-committable action preview sits between separators above the totals."
     (setq teamwork--log-timer (run-with-idle-timer 0.4 t #'teamwork--log-tick-refresh))))
 
 ;; --------------------------------------------------------------------------- ;;
+;; Live pending-changes preview (management / comments) — a side window that
+;; shows what C-c C-c would submit, recomputed as you edit.  The timesheet's
+;; richer log preview (C-c C-l) already folds this in; this is the equivalent
+;; for buffers that have no time logs, on the same key.
+;; --------------------------------------------------------------------------- ;;
+(defvar teamwork--changes-src nil "Source buffer the changes preview reflects.")
+(defvar teamwork--changes-timer nil "Idle timer refreshing the changes preview.")
+(defvar teamwork--changes-tick nil "Last seen modification tick of the source buffer.")
+(defvar teamwork--changes-proc nil "In-flight changes-preview process, if any.")
+
+(defun teamwork--changes-render (text)
+  "Render TEXT (a pending-changes summary) into the changes side buffer."
+  (let ((buf (get-buffer-create teamwork-changes-buffer)))
+    (with-current-buffer buf
+      (let ((inhibit-read-only t) (buffer-read-only nil))
+        (erase-buffer)
+        (insert (propertize "pending changes (preview only — C-c C-c to submit)\n\n"
+                            'face 'font-lock-comment-face))
+        (insert (or text (propertize "  computing…\n" 'face 'shadow))))
+      (unless (derived-mode-p 'special-mode) (special-mode)))))
+
+(defun teamwork--changes-compute ()
+  "Run SUBMIT-CMD --json on the source buffer async; render the formatted plan."
+  (let ((src teamwork--changes-src))
+    (when (and (buffer-live-p src) (get-buffer-window teamwork-changes-buffer))
+      (when (process-live-p teamwork--changes-proc)
+        (ignore-errors (kill-process teamwork--changes-proc)))
+      (let ((tmp (make-temp-file "teamwork-chg" nil ".org"))
+            (obuf (generate-new-buffer " *teamwork-chg-out*"))
+            (submit-cmd (with-current-buffer src (or teamwork--submit-cmd "submit")))
+            (account (with-current-buffer src
+                       (or teamwork--account (teamwork--buffer-account src)))))
+        (with-current-buffer src (write-region (point-min) (point-max) tmp nil 'silent))
+        (setq teamwork--changes-proc
+              (make-process
+               :name "teamwork-changes" :buffer obuf :noquery t
+               :command (append (list teamwork-python teamwork-script submit-cmd
+                                      "--file" tmp "--json")
+                                (when account (list "--account" account)))
+               :sentinel
+               (lambda (proc _e)
+                 (when (memq (process-status proc) '(exit signal))
+                   (let* ((ok (and (eq (process-status proc) 'exit)
+                                   (zerop (process-exit-status proc))))
+                          (out (with-current-buffer obuf (buffer-string)))
+                          (txt (or (and ok (condition-case nil
+                                               (let ((plan (json-parse-string
+                                                            out :object-type 'alist
+                                                            :array-type 'list :null-object nil)))
+                                                 (teamwork--format-plan
+                                                  (alist-get 'actions plan)
+                                                  (alist-get 'problems plan)))
+                                             (error nil)))
+                                   (propertize "  (unavailable — refresh first)\n"
+                                               'face 'shadow))))
+                     (ignore-errors (delete-file tmp))
+                     (when (buffer-live-p obuf) (kill-buffer obuf))
+                     (when (get-buffer-window teamwork-changes-buffer)
+                       (teamwork--changes-render txt)))))))))))
+
+(defun teamwork--changes-stop ()
+  (when (timerp teamwork--changes-timer) (cancel-timer teamwork--changes-timer))
+  (when (process-live-p teamwork--changes-proc)
+    (ignore-errors (kill-process teamwork--changes-proc)))
+  (setq teamwork--changes-timer nil teamwork--changes-tick nil))
+
+(defun teamwork--changes-tick-fn ()
+  "Idle callback: recompute the changes preview when the source buffer changed."
+  (let ((src teamwork--changes-src))
+    (if (or (not (buffer-live-p src)) (not (get-buffer-window teamwork-changes-buffer)))
+        (teamwork--changes-stop)
+      (let ((tick (buffer-chars-modified-tick src)))
+        (unless (equal tick teamwork--changes-tick)
+          (setq teamwork--changes-tick tick)
+          (teamwork--changes-compute))))))
+
+;;;###autoload
+(defun teamwork-changes-preview ()
+  "Toggle a live side window previewing this buffer's pending changes.
+The same diff C-c C-c would apply, recomputed (debounced) as you edit."
+  (interactive)
+  (unless teamwork--kind (user-error "Not a teamwork buffer"))
+  (if (get-buffer-window teamwork-changes-buffer)
+      (progn (teamwork--changes-stop)
+             (when-let ((w (get-buffer-window teamwork-changes-buffer))) (delete-window w))
+             (when (get-buffer teamwork-changes-buffer) (kill-buffer teamwork-changes-buffer)))
+    (setq teamwork--changes-src (current-buffer) teamwork--changes-tick nil)
+    (teamwork--changes-render nil)
+    (display-buffer-in-side-window (get-buffer-create teamwork-changes-buffer)
+                                   '((side . right) (window-width . 0.4)))
+    (teamwork--changes-compute)
+    (teamwork--changes-stop)
+    (setq teamwork--changes-timer (run-with-idle-timer 0.6 t #'teamwork--changes-tick-fn))))
+
+;; --------------------------------------------------------------------------- ;;
 ;; Folding: hide property drawers on open, keep the #+TEAMWORK header visible
 ;; --------------------------------------------------------------------------- ;;
 (defun teamwork--fold-drawers ()
@@ -453,15 +763,19 @@ This is what lets you edit the dates in the header and re-run to change range."
           (when (re-search-forward "^#\\+TEAMWORK: from=\\([0-9-]+\\) to=\\([0-9-]+\\)" nil t)
             (cons (match-string 1) (match-string 2))))))))
 
-(defun teamwork--fill-buffer (buf out)
-  "Replace BUF's contents with process buffer OUT, set up mode and folding."
+(defun teamwork--fill-buffer (buf out &optional mode-fn)
+  "Replace BUF's contents with process buffer OUT, set up mode and folding.
+MODE-FN enables the buffer's teamwork minor mode (default: the timesheet mode).
+Buffer-local teamwork state survives the `org-mode' call here because it is
+marked permanent-local; the caller re-applies the banner via
+`teamwork--set-state'."
   (with-current-buffer buf
     (let ((inhibit-read-only t))
       (erase-buffer)
       (insert-buffer-substring out)
       (goto-char (point-min))
       (org-mode)
-      (teamwork-timesheet-mode 1)
+      (funcall (or mode-fn #'teamwork--enable-timesheet-mode))
       (teamwork--fold-drawers))))
 
 (defvar teamwork--range-file
@@ -492,44 +806,17 @@ pull needn't be retyped)."
   "Pull the timesheet for FROM..TO into the timesheet buffer (current window).
 ACCOUNT, when given, selects which stored Teamwork account to pull from; the
 sidecar records it in the buffer's #+TEAMWORK_ACCOUNT header so submit reuses
-it.  The buffer being replaced (if any) is passed to the sidecar as --prev, so a
-deleted project heading or edited #+TEAMWORK_HIDDEN updates the hidden prefs."
+it.
+
+Cached data (if any) is shown instantly while a fresh copy is fetched in the
+background; the buffer being replaced is passed to the sidecar as --prev, so a
+deleted project heading or edited #+TEAMWORK_HIDDEN updates the hidden-project
+prefs."
   (teamwork--save-range from to)   ; remember before requesting, so failures survive
-  (let* ((buf (get-buffer-create teamwork-buffer))
-         (errbuf (get-buffer-create " *teamwork-pull-stderr*"))
-         ;; snapshot the old buffer BEFORE we clear it, if it's a real timesheet
-         (prev (with-current-buffer buf
-                 (when (save-excursion (goto-char (point-min))
-                                       (re-search-forward "^#\\+TEAMWORK:" nil t))
-                   (let ((f (make-temp-file "teamwork-prev" nil ".org")))
-                     (write-region (point-min) (point-max) f nil 'silent)
-                     f)))))
-    (with-current-buffer buf
-      (org-mode)
-      (teamwork-timesheet-mode 1)
-      (let ((inhibit-read-only t))
-        (erase-buffer)
-        (insert (format "#+TITLE: Teamwork timesheet %s .. %s\n\nloading %s .. %s ...\n"
-                        from to from to))))
-    (with-current-buffer errbuf (erase-buffer))
-    (switch-to-buffer buf)
-    (let ((out (generate-new-buffer " *teamwork-pull-out*")))
-      (make-process
-       :name "teamwork-pull" :buffer out :stderr errbuf :noquery t
-       :command (append (list teamwork-python teamwork-script "pull" "--from" from "--to" to)
-                        (when account (list "--account" account))
-                        (when prev (list "--prev" prev)))
-       :sentinel
-       (lambda (proc _event)
-         (when (memq (process-status proc) '(exit signal))
-           (if (and (eq (process-status proc) 'exit) (zerop (process-exit-status proc)))
-               (progn
-                 (teamwork--fill-buffer buf out)
-                 (message "Teamwork: pulled %s .. %s. Edit, then C-c C-c to submit." from to))
-             (message "Teamwork pull failed (see %s)" (buffer-name errbuf))
-             (display-buffer errbuf))
-           (kill-buffer out)
-           (when prev (ignore-errors (delete-file prev)))))))))
+  (teamwork--fetch (get-buffer-create teamwork-buffer) "timesheet"
+                   (format "%s_%s" from to) account
+                   (list "pull" "--from" from "--to" to)
+                   "submit" #'teamwork--enable-timesheet-mode t))
 
 ;;;###autoload
 (defun teamwork-timesheet (&optional ask)
@@ -574,6 +861,132 @@ Asks which account to use when several are configured."
     (if range
         (teamwork--pull (car range) (cdr range) (teamwork--choose-account))
       (user-error "No previous range yet — use `teamwork-set-range' (C-c C-d)"))))
+
+;; --------------------------------------------------------------------------- ;;
+;; Management — the whole project structure (no time filter), edit + label
+;; --------------------------------------------------------------------------- ;;
+;;;###autoload
+(defun teamwork-management ()
+  "Open a management buffer: the project/tasklist/task/subtask structure with no
+time filter.  Create tasks/lists/subtasks by adding headings, rename by editing
+heading text, and label tasks with a :TW_TAGS: property.  Which projects appear
+is the per-account filter (see `teamwork-filter').  C-c C-c submits."
+  (interactive)
+  (let ((account (or (teamwork--buffer-account (get-buffer teamwork-management-buffer))
+                     (teamwork--choose-account "Teamwork account (manage): "))))
+    (teamwork--fetch (get-buffer-create teamwork-management-buffer) "manage" "manage" account
+                     (list "manage") "submit" #'teamwork--enable-management-mode t)))
+
+;; --------------------------------------------------------------------------- ;;
+;; Comments — fetch/edit the comments of the task under point (any TW buffer)
+;; --------------------------------------------------------------------------- ;;
+;;;###autoload
+(defun teamwork-comments ()
+  "Open the comments of the task under point in a new buffer (edit/add/delete).
+Run from a timesheet or management buffer with point inside a task; the task's
+:TW_TASK_ID: (inherited from ancestors) selects which task.  C-c C-c submits the
+comment changes."
+  (interactive)
+  (let ((tid (org-entry-get nil "TW_TASK_ID" t))
+        (account (or teamwork--account (teamwork--buffer-account (current-buffer))))
+        (origin (current-buffer)))
+    (unless tid
+      (user-error "No task under point (no TW_TASK_ID here or above)"))
+    (teamwork--fetch (get-buffer-create (format "teamwork-comments-%s" tid))
+                     "comments" tid account
+                     (list "comments-pull" "--task" tid)
+                     "comments-submit" #'teamwork--enable-comments-mode nil
+                     origin)))
+
+;; --------------------------------------------------------------------------- ;;
+;; Project filter — a per-account allowlist of projects (persisted in prefs)
+;; --------------------------------------------------------------------------- ;;
+;;;###autoload
+(defun teamwork-filter ()
+  "Choose which projects appear in management/timesheet for an account.
+The choice is stored per account, so switching accounts no longer resets it.
+An empty selection means all active projects."
+  (interactive)
+  (let* ((account (teamwork--choose-account "Teamwork account (filter): "))
+         (projs (apply #'teamwork--run-json "projects"
+                       (when account (list "--account" account))))
+         (label (lambda (p) (format "%s  %s" (alist-get 'id p) (alist-get 'name p))))
+         (labels (mapcar label projs))
+         (current (delq nil (mapcar (lambda (p)
+                                      (when (eq t (alist-get 'in_filter p)) (funcall label p)))
+                                    projs)))
+         (chosen (completing-read-multiple
+                  "Projects to include (empty = all active): " labels nil t
+                  (when current (mapconcat #'identity current ","))))
+         (ids (mapcar (lambda (s) (car (split-string s))) chosen)))
+    (apply #'teamwork--run-json "filter-set"
+           "--projects" (mapconcat #'identity ids ",")
+           (when account (list "--account" account)))
+    (message "Teamwork: filter set to %d project(s)%s — re-run manage/pull to apply."
+             (length ids) (if account (format " [%s]" account) ""))))
+
+;; --------------------------------------------------------------------------- ;;
+;; Property picker — set task properties (tags/due/priority/assignee) w/ values
+;; --------------------------------------------------------------------------- ;;
+(defvar teamwork-priorities '("" "low" "medium" "high")
+  "Allowed :TW_PRIORITY: values (empty = none).")
+
+(defun teamwork--account-args ()
+  "(\"--account\" NAME) for this buffer's account, or nil."
+  (let ((a (or teamwork--account (teamwork--buffer-account (current-buffer)))))
+    (when a (list "--account" a))))
+
+(defun teamwork--json-or-nil (subcmd)
+  "Run the sidecar SUBCMD for this buffer's account; parsed JSON, or nil on error."
+  (condition-case err
+      (apply #'teamwork--run-json subcmd (teamwork--account-args))
+    (error (message "Teamwork: %s" (error-message-string err)) nil)))
+
+(defun teamwork--current-prop-list (key)
+  "Current comma-separated values of drawer property KEY at point, as a list."
+  (let ((v (org-entry-get nil key)))
+    (and v (not (string-empty-p (string-trim v)))
+         (split-string v "[,]+" t "[ \t]+"))))
+
+(defun teamwork--put-property (key value)
+  "Set drawer property KEY to VALUE on the task at point (empty VALUE clears it
+in Teamwork — the line is kept with no value)."
+  (org-entry-put (point) key (or value "")))
+
+;;;###autoload
+(defun teamwork-set-property ()
+  "Set a property on the task at point, completing over the available values.
+Priority is a fixed list, due date uses the org calendar, and tags / assignees
+complete against the account's configured tags / project people (you can still
+type a new one).  In a timesheet buffer only Tags applies."
+  (interactive)
+  (unless (org-entry-get nil "TW_TASK_ID" t)
+    (user-error "Point is not on a task (no TW_TASK_ID here or above)"))
+  (let* ((manage (equal teamwork--kind "manage"))
+         (choices (if manage '("Tags" "Due date" "Priority" "Assignee") '("Tags")))
+         (prop (if (cdr choices) (completing-read "Set property: " choices nil t) "Tags")))
+    (pcase prop
+      ("Due date"
+       (teamwork--put-property "TW_DUE" (org-read-date nil nil nil "Due date: ")))
+      ("Priority"
+       (teamwork--put-property "TW_PRIORITY"
+                               (completing-read "Priority: " teamwork-priorities nil t)))
+      ("Tags"
+       (let* ((all (teamwork--json-or-nil "tags"))
+              (cur (teamwork--current-prop-list "TW_TAGS"))
+              (chosen (completing-read-multiple
+                       "Tags (comma-separated, empty clears): " all nil nil
+                       (and cur (mapconcat #'identity cur ",")))))
+         (teamwork--put-property "TW_TAGS" (mapconcat #'identity chosen ", "))))
+      ("Assignee"
+       (let* ((people (teamwork--json-or-nil "people"))
+              (names (delq nil (mapcar (lambda (p) (alist-get 'name p)) people)))
+              (cur (teamwork--current-prop-list "TW_ASSIGNEE"))
+              (chosen (completing-read-multiple
+                       "Assignees (comma-separated, empty clears): " names nil nil
+                       (and cur (mapconcat #'identity cur ",")))))
+         (teamwork--put-property "TW_ASSIGNEE" (mapconcat #'identity chosen ", ")))))
+    (message "Teamwork: %s set — C-c C-l previews, C-c C-c submits." prop)))
 
 ;; --------------------------------------------------------------------------- ;;
 ;; Submit: preview -> confirm -> streamed apply
@@ -645,17 +1058,20 @@ Asks which account to use when several are configured."
           (delete-char 1)
           (insert (if face (propertize glyph 'face face) glyph)))))))
 
-(defun teamwork--apply (tmp out &optional account)
-  "Run streamed apply on TMP, updating the preview live; reload buffer from OUT.
-ACCOUNT selects the stored account (else the sidecar reads the buffer header)."
+(defun teamwork--apply (tmp out target submit-cmd &optional account)
+  "Run streamed apply on TMP via SUBMIT-CMD, updating the preview live; reload the
+TARGET buffer from OUT (keeping its teamwork mode).  ACCOUNT selects the stored
+account (else the sidecar reads the buffer header)."
   (let ((acc "")
-        (tsbuf (get-buffer teamwork-buffer))
+        (mode-fn (and (buffer-live-p target)
+                      (with-current-buffer target
+                        (or teamwork--mode-fn #'teamwork--enable-timesheet-mode))))
         (errbuf (get-buffer-create " *teamwork-apply-stderr*")))
     (with-current-buffer errbuf (erase-buffer))
     (make-process
      :name "teamwork-apply" :buffer (get-buffer-create " *teamwork-apply-out*")
      :stderr errbuf :noquery t
-     :command (append (list teamwork-python teamwork-script "submit" "--file" tmp
+     :command (append (list teamwork-python teamwork-script submit-cmd "--file" tmp
                             "--apply" "--out" out)
                       (when account (list "--account" account)))
      :filter
@@ -676,12 +1092,13 @@ ACCOUNT selects the stored account (else the sidecar reads the buffer header)."
              (unless (zerop (process-exit-status proc))
                (insert (format "\nsidecar exited %d; see %s\n"
                                (process-exit-status proc) (buffer-name errbuf))))))
-         ;; reload the timesheet from the (partially) applied buffer file
-         (when (and tsbuf (file-readable-p out))
+         ;; reload the buffer from the (partially) applied file; it is now current
+         (when (and (buffer-live-p target) (file-readable-p out))
            (let ((ob (generate-new-buffer " *teamwork-reload*")))
              (with-current-buffer ob (insert-file-contents out))
-             (teamwork--fill-buffer tsbuf ob)
-             (kill-buffer ob)))
+             (teamwork--fill-buffer target ob mode-fn)
+             (kill-buffer ob))
+           (with-current-buffer target (teamwork--set-state 'fresh)))
          (ignore-errors (delete-file tmp))
          (ignore-errors (delete-file out)))))))
 
@@ -714,17 +1131,28 @@ ACCOUNT selects the stored account (else the sidecar reads the buffer header)."
 
 ;;;###autoload
 (defun teamwork-submit ()
-  "Compute the diff for the current timesheet buffer, review it, then apply.
-Preview appears in a split below; on confirm it applies with live progress."
+  "Compute the diff for the current teamwork buffer (timesheet, management or
+comments), review it, then apply.  Preview appears in a split below; on confirm
+it applies with live progress.
+
+Refuses when the buffer is not current (`stale'/`error'): its diff would be
+against data that is about to be — or already has been — replaced.  Wait for the
+background refresh, or force one with `teamwork-refresh' (C-c C-r)."
   (interactive)
-  (unless (save-excursion (goto-char (point-min)) (re-search-forward "^#\\+TEAMWORK:" nil t))
-    (user-error "Not a timesheet buffer (no #+TEAMWORK header)"))
-  (let ((tmp (make-temp-file "teamwork" nil ".org"))
+  (unless (save-excursion (goto-char (point-min))
+                          (re-search-forward "^#\\+TEAMWORK\\(_MANAGE\\|_COMMENTS\\)?:" nil t))
+    (user-error "Not a teamwork buffer"))
+  (when (memq teamwork--data-state '(stale error))
+    (user-error "Buffer is %s — data is not current, so nothing is submitted; refresh first (C-c C-r)"
+                teamwork--data-state))
+  (let ((submit-cmd (or teamwork--submit-cmd "submit"))
+        (target (current-buffer))
+        (tmp (make-temp-file "teamwork" nil ".org"))
         (out (make-temp-file "teamwork-applied" nil ".org"))
-        (account (teamwork--buffer-account)))
+        (account (or teamwork--account (teamwork--buffer-account (current-buffer)))))
     (write-region (point-min) (point-max) tmp nil 'silent)
     (let* ((plan (apply #'teamwork--run-json
-                        (append (list "submit" "--file" tmp "--json")
+                        (append (list submit-cmd "--file" tmp "--json")
                                 (when account (list "--account" account)))))
            (problems (alist-get 'problems plan))
            (actions (alist-get 'actions plan)))
@@ -746,8 +1174,8 @@ Preview appears in a split below; on confirm it applies with live progress."
           (display-buffer-below-selected pbuf nil)
           (if (yes-or-no-p (format "Apply %d change(s) to Teamwork%s? " (length actions)
                                    (if account (format " [%s]" account) "")))
-              (teamwork--apply tmp out account)
-            ;; declined: close preview window, keep timesheet
+              (teamwork--apply tmp out target submit-cmd account)
+            ;; declined: close preview window, keep the buffer
             (when-let ((w (get-buffer-window pbuf))) (delete-window w))
             (kill-buffer pbuf)
             (delete-file tmp) (delete-file out)

@@ -16,15 +16,27 @@ pulled buffer records its account in a #+TEAMWORK_ACCOUNT header so submit uses
 the same one. Per-account state (hidden-project prefs, snapshot cache) is keyed
 by account, so accounts never clobber each other.
 
+Besides the timesheet, the same tree/diff/apply machinery drives a management
+buffer (structure + labels, no time filter) and a per-task comments buffer. A
+per-account project `filter` (persisted in prefs) selects which projects appear;
+every pull also caches its rendered org so a reopen can show stale data instantly
+while a fresh pull runs in the background (`cached` reads that cache).
+
 Subcommands:
     ping [--account N]                health check: who am I (read-only)
     accounts                          list configured accounts as JSON (read-only)
     account-delete --account N        remove one account from the keyring
     explore [--days N] [--account N]  dump real API JSON shapes (read-only)
-    pull  --from D --to D [...]        emit org buffer to stdout, cache a snapshot
+    projects [--account N]            list active projects + in_filter flags (JSON)
+    filter-get / filter-set [...]     read / write the per-account project filter
+    pull  --from D --to D [...]        emit timesheet org, cache snapshot + buffer
+    manage [--projects ids] [...]     emit the project structure (no time filter)
+    comments-pull --task ID [...]     emit a task's comments as an editable buffer
+    cached --kind K --key K [...]     print the last cached buffer (exit 3 if none)
     submit --file F [--json]          print the diff plan (JSON with --json)
     submit --file F --apply --out G   apply the plan, stream progress, write the
                                       updated buffer to G
+    comments-submit --file F [...]    same, for an edited comments buffer
 """
 from __future__ import annotations
 
@@ -66,15 +78,27 @@ def prefs_path(account=None) -> pathlib.Path:
 def load_prefs(account=None) -> dict:
     try:
         p = json.loads(prefs_path(account).read_text(encoding="utf-8"))
-        return {"hidden": p.get("hidden") or {}, "shown": p.get("shown") or []}
+        return {"hidden": p.get("hidden") or {}, "shown": p.get("shown") or [],
+                "filter": p.get("filter") or []}
     except (OSError, ValueError):
-        return {"hidden": {}, "shown": []}
+        return {"hidden": {}, "shown": [], "filter": []}
 
 
 def save_prefs(prefs: dict, account=None):
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)
     prefs_path(account).write_text(
         json.dumps(prefs, indent=2, ensure_ascii=False), encoding="utf-8")
+
+
+def update_prefs(account=None, **changes) -> dict:
+    """Merge CHANGES into the account's prefs and persist. Merging (not
+    replacing) is what keeps the per-account project `filter` alive when a pull
+    rewrites `hidden`/`shown` — otherwise switching accounts and back would drop
+    the filter, which read as "the filter reset"."""
+    prefs = load_prefs(account)
+    prefs.update(changes)
+    save_prefs(prefs, account)
+    return prefs
 
 
 def reconcile_hidden(prefs: dict, prev_present, hidden_prop) -> set:
@@ -260,7 +284,7 @@ class Client:
         `parent_id` (None for a top-level task) so the tree can be rebuilt.
         Dedup by id guards against an endpoint returning a subtask both ways."""
         raw = self.paged(f"/tasklists/{tasklist_id}/tasks.json", "todo-items",
-                         getSubTasks="yes")
+                         getSubTasks="yes", getTags="yes")
         out, seen = [], set()
 
         def add(t, parent_id):
@@ -274,6 +298,11 @@ class Client:
                 "tasklist_id": tasklist_id,
                 "project_id": project_id,
                 "parent_id": int(t.get("parentTaskId") or 0) or parent_id or None,
+                "tags": _tag_names(t.get("tags")),
+                "description": (t.get("description") or "").strip(),
+                "due": _norm_due(t.get("dueDate") or t.get("due-date")),
+                "priority": _norm_priority(t.get("priority")),
+                "assignees": _assignee_ids(t),
             })
             for sub in (t.get("subTasks") or t.get("subtasks") or []):
                 add(sub, tid)
@@ -281,6 +310,31 @@ class Client:
         for t in raw:
             add(t, None)
         return out
+
+    def task_title(self, task_id: int) -> str:
+        """Title (content) of a single task — for the comments buffer header."""
+        d = self.get(f"/tasks/{task_id}.json")
+        item = (d.get("todo-item") if isinstance(d, dict) else None) or {}
+        return (item.get("content") or "").strip() or f"task {task_id}"
+
+    def comments(self, task_id: int) -> list[dict]:
+        return [normalize_comment(c)
+                for c in self.paged(f"/tasks/{task_id}/comments.json", "comments")]
+
+    def project_people(self, project_id: int) -> list[dict]:
+        """People assignable on a project: [{'id', 'name'}]."""
+        return [{"id": str(p["id"]), "name": _person_name(p)}
+                for p in self.paged(f"/projects/{project_id}/people.json", "people")]
+
+    def all_tags(self) -> list[str]:
+        """Every tag name configured in the account (for the tag picker)."""
+        seen, out = set(), []
+        for tg in self.paged("/tags.json", "tags"):
+            nm = (tg.get("name") or "").strip()
+            if nm and nm.lower() not in seen:
+                seen.add(nm.lower())
+                out.append(nm)
+        return sorted(out, key=str.lower)
 
     def my_timelogs(self, date_from: str, date_to: str) -> list[dict]:
         raw = self.paged(
@@ -302,22 +356,48 @@ class Client:
         return self._req("PUT", f"/tasklists/{tasklist_id}.json",
                          body={"todo-list": {"name": name}})
 
-    def create_task(self, tasklist_id: int, title: str) -> int:
+    def delete_tasklist(self, tasklist_id: int):
+        return self._req("DELETE", f"/tasklists/{tasklist_id}.json")
+
+    def create_task(self, tasklist_id: int, item: dict) -> int:
         d = self._req("POST", f"/tasklists/{tasklist_id}/tasks.json",
-                      body={"todo-item": {"content": title}})
+                      body={"todo-item": item})
         return int(d.get("id") or d.get("taskId"))
 
-    def create_subtask(self, parent_task_id: int, title: str) -> int:
+    def create_subtask(self, parent_task_id: int, item: dict) -> int:
         d = self._req("POST", f"/tasks/{parent_task_id}/subtasks.json",
-                      body={"todo-item": {"content": title}})
+                      body={"todo-item": item})
         return int(d.get("id") or d.get("taskId"))
 
-    def update_task(self, task_id: int, title: str):
-        return self._req("PUT", f"/tasks/{task_id}.json",
-                         body={"todo-item": {"content": title}})
+    def update_task(self, task_id: int, item: dict):
+        """Update a task from a prebuilt `todo-item` body (only changed fields)."""
+        return self._req("PUT", f"/tasks/{task_id}.json", body={"todo-item": item})
+
+    def delete_task(self, task_id: int):
+        return self._req("DELETE", f"/tasks/{task_id}.json")
 
     def complete_task(self, task_id: int):
         return self._req("PUT", f"/tasks/{task_id}/complete.json")
+
+    def set_task_tags(self, task_id: int, tags: list):
+        """Replace a task's tags with TAGS (a list of names). The v1 tags API
+        takes a comma-separated string; `replaceExistingTags` swaps the whole
+        set rather than appending."""
+        return self._req("PUT", f"/tasks/{task_id}/tags.json",
+                         params={"replaceExistingTags": "true"},
+                         body={"tags": {"content": ", ".join(tags)}})
+
+    def create_comment(self, task_id: int, body: str) -> int:
+        d = self._req("POST", f"/tasks/{task_id}/comments.json",
+                      body={"comment": {"body": body, "content-type": "TEXT", "notify": ""}})
+        return int(d.get("commentId") or d.get("id") or 0)
+
+    def update_comment(self, comment_id: int, body: str):
+        return self._req("PUT", f"/comments/{comment_id}.json",
+                         body={"comment": {"body": body, "content-type": "TEXT"}})
+
+    def delete_comment(self, comment_id: int):
+        return self._req("DELETE", f"/comments/{comment_id}.json")
 
     def create_timelog(self, task_id: int, body: dict) -> int:
         d = self._req("POST", f"/tasks/{task_id}/time_entries.json",
@@ -366,6 +446,75 @@ def normalize_timelog(t: dict) -> dict:
         "minutes": hours * 60 + minutes,
         "description": (pick("description", default="") or "").strip(),
         "billable": billable,
+    }
+
+
+def _tag_names(raw) -> list:
+    """Extract tag names from a task's `tags` array (objects with a `name`, or
+    bare strings). Empty/blank names are dropped; order is preserved."""
+    out = []
+    for tg in (raw or []):
+        nm = (tg.get("name") if isinstance(tg, dict) else str(tg)) or ""
+        nm = nm.strip()
+        if nm:
+            out.append(nm)
+    return out
+
+
+# -- task property formats (due date / priority / assignees) ----------------- #
+PRIORITIES = ("low", "medium", "high")   # plus "" for none
+
+
+def _norm_due(s) -> str:
+    """Display form 'YYYY-MM-DD' for a due date given as YYYYMMDD or YYYY-MM-DD;
+    empty string for no/unknown date."""
+    d = re.sub(r"\D", "", str(s or ""))
+    return f"{d[0:4]}-{d[4:6]}-{d[6:8]}" if len(d) == 8 else ""
+
+
+def _due_compact(s) -> str:
+    """API write form 'YYYYMMDD' for a due date, or '' to clear it."""
+    d = re.sub(r"\D", "", str(s or ""))
+    return d if len(d) == 8 else ""
+
+
+def _norm_priority(s) -> str:
+    """Canonical priority: '' (none) / low / medium / high."""
+    s = (str(s or "")).strip().lower()
+    return "" if s in ("", "none") else s
+
+
+def _assignee_ids(t: dict) -> list:
+    """Person ids a task is assigned to, from whichever v1 field carries them."""
+    raw = (t.get("responsible-party-ids") or t.get("responsible-party-id")
+           or t.get("responsibleParties") or "")
+    return [x for x in re.split(r"[,\s]+", str(raw)) if x.isdigit()]
+
+
+def _person_name(p: dict) -> str:
+    first = (p.get("first-name") or p.get("firstName") or "").strip()
+    last = (p.get("last-name") or p.get("lastName") or "").strip()
+    return (f"{first} {last}".strip() or (p.get("full-name") or p.get("email-address") or "?")).strip()
+
+
+def normalize_comment(c: dict) -> dict:
+    """Map a raw v1 comment into our internal shape (id, author, datetime, body)."""
+    def pick(*keys, default=""):
+        for k in keys:
+            if c.get(k) not in (None, ""):
+                return c[k]
+        return default
+
+    first = pick("author-firstname", "authorFirstName")
+    last = pick("author-lastname", "authorLastName")
+    author = (f"{first} {last}".strip() or str(pick("author-name", default="?")))
+    stamp = str(pick("datetime", "post-date", "createdAt", default=""))
+    when = stamp[:16].replace("T", " ")
+    return {
+        "id": int(pick("id", default=0) or 0),
+        "author": author,
+        "datetime": when,
+        "body": (pick("body", default="") or "").strip(),
     }
 
 
@@ -430,6 +579,76 @@ def _drawer(key: str, value) -> str:
     return f":PROPERTIES:\n:{key}: {value}\n:END:"
 
 
+def _drawer_multi(pairs) -> str:
+    """A :PROPERTIES: drawer from (key, value) pairs, skipping None/"" values.
+    With a single non-empty pair this is byte-identical to `_drawer`, so tasks
+    without tags render exactly as before."""
+    lines = [":PROPERTIES:"]
+    for k, v in pairs:
+        if v is not None and v != "":
+            lines.append(f":{k}: {v}")
+    lines.append(":END:")
+    return "\n".join(lines)
+
+
+def _task_drawer(tk: dict, with_props=False):
+    """Property drawer for task TK: id + TW_TAGS, and (management only, WITH_PROPS)
+    TW_DUE / TW_PRIORITY / TW_ASSIGNEE lines. Returns None when there is nothing to
+    show (a brand-new task with no properties), so callers can skip it."""
+    tags = tk.get("tags")
+    pairs = [("TW_TASK_ID", tk.get("id")),
+             ("TW_TAGS", ", ".join(tags) if tags else None)]
+    if with_props:
+        names = tk.get("assignee_names")
+        pairs += [("TW_DUE", tk.get("due") or None),
+                  ("TW_PRIORITY", tk.get("priority") or None),
+                  ("TW_ASSIGNEE", ", ".join(names) if names else None)]
+    return _drawer_multi(pairs) if any(v not in (None, "") for _, v in pairs) else None
+
+
+def _emit_project_tree(out, projects, tasklists, tasks, logs_by_task=None,
+                       with_desc=False, with_props=False):
+    """Append the `* project / ** list / *** task (+subtasks/tags[/logs])` tree to
+    OUT. Shared by the timesheet (`render_org`) and management (`render_manage`)
+    renderers; LOGS_BY_TASK is a {task_id: [log,…]} map, empty for management.
+    WITH_DESC emits each task's description as body text under its drawer (used in
+    management, where tasks have no logs to conflict with the free text). WITH_PROPS
+    adds the TW_DUE / TW_PRIORITY / TW_ASSIGNEE property lines (management)."""
+    logs_by_task = logs_by_task or {}
+    tls_by_project: dict[int, list] = {}
+    for tl in tasklists:
+        tls_by_project.setdefault(tl["project_id"], []).append(tl)
+    tops_by_tl: dict[int, list] = {}
+    subs_by_parent: dict[int, list] = {}
+    for tk in tasks:
+        pid = tk.get("parent_id")
+        if pid:
+            subs_by_parent.setdefault(pid, []).append(tk)
+        else:
+            tops_by_tl.setdefault(tk["tasklist_id"], []).append(tk)
+
+    def emit_task(tk, level):
+        out.append(f"{'*' * level} {tk['title']}")
+        drawer = _task_drawer(tk, with_props=with_props)
+        if drawer:
+            out.append(drawer)
+        if with_desc and (tk.get("description") or "").strip():
+            out.extend(tk["description"].split("\n"))
+        for lg in sorted(logs_by_task.get(tk["id"], []), key=lambda l: (l["date"], l.get("start") or "")):
+            out.extend(render_log_line(lg))
+        for sub in sorted(subs_by_parent.get(tk["id"], []), key=lambda t: t["title"].lower()):
+            emit_task(sub, level + 1)
+
+    for pr in sorted(projects, key=lambda p: p["name"].lower()):
+        out.append(f"* {pr['name']}")
+        out.append(_drawer("TW_PROJECT_ID", pr["id"]))
+        for tl in sorted(tls_by_project.get(pr["id"], []), key=lambda t: t["name"].lower()):
+            out.append(f"** {tl['name']}")
+            out.append(_drawer("TW_TASKLIST_ID", tl["id"]))
+            for tk in sorted(tops_by_tl.get(tl["id"], []), key=lambda t: t["title"].lower()):
+                emit_task(tk, 3)
+
+
 def _header(frm, to, user, hidden=None, hidden_names=None, account=None) -> list[str]:
     hidden = [str(h) for h in (hidden or [])]
     lines = [
@@ -470,45 +689,114 @@ def render_org(projects, tasklists, tasks, logs, meta: dict, hidden_names: dict 
         else:
             orphan_logs.append(lg)  # never silently drop a log
 
-    tls_by_project: dict[int, list] = {}
-    for tl in tasklists:
-        tls_by_project.setdefault(tl["project_id"], []).append(tl)
-    # Split tasks into top-level (under a list) and subtasks (under a parent task),
-    # so the tree can be rendered nested to any depth.
-    tops_by_tl: dict[int, list] = {}
-    subs_by_parent: dict[int, list] = {}
-    for tk in tasks:
-        pid = tk.get("parent_id")
-        if pid:
-            subs_by_parent.setdefault(pid, []).append(tk)
-        else:
-            tops_by_tl.setdefault(tk["tasklist_id"], []).append(tk)
-
     hidden_names = hidden_names or {}
     out = _header(meta["from"], meta["to"], meta["user_id"],
                   hidden=sorted(hidden_names, key=int), hidden_names=hidden_names,
                   account=meta.get("account"))
-
-    def emit_task(tk, level):
-        out.append(f"{'*' * level} {tk['title']}")
-        out.append(_drawer("TW_TASK_ID", tk["id"]))
-        for lg in sorted(logs_by_task.get(tk["id"], []), key=lambda l: (l["date"], l.get("start") or "")):
-            out.extend(render_log_line(lg))
-        for sub in sorted(subs_by_parent.get(tk["id"], []), key=lambda t: t["title"].lower()):
-            emit_task(sub, level + 1)
-
-    for pr in sorted(projects, key=lambda p: p["name"].lower()):
-        out.append(f"* {pr['name']}")
-        out.append(_drawer("TW_PROJECT_ID", pr["id"]))
-        for tl in sorted(tls_by_project.get(pr["id"], []), key=lambda t: t["name"].lower()):
-            out.append(f"** {tl['name']}")
-            out.append(_drawer("TW_TASKLIST_ID", tl["id"]))
-            for tk in sorted(tops_by_tl.get(tl["id"], []), key=lambda t: t["title"].lower()):
-                emit_task(tk, 3)
+    _emit_project_tree(out, projects, tasklists, tasks, logs_by_task)
     if orphan_logs:
         out.append("* (time logs with no task in the pulled tree)")
         for lg in orphan_logs:
             out.extend(render_log_line(lg))
+    return "\n".join(out) + "\n"
+
+
+def _manage_header(user, account=None, hidden=None, hidden_names=None,
+                   filt=None, filt_names=None) -> list:
+    """Header for a management buffer — like `_header` but with no date range and
+    a `#+TEAMWORK_MANAGE` marker so parse/submit route to management mode."""
+    hidden = [str(h) for h in (hidden or [])]
+    lines = [
+        "#+TITLE: Teamwork management",
+        f"#+TEAMWORK_MANAGE: user={user}",
+    ]
+    if account:
+        lines.append(f"#+TEAMWORK_ACCOUNT: {account}")
+    lines += [
+        "# No time filter here — this is the whole project structure you can manage.",
+        "# Add a heading with no ID to create a task/list; demote below a task (**** or",
+        "# deeper) to create a subtask. Rename by editing heading text (keep :TW_*_ID:).",
+        "# Task properties (in the drawer; empty value clears, missing line leaves as-is):",
+        "#   :TW_TAGS: bug, backend      :TW_DUE: 2026-08-20      :TW_PRIORITY: high",
+        "#   :TW_ASSIGNEE: Jane Doe, John Roe   (names as shown; C-c C-p picks values)",
+        "# Write a task DESCRIPTION as plain text below its property drawer (before any",
+        "# subtask heading); edit it freely — it is submitted with everything else.",
+        "#   (don't start a description line with '*' — org would read it as a heading.)",
+        "# Delete a task or task-list by removing its heading — it is DELETED in Teamwork",
+        "# on submit (subtasks/tasks under it go too). The preview lists every deletion.",
+        "# Which projects appear is the per-account filter — change it with teamwork-filter.",
+        "# Delete a whole project heading to stop managing it (moves to TEAMWORK_HIDDEN).",
+    ]
+    for h in hidden:
+        nm = (hidden_names or {}).get(h)
+        lines.append(f"#   hidden {h}  {nm}" if nm else f"#   hidden {h}")
+    lines.append("#+TEAMWORK_HIDDEN: " + " ".join(hidden))
+    for pid in (filt or []):
+        nm = (filt_names or {}).get(str(pid))
+        lines.append(f"#   filter {pid}  {nm}" if nm else f"#   filter {pid}")
+    lines.append("")
+    return lines
+
+
+def render_manage(projects, tasklists, tasks, meta: dict, hidden_names: dict = None,
+                  filt=None, filt_names=None) -> str:
+    """Render the management tree (structure + labels, no time logs)."""
+    hidden_names = hidden_names or {}
+    out = _manage_header(meta["user_id"], account=meta.get("account"),
+                         hidden=sorted(hidden_names, key=int), hidden_names=hidden_names,
+                         filt=filt, filt_names=filt_names)
+    _emit_project_tree(out, projects, tasklists, tasks, None, with_desc=True, with_props=True)
+    return "\n".join(out) + "\n"
+
+
+def _comments_help() -> list:
+    return [
+        "# One * heading per comment. Edit the text below a heading to change it;",
+        "# add a new * heading with body text to post a comment; delete a heading to",
+        "# remove its comment. Keep each comment's :TW_COMMENT_ID:. The author/date",
+        "# line is informational — only the body text and id matter on submit.",
+    ]
+
+
+def render_comments(task_id, task_title, comments, meta: dict) -> str:
+    """Render a task's comments as an editable org buffer (chronological)."""
+    out = [
+        f"#+TITLE: Comments — {task_title}",
+        f"#+TEAMWORK_COMMENTS: task={task_id} user={meta.get('user_id')}",
+    ]
+    if meta.get("account"):
+        out.append(f"#+TEAMWORK_ACCOUNT: {meta['account']}")
+    out += _comments_help()
+    out.append("")
+    for c in comments:
+        head = c.get("author") or "?"
+        if c.get("datetime"):
+            head = f"{head} — {c['datetime']}"
+        out.append(f"* {head}")
+        out.append(_drawer("TW_COMMENT_ID", c["id"]))
+        out.extend((c.get("body") or "").split("\n"))
+        out.append("")
+    return "\n".join(out) + "\n"
+
+
+def serialize_comments(parsed: dict) -> str:
+    """Rebuild a comments buffer from a parsed (and possibly mutated) tree — used
+    after apply so freshly-created comments carry their new ids."""
+    m = parsed["meta"]
+    out = [
+        "#+TITLE: Comments",
+        f"#+TEAMWORK_COMMENTS: task={m.get('task')} user={m.get('user')}",
+    ]
+    if m.get("account"):
+        out.append(f"#+TEAMWORK_ACCOUNT: {m['account']}")
+    out += _comments_help()
+    out.append("")
+    for c in parsed["comments"]:
+        out.append(f"* {c.get('author') or 'me'}")
+        if c.get("id") is not None:
+            out.append(_drawer("TW_COMMENT_ID", c["id"]))
+        out.extend((c.get("body") or "").split("\n"))
+        out.append("")
     return "\n".join(out) + "\n"
 
 
@@ -519,13 +807,20 @@ def serialize_parsed(parsed: dict) -> str:
     existing), while unapplied creates keep id=None and stay 'new' for retry.
     """
     m = parsed["meta"]
-    out = _header(m.get("from"), m.get("to"), m.get("user"), hidden=m.get("hidden"),
-                  account=m.get("account"))
+    manage = m.get("mode") == "manage"
+    if manage:
+        out = _manage_header(m.get("user"), account=m.get("account"), hidden=m.get("hidden"))
+    else:
+        out = _header(m.get("from"), m.get("to"), m.get("user"), hidden=m.get("hidden"),
+                      account=m.get("account"))
 
     def emit_task(tk, level):
         out.append(f"{'*' * level} {tk['title']}")
-        if tk["id"] is not None:
-            out.append(_drawer("TW_TASK_ID", tk["id"]))
+        drawer = _task_drawer(tk, with_props=manage)   # keeps id/tags/props on retry
+        if drawer:
+            out.append(drawer)
+        if manage and (tk.get("description") or "").strip():
+            out.extend(tk["description"].split("\n"))
         for lg in tk["logs"]:
             out.extend(render_log_line(lg))
         for sub in tk.get("subtasks", []):
@@ -545,35 +840,82 @@ def serialize_parsed(parsed: dict) -> str:
 
 
 def build_snapshot(projects, tasklists, tasks, logs, meta: dict) -> dict:
+    # The relationship maps (task_project / task_tasklist / task_parent /
+    # tasklist_project) let compute_plan detect deletions safely: a heading gone
+    # from the buffer is deleted only when its project is still present, and only
+    # the topmost deleted node is hit (Teamwork cascades children).
     return {
-        "from": meta["from"],
-        "to": meta["to"],
+        "from": meta.get("from"),
+        "to": meta.get("to"),
         "logs": {str(lg["id"]): _log_snap(lg) for lg in logs if lg.get("id")},
         "tasklists": {str(t["id"]): t["name"] for t in tasklists},
         "tasks": {str(t["id"]): t["title"] for t in tasks},
+        "task_tags": {str(t["id"]): (t.get("tags") or []) for t in tasks},
+        "task_desc": {str(t["id"]): (t.get("description") or "") for t in tasks},
+        "task_due": {str(t["id"]): (t.get("due") or "") for t in tasks},
+        "task_priority": {str(t["id"]): (t.get("priority") or "") for t in tasks},
+        "task_assignees": {str(t["id"]): (t.get("assignee_names") or []) for t in tasks},
+        "task_project": {str(t["id"]): t["project_id"] for t in tasks},
+        "task_tasklist": {str(t["id"]): str(t["tasklist_id"]) for t in tasks},
+        "task_parent": {str(t["id"]): (str(t["parent_id"]) if t.get("parent_id") else None)
+                        for t in tasks},
+        "tasklist_project": {str(t["id"]): t["project_id"] for t in tasklists},
     }
 
 
-def build_snapshot_from_parsed(parsed: dict) -> dict:
+def build_snapshot_from_parsed(parsed: dict, people=None) -> dict:
     m = parsed["meta"]
-    logs, tls, tks = {}, {}, {}
+    logs, tls, tks, tags = {}, {}, {}, {}
+    desc, due, pri, asg = {}, {}, {}, {}
+    t_proj, t_tl, t_parent, tl_proj = {}, {}, {}, {}
 
-    def walk(tk):
+    def walk(tk, proj_id, tl_id, parent_id):
         if tk["id"] is not None:
-            tks[str(tk["id"])] = tk["title"]
+            sid = str(tk["id"])
+            tks[sid] = tk["title"]
+            if "tags" in tk:                 # only record when the buffer stated it
+                tags[sid] = tk.get("tags") or []
+            if "description" in tk:
+                desc[sid] = tk.get("description") or ""
+            if "due" in tk:
+                due[sid] = tk.get("due") or ""
+            if "priority" in tk:
+                pri[sid] = tk.get("priority") or ""
+            if "assignee_names" in tk:
+                asg[sid] = tk.get("assignee_names") or []
+            t_proj[sid] = proj_id
+            t_tl[sid] = str(tl_id) if tl_id is not None else None
+            t_parent[sid] = str(parent_id) if parent_id is not None else None
         for lg in tk["logs"]:
             if lg.get("id"):
                 logs[str(lg["id"])] = _log_snap(lg)
         for sub in tk.get("subtasks", []):
-            walk(sub)
+            walk(sub, proj_id, tl_id, tk["id"])
 
     for p in parsed["projects"]:
         for tl in p["tasklists"]:
             if tl["id"] is not None:
                 tls[str(tl["id"])] = tl["name"]
+                tl_proj[str(tl["id"])] = p["id"]
             for tk in tl["tasks"]:
-                walk(tk)
-    return {"from": m.get("from"), "to": m.get("to"), "logs": logs, "tasklists": tls, "tasks": tks}
+                walk(tk, p["id"], tl["id"], None)
+    return {"from": m.get("from"), "to": m.get("to"), "logs": logs,
+            "tasklists": tls, "tasks": tks, "task_tags": tags, "task_desc": desc,
+            "task_due": due, "task_priority": pri, "task_assignees": asg,
+            "task_project": t_proj, "task_tasklist": t_tl, "task_parent": t_parent,
+            "tasklist_project": tl_proj, "people": people or {}}
+
+
+def build_comment_snapshot(task_id, comments) -> dict:
+    return {"task": str(task_id),
+            "comments": {str(c["id"]): c["body"] for c in comments if c.get("id")}}
+
+
+def build_comment_snapshot_from_parsed(parsed: dict) -> dict:
+    m = parsed["meta"]
+    return {"task": m.get("task"),
+            "comments": {str(c["id"]): c.get("body", "")
+                         for c in parsed["comments"] if c.get("id") is not None}}
 
 
 def _log_snap(lg: dict) -> dict:
@@ -593,6 +935,9 @@ def _log_snap(lg: dict) -> dict:
 # --------------------------------------------------------------------------- #
 _HEAD_RE = re.compile(r"^(\*+)\s+(.*)$")
 _PROP_RE = re.compile(r"^\s*:(TW_PROJECT_ID|TW_TASKLIST_ID|TW_TASK_ID):\s*(\d+)\s*$")
+_TAGS_RE = re.compile(r"^\s*:TW_TAGS:\s*(.*)$")
+_TASKPROP_RE = re.compile(r"^\s*:(TW_DUE|TW_PRIORITY|TW_ASSIGNEE):\s*(.*)$")
+_DRAWER_LINE_RE = re.compile(r"^\s*:(?:PROPERTIES|END):\s*$")
 _LOG_RE = re.compile(
     r"^\s*-\s+"
     r"(?:(?P<id>\d+)\s+)?"
@@ -623,7 +968,7 @@ def _norm_hm(hm: str) -> str:
 
 def parse_org(text: str) -> dict:
     meta = {"from": None, "to": None, "user": None, "billable_default": True,
-            "hidden": None, "account": None}
+            "hidden": None, "account": None, "mode": "timesheet"}
     problems: list[str] = []
     projects: list[dict] = []
     cur_p = cur_tl = cur_tk = None
@@ -645,6 +990,12 @@ def parse_org(text: str) -> dict:
                 elif tok.startswith("to="):
                     meta["to"] = tok[3:]
                 elif tok.startswith("user="):
+                    meta["user"] = tok[5:]
+            continue
+        if raw.startswith("#+TEAMWORK_MANAGE:"):
+            meta["mode"] = "manage"
+            for tok in raw.split(":", 1)[1].split():
+                if tok.startswith("user="):
                     meta["user"] = tok[5:]
             continue
         if raw.startswith("#+TEAMWORK_ACCOUNT:"):
@@ -707,6 +1058,32 @@ def parse_org(text: str) -> dict:
                 cur_tk["id"] = val
             continue
 
+        tagm = _TAGS_RE.match(raw)
+        if tagm and cur_tk is not None:
+            # Presence of the line is authoritative: empty value clears tags,
+            # a missing line (handled by never getting here) leaves them untouched.
+            cur_tk["tags"] = [t.strip() for t in tagm.group(1).split(",") if t.strip()]
+            continue
+
+        propm = _TASKPROP_RE.match(raw)
+        if propm and cur_tk is not None:
+            key, val = propm.group(1), propm.group(2).strip()
+            if key == "TW_DUE":
+                cur_tk["due"] = _norm_due(val)
+            elif key == "TW_PRIORITY":
+                cur_tk["priority"] = _norm_priority(val)
+            elif key == "TW_ASSIGNEE":
+                cur_tk["assignee_names"] = [n.strip() for n in val.split(",") if n.strip()]
+            continue
+
+        # In management mode there are no time logs: free text under a task (after
+        # its property drawer, before the next heading) is the task DESCRIPTION.
+        # Collected verbatim here and finalised once the buffer is fully parsed.
+        if meta["mode"] == "manage" and cur_tk is not None:
+            if not _DRAWER_LINE_RE.match(raw):        # skip :PROPERTIES: / :END:
+                cur_tk.setdefault("_desc_lines", []).append(raw)
+            continue
+
         lm = _LOG_RE.match(raw)
         if lm:
             if cur_tk is None:
@@ -743,6 +1120,20 @@ def parse_org(text: str) -> dict:
         if not raw.strip():
             close_log()
 
+    # Finalise management descriptions: every task carries an (authoritative)
+    # description string — empty when the task has no body text, so clearing the
+    # text clears it in Teamwork.
+    if meta["mode"] == "manage":
+        def _finalize_desc(tk):
+            lines = tk.pop("_desc_lines", None)
+            tk["description"] = "\n".join(lines).strip() if lines else ""
+            for sub in tk.get("subtasks", []):
+                _finalize_desc(sub)
+        for p in projects:
+            for tl in p["tasklists"]:
+                for tk in tl["tasks"]:
+                    _finalize_desc(tk)
+
     return {"meta": meta, "projects": projects, "problems": problems}
 
 
@@ -766,6 +1157,12 @@ def _log_signature(d: dict) -> tuple:
     return (d.get("date"), d.get("start"), int(d.get("minutes", 0)), (d.get("description") or "").strip())
 
 
+def _norm_tags(tags) -> list:
+    """Canonical form for comparing tag sets: trimmed, lower-cased, de-duped,
+    sorted — so 'Bug, backend' and 'backend,bug' read as unchanged."""
+    return sorted({t.strip().lower() for t in (tags or []) if t.strip()})
+
+
 def _summary(lg: dict, tk: dict, kind: str) -> str:
     when = f"{lg['date']} {lg['start'] or '=' + _fmt_hm(lg['minutes'])}"
     return f"{kind} log {when} [{_fmt_hm(lg['minutes'])}] on {tk['title'][:40]!r}"
@@ -779,44 +1176,114 @@ def compute_plan(parsed: dict, snapshot: dict, user_id: int) -> dict:
     a different endpoint than a top-level task, so it gets its own action type; a
     depth-first walk that appends a parent's create before its children's keeps
     parents ahead of children in the plan, so ref resolution works during apply."""
-    creates_tl, creates_tk, renames, log_writes, completes, deletes = [], [], [], [], [], []
+    creates_tl, creates_tk, renames, tag_writes, log_writes, completes, deletes = \
+        [], [], [], [], [], [], []
     problems = list(parsed["problems"])
+    manage = parsed["meta"].get("mode") == "manage"
     billable = parsed["meta"].get("billable_default", True)
     snap_logs = dict(snapshot.get("logs", {}))
     snap_tasks = snapshot.get("tasks", {})
     snap_tls = snapshot.get("tasklists", {})
+    snap_tags = snapshot.get("task_tags", {})
+    snap_desc = snapshot.get("task_desc", {})
+    snap_due = snapshot.get("task_due", {})
+    snap_pri = snapshot.get("task_priority", {})
+    snap_asg = snapshot.get("task_assignees", {})     # {task_id: [name, …]}
+    people = snapshot.get("people", {})               # {id: name}
+    name2id = {v.strip().lower(): k for k, v in people.items()}
     present_pids = {p["id"] for p in parsed["projects"] if p["id"] is not None}
-    seen: set[str] = set()
+    seen: set[str] = set()             # log ids present in the buffer
+    seen_tls: set[str] = set()         # tasklist ids present (for deletion diff)
+    seen_tks: set[str] = set()         # task ids present (for deletion diff)
     ref = {"n": 0}
 
     def new_ref(kind: str) -> str:
         ref["n"] += 1
         return f"{kind}:{ref['n']}"
 
+    def resolve_assignees(names, title):
+        """Names -> person id strings via the snapshot people map. A bare numeric
+        token is taken as an id; an unknown name is reported as a problem."""
+        ids = []
+        for nm in names:
+            nm = nm.strip()
+            if nm.isdigit():
+                ids.append(nm)
+            elif nm.lower() in name2id:
+                ids.append(name2id[nm.lower()])
+            elif nm:
+                problems.append(f"task {title!r}: unknown assignee {nm!r} "
+                                f"(not on this project)")
+        return ids
+
     def process_task(tk, parent_target, tl_target, tl_name):
         """Diff one task and its subtasks. PARENT_TARGET is the parent task's id
         or {ref} for a subtask, or None for a top-level task (created under the
         list). TL_TARGET / TL_NAME describe the enclosing list for summaries."""
+        desc = tk.get("description")   # None in timesheet; str (maybe "") in manage
+        sid = str(tk["id"]) if tk["id"] is not None else None
+        # Property values stated in the buffer (manage only). "in tk" == the line
+        # was present, so it is authoritative (empty value clears the field).
+        has_due, has_pri, has_asg = ("due" in tk), ("priority" in tk), ("assignee_names" in tk)
         if tk["id"] is None:
             tk_ref = new_ref("task")
+            base = {"ref": tk_ref, "title": tk["title"], "description": desc or None, "_obj": tk}
+            if has_due:
+                base["due"] = tk["due"]
+            if has_pri:
+                base["priority"] = tk["priority"]
+            if has_asg:
+                base["assignees"] = resolve_assignees(tk["assignee_names"], tk["title"])
             if parent_target is None:
-                creates_tk.append({"type": "create_task", "ref": tk_ref, "tasklist": tl_target,
-                                   "title": tk["title"], "summary": f"new task {tk['title']!r} in {tl_name!r}",
-                                   "_obj": tk})
+                base.update({"type": "create_task", "tasklist": tl_target,
+                             "summary": f"new task {tk['title']!r} in {tl_name!r}"})
             else:
                 pname = (tk.get("parent") or {}).get("title", "")
-                creates_tk.append({"type": "create_subtask", "ref": tk_ref, "parent": parent_target,
-                                   "title": tk["title"],
-                                   "summary": f"new subtask {tk['title']!r} under {pname!r}",
-                                   "_obj": tk})
+                base.update({"type": "create_subtask", "parent": parent_target,
+                             "summary": f"new subtask {tk['title']!r} under {pname!r}"})
+            creates_tk.append(base)
             tk_target = {"ref": tk_ref}
         else:
             tk_target = tk["id"]
-            prev = snap_tasks.get(str(tk["id"]))
-            if prev is not None and prev != tk["title"]:
+            seen_tks.add(sid)
+            prev_title = snap_tasks.get(sid)
+            title_changed = prev_title is not None and prev_title != tk["title"]
+            desc_changed = desc is not None and (desc or "") != (snap_desc.get(sid) or "")
+            due_changed = has_due and (tk["due"] or "") != (snap_due.get(sid) or "")
+            pri_changed = has_pri and _norm_priority(tk["priority"]) != _norm_priority(snap_pri.get(sid))
+            asg_ids = resolve_assignees(tk["assignee_names"], tk["title"]) if has_asg else None
+            asg_changed = has_asg and set(asg_ids) != set(resolve_assignees(snap_asg.get(sid) or [], tk["title"]))
+            if title_changed or desc_changed or due_changed or pri_changed or asg_changed:
                 kind = "subtask" if parent_target is not None else "task"
-                renames.append({"type": "update_task", "id": tk["id"], "title": tk["title"],
-                                "summary": f"rename {kind} {prev!r} -> {tk['title']!r}", "_obj": tk})
+                act = {"type": "update_task", "id": tk["id"], "_obj": tk}
+                bits = []
+                if title_changed:
+                    act["title"] = tk["title"]; bits.append(f"rename -> {tk['title']!r}")
+                if desc_changed:
+                    act["description"] = desc
+                    bits.append("clear description" if not desc else "edit description")
+                if due_changed:
+                    act["due"] = tk["due"]; bits.append(f"due {tk['due'] or '(none)'}")
+                if pri_changed:
+                    act["priority"] = tk["priority"]; bits.append(f"priority {tk['priority'] or '(none)'}")
+                if asg_changed:
+                    act["assignees"] = asg_ids
+                    shown = ", ".join(tk["assignee_names"]) if tk["assignee_names"] else "(none)"
+                    bits.append(f"assignees {shown}")
+                act["summary"] = f"update {kind} {(prev_title or tk['title'])[:40]!r}: " + ", ".join(bits)
+                renames.append(act)
+        # Labels: only when the buffer stated them (the :TW_TAGS: line is present).
+        # A new task always gets its tags set after creation; an existing one only
+        # when they differ from the snapshot (so unchanged tags cost no call).
+        if "tags" in tk:
+            new_tags = tk["tags"]
+            old_tags = snap_tags.get(str(tk["id"])) if tk["id"] is not None else None
+            if (tk["id"] is None and new_tags) or \
+               (tk["id"] is not None and _norm_tags(new_tags) != _norm_tags(old_tags)):
+                shown = ", ".join(new_tags) if new_tags else "(none)"
+                tag_writes.append({"type": "set_task_tags", "task": tk_target, "tags": new_tags,
+                                   "summary": f"set labels on {tk['title'][:40]!r}: {shown}",
+                                   "_obj": tk})
         for lg in tk["logs"]:
             body = _log_body(lg, user_id, billable)
             if lg["id"] is None:
@@ -849,6 +1316,7 @@ def compute_plan(parsed: dict, snapshot: dict, user_id: int) -> dict:
                 tl_target = {"ref": tl_ref}
             else:
                 tl_target = tl["id"]
+                seen_tls.add(str(tl["id"]))
                 prev = snap_tls.get(str(tl["id"]))
                 if prev is not None and prev != tl["name"]:
                     renames.append({"type": "update_tasklist", "id": tl["id"], "name": tl["name"],
@@ -864,7 +1332,39 @@ def compute_plan(parsed: dict, snapshot: dict, user_id: int) -> dict:
         deletes.append({"type": "delete_timelog", "id": int(sid),
                         "summary": f"delete log {sid} ({prev['date']} {_fmt_hm(prev['minutes'])})"})
 
-    return {"actions": creates_tl + creates_tk + renames + log_writes + completes + deletes,
+    # Management mode only: a task/tasklist heading removed from the buffer is a
+    # DELETE in Teamwork. Guard with present_pids (removing a whole project just
+    # hides it, never deletes) and only hit the topmost removed node — Teamwork
+    # cascades to children, so deleting a parent/list would 404 on its kids.
+    if manage:
+        tl_proj = snapshot.get("tasklist_project", {})
+        tk_proj = snapshot.get("task_project", {})
+        tk_tl = snapshot.get("task_tasklist", {})
+        tk_parent = snapshot.get("task_parent", {})
+        del_tls = {tid for tid in snap_tls
+                   if tid not in seen_tls and int(tl_proj.get(tid, 0) or 0) in present_pids}
+        cand = {tid for tid in snap_tasks
+                if tid not in seen_tks and int(tk_proj.get(tid, 0) or 0) in present_pids}
+
+        def _ancestor_removed(tid):
+            p = tk_parent.get(tid)
+            while p:
+                if p in cand:            # an ancestor task is itself being removed
+                    return True
+                p = tk_parent.get(p)
+            return False
+
+        del_tks = {tid for tid in cand
+                   if tk_tl.get(tid) not in del_tls and not _ancestor_removed(tid)}
+        for tid in sorted(del_tks, key=int):
+            deletes.append({"type": "delete_task", "id": int(tid),
+                            "summary": f"delete task {snap_tasks.get(tid, tid)!r}"})
+        for tid in sorted(del_tls, key=int):
+            deletes.append({"type": "delete_tasklist", "id": int(tid),
+                            "summary": f"delete list {snap_tls.get(tid, tid)!r} (and its tasks)"})
+
+    return {"actions": (creates_tl + creates_tk + renames + tag_writes
+                        + log_writes + completes + deletes),
             "problems": problems}
 
 
@@ -882,6 +1382,23 @@ def _resolve(target, created: dict):
     return target
 
 
+def _build_task_item(a: dict) -> dict:
+    """Translate an action's task fields into a v1 `todo-item` body. Only keys the
+    action carries are emitted, so an update touches exactly what changed."""
+    item = {}
+    if "title" in a:
+        item["content"] = a["title"]
+    if "description" in a:
+        item["description"] = a["description"] or ""
+    if "due" in a:
+        item["due-date"] = _due_compact(a["due"])
+    if "priority" in a:
+        item["priority"] = a.get("priority") or ""
+    if "assignees" in a:
+        item["responsible-party-id"] = ",".join(a["assignees"])
+    return item
+
+
 def _execute(a: dict, client: "Client", created: dict):
     t = a["type"]
     if t == "create_tasklist":
@@ -889,11 +1406,17 @@ def _execute(a: dict, client: "Client", created: dict):
     elif t == "update_tasklist":
         client.update_tasklist(a["id"], a["name"])
     elif t == "create_task":
-        created[a["ref"]] = client.create_task(int(_resolve(a["tasklist"], created)), a["title"])
+        created[a["ref"]] = client.create_task(int(_resolve(a["tasklist"], created)),
+                                               _build_task_item(a))
     elif t == "create_subtask":
-        created[a["ref"]] = client.create_subtask(int(_resolve(a["parent"], created)), a["title"])
+        created[a["ref"]] = client.create_subtask(int(_resolve(a["parent"], created)),
+                                                  _build_task_item(a))
     elif t == "update_task":
-        client.update_task(a["id"], a["title"])
+        client.update_task(a["id"], _build_task_item(a))
+    elif t == "delete_task":
+        client.delete_task(a["id"])
+    elif t == "set_task_tags":
+        client.set_task_tags(int(_resolve(a["task"], created)), a["tags"])
     elif t == "complete_task":
         client.complete_task(int(_resolve(a["task"], created)))
     elif t == "create_timelog":
@@ -902,6 +1425,8 @@ def _execute(a: dict, client: "Client", created: dict):
         client.update_timelog(a["id"], a["body"])
     elif t == "delete_timelog":
         client.delete_timelog(a["id"])
+    elif t == "delete_tasklist":
+        client.delete_tasklist(a["id"])
 
 
 def _mutate_on_success(a: dict, created: dict):
@@ -917,9 +1442,11 @@ def _emit(obj: dict):
     sys.stdout.flush()
 
 
-def apply_stream(plan: dict, client: "Client", parsed: dict, out_path: str, snap_path: str):
-    actions = plan["actions"]
-    created: dict = {}
+def _apply_actions(actions, execute_one, on_success=None):
+    """Shared streamed apply loop: emit begin/start/(retry…)/ok|fail per action,
+    with retry + abort-on-first-failure. EXECUTE_ONE(a) does the work and may
+    raise; ON_SUCCESS(a), if given, folds results back after a success. Returns
+    (applied, aborted)."""
     _emit({"event": "begin", "count": len(actions)})
     aborted = False
     applied = 0
@@ -928,7 +1455,7 @@ def apply_stream(plan: dict, client: "Client", parsed: dict, out_path: str, snap
         err = None
         for attempt in range(1, MAX_ATTEMPTS + 1):
             try:
-                _execute(a, client, created)
+                execute_one(a)
                 err = None
                 break
             except Exception as e:  # noqa: BLE001 - report any failure to the UI
@@ -937,23 +1464,140 @@ def apply_stream(plan: dict, client: "Client", parsed: dict, out_path: str, snap
                     _emit({"event": "retry", "idx": idx, "attempt": attempt, "error": err})
                     time.sleep(min(BACKOFF_BASE * attempt, 5))
         if err is None:
-            _mutate_on_success(a, created)
+            if on_success:
+                on_success(a)
             applied += 1
             _emit({"event": "ok", "idx": idx})
         else:
             _emit({"event": "fail", "idx": idx, "attempts": MAX_ATTEMPTS, "error": err})
             aborted = True
             break
+    return applied, aborted
 
+
+def apply_stream(plan: dict, client: "Client", parsed: dict, out_path: str, snap_path: str):
+    actions = plan["actions"]
+    created: dict = {}
+    applied, aborted = _apply_actions(
+        actions,
+        lambda a: _execute(a, client, created),
+        lambda a: _mutate_on_success(a, created))
     # Always persist the (partially) applied state so unapplied edits survive.
+    # Carry the people map (id->name) forward so the next assignee diff resolves.
+    people = {}
+    try:
+        people = json.loads(pathlib.Path(snap_path).read_text(encoding="utf-8")).get("people", {})
+    except (OSError, ValueError):
+        pass
     pathlib.Path(out_path).write_text(serialize_parsed(parsed), encoding="utf-8")
-    pathlib.Path(snap_path).write_text(json.dumps(build_snapshot_from_parsed(parsed)), encoding="utf-8")
+    pathlib.Path(snap_path).write_text(
+        json.dumps(build_snapshot_from_parsed(parsed, people)), encoding="utf-8")
     _emit({"event": "done", "aborted": aborted, "applied": applied,
            "total": len(actions), "buffer": out_path})
 
 
 # --------------------------------------------------------------------------- #
-# Snapshot cache helpers
+# Comments: parse / diff / apply (a flat list of * headings under one task)
+# --------------------------------------------------------------------------- #
+_COMMENT_ID_RE = re.compile(r"^\s*:TW_COMMENT_ID:\s*(\d+)\s*$")  # _DRAWER_LINE_RE: see top
+
+
+def parse_comments(text: str) -> dict:
+    """Parse a comments buffer: one `*` heading per comment, body text below it,
+    optional :TW_COMMENT_ID: (present = existing, absent = a new comment)."""
+    meta = {"task": None, "user": None, "account": None}
+    comments: list[dict] = []
+    problems: list[str] = []
+    cur = None
+
+    def close():
+        nonlocal cur
+        if cur is not None:
+            cur["body"] = "\n".join(cur.pop("_lines")).strip()
+        cur = None
+
+    for raw in text.splitlines():
+        if raw.startswith("#+TEAMWORK_COMMENTS:"):
+            for tok in raw.split(":", 1)[1].split():
+                if tok.startswith("task="):
+                    meta["task"] = tok[5:]
+                elif tok.startswith("user="):
+                    meta["user"] = tok[5:]
+            continue
+        if raw.startswith("#+TEAMWORK_ACCOUNT:"):
+            meta["account"] = raw.split(":", 1)[1].strip() or None
+            continue
+        if raw.startswith("#+") or raw.startswith("#"):
+            continue
+        hm = _HEAD_RE.match(raw)
+        if hm:
+            close()
+            cur = {"id": None, "author": hm.group(2).strip(), "_lines": []}
+            comments.append(cur)
+            continue
+        cm = _COMMENT_ID_RE.match(raw)
+        if cm and cur is not None:
+            cur["id"] = int(cm.group(1))
+            continue
+        if _DRAWER_LINE_RE.match(raw):
+            continue
+        if cur is not None:
+            cur["_lines"].append(raw)
+    close()
+    return {"meta": meta, "comments": comments, "problems": problems}
+
+
+def compute_comment_plan(parsed: dict, snapshot: dict) -> dict:
+    """Diff parsed comments against the snapshot -> create/update/delete actions."""
+    actions = []
+    problems = list(parsed["problems"])
+    snap = dict(snapshot.get("comments", {}))
+    seen: set[str] = set()
+    for c in parsed["comments"]:
+        body = (c.get("body") or "").strip()
+        if c["id"] is None:
+            if body:  # a new heading with no text is ignored, not posted
+                actions.append({"type": "create_comment", "body": body,
+                                "summary": f"new comment {body[:40]!r}", "_obj": c})
+        else:
+            sid = str(c["id"])
+            seen.add(sid)
+            prev = snap.get(sid)
+            if prev is None or (prev or "").strip() != body:
+                actions.append({"type": "update_comment", "id": c["id"], "body": body,
+                                "summary": f"edit comment {c['id']}", "_obj": c})
+    for sid in snap:
+        if sid not in seen:
+            actions.append({"type": "delete_comment", "id": int(sid),
+                            "summary": f"delete comment {sid}"})
+    return {"actions": actions, "problems": problems}
+
+
+def apply_comments(plan: dict, client: "Client", task_id: int, parsed: dict,
+                   out_path: str, snap_path: str):
+    def execute_one(a):
+        t = a["type"]
+        if t == "create_comment":
+            a["_new_id"] = client.create_comment(task_id, a["body"])
+        elif t == "update_comment":
+            client.update_comment(a["id"], a["body"])
+        elif t == "delete_comment":
+            client.delete_comment(a["id"])
+
+    def on_success(a):
+        if a["type"] == "create_comment":
+            a["_obj"]["id"] = a.get("_new_id")
+
+    applied, aborted = _apply_actions(plan["actions"], execute_one, on_success)
+    pathlib.Path(out_path).write_text(serialize_comments(parsed), encoding="utf-8")
+    pathlib.Path(snap_path).write_text(
+        json.dumps(build_comment_snapshot_from_parsed(parsed)), encoding="utf-8")
+    _emit({"event": "done", "aborted": aborted, "applied": applied,
+           "total": len(plan["actions"]), "buffer": out_path})
+
+
+# --------------------------------------------------------------------------- #
+# Snapshot / buffer cache helpers
 # --------------------------------------------------------------------------- #
 def snapshot_path(date_from: str, date_to: str, account=None) -> pathlib.Path:
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
@@ -962,6 +1606,26 @@ def snapshot_path(date_from: str, date_to: str, account=None) -> pathlib.Path:
     if account:
         return CACHE_DIR / f"snapshot_{_slug(account)}_{date_from}_{date_to}.json"
     return CACHE_DIR / f"snapshot_{date_from}_{date_to}.json"
+
+
+def manage_snapshot_path(account=None) -> pathlib.Path:
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    return CACHE_DIR / (f"manage_{_slug(account)}.json" if account else "manage.json")
+
+
+def comment_snapshot_path(task_id, account=None) -> pathlib.Path:
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    return CACHE_DIR / (f"comments_{_slug(account)}_{task_id}.json" if account
+                        else f"comments_{task_id}.json")
+
+
+def cache_org_path(kind: str, key: str, account=None) -> pathlib.Path:
+    """Where the last rendered org buffer for (KIND, KEY, account) is cached, so a
+    reopen can show stale data instantly while a fresh pull runs in the
+    background. KIND is timesheet|manage|comments; KEY is the range / "manage" /
+    task id."""
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    return CACHE_DIR / f"buf_{kind}_{_slug(account)}_{_slug(key)}.org"
 
 
 # --------------------------------------------------------------------------- #
@@ -1020,19 +1684,15 @@ def cmd_logs(args):
                      + (f", {shown} match {g!r}" if g else "") + "\n")
 
 
-def cmd_pull(args):
-    creds = load_creds(getattr(args, "account", None))
-    account = creds.get("account")
-    c = Client(creds)
-    meta = {"from": args.date_from, "to": args.date_to, "user_id": creds["user_id"],
-            "account": account}
-    only = set(int(x) for x in args.projects.split(",")) if args.projects else None
-
-    # -- reconcile hidden-project preferences from the buffer being replaced --
-    prefs = load_prefs(account)
+def _select_projects(c, prefs, args_projects, args_prev):
+    """Apply hidden prefs and the per-account project filter to the active-project
+    list. Returns (projects, hidden_ids, hidden_names, filter_ids, filter_names,
+    name_by_id). An explicit --projects overrides the stored filter for one run;
+    otherwise a non-empty stored filter is an allowlist, and an empty one means
+    "all active projects" (the original behaviour)."""
     prev_present = hidden_prop = None
-    if args.prev and os.path.exists(args.prev):
-        pv = parse_org(pathlib.Path(args.prev).read_text(encoding="utf-8"))
+    if args_prev and os.path.exists(args_prev):
+        pv = parse_org(pathlib.Path(args_prev).read_text(encoding="utf-8"))
         prev_present = {str(p["id"]) for p in pv["projects"] if p["id"] is not None}
         hp = pv["meta"].get("hidden")
         hidden_prop = {str(x) for x in hp} if hp is not None else None
@@ -1044,10 +1704,17 @@ def cmd_pull(args):
     hidden_names = {h: name_by_id.get(h, old_names.get(h, "?")) for h in hidden_ids}
 
     projects = [p for p in projects_all if str(p["id"]) not in hidden_ids]
-    if only:
+    filt = [int(x) for x in (prefs.get("filter") or [])]
+    only = (set(int(x) for x in args_projects.split(",")) if args_projects
+            else (set(filt) if filt else None))
+    if only is not None:
         projects = [p for p in projects if p["id"] in only]
-    sys.stderr.write(f"projects: {len(projects)} shown, {len(hidden_ids)} hidden\n")
+    filt_names = {str(pid): name_by_id.get(str(pid), "?") for pid in filt}
+    return projects, hidden_ids, hidden_names, filt, filt_names, name_by_id
 
+
+def _walk_tree(c, projects):
+    """Fetch every tasklist and its tasks (incl. subtasks/tags) for PROJECTS."""
     tasklists, tasks = [], []
     for i, p in enumerate(projects, 1):
         tls = c.tasklists(p["id"])
@@ -1057,6 +1724,34 @@ def cmd_pull(args):
         sys.stderr.write(f"\r  walked {i}/{len(projects)} projects")
         sys.stderr.flush()
     sys.stderr.write("\n")
+    return tasklists, tasks
+
+
+def _gather_people(c, projects) -> dict:
+    """Union of assignable people across PROJECTS as {id: name}."""
+    people = {}
+    for p in projects:
+        try:
+            for person in c.project_people(p["id"]):
+                people[person["id"]] = person["name"]
+        except Exception:  # noqa: BLE001 - a project without people access is not fatal
+            pass
+    return people
+
+
+def cmd_pull(args):
+    creds = load_creds(getattr(args, "account", None))
+    account = creds.get("account")
+    c = Client(creds)
+    meta = {"from": args.date_from, "to": args.date_to, "user_id": creds["user_id"],
+            "account": account, "mode": "timesheet"}
+
+    prefs = load_prefs(account)
+    projects, hidden_ids, hidden_names, _filt, _filt_names, _names = \
+        _select_projects(c, prefs, args.projects, args.prev)
+    sys.stderr.write(f"projects: {len(projects)} shown, {len(hidden_ids)} hidden\n")
+
+    tasklists, tasks = _walk_tree(c, projects)
 
     logs = [lg for lg in c.my_timelogs(args.date_from, args.date_to)
             if str(lg["project_id"]) not in hidden_ids]
@@ -1069,25 +1764,132 @@ def cmd_pull(args):
     if len(tasks) > before:
         sys.stderr.write(f"reattached {len(tasks) - before} completed/archived task(s) from logs\n")
 
-    save_prefs({"hidden": hidden_names, "shown": [p["id"] for p in projects]}, account)
+    # Merge (don't replace) prefs so the per-account project filter survives.
+    update_prefs(account, hidden=hidden_names, shown=[p["id"] for p in projects])
     snapshot_path(args.date_from, args.date_to, account).write_text(
         json.dumps(build_snapshot(projects, tasklists, tasks, logs, meta)), encoding="utf-8"
     )
     org = render_org(projects, tasklists, tasks, logs, meta, hidden_names)
+    cache_org_path("timesheet", f"{args.date_from}_{args.date_to}", account).write_text(
+        org, encoding="utf-8")
     (open(args.out, "w", encoding="utf-8") if args.out else sys.stdout).write(org)
+
+
+def cmd_manage(args):
+    creds = load_creds(getattr(args, "account", None))
+    account = creds.get("account")
+    c = Client(creds)
+    meta = {"user_id": creds["user_id"], "account": account, "mode": "manage"}
+
+    prefs = load_prefs(account)
+    projects, hidden_ids, hidden_names, filt, filt_names, _names = \
+        _select_projects(c, prefs, args.projects, args.prev)
+    sys.stderr.write(f"projects: {len(projects)} shown, {len(hidden_ids)} hidden, "
+                     f"{len(filt)} in filter\n")
+
+    tasklists, tasks = _walk_tree(c, projects)
+
+    # Resolve each task's assignee ids to names for display; keep the id->name map
+    # in the snapshot so submit can turn edited names back into ids.
+    people = _gather_people(c, projects)
+    for tk in tasks:
+        tk["assignee_names"] = [people.get(i, i) for i in tk.get("assignees", [])]
+    sys.stderr.write(f"people assignable: {len(people)}\n")
+
+    update_prefs(account, hidden=hidden_names, shown=[p["id"] for p in projects])
+    snap = build_snapshot(projects, tasklists, tasks, [], meta)
+    snap["people"] = people
+    manage_snapshot_path(account).write_text(json.dumps(snap), encoding="utf-8")
+    org = render_manage(projects, tasklists, tasks, meta, hidden_names, filt, filt_names)
+    cache_org_path("manage", "manage", account).write_text(org, encoding="utf-8")
+    (open(args.out, "w", encoding="utf-8") if args.out else sys.stdout).write(org)
+
+
+def cmd_comments_pull(args):
+    creds = load_creds(getattr(args, "account", None))
+    account = creds.get("account")
+    c = Client(creds)
+    tid = int(args.task)
+    title = c.task_title(tid)
+    comments = c.comments(tid)
+    sys.stderr.write(f"comments on task {tid}: {len(comments)}\n")
+    meta = {"user_id": creds["user_id"], "account": account}
+    comment_snapshot_path(tid, account).write_text(
+        json.dumps(build_comment_snapshot(tid, comments)), encoding="utf-8")
+    org = render_comments(tid, title, comments, meta)
+    cache_org_path("comments", str(tid), account).write_text(org, encoding="utf-8")
+    (open(args.out, "w", encoding="utf-8") if args.out else sys.stdout).write(org)
+
+
+def cmd_projects(args):
+    """List active projects (id, name, in_filter) as JSON for the filter picker."""
+    creds = load_creds(getattr(args, "account", None))
+    account = creds.get("account")
+    prefs = load_prefs(account)
+    filt = {str(x) for x in (prefs.get("filter") or [])}
+    projs = Client(creds).projects()
+    print(json.dumps([{"id": p["id"], "name": p["name"],
+                       "in_filter": str(p["id"]) in filt} for p in projs],
+                     ensure_ascii=False))
+
+
+def cmd_people(args):
+    """List assignable people (id, name) as JSON for the assignee picker, across
+    the account's filtered/shown projects."""
+    creds = load_creds(getattr(args, "account", None))
+    account = creds.get("account")
+    c = Client(creds)
+    prefs = load_prefs(account)
+    projects, *_ = _select_projects(c, prefs, getattr(args, "projects", None), None)
+    people = _gather_people(c, projects)
+    out = [{"id": pid, "name": nm} for pid, nm in people.items()]
+    out.sort(key=lambda x: x["name"].lower())
+    print(json.dumps(out, ensure_ascii=False))
+
+
+def cmd_tags(args):
+    """List existing tag names as JSON for the tag picker."""
+    print(json.dumps(Client(load_creds(getattr(args, "account", None))).all_tags(),
+                     ensure_ascii=False))
+
+
+def cmd_filter_get(args):
+    prefs = load_prefs(getattr(args, "account", None))
+    print(json.dumps({"filter": [int(x) for x in (prefs.get("filter") or [])]}))
+
+
+def cmd_filter_set(args):
+    account = getattr(args, "account", None)
+    ids = [int(x) for x in (args.projects or "").split(",") if x.strip().isdigit()]
+    update_prefs(account, filter=ids)
+    print(json.dumps({"filter": ids}))
+
+
+def cmd_cached(args):
+    """Emit the last cached org buffer for (kind, key, account), if any. Exit 3
+    when there is no cache yet (so Emacs falls back to a plain load)."""
+    p = cache_org_path(args.kind, args.key, getattr(args, "account", None))
+    if not p.exists():
+        raise SystemExit(3)
+    sys.stdout.write(p.read_text(encoding="utf-8"))
 
 
 def cmd_submit(args):
     text = pathlib.Path(args.file).read_text(encoding="utf-8")
     parsed = parse_org(text)
-    frm, to = parsed["meta"]["from"], parsed["meta"]["to"]
-    if not frm or not to:
-        raise SystemExit("buffer is missing its #+TEAMWORK: from=.. to=.. header")
     # The buffer's own #+TEAMWORK_ACCOUNT wins; --account is an override/fallback.
     account = parsed["meta"].get("account") or getattr(args, "account", None)
-    snap_file = snapshot_path(frm, to, account)
-    if not snap_file.exists():
-        raise SystemExit(f"no snapshot for {frm}..{to} (re-run pull first): {snap_file}")
+    if parsed["meta"].get("mode") == "manage":
+        snap_file = manage_snapshot_path(account)
+        if not snap_file.exists():
+            raise SystemExit(f"no management snapshot (re-run manage first): {snap_file}")
+    else:
+        frm, to = parsed["meta"]["from"], parsed["meta"]["to"]
+        if not frm or not to:
+            raise SystemExit("buffer is missing its #+TEAMWORK: from=.. to=.. header")
+        snap_file = snapshot_path(frm, to, account)
+        if not snap_file.exists():
+            raise SystemExit(f"no snapshot for {frm}..{to} (re-run pull first): {snap_file}")
     snapshot = json.loads(snap_file.read_text(encoding="utf-8"))
     creds = load_creds(account)
     plan = compute_plan(parsed, snapshot, int(creds["user_id"]))
@@ -1102,6 +1904,34 @@ def cmd_submit(args):
             raise SystemExit(2)
         out = args.out or (str(args.file) + ".applied")
         apply_stream(plan, Client(creds), parsed, out, str(snap_file))
+        return
+    _print_plan(plan)
+
+
+def cmd_comments_submit(args):
+    text = pathlib.Path(args.file).read_text(encoding="utf-8")
+    parsed = parse_comments(text)
+    tid = parsed["meta"].get("task")
+    if not tid:
+        raise SystemExit("buffer is missing its #+TEAMWORK_COMMENTS: task=.. header")
+    account = parsed["meta"].get("account") or getattr(args, "account", None)
+    snap_file = comment_snapshot_path(tid, account)
+    if not snap_file.exists():
+        raise SystemExit(f"no comment snapshot for task {tid} (re-run comments-pull first)")
+    snapshot = json.loads(snap_file.read_text(encoding="utf-8"))
+    plan = compute_comment_plan(parsed, snapshot)
+
+    if args.json:
+        print(json.dumps({"actions": [public_action(a) for a in plan["actions"]],
+                          "problems": plan["problems"]}, ensure_ascii=False))
+        return
+    if args.apply:
+        if plan["problems"]:
+            _emit({"event": "error", "problems": plan["problems"]})
+            raise SystemExit(2)
+        creds = load_creds(account)
+        out = args.out or (str(args.file) + ".applied")
+        apply_comments(plan, Client(creds), int(tid), parsed, out, str(snap_file))
         return
     _print_plan(plan)
 
@@ -1155,6 +1985,47 @@ def main(argv=None):
     pl.add_argument("--out", default=None)
     pl.set_defaults(func=cmd_pull)
 
+    mn = sub.add_parser("manage", help="emit the project structure (no time filter) to manage")
+    mn.add_argument("--projects", default=None, help="comma-separated project ids (overrides the stored filter)")
+    mn.add_argument("--prev", default=None, help="the buffer being replaced (for hidden-project reconciliation)")
+    mn.add_argument("--account", default=None, help="which stored account to use")
+    mn.add_argument("--out", default=None)
+    mn.set_defaults(func=cmd_manage)
+
+    cp = sub.add_parser("comments-pull", help="emit a task's comments as an editable org buffer")
+    cp.add_argument("--task", required=True, help="task id to fetch comments for")
+    cp.add_argument("--account", default=None, help="which stored account to use")
+    cp.add_argument("--out", default=None)
+    cp.set_defaults(func=cmd_comments_pull)
+
+    pr = sub.add_parser("projects", help="list active projects as JSON (with in_filter flags)")
+    pr.add_argument("--account", default=None, help="which stored account to use")
+    pr.set_defaults(func=cmd_projects)
+
+    fg = sub.add_parser("filter-get", help="print the account's project filter as JSON")
+    fg.add_argument("--account", default=None, help="which stored account to use")
+    fg.set_defaults(func=cmd_filter_get)
+
+    pp = sub.add_parser("people", help="list assignable people as JSON (assignee picker)")
+    pp.add_argument("--projects", default=None, help="comma-separated project ids (else the filter)")
+    pp.add_argument("--account", default=None, help="which stored account to use")
+    pp.set_defaults(func=cmd_people)
+
+    tg = sub.add_parser("tags", help="list existing tag names as JSON (tag picker)")
+    tg.add_argument("--account", default=None, help="which stored account to use")
+    tg.set_defaults(func=cmd_tags)
+
+    fs = sub.add_parser("filter-set", help="set the account's project filter (comma-separated ids)")
+    fs.add_argument("--projects", default="", help="comma-separated project ids (empty clears the filter)")
+    fs.add_argument("--account", default=None, help="which stored account to use")
+    fs.set_defaults(func=cmd_filter_set)
+
+    ch = sub.add_parser("cached", help="print the last cached org buffer (exit 3 if none)")
+    ch.add_argument("--kind", required=True, choices=["timesheet", "manage", "comments"])
+    ch.add_argument("--key", required=True, help="range 'FROM_TO' / 'manage' / task id")
+    ch.add_argument("--account", default=None, help="which stored account to use")
+    ch.set_defaults(func=cmd_cached)
+
     sb = sub.add_parser("submit")
     sb.add_argument("--file", required=True)
     sb.add_argument("--apply", action="store_true", help="execute the plan (streams progress)")
@@ -1163,6 +2034,14 @@ def main(argv=None):
     sb.add_argument("--account", default=None, help="account fallback if the buffer lacks a header")
     sb.add_argument("--out", default=None, help="where to write the updated buffer after --apply")
     sb.set_defaults(func=cmd_submit)
+
+    cs = sub.add_parser("comments-submit", help="diff/apply an edited comments buffer")
+    cs.add_argument("--file", required=True)
+    cs.add_argument("--apply", action="store_true", help="execute the plan (streams progress)")
+    cs.add_argument("--json", action="store_true", help="emit the plan as JSON and exit")
+    cs.add_argument("--account", default=None, help="account fallback if the buffer lacks a header")
+    cs.add_argument("--out", default=None, help="where to write the updated buffer after --apply")
+    cs.set_defaults(func=cmd_comments_submit)
 
     args = ap.parse_args(argv)
     args.func(args)

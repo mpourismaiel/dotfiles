@@ -19,6 +19,10 @@ node_modules
 *.log
 *.css.map
 
+# Python bytecode caches (auto-generated, interpreter/tool-version specific)
+__pycache__/
+*.pyc
+
 # tangle-release.sh output (built configs are attached to GitHub Releases, not tracked)
 dist/
 

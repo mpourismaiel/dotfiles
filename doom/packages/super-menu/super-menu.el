@@ -44,20 +44,28 @@ buffer list."
   (string-prefix-p "*" (buffer-name buf)))
 
 (defun mp/package-buffer-p (buf)
-  "Return non-nil if BUF belongs to a local package (Teamwork / GitHub PR).
-Matches their main buffers and companions (submit/preview/logs/accounts) while
-skipping the leading-space internal process buffers."
+  "Return non-nil if BUF is a local-package HELPER buffer (an earmuffed
+submit/preview/logs/accounts/changes companion for Teamwork / GitHub PR).
+
+The MAIN editable buffers (teamwork-timesheet / -management / -comments-*,
+github-pr…) are deliberately NOT matched here so they fall through to
+`mp/normal-buffer-p' and appear in the ordinary [B]uffer list — they are
+first-class buffers you switch to constantly.  Only the transient `*…*'
+companions are corralled into the [P]ackages group."
   (let ((name (buffer-name buf)))
     (and (not (string-prefix-p " " name))
+         (string-prefix-p "*" name)
          (string-match-p "\\(teamwork\\|github-pr\\)" name))))
 
 (defun mp/normal-buffer-p (buf)
-  "Return non-nil for ordinary user-facing buffers."
+  "Return non-nil for ordinary user-facing buffers.
+Earmuffed package helpers are excluded via `mp/special-buffer-p' (they live in
+the [P]ackages group); the main package buffers are left in so the Teamwork and
+GitHub-PR buffers always show in the primary [B]uffer list."
   (and (buffer-live-p buf)
        (not (mp/special-buffer-p buf))
        (not (mp/agent-shell-buffer-p buf))
-       (not (mp/ghostel-buffer-p buf))
-       (not (mp/package-buffer-p buf))))
+       (not (mp/ghostel-buffer-p buf))))
 
 (defun mp/history-index (item history)
   "Return ITEM position in HISTORY, or a large number."
@@ -172,7 +180,9 @@ skipping the leading-space internal process buffers."
                 :as #'buffer-name
                 :predicate #'mp/package-buffer-p)
                buffer-name-history)))
-  "Buffers from local packages (Teamwork timesheet, GitHub PR) for the super menu.")
+  "Transient helper buffers of local packages (Teamwork / GitHub PR submit /
+preview / logs / changes).  The main editable buffers live in the [B]uffer
+source; this group keeps their `*…*' companions out of the way.")
 
 (defun mp/live-project-files (root)
   "Return live relative file list under ROOT using fd, falling back to Elisp."

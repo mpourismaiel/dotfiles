@@ -226,7 +226,10 @@ class Subtasks(unittest.TestCase):
             T.parse_org(self._tree("**** New Sub\n:PROPERTIES:\n:TW_TASK_ID: 400\n:END:\n")),
             snap, 363603)
         self.assertEqual([a["type"] for a in plan["actions"]], ["update_task"])
-        self.assertIn("rename subtask", plan["actions"][0]["summary"])
+        act = plan["actions"][0]
+        self.assertEqual(act["title"], "New Sub")
+        self.assertIn("subtask", act["summary"])
+        self.assertIn("rename", act["summary"])
 
     def test_plan_new_task_then_new_subtask_orders_parent_first(self):
         # brand-new task (no id) with a brand-new subtask + a log on the subtask:
@@ -527,16 +530,22 @@ class _FakeClient:
         self._tid += 1
         return self._tid
 
-    def create_task(self, tlid, title):
+    def create_task(self, tlid, title, description=None):
         if self.fail_task > 0:
             self.fail_task -= 1
             raise RuntimeError("boom task")
         self._tid += 1
         return self._tid
 
-    def create_subtask(self, parent_id, title):
+    def create_subtask(self, parent_id, title, description=None):
         self._tid += 1
         return self._tid
+
+    def delete_task(self, task_id):
+        pass
+
+    def delete_tasklist(self, tasklist_id):
+        pass
 
     def create_timelog(self, tkid, body):
         if self.fail_log > 0:
@@ -632,6 +641,474 @@ class ApplyStream(unittest.TestCase):
         self.assertEqual(events[-1]["applied"], 2)             # create log + complete
         # [d] is a one-shot instruction: it does not survive into the applied buffer
         self.assertFalse(re["projects"][0]["tasklists"][0]["tasks"][0]["logs"][0]["done"])
+
+
+class Tags(unittest.TestCase):
+    """Task labels via a :TW_TAGS: property line."""
+
+    def _tree(self, tag_line="", task_prop=":TW_TASK_ID: 300\n"):
+        return (
+            "#+TEAMWORK: from=2026-06-01 to=2026-06-30 user=363603\n"
+            "* P\n:PROPERTIES:\n:TW_PROJECT_ID: 100\n:END:\n"
+            "** L\n:PROPERTIES:\n:TW_TASKLIST_ID: 200\n:END:\n"
+            "*** Task\n:PROPERTIES:\n" + task_prop + tag_line + ":END:\n"
+        )
+
+    def test_parse_tags(self):
+        task = T.parse_org(self._tree(":TW_TAGS: bug, Backend\n"))["projects"][0]["tasklists"][0]["tasks"][0]
+        self.assertEqual(task["tags"], ["bug", "Backend"])
+
+    def test_parse_empty_tags_present(self):
+        task = T.parse_org(self._tree(":TW_TAGS:\n"))["projects"][0]["tasklists"][0]["tasks"][0]
+        self.assertEqual(task["tags"], [])              # present but empty -> clear intent
+
+    def test_missing_tags_line_absent(self):
+        task = T.parse_org(self._tree())["projects"][0]["tasklists"][0]["tasks"][0]
+        self.assertNotIn("tags", task)                  # no line -> no opinion
+
+    def test_render_emits_tags(self):
+        tasks = [{"id": 300, "title": "T", "tasklist_id": 200, "project_id": 100,
+                  "parent_id": None, "tags": ["bug", "ui"]}]
+        text = T.render_org([{"id": 100, "name": "P"}],
+                            [{"id": 200, "name": "L", "project_id": 100}], tasks, [],
+                            {"from": "2026-06-01", "to": "2026-06-30", "user_id": 1})
+        self.assertIn(":TW_TAGS: bug, ui", text)
+        # round-trips back to the same tag list
+        self.assertEqual(T.parse_org(text)["projects"][0]["tasklists"][0]["tasks"][0]["tags"],
+                         ["bug", "ui"])
+
+    def test_render_no_tags_is_plain_drawer(self):
+        tasks = [{"id": 300, "title": "T", "tasklist_id": 200, "project_id": 100, "parent_id": None}]
+        text = T.render_org([{"id": 100, "name": "P"}],
+                            [{"id": 200, "name": "L", "project_id": 100}], tasks, [],
+                            {"from": "2026-06-01", "to": "2026-06-30", "user_id": 1})
+        self.assertNotIn("TW_TAGS", text)
+        self.assertIn(":PROPERTIES:\n:TW_TASK_ID: 300\n:END:", text)
+
+    def test_plan_sets_tags_when_changed(self):
+        snap = {"logs": {}, "tasks": {"300": "Task"}, "task_tags": {"300": ["old"]}}
+        plan = T.compute_plan(T.parse_org(self._tree(":TW_TAGS: new, hot\n")), snap, 363603)
+        self.assertEqual([a["type"] for a in plan["actions"]], ["set_task_tags"])
+        a = plan["actions"][0]
+        self.assertEqual((a["task"], a["tags"]), (300, ["new", "hot"]))
+
+    def test_plan_no_action_when_tags_equal_modulo_case_order(self):
+        snap = {"logs": {}, "tasks": {"300": "Task"}, "task_tags": {"300": ["Bug", "backend"]}}
+        plan = T.compute_plan(T.parse_org(self._tree(":TW_TAGS: backend, bug\n")), snap, 363603)
+        self.assertEqual(plan["actions"], [])
+
+    def test_plan_no_action_when_tags_line_absent(self):
+        snap = {"logs": {}, "tasks": {"300": "Task"}, "task_tags": {"300": ["keep"]}}
+        plan = T.compute_plan(T.parse_org(self._tree()), snap, 363603)
+        self.assertEqual(plan["actions"], [])            # absent line never clears tags
+
+    def test_plan_sets_tags_on_new_task_targets_ref(self):
+        plan = T.compute_plan(T.parse_org(self._tree(":TW_TAGS: fresh\n", task_prop="")),
+                              {"logs": {}}, 363603)
+        types = [a["type"] for a in plan["actions"]]
+        self.assertEqual(types, ["create_task", "set_task_tags"])
+        newtask = next(a for a in plan["actions"] if a["type"] == "create_task")
+        self.assertEqual(plan["actions"][-1]["task"], {"ref": newtask["ref"]})
+
+
+class Manage(unittest.TestCase):
+    """Management buffers: same tree, no dates/logs, #+TEAMWORK_MANAGE marker."""
+
+    def test_parse_manage_mode(self):
+        p = T.parse_org("#+TEAMWORK_MANAGE: user=42\n#+TEAMWORK_ACCOUNT: work\n"
+                        "* P\n:PROPERTIES:\n:TW_PROJECT_ID: 100\n:END:\n")
+        self.assertEqual(p["meta"]["mode"], "manage")
+        self.assertEqual(p["meta"]["user"], "42")
+        self.assertEqual(p["meta"]["account"], "work")
+
+    def test_default_mode_is_timesheet(self):
+        p = T.parse_org("#+TEAMWORK: from=2026-06-01 to=2026-06-30 user=1\n* P\n")
+        self.assertEqual(p["meta"]["mode"], "timesheet")
+
+    def test_render_manage_has_marker_no_dates(self):
+        text = T.render_manage([{"id": 100, "name": "P"}],
+                               [{"id": 200, "name": "L", "project_id": 100}],
+                               [{"id": 300, "title": "T", "tasklist_id": 200,
+                                 "project_id": 100, "parent_id": None, "tags": ["x"]}],
+                               {"user_id": 42, "account": "work"})
+        self.assertIn("#+TEAMWORK_MANAGE: user=42", text)
+        self.assertNotIn("#+TEAMWORK:", text)
+        self.assertIn("*** T", text)
+        self.assertIn(":TW_TAGS: x", text)
+
+    def test_manage_serialize_round_trips_mode(self):
+        text = T.render_manage([{"id": 100, "name": "P"}],
+                               [{"id": 200, "name": "L", "project_id": 100}], [],
+                               {"user_id": 42, "account": "work"})
+        p = T.parse_org(text)
+        self.assertEqual(p["meta"]["mode"], "manage")
+        self.assertIn("#+TEAMWORK_MANAGE:", T.serialize_parsed(p))
+
+    def test_manage_plan_creates_list_and_task(self):
+        text = ("#+TEAMWORK_MANAGE: user=42\n"
+                "* P\n:PROPERTIES:\n:TW_PROJECT_ID: 100\n:END:\n"
+                "** New List\n"
+                "*** New Task\n")
+        plan = T.compute_plan(T.parse_org(text), {}, 42)
+        self.assertEqual([a["type"] for a in plan["actions"]],
+                         ["create_tasklist", "create_task"])
+
+
+class ManageDescriptions(unittest.TestCase):
+    """Task descriptions (free text under a task) in management mode."""
+
+    def _tree(self, body):
+        return ("#+TEAMWORK_MANAGE: user=42\n"
+                "* P\n:PROPERTIES:\n:TW_PROJECT_ID: 100\n:END:\n"
+                "** L\n:PROPERTIES:\n:TW_TASKLIST_ID: 200\n:END:\n" + body)
+
+    def test_parse_description_body(self):
+        body = ("*** A\n:PROPERTIES:\n:TW_TASK_ID: 300\n:END:\n"
+                "first line\nsecond line\n"
+                "*** B\n:PROPERTIES:\n:TW_TASK_ID: 500\n:END:\n")
+        tasks = T.parse_org(self._tree(body))["projects"][0]["tasklists"][0]["tasks"]
+        self.assertEqual(tasks[0]["description"], "first line\nsecond line")
+        self.assertEqual(tasks[1]["description"], "")   # no body -> empty (authoritative)
+
+    def test_description_not_parsed_in_timesheet_mode(self):
+        # the same free text under a timesheet task must NOT become a description
+        p = T.parse_org(
+            "#+TEAMWORK: from=2026-06-01 to=2026-06-30 user=1\n"
+            "* P\n:PROPERTIES:\n:TW_PROJECT_ID: 100\n:END:\n"
+            "** L\n:PROPERTIES:\n:TW_TASKLIST_ID: 200\n:END:\n"
+            "*** A\n:PROPERTIES:\n:TW_TASK_ID: 300\n:END:\nsome stray text\n")
+        self.assertNotIn("description", p["projects"][0]["tasklists"][0]["tasks"][0])
+
+    def test_render_manage_round_trips_description(self):
+        tasks = [{"id": 300, "title": "A", "tasklist_id": 200, "project_id": 100,
+                  "parent_id": None, "tags": [], "description": "line one\nline two"}]
+        text = T.render_manage([{"id": 100, "name": "P"}],
+                               [{"id": 200, "name": "L", "project_id": 100}], tasks,
+                               {"user_id": 42})
+        self.assertIn("line one", text)
+        back = T.parse_org(text)["projects"][0]["tasklists"][0]["tasks"][0]
+        self.assertEqual(back["description"], "line one\nline two")
+
+    def test_plan_updates_changed_description(self):
+        snap = {"tasks": {"300": "A"}, "task_desc": {"300": "old"}}
+        body = "*** A\n:PROPERTIES:\n:TW_TASK_ID: 300\n:END:\nbrand new text\n"
+        plan = T.compute_plan(T.parse_org(self._tree(body)), snap, 42)
+        self.assertEqual([a["type"] for a in plan["actions"]], ["update_task"])
+        act = plan["actions"][0]
+        self.assertEqual(act["description"], "brand new text")
+        self.assertNotIn("title", act)                 # only the description changed
+
+    def test_plan_clears_description(self):
+        snap = {"tasks": {"300": "A"}, "task_desc": {"300": "had text"}}
+        body = "*** A\n:PROPERTIES:\n:TW_TASK_ID: 300\n:END:\n"   # body emptied
+        plan = T.compute_plan(T.parse_org(self._tree(body)), snap, 42)
+        self.assertEqual(plan["actions"][0]["description"], "")   # cleared, not left
+
+    def test_plan_unchanged_description_no_action(self):
+        snap = {"tasks": {"300": "A"}, "task_desc": {"300": "same"}}
+        body = "*** A\n:PROPERTIES:\n:TW_TASK_ID: 300\n:END:\nsame\n"
+        self.assertEqual(T.compute_plan(T.parse_org(self._tree(body)), snap, 42)["actions"], [])
+
+    def test_plan_new_task_carries_description(self):
+        plan = T.compute_plan(T.parse_org(self._tree("*** Fresh\nfresh body\n")), {}, 42)
+        create = next(a for a in plan["actions"] if a["type"] == "create_task")
+        self.assertEqual(create["description"], "fresh body")
+
+
+class TaskProperties(unittest.TestCase):
+    """Due date / priority / assignee task properties in management mode."""
+
+    def _tree(self, drawer_extra="", people=None):
+        text = ("#+TEAMWORK_MANAGE: user=42\n"
+                "* P\n:PROPERTIES:\n:TW_PROJECT_ID: 100\n:END:\n"
+                "** L\n:PROPERTIES:\n:TW_TASKLIST_ID: 200\n:END:\n"
+                "*** A\n:PROPERTIES:\n:TW_TASK_ID: 300\n" + drawer_extra + ":END:\n")
+        return text
+
+    # -- format helpers --
+    def test_norm_due(self):
+        self.assertEqual(T._norm_due("20260820"), "2026-08-20")
+        self.assertEqual(T._norm_due("2026-08-20"), "2026-08-20")
+        self.assertEqual(T._norm_due(""), "")
+        self.assertEqual(T._due_compact("2026-08-20"), "20260820")
+
+    def test_norm_priority(self):
+        self.assertEqual(T._norm_priority("None"), "")
+        self.assertEqual(T._norm_priority("HIGH"), "high")
+
+    # -- parse --
+    def test_parse_properties(self):
+        tk = T.parse_org(self._tree(
+            ":TW_DUE: 2026-08-20\n:TW_PRIORITY: high\n:TW_ASSIGNEE: Jane Doe, John Roe\n"
+        ))["projects"][0]["tasklists"][0]["tasks"][0]
+        self.assertEqual(tk["due"], "2026-08-20")
+        self.assertEqual(tk["priority"], "high")
+        self.assertEqual(tk["assignee_names"], ["Jane Doe", "John Roe"])
+
+    def test_missing_property_lines_absent(self):
+        tk = T.parse_org(self._tree())["projects"][0]["tasklists"][0]["tasks"][0]
+        for k in ("due", "priority", "assignee_names"):
+            self.assertNotIn(k, tk)          # no line -> leave untouched
+
+    # -- render round-trip (ids resolved to names via people map) --
+    def test_render_manage_props_round_trip(self):
+        tasks = [{"id": 300, "title": "A", "tasklist_id": 200, "project_id": 100,
+                  "parent_id": None, "tags": [], "description": "",
+                  "due": "2026-08-20", "priority": "medium",
+                  "assignee_names": ["Jane Doe"]}]
+        text = T.render_manage([{"id": 100, "name": "P"}],
+                               [{"id": 200, "name": "L", "project_id": 100}], tasks,
+                               {"user_id": 42})
+        self.assertIn(":TW_DUE: 2026-08-20", text)
+        self.assertIn(":TW_PRIORITY: medium", text)
+        self.assertIn(":TW_ASSIGNEE: Jane Doe", text)
+        back = T.parse_org(text)["projects"][0]["tasklists"][0]["tasks"][0]
+        self.assertEqual((back["due"], back["priority"], back["assignee_names"]),
+                         ("2026-08-20", "medium", ["Jane Doe"]))
+
+    def test_timesheet_render_omits_props(self):
+        tasks = [{"id": 300, "title": "A", "tasklist_id": 200, "project_id": 100,
+                  "parent_id": None, "tags": [], "due": "2026-08-20", "priority": "high"}]
+        text = T.render_org([{"id": 100, "name": "P"}],
+                            [{"id": 200, "name": "L", "project_id": 100}], tasks, [],
+                            {"from": "2026-06-01", "to": "2026-06-30", "user_id": 1})
+        self.assertNotIn("TW_DUE", text)     # timesheet buffers stay lean
+        self.assertNotIn("TW_PRIORITY", text)
+
+    # -- diff --
+    def _snap(self, **over):
+        s = {"tasks": {"300": "A"}, "task_due": {"300": ""}, "task_priority": {"300": ""},
+             "task_assignees": {"300": []}, "people": {"7": "Jane Doe", "8": "John Roe"}}
+        s.update(over)
+        return s
+
+    def test_plan_sets_due_and_priority(self):
+        plan = T.compute_plan(T.parse_org(self._tree(":TW_DUE: 2026-08-20\n:TW_PRIORITY: high\n")),
+                              self._snap(), 42)
+        self.assertEqual([a["type"] for a in plan["actions"]], ["update_task"])
+        act = plan["actions"][0]
+        self.assertEqual((act["due"], act["priority"]), ("2026-08-20", "high"))
+        self.assertEqual(T._build_task_item(act)["due-date"], "20260820")
+
+    def test_plan_resolves_assignee_names_to_ids(self):
+        plan = T.compute_plan(T.parse_org(self._tree(":TW_ASSIGNEE: Jane Doe\n")), self._snap(), 42)
+        act = plan["actions"][0]
+        self.assertEqual(act["assignees"], ["7"])            # name -> id
+        self.assertEqual(T._build_task_item(act)["responsible-party-id"], "7")
+
+    def test_plan_unknown_assignee_is_a_problem(self):
+        plan = T.compute_plan(T.parse_org(self._tree(":TW_ASSIGNEE: Nobody Here\n")), self._snap(), 42)
+        self.assertTrue(any("unknown assignee" in p for p in plan["problems"]))
+
+    def test_plan_unchanged_props_no_action(self):
+        snap = self._snap(task_due={"300": "2026-08-20"}, task_priority={"300": "high"},
+                          task_assignees={"300": ["Jane Doe"]})
+        plan = T.compute_plan(
+            T.parse_org(self._tree(":TW_DUE: 2026-08-20\n:TW_PRIORITY: high\n:TW_ASSIGNEE: Jane Doe\n")),
+            snap, 42)
+        self.assertEqual(plan["actions"], [])
+
+    def test_plan_clears_due_with_empty_value(self):
+        plan = T.compute_plan(T.parse_org(self._tree(":TW_DUE:\n")),
+                              self._snap(task_due={"300": "2026-08-20"}), 42)
+        self.assertEqual(plan["actions"][0]["due"], "")
+        self.assertEqual(T._build_task_item(plan["actions"][0])["due-date"], "")
+
+    def test_new_task_carries_props_in_create(self):
+        text = ("#+TEAMWORK_MANAGE: user=42\n"
+                "* P\n:PROPERTIES:\n:TW_PROJECT_ID: 100\n:END:\n"
+                "** L\n:PROPERTIES:\n:TW_TASKLIST_ID: 200\n:END:\n"
+                "*** Fresh\n:PROPERTIES:\n:TW_DUE: 2026-09-01\n:TW_ASSIGNEE: John Roe\n:END:\n")
+        plan = T.compute_plan(T.parse_org(text), self._snap(), 42)
+        create = next(a for a in plan["actions"] if a["type"] == "create_task")
+        item = T._build_task_item(create)
+        self.assertEqual(item["due-date"], "20260901")
+        self.assertEqual(item["responsible-party-id"], "8")
+
+
+class ManageDeletions(unittest.TestCase):
+    """Removing a task/tasklist heading in management mode deletes it in Teamwork."""
+
+    def setUp(self):
+        self.projects = [{"id": 100, "name": "P"}]
+        self.tls = [{"id": 200, "name": "L", "project_id": 100}]
+        self.tasks = [
+            {"id": 300, "title": "A", "tasklist_id": 200, "project_id": 100,
+             "parent_id": None, "tags": [], "description": "desc A"},
+            {"id": 400, "title": "A1", "tasklist_id": 200, "project_id": 100,
+             "parent_id": 300, "tags": [], "description": ""},
+            {"id": 500, "title": "B", "tasklist_id": 200, "project_id": 100,
+             "parent_id": None, "tags": [], "description": ""},
+        ]
+        self.snap = T.build_snapshot(self.projects, self.tls, self.tasks, [], {})
+
+    def _plan(self, body):
+        text = ("#+TEAMWORK_MANAGE: user=42\n"
+                "* P\n:PROPERTIES:\n:TW_PROJECT_ID: 100\n:END:\n" + body)
+        return T.compute_plan(T.parse_org(text), self.snap, 42)
+
+    _LIST = "** L\n:PROPERTIES:\n:TW_TASKLIST_ID: 200\n:END:\n"
+    _A = "*** A\n:PROPERTIES:\n:TW_TASK_ID: 300\n:END:\ndesc A\n"
+    _A1 = "**** A1\n:PROPERTIES:\n:TW_TASK_ID: 400\n:END:\n"
+    _B = "*** B\n:PROPERTIES:\n:TW_TASK_ID: 500\n:END:\n"
+
+    def test_remove_task_heading_deletes_it(self):
+        plan = self._plan(self._LIST + self._A + self._A1)   # B removed
+        self.assertEqual([(a["type"], a["id"]) for a in plan["actions"]],
+                         [("delete_task", 500)])
+
+    def test_remove_tasklist_deletes_list_only_children_pruned(self):
+        plan = self._plan("")   # whole task-list L gone, project P kept
+        self.assertEqual([(a["type"], a["id"]) for a in plan["actions"]],
+                         [("delete_tasklist", 200)])   # no per-task deletes (cascade)
+
+    def test_remove_parent_task_prunes_subtask(self):
+        plan = self._plan(self._LIST + self._B)   # A and its subtask A1 removed
+        self.assertEqual([(a["type"], a["id"]) for a in plan["actions"]],
+                         [("delete_task", 300)])   # 400 pruned (descendant of 300)
+
+    def test_remove_whole_project_deletes_nothing(self):
+        # project heading itself removed -> hide (present_pids guard), never delete
+        plan = T.compute_plan(T.parse_org("#+TEAMWORK_MANAGE: user=42\n"), self.snap, 42)
+        self.assertEqual(plan["actions"], [])
+
+    def test_timesheet_mode_never_deletes_tasks(self):
+        # same removal in timesheet mode must NOT delete the task/list
+        text = ("#+TEAMWORK: from=2026-06-01 to=2026-06-30 user=42\n"
+                "* P\n:PROPERTIES:\n:TW_PROJECT_ID: 100\n:END:\n")   # everything removed
+        plan = T.compute_plan(T.parse_org(text), self.snap, 42)
+        kinds = {a["type"] for a in plan["actions"]}
+        self.assertNotIn("delete_task", kinds)
+        self.assertNotIn("delete_tasklist", kinds)
+
+    def test_apply_executes_deletes(self):
+        import io, json as _json, tempfile, contextlib
+        T.BACKOFF_BASE = 0
+        parsed = T.parse_org("#+TEAMWORK_MANAGE: user=42\n"
+                             "* P\n:PROPERTIES:\n:TW_PROJECT_ID: 100\n:END:\n"
+                             + self._LIST + self._A + self._A1)   # B removed -> delete 500
+        plan = T.compute_plan(parsed, self.snap, 42)
+
+        class C(_FakeClient):
+            def __init__(s): super().__init__(); s.deleted = []
+            def delete_task(s, tid): s.deleted.append(tid)
+        client = C()
+        out = tempfile.NamedTemporaryFile("w+", suffix=".org", delete=False).name
+        snap = tempfile.NamedTemporaryFile("w+", suffix=".json", delete=False).name
+        b = io.StringIO()
+        with contextlib.redirect_stdout(b):
+            T.apply_stream(plan, client, parsed, out, snap)
+        self.assertEqual(client.deleted, [500])
+        self.assertEqual([_json.loads(l) for l in b.getvalue().splitlines()][-1]["applied"], 1)
+
+
+class Comments(unittest.TestCase):
+    def _buf(self, body):
+        return ("#+TITLE: Comments — X\n#+TEAMWORK_COMMENTS: task=555 user=1\n"
+                "#+TEAMWORK_ACCOUNT: work\n\n" + body)
+
+    def test_normalize_comment(self):
+        n = T.normalize_comment({"id": "9", "author-firstname": "Ann", "author-lastname": "Lee",
+                                 "datetime": "2026-06-10T09:30:00Z", "body": "hello\nthere"})
+        self.assertEqual((n["id"], n["author"], n["datetime"], n["body"]),
+                         (9, "Ann Lee", "2026-06-10 09:30", "hello\nthere"))
+
+    def test_render_and_parse_round_trip(self):
+        comments = [{"id": 9, "author": "Ann Lee", "datetime": "2026-06-10 09:30",
+                     "body": "first line\nsecond line"}]
+        text = T.render_comments(555, "My Task", comments, {"user_id": 1, "account": "work"})
+        self.assertIn("#+TEAMWORK_COMMENTS: task=555 user=1", text)
+        p = T.parse_comments(text)
+        self.assertEqual(p["meta"]["task"], "555")
+        self.assertEqual(p["meta"]["account"], "work")
+        self.assertEqual(p["comments"][0]["id"], 9)
+        self.assertEqual(p["comments"][0]["body"], "first line\nsecond line")
+
+    def test_plan_create_edit_delete(self):
+        buf = self._buf(
+            "* Ann — 2026-06-10 09:30\n:PROPERTIES:\n:TW_COMMENT_ID: 9\n:END:\nedited body\n\n"
+            "* me\nbrand new comment\n")
+        snap = {"task": "555", "comments": {"9": "old body", "8": "will be deleted"}}
+        plan = T.compute_comment_plan(T.parse_comments(buf), snap)
+        types = [a["type"] for a in plan["actions"]]
+        self.assertEqual(sorted(types), ["create_comment", "delete_comment", "update_comment"])
+        upd = next(a for a in plan["actions"] if a["type"] == "update_comment")
+        self.assertEqual((upd["id"], upd["body"]), (9, "edited body"))
+        dele = next(a for a in plan["actions"] if a["type"] == "delete_comment")
+        self.assertEqual(dele["id"], 8)
+
+    def test_plan_unchanged_no_action(self):
+        buf = self._buf("* Ann\n:PROPERTIES:\n:TW_COMMENT_ID: 9\n:END:\nsame body\n")
+        snap = {"task": "555", "comments": {"9": "same body"}}
+        self.assertEqual(T.compute_comment_plan(T.parse_comments(buf), snap)["actions"], [])
+
+    def test_empty_new_heading_ignored(self):
+        buf = self._buf("* me\n\n")   # heading with no body -> not posted
+        self.assertEqual(T.compute_comment_plan(T.parse_comments(buf), {"comments": {}})["actions"], [])
+
+
+class _CommentClient:
+    def __init__(self):
+        self._id = 900
+        self.deleted, self.updated = [], []
+
+    def create_comment(self, task_id, body):
+        self._id += 1
+        return self._id
+
+    def update_comment(self, cid, body):
+        self.updated.append((cid, body))
+
+    def delete_comment(self, cid):
+        self.deleted.append(cid)
+
+
+class ApplyComments(unittest.TestCase):
+    def setUp(self):
+        T.BACKOFF_BASE = 0
+
+    def test_apply_folds_created_id_and_persists(self):
+        import io, json as _json, tempfile, contextlib
+        buf = ("#+TEAMWORK_COMMENTS: task=555 user=1\n\n* me\nbrand new\n")
+        parsed = T.parse_comments(buf)
+        plan = T.compute_comment_plan(parsed, {"task": "555", "comments": {}})
+        out = tempfile.NamedTemporaryFile("w+", suffix=".org", delete=False).name
+        snap = tempfile.NamedTemporaryFile("w+", suffix=".json", delete=False).name
+        b = io.StringIO()
+        with contextlib.redirect_stdout(b):
+            T.apply_comments(plan, _CommentClient(), 555, parsed, out, snap)
+        events = [_json.loads(l) for l in b.getvalue().splitlines() if l.strip()]
+        self.assertEqual(events[-1]["applied"], 1)
+        reparsed = T.parse_comments(open(out).read())
+        self.assertIsNotNone(reparsed["comments"][0]["id"])       # created id folded in
+        self.assertEqual(_json.load(open(snap))["comments"], {str(reparsed["comments"][0]["id"]): "brand new"})
+
+
+class Prefs(unittest.TestCase):
+    """Per-account project filter must survive prefs rewrites (the 'reset' bug)."""
+
+    def setUp(self):
+        import tempfile
+        self._dir = tempfile.mkdtemp()
+        self._orig = T.CONFIG_DIR
+        T.CONFIG_DIR = __import__("pathlib").Path(self._dir)
+
+    def tearDown(self):
+        T.CONFIG_DIR = self._orig
+
+    def test_update_prefs_preserves_filter_across_hidden_rewrite(self):
+        T.update_prefs("work", filter=[1, 2, 3])
+        # a pull-like rewrite of hidden/shown must NOT drop the filter
+        T.update_prefs("work", hidden={"9": "x"}, shown=[4, 5])
+        p = T.load_prefs("work")
+        self.assertEqual(p["filter"], [1, 2, 3])
+        self.assertEqual(p["shown"], [4, 5])
+
+    def test_filter_is_per_account(self):
+        T.update_prefs("acctA", filter=[10])
+        T.update_prefs("acctB", filter=[20])
+        self.assertEqual(T.load_prefs("acctA")["filter"], [10])   # switching back keeps A's filter
+        self.assertEqual(T.load_prefs("acctB")["filter"], [20])
 
 
 if __name__ == "__main__":
