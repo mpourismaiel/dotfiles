@@ -1,70 +1,3 @@
-#+TITLE: hledger finance
-#+STARTUP: showeverything
-
-Personal finance with [[https://hledger.org][hledger]] (plain-text double-entry accounting). The journals
-live in =~/Documents/finance=:
-
-- =main.journal= — entry point: commodity styles (EUR, IRT), account
-  declarations, and includes. Every command below reads through this file.
-- =2026-july.journal=, =2026-august.journal=, ... — one file per month, picked
-  up automatically by main.journal's =include ????-*.journal= glob. New month
-  files are born by =mp/hledger-open-current-month= (or the pill's add flow).
-- =forecast.journal= — periodic rules (=~ every 2 weeks salary=, ...); inert
-  unless a report runs with =--forecast=.
-- =wishlist.journal= — things to buy; *not* included in main.journal, so it
-  never touches real balances. Queried directly by =mp/hledger-wishlist=.
-
-Editing uses =ledger-mode= (Doom's =:lang ledger= module — already enabled in
-init.el) with hledger as the binary: font-lock, =TAB= alignment, account
-completion and the evil =[[= / =]]= transaction motions all work on buffer
-text and are hledger-compatible. Two stock commands are ledger-CLI-only and
-should be avoided: =ledger-add-transaction= (replaced by
-=mp/hledger-add-transaction=) and =ledger-reconcile=. On-the-fly checking
-comes from =flycheck-hledger= (declared in config.org's packages section); the
-stock =ledger= checker is disabled.
-
-Reports render into =*hledger: ...*= buffers (read-only, =q= closes, =g=
-re-runs, ANSI colors preserved). Everything is a synchronous =call-process= —
-hledger answers in tens of milliseconds on a personal journal, so there is no
-async machinery.
-
-This file is the single source of truth: tangling writes
-=~/.config/doom/hledger/hledger.el=, which config.org loads (guarded) under
-Config > hledger finance.
-
-* Keybindings
-
-All under =SPC o l= (labeled "finance" in which-key). Full key sequences only —
-a =(:prefix ...)= form would clobber Doom's =SPC o= open menu. =SPC o l= itself
-is free as long as the =llm= module stays disabled (stock Doom claims it there).
-
-| Key         | Command                        | What it does                                       |
-|-------------+--------------------------------+----------------------------------------------------|
-| =SPC o l l= | =mp/hledger-open-journal=      | pick a journal file (current month listed first)   |
-| =SPC o l L= | =mp/hledger-open-current-month= | open (and if needed create) this month's journal   |
-| =SPC o l a= | =mp/hledger-add-transaction=   | guided quick-add, appends to the month file        |
-| =SPC o l f= | =mp/hledger-forecast=          | forecast menu: upcoming / balances / projected is  |
-| =SPC o l F= | =mp/hledger-open-forecast=     | open forecast.journal                              |
-| =SPC o l b= | =mp/hledger-balance-sheet=     | balance sheet (=bs=)                               |
-| =SPC o l i= | =mp/hledger-income-statement=  | monthly income statement since last quarter        |
-| =SPC o l e= | =mp/hledger-expenses=          | this month's expenses, largest first               |
-| =SPC o l r= | =mp/hledger-register=          | register, optionally filtered to one account       |
-| =SPC o l v= | =mp/hledger-value=             | any report valued in one currency (now incl. forecast) |
-| =SPC o l p= | =mp/hledger-open-prices=       | open prices.journal (manual exchange rates)         |
-| =SPC o l w= | =mp/hledger-wishlist=          | wishlist with buffer-aware affordability           |
-| =SPC o l W= | =mp/hledger-open-wishlist=     | open wishlist.journal                              |
-| =SPC o l k= | =mp/hledger-plan=              | month-by-month savings + purchase plan             |
-| =SPC o l P= | =mp/hledger-open-plan-config=  | open plan.conf (buffer + savings goal)             |
-| =SPC o l x= | =mp/hledger-switch-entity=     | switch book (personal / company / …)               |
-| =SPC o l n= | =mp/hledger-new-book=          | scaffold a new book and switch to it               |
-| =SPC o l c= | =mp/hledger-check=             | =check --strict= the whole journal                 |
-| =SPC o l s= | =mp/hledger-stats=             | journal statistics                                 |
-
-* Code
-
-** Files and mode setup
-
-#+begin_src emacs-lisp :tangle ~/.config/doom/hledger/hledger.el :mkdirp yes
 ;;; hledger.el --- hledger finance commands -*- lexical-binding: t; -*-
 
 (defvar mp/hledger-directory (expand-file-name "~/Documents/finance/")
@@ -122,15 +55,7 @@ to base/personal; any other name is a subfolder of the base dir."
   :after (flycheck ledger-mode)
   :config
   (setq flycheck-hledger-strict nil))
-#+end_src
 
-** Report buffers
-
-A tiny =special-mode= derivative: =q= quits (special-mode default), =g= re-runs
-whatever produced the buffer (a stored closure, so it also works for composed
-reports like the wishlist table). CLI output keeps its ANSI colors.
-
-#+begin_src emacs-lisp :tangle ~/.config/doom/hledger/hledger.el
 (defvar-local mp/hledger--report-rerun nil
   "Closure that regenerates the current report buffer.")
 
@@ -192,11 +117,7 @@ JSON false → :false, null → nil, objects → alists, arrays → lists."
       (ignore-errors
         (json-parse-buffer :object-type 'alist :array-type 'list
                            :false-object :false :null-object nil)))))
-#+end_src
 
-** Helpers
-
-#+begin_src emacs-lisp :tangle ~/.config/doom/hledger/hledger.el
 (defun mp/hledger--month-file (&optional time)
   "Monthly journal path for TIME (default: now) in the current book."
   (expand-file-name (downcase (format-time-string "%Y-%B.journal" time))
@@ -258,11 +179,7 @@ Handles negatives (the sign stays attached, not split off by the grouping)."
 (defun mp/hledger--fmt-money (n cur)
   "Format number N with a currency suffix, e.g. \"1,234.50 EUR\"."
   (format "%s %s" (mp/hledger--fmt-num (float (or n 0))) cur))
-#+end_src
 
-** Opening files
-
-#+begin_src emacs-lisp :tangle ~/.config/doom/hledger/hledger.el
 (defun mp/hledger-open-journal ()
   "Pick and open a journal file (current month offered first)."
   (interactive)
@@ -291,11 +208,7 @@ picks it up automatically."
   "Open the current book's plan.conf (buffer + savings goal for the plan)."
   (interactive)
   (find-file (expand-file-name "plan.conf" (mp/hledger--entity-dir))))
-#+end_src
 
-** Quick add
-
-#+begin_src emacs-lisp :tangle ~/.config/doom/hledger/hledger.el
 (defun mp/hledger-add-transaction ()
   "Guided quick-add: append a transaction to the right monthly journal.
 Prompts for date, description, target account, amount and source account,
@@ -323,11 +236,7 @@ appends an aligned entry, saves, and runs `hledger check' on the result."
         (mp/hledger--display
          "check" (cdr res)
          (lambda () (mp/hledger-check)))))))
-#+end_src
 
-** Reports
-
-#+begin_src emacs-lisp :tangle ~/.config/doom/hledger/hledger.el
 (defun mp/hledger-balance-sheet ()
   "Balance sheet (assets and liabilities)."
   (interactive)
@@ -365,26 +274,7 @@ appends an aligned entry, saves, and runs `hledger check' on the result."
   "Journal statistics."
   (interactive)
   (mp/hledger--run "stats" '("stats")))
-#+end_src
 
-** Currency conversion (valuation)
-
-hledger keeps every amount in its own commodity (=bal= shows EUR and IRT side by
-side). To see a single-currency total it *values* amounts at an exchange rate.
-Two rate sources, combined here with =--infer-market-prices=:
-
-- Any real conversion you record with a cost (=@@=) — e.g.
-  =assets:cash  98,000,000 IRT @@ 1,000.00 EUR= — doubles as a dated rate, so
-  you usually never touch prices.journal at all.
-- Manual =P DATE EUR <n> IRT= lines in prices.journal for dates you want a rate
-  but did no conversion. A single rate is inverted automatically (EUR→IRT and
-  IRT→EUR both work from one =P= line).
-
-=mp/hledger-value= asks for the target currency and a report, then runs it with
-=-X CUR --infer-market-prices=. =-B= (cost) is offered too: it values only
-things you actually converted, at what they cost you.
-
-#+begin_src emacs-lisp :tangle ~/.config/doom/hledger/hledger.el
 (defun mp/hledger-value ()
   "Show a report valued in a single currency (EUR or IRT).
 Rates come from your real conversions (`@@' costs) plus any P directives in
@@ -420,15 +310,7 @@ prices.journal, via --infer-market-prices."
   "Open the current book's prices.journal (manual P exchange-rate directives)."
   (interactive)
   (find-file (expand-file-name "prices.journal" (mp/hledger--entity-dir))))
-#+end_src
 
-** Forecast
-
-Periodic rules only generate occurrences from max(today, last real transaction
-date) forward — past occurrences never show up, which is why every view here
-looks ahead.
-
-#+begin_src emacs-lisp :tangle ~/.config/doom/hledger/hledger.el
 (defun mp/hledger-forecast ()
   "Pick a forecast view: upcoming transactions or projected reports."
   (interactive)
@@ -453,21 +335,7 @@ looks ahead.
       ("Projected income statement"
        (mp/hledger--run "forecast: income statement"
                         (list "incomestatement" "-M" "--forecast" "-e" in92))))))
-#+end_src
 
-** Wishlist affordability
-
-Wishlist items live in the standalone =wishlist.journal= (never included in
-main), one transaction per item, *in the order you would buy them*. The math is
-shared with the pill through [[*hledgerbridge.py][=hledgerbridge.py=]] (Emacs
-shells out to it via =mp/hledger--bridge=) so the two never disagree.
-Affordability is *buffer-aware*: a wish counts as affordable only when liquid
-assets valued in the plan currency, *minus the base buffer from =plan.conf=*,
-still cover its price — so nothing is ever called affordable if buying it would
-eat into your emergency floor. =mp/hledger-plan= then schedules *when* each item
-becomes buyable.
-
-#+begin_src emacs-lisp :tangle ~/.config/doom/hledger/hledger.el
 (defun mp/hledger--format-wishlist (d)
   "Render the bridge `wishlist' payload D (an alist) as report text."
   (let ((cur (alist-get 'currency d))
@@ -507,22 +375,7 @@ schedule of WHEN each becomes affordable."
      (if d (mp/hledger--format-wishlist d)
        "  (no wishlist data — is the bridge available?)\n")
      #'mp/hledger-wishlist)))
-#+end_src
 
-** Plan (savings + purchases)
-
-=mp/hledger-plan= (=SPC o l k=) is the month-by-month answer to "what should I do
-each month?". It comes from the shared bridge's =plan= command: the projected
-month-end balance trajectory (your forecast, valued into the plan currency),
-then each wishlist item placed — *in entry order* — in the earliest month where
-buying it keeps every later month-end balance at or above the floor. The floor
-is =buffer= before =goal-date= and =max(buffer, goal)= on/after it, both read
-from the book's =plan.conf=. So a purchase can never drop a projected balance
-below your base needed money (or your saved-by-goal), and pricier items simply
-land in later months once you've saved enough. Items that never fit within the
-horizon are listed with how much more you'd need.
-
-#+begin_src emacs-lisp :tangle ~/.config/doom/hledger/hledger.el
 (defun mp/hledger--format-plan (d)
   "Render the bridge `plan' payload D (an alist) as report text."
   (let* ((cur (alist-get 'currency d))
@@ -576,18 +429,7 @@ horizon are listed with how much more you'd need.
      (if d (mp/hledger--format-plan d)
        "  (no plan data — is the bridge available?)\n")
      #'mp/hledger-plan)))
-#+end_src
 
-** Books (entities)
-
-A "book" is a self-contained set of journals — your =personal= finances are the
-journals at the root of =~/Documents/finance=; a =company= (or anything else) is
-a subfolder with its own =main.journal=. =mp/hledger-switch-entity= (=SPC o l x=)
-changes which book every command targets; =mp/hledger-new-book= (=SPC o l n=)
-scaffolds a fresh one (starter =main.journal= with commodity styles + includes,
-plus empty =forecast=/=wishlist=/=prices=/=plan.conf=) and switches to it.
-
-#+begin_src emacs-lisp :tangle ~/.config/doom/hledger/hledger.el
 (defun mp/hledger-switch-entity ()
   "Switch the active finance book (personal, company, …)."
   (interactive)
@@ -635,11 +477,7 @@ switch to it. NAME must be a plain folder name, not \"personal\"."
     (setq mp/hledger-entity name)
     (find-file main)
     (message "Created book %s and switched to it" name)))
-#+end_src
 
-** Keybindings
-
-#+begin_src emacs-lisp :tangle ~/.config/doom/hledger/hledger.el
 ;; Full sequences only: a `(:prefix ("o" ...))' form would replace Doom's
 ;; whole SPC o keymap. NOTE: stock Doom binds "o l" when the `llm' module is
 ;; enabled — if that module is ever turned on, these need a `"o l" nil' first
@@ -667,4 +505,3 @@ switch to it. NAME must be a plain folder name, not \"personal\"."
 
 (after! which-key
   (which-key-add-key-based-replacements "SPC o l" "finance"))
-#+end_src
