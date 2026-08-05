@@ -136,6 +136,126 @@ class RoundTrip(unittest.TestCase):
         self.assertEqual(tk2["logs"][0]["id"], 555)
 
 
+class Subtasks(unittest.TestCase):
+    """Headings demoted below a task (**** or deeper) are subtasks, nesting to any depth."""
+
+    def _tree(self, extra=""):
+        return (
+            "#+TEAMWORK: from=2026-06-01 to=2026-06-30 user=363603\n"
+            "* P\n:PROPERTIES:\n:TW_PROJECT_ID: 100\n:END:\n"
+            "** L\n:PROPERTIES:\n:TW_TASKLIST_ID: 200\n:END:\n"
+            "*** Task\n:PROPERTIES:\n:TW_TASK_ID: 300\n:END:\n" + extra
+        )
+
+    def test_parse_nested_subtasks(self):
+        text = self._tree(
+            "**** Sub A\n:PROPERTIES:\n:TW_TASK_ID: 400\n:END:\n"
+            "***** Sub A1\n:PROPERTIES:\n:TW_TASK_ID: 410\n:END:\n"
+            "**** Sub B\n:PROPERTIES:\n:TW_TASK_ID: 500\n:END:\n"
+        )
+        task = T.parse_org(text)["projects"][0]["tasklists"][0]["tasks"][0]
+        self.assertEqual(task["id"], 300)
+        self.assertEqual([s["title"] for s in task["subtasks"]], ["Sub A", "Sub B"])
+        subA = task["subtasks"][0]
+        self.assertEqual([s["id"] for s in subA["subtasks"]], [410])   # A1 nests under A
+        self.assertIs(subA["subtasks"][0]["parent"], subA)             # back-ref wired
+        self.assertEqual(task["subtasks"][1]["subtasks"], [])          # B has no children
+
+    def test_log_attaches_to_deepest_subtask(self):
+        text = self._tree(
+            "**** Sub\n:PROPERTIES:\n:TW_TASK_ID: 400\n:END:\n"
+            "- 2026-06-10 09:00 10:00 on the subtask\n"
+        )
+        task = T.parse_org(text)["projects"][0]["tasklists"][0]["tasks"][0]
+        self.assertEqual(task["logs"], [])                       # not on the parent
+        log = task["subtasks"][0]["logs"][0]
+        self.assertEqual((log["task_id"], log["description"]), (400, "on the subtask"))
+
+    def test_subtask_without_parent_task_is_a_problem(self):
+        text = (
+            "#+TEAMWORK: from=2026-06-01 to=2026-06-30 user=363603\n"
+            "* P\n:PROPERTIES:\n:TW_PROJECT_ID: 100\n:END:\n"
+            "** L\n:PROPERTIES:\n:TW_TASKLIST_ID: 200\n:END:\n"
+            "**** Orphan sub\n"          # level 4 with no level-3 task above it
+        )
+        self.assertTrue(any("no parent task" in p for p in T.parse_org(text)["problems"]))
+
+    def test_render_round_trips_subtasks(self):
+        projects = [{"id": 100, "name": "P"}]
+        tasklists = [{"id": 200, "name": "L", "project_id": 100}]
+        tasks = [
+            {"id": 300, "title": "Task", "tasklist_id": 200, "project_id": 100, "parent_id": None},
+            {"id": 400, "title": "Sub", "tasklist_id": 200, "project_id": 100, "parent_id": 300},
+            {"id": 410, "title": "Deep", "tasklist_id": 200, "project_id": 100, "parent_id": 400},
+        ]
+        logs = [{"id": 42, "task_id": 410, "project_id": 100, "date": "2026-06-10",
+                 "start": "13:00", "minutes": 60, "description": "d", "billable": True}]
+        meta = {"from": "2026-06-01", "to": "2026-06-30", "user_id": 363603}
+        text = T.render_org(projects, tasklists, tasks, logs, meta)
+        self.assertIn("*** Task", text)
+        self.assertIn("**** Sub", text)
+        self.assertIn("***** Deep", text)
+        # re-parsing rebuilds the same nesting and keeps the deep log
+        task = T.parse_org(text)["projects"][0]["tasklists"][0]["tasks"][0]
+        self.assertEqual(task["subtasks"][0]["subtasks"][0]["id"], 410)
+        self.assertEqual(task["subtasks"][0]["subtasks"][0]["logs"][0]["id"], 42)
+
+    def test_serialize_reparse_stable_with_subtasks(self):
+        p1 = T.parse_org(self._tree(
+            "**** Sub\n:PROPERTIES:\n:TW_TASK_ID: 400\n:END:\n"
+            "- 42 2026-06-10 13:00 14:00 hi\n"))
+        p2 = T.parse_org(T.serialize_parsed(p1))
+        sub = p2["projects"][0]["tasklists"][0]["tasks"][0]["subtasks"][0]
+        self.assertEqual((sub["id"], sub["logs"][0]["id"]), (400, 42))
+
+    def test_snapshot_includes_subtasks(self):
+        p = T.parse_org(self._tree("**** Sub\n:PROPERTIES:\n:TW_TASK_ID: 400\n:END:\n"))
+        snap = T.build_snapshot_from_parsed(p)
+        self.assertEqual(snap["tasks"], {"300": "Task", "400": "Sub"})
+
+    def test_plan_creates_subtask_under_existing_task(self):
+        # a new heading demoted under existing task 300 -> create_subtask on parent 300
+        plan = T.compute_plan(T.parse_org(self._tree("**** Fresh Sub\n")),
+                              {"logs": {}, "tasks": {"300": "Task"}}, 363603)
+        self.assertEqual([a["type"] for a in plan["actions"]], ["create_subtask"])
+        self.assertEqual(plan["actions"][0]["parent"], 300)   # existing parent id
+
+    def test_plan_rename_subtask(self):
+        snap = {"logs": {}, "tasks": {"300": "Task", "400": "Old Sub"}}
+        plan = T.compute_plan(
+            T.parse_org(self._tree("**** New Sub\n:PROPERTIES:\n:TW_TASK_ID: 400\n:END:\n")),
+            snap, 363603)
+        self.assertEqual([a["type"] for a in plan["actions"]], ["update_task"])
+        self.assertIn("rename subtask", plan["actions"][0]["summary"])
+
+    def test_plan_new_task_then_new_subtask_orders_parent_first(self):
+        # brand-new task (no id) with a brand-new subtask + a log on the subtask:
+        # create_task must precede create_subtask, which must target the task's ref.
+        text = (
+            "#+TEAMWORK: from=2026-06-01 to=2026-06-30 user=363603\n"
+            "* P\n:PROPERTIES:\n:TW_PROJECT_ID: 100\n:END:\n"
+            "** L\n:PROPERTIES:\n:TW_TASKLIST_ID: 200\n:END:\n"
+            "*** New Task\n"
+            "**** New Sub\n"
+            "- 2026-06-10 09:00 10:00 deep\n"
+        )
+        actions = T.compute_plan(T.parse_org(text), {"logs": {}}, 363603)["actions"]
+        self.assertEqual([a["type"] for a in actions],
+                         ["create_task", "create_subtask", "create_timelog"])
+        task_ref = actions[0]["ref"]
+        self.assertEqual(actions[1]["parent"], {"ref": task_ref})   # subtask -> task ref
+        self.assertEqual(actions[2]["task"], {"ref": actions[1]["ref"]})  # log -> subtask ref
+
+    def test_done_marker_completes_subtask(self):
+        plan = T.compute_plan(
+            T.parse_org(self._tree(
+                "**** Sub\n:PROPERTIES:\n:TW_TASK_ID: 400\n:END:\n"
+                "- 2026-06-10 09:00 10:00 [d] wrap\n")),
+            {"logs": {}}, 363603)
+        complete = next(a for a in plan["actions"] if a["type"] == "complete_task")
+        self.assertEqual(complete["task"], 400)   # the subtask, not its parent
+
+
 class Plan(unittest.TestCase):
     def _plan(self, text, snapshot):
         return T.compute_plan(T.parse_org(text), snapshot, user_id=363603)
@@ -414,6 +534,10 @@ class _FakeClient:
         self._tid += 1
         return self._tid
 
+    def create_subtask(self, parent_id, title):
+        self._tid += 1
+        return self._tid
+
     def create_timelog(self, tkid, body):
         if self.fail_log > 0:
             self.fail_log -= 1
@@ -480,6 +604,25 @@ class ApplyStream(unittest.TestCase):
         tk = re["projects"][0]["tasklists"][0]["tasks"][0]
         self.assertIsNone(tk["id"])
         self.assertIsNone(tk["logs"][0]["id"])
+
+    def test_apply_creates_subtask_and_folds_id(self):
+        # new task -> new subtask -> log on the subtask; ids fold back into the tree
+        text = (
+            "#+TEAMWORK: from=2026-06-01 to=2026-06-30 user=363603\n"
+            "* P\n:PROPERTIES:\n:TW_PROJECT_ID: 100\n:END:\n"
+            "** L\n:PROPERTIES:\n:TW_TASKLIST_ID: 200\n:END:\n"
+            "*** New Task\n"
+            "**** New Sub\n"
+            "- 2026-06-10 09:00 10:00 deep\n"
+        )
+        events, re = self._run(text, {"logs": {}}, _FakeClient())
+        self.assertEqual(events[-1]["applied"], 3)             # task + subtask + log
+        task = re["projects"][0]["tasklists"][0]["tasks"][0]
+        sub = task["subtasks"][0]
+        self.assertIsNotNone(task["id"])                       # parent task created
+        self.assertIsNotNone(sub["id"])                        # subtask created
+        self.assertNotEqual(task["id"], sub["id"])
+        self.assertIsNotNone(sub["logs"][0]["id"])             # log landed on the subtask
 
     def test_done_marker_completes_and_is_consumed(self):
         client = _FakeClient()

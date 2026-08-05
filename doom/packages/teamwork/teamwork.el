@@ -156,7 +156,7 @@ So submit targets the same account the buffer was pulled from."
       (while (not (eobp))
         (let ((line (buffer-substring-no-properties (line-beginning-position) (line-end-position))))
           (cond
-           ((string-match "^\\*\\*\\* \\(.*\\)$" line)
+           ((string-match "^\\*\\{3,\\} \\(.*\\)$" line)   ; task (***) or subtask (**** …)
             (setq task (string-trim (match-string 1 line))))
            ((string-match teamwork--log-line-re line)
             (let ((date (match-string 1 line))

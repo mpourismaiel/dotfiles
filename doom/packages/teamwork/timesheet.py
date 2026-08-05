@@ -251,15 +251,36 @@ class Client:
         ]
 
     def tasks(self, tasklist_id: int, project_id: int) -> list[dict]:
-        return [
-            {
-                "id": int(t["id"]),
+        """All tasks in a list, INCLUDING subtasks nested to any depth.
+
+        `getSubTasks=yes` asks Teamwork to include subtasks in the response.
+        Depending on the endpoint/account they come back either flat (each
+        carrying a `parentTaskId`) or nested under a parent's `subTasks` array;
+        we flatten either shape into one list, tagging every task with its
+        `parent_id` (None for a top-level task) so the tree can be rebuilt.
+        Dedup by id guards against an endpoint returning a subtask both ways."""
+        raw = self.paged(f"/tasklists/{tasklist_id}/tasks.json", "todo-items",
+                         getSubTasks="yes")
+        out, seen = [], set()
+
+        def add(t, parent_id):
+            tid = int(t["id"])
+            if tid in seen:
+                return
+            seen.add(tid)
+            out.append({
+                "id": tid,
                 "title": (t.get("content") or "").strip(),
                 "tasklist_id": tasklist_id,
                 "project_id": project_id,
-            }
-            for t in self.paged(f"/tasklists/{tasklist_id}/tasks.json", "todo-items")
-        ]
+                "parent_id": int(t.get("parentTaskId") or 0) or parent_id or None,
+            })
+            for sub in (t.get("subTasks") or t.get("subtasks") or []):
+                add(sub, tid)
+
+        for t in raw:
+            add(t, None)
+        return out
 
     def my_timelogs(self, date_from: str, date_to: str) -> list[dict]:
         raw = self.paged(
@@ -283,6 +304,11 @@ class Client:
 
     def create_task(self, tasklist_id: int, title: str) -> int:
         d = self._req("POST", f"/tasklists/{tasklist_id}/tasks.json",
+                      body={"todo-item": {"content": title}})
+        return int(d.get("id") or d.get("taskId"))
+
+    def create_subtask(self, parent_task_id: int, title: str) -> int:
+        d = self._req("POST", f"/tasks/{parent_task_id}/subtasks.json",
                       body={"todo-item": {"content": title}})
         return int(d.get("id") or d.get("taskId"))
 
@@ -419,6 +445,8 @@ def _header(frm, to, user, hidden=None, hidden_names=None, account=None) -> list
         "# Times take HH:MM or HHMM (09:00 or 0900). Add [d] after the times to mark the",
         "# task complete on submit, e.g.  - 2026-06-01 0900 1300 [d] wrapped it up.",
         "# Remove a log line to delete it. Add a heading with no ID to create a task/list.",
+        "# Demote a heading below a task (**** or deeper) to make it a subtask; subtasks",
+        "# nest to any depth and take logs/renames/[d] like any task.",
         "# Rename a task/list by editing its heading text (keep its :TW_*_ID:).",
         "# Delete a whole project heading to stop fetching it (moves to TEAMWORK_HIDDEN,",
         "# its logs are left untouched). Remove an id from TEAMWORK_HIDDEN to fetch it again.",
@@ -445,25 +473,38 @@ def render_org(projects, tasklists, tasks, logs, meta: dict, hidden_names: dict 
     tls_by_project: dict[int, list] = {}
     for tl in tasklists:
         tls_by_project.setdefault(tl["project_id"], []).append(tl)
-    tasks_by_tl: dict[int, list] = {}
+    # Split tasks into top-level (under a list) and subtasks (under a parent task),
+    # so the tree can be rendered nested to any depth.
+    tops_by_tl: dict[int, list] = {}
+    subs_by_parent: dict[int, list] = {}
     for tk in tasks:
-        tasks_by_tl.setdefault(tk["tasklist_id"], []).append(tk)
+        pid = tk.get("parent_id")
+        if pid:
+            subs_by_parent.setdefault(pid, []).append(tk)
+        else:
+            tops_by_tl.setdefault(tk["tasklist_id"], []).append(tk)
 
     hidden_names = hidden_names or {}
     out = _header(meta["from"], meta["to"], meta["user_id"],
                   hidden=sorted(hidden_names, key=int), hidden_names=hidden_names,
                   account=meta.get("account"))
+
+    def emit_task(tk, level):
+        out.append(f"{'*' * level} {tk['title']}")
+        out.append(_drawer("TW_TASK_ID", tk["id"]))
+        for lg in sorted(logs_by_task.get(tk["id"], []), key=lambda l: (l["date"], l.get("start") or "")):
+            out.extend(render_log_line(lg))
+        for sub in sorted(subs_by_parent.get(tk["id"], []), key=lambda t: t["title"].lower()):
+            emit_task(sub, level + 1)
+
     for pr in sorted(projects, key=lambda p: p["name"].lower()):
         out.append(f"* {pr['name']}")
         out.append(_drawer("TW_PROJECT_ID", pr["id"]))
         for tl in sorted(tls_by_project.get(pr["id"], []), key=lambda t: t["name"].lower()):
             out.append(f"** {tl['name']}")
             out.append(_drawer("TW_TASKLIST_ID", tl["id"]))
-            for tk in sorted(tasks_by_tl.get(tl["id"], []), key=lambda t: t["title"].lower()):
-                out.append(f"*** {tk['title']}")
-                out.append(_drawer("TW_TASK_ID", tk["id"]))
-                for lg in sorted(logs_by_task.get(tk["id"], []), key=lambda l: (l["date"], l.get("start") or "")):
-                    out.extend(render_log_line(lg))
+            for tk in sorted(tops_by_tl.get(tl["id"], []), key=lambda t: t["title"].lower()):
+                emit_task(tk, 3)
     if orphan_logs:
         out.append("* (time logs with no task in the pulled tree)")
         for lg in orphan_logs:
@@ -480,6 +521,16 @@ def serialize_parsed(parsed: dict) -> str:
     m = parsed["meta"]
     out = _header(m.get("from"), m.get("to"), m.get("user"), hidden=m.get("hidden"),
                   account=m.get("account"))
+
+    def emit_task(tk, level):
+        out.append(f"{'*' * level} {tk['title']}")
+        if tk["id"] is not None:
+            out.append(_drawer("TW_TASK_ID", tk["id"]))
+        for lg in tk["logs"]:
+            out.extend(render_log_line(lg))
+        for sub in tk.get("subtasks", []):
+            emit_task(sub, level + 1)
+
     for p in parsed["projects"]:
         out.append(f"* {p['name']}")
         if p["id"] is not None:
@@ -489,11 +540,7 @@ def serialize_parsed(parsed: dict) -> str:
             if tl["id"] is not None:
                 out.append(_drawer("TW_TASKLIST_ID", tl["id"]))
             for tk in tl["tasks"]:
-                out.append(f"*** {tk['title']}")
-                if tk["id"] is not None:
-                    out.append(_drawer("TW_TASK_ID", tk["id"]))
-                for lg in tk["logs"]:
-                    out.extend(render_log_line(lg))
+                emit_task(tk, 3)
     return "\n".join(out) + "\n"
 
 
@@ -510,16 +557,22 @@ def build_snapshot(projects, tasklists, tasks, logs, meta: dict) -> dict:
 def build_snapshot_from_parsed(parsed: dict) -> dict:
     m = parsed["meta"]
     logs, tls, tks = {}, {}, {}
+
+    def walk(tk):
+        if tk["id"] is not None:
+            tks[str(tk["id"])] = tk["title"]
+        for lg in tk["logs"]:
+            if lg.get("id"):
+                logs[str(lg["id"])] = _log_snap(lg)
+        for sub in tk.get("subtasks", []):
+            walk(sub)
+
     for p in parsed["projects"]:
         for tl in p["tasklists"]:
             if tl["id"] is not None:
                 tls[str(tl["id"])] = tl["name"]
             for tk in tl["tasks"]:
-                if tk["id"] is not None:
-                    tks[str(tk["id"])] = tk["title"]
-                for lg in tk["logs"]:
-                    if lg.get("id"):
-                        logs[str(lg["id"])] = _log_snap(lg)
+                walk(tk)
     return {"from": m.get("from"), "to": m.get("to"), "logs": logs, "tasklists": tls, "tasks": tks}
 
 
@@ -538,7 +591,7 @@ def _log_snap(lg: dict) -> dict:
 # --------------------------------------------------------------------------- #
 # Pure parsing: org text -> structured buffer
 # --------------------------------------------------------------------------- #
-_HEAD_RE = re.compile(r"^(\*{1,3})\s+(.*)$")
+_HEAD_RE = re.compile(r"^(\*+)\s+(.*)$")
 _PROP_RE = re.compile(r"^\s*:(TW_PROJECT_ID|TW_TASKLIST_ID|TW_TASK_ID):\s*(\d+)\s*$")
 _LOG_RE = re.compile(
     r"^\s*-\s+"
@@ -575,6 +628,10 @@ def parse_org(text: str) -> dict:
     projects: list[dict] = []
     cur_p = cur_tl = cur_tk = None
     cur_log = None
+    # Open task nodes keyed by heading level, so a heading at level N nests under
+    # the nearest open task at a shallower level (level 3 = top-level task under a
+    # list; level 4+ = subtask). Reset whenever a project or list heading opens.
+    task_by_level: dict[int, dict] = {}
 
     def close_log():
         nonlocal cur_log
@@ -610,6 +667,7 @@ def parse_org(text: str) -> dict:
                 cur_p = {"id": None, "name": title, "tasklists": []}
                 projects.append(cur_p)
                 cur_tl = cur_tk = None
+                task_by_level = {}
             elif level == 2:
                 if cur_p is None:
                     problems.append(f"line {lineno}: task list '{title}' has no parent project")
@@ -617,12 +675,25 @@ def parse_org(text: str) -> dict:
                 cur_tl = {"id": None, "name": title, "tasks": [], "project": cur_p}
                 cur_p["tasklists"].append(cur_tl)
                 cur_tk = None
-            elif level == 3:
+                task_by_level = {}
+            else:  # level >= 3: a task (3) or a subtask nested under one (4+)
                 if cur_tl is None:
                     problems.append(f"line {lineno}: task '{title}' has no parent task list")
                     continue
-                cur_tk = {"id": None, "title": title, "logs": [], "tasklist": cur_tl}
-                cur_tl["tasks"].append(cur_tk)
+                parent = next((task_by_level[lv] for lv in range(level - 1, 2, -1)
+                               if lv in task_by_level), None)
+                if level > 3 and parent is None:
+                    problems.append(f"line {lineno}: subtask '{title}' has no parent task")
+                    continue
+                cur_tk = {"id": None, "title": title, "logs": [], "subtasks": [],
+                          "tasklist": cur_tl, "parent": parent}
+                if parent is None:
+                    cur_tl["tasks"].append(cur_tk)
+                else:
+                    parent["subtasks"].append(cur_tk)
+                # This level is now the open task; drop any deeper (now-closed) ones.
+                task_by_level = {lv: n for lv, n in task_by_level.items() if lv < level}
+                task_by_level[level] = cur_tk
             continue
 
         pm = _PROP_RE.match(raw)
@@ -701,7 +772,13 @@ def _summary(lg: dict, tk: dict, kind: str) -> str:
 
 
 def compute_plan(parsed: dict, snapshot: dict, user_id: int) -> dict:
-    """Ordered plan: create lists -> create tasks -> renames -> log writes -> completes -> deletes."""
+    """Ordered plan: create lists -> create tasks/subtasks -> renames -> log writes -> completes -> deletes.
+
+    Tasks nest to any depth: a level-3 heading is a top-level task under its list,
+    a deeper heading is a subtask under the task above it. Creating a subtask hits
+    a different endpoint than a top-level task, so it gets its own action type; a
+    depth-first walk that appends a parent's create before its children's keeps
+    parents ahead of children in the plan, so ref resolution works during apply."""
     creates_tl, creates_tk, renames, log_writes, completes, deletes = [], [], [], [], [], []
     problems = list(parsed["problems"])
     billable = parsed["meta"].get("billable_default", True)
@@ -715,6 +792,49 @@ def compute_plan(parsed: dict, snapshot: dict, user_id: int) -> dict:
     def new_ref(kind: str) -> str:
         ref["n"] += 1
         return f"{kind}:{ref['n']}"
+
+    def process_task(tk, parent_target, tl_target, tl_name):
+        """Diff one task and its subtasks. PARENT_TARGET is the parent task's id
+        or {ref} for a subtask, or None for a top-level task (created under the
+        list). TL_TARGET / TL_NAME describe the enclosing list for summaries."""
+        if tk["id"] is None:
+            tk_ref = new_ref("task")
+            if parent_target is None:
+                creates_tk.append({"type": "create_task", "ref": tk_ref, "tasklist": tl_target,
+                                   "title": tk["title"], "summary": f"new task {tk['title']!r} in {tl_name!r}",
+                                   "_obj": tk})
+            else:
+                pname = (tk.get("parent") or {}).get("title", "")
+                creates_tk.append({"type": "create_subtask", "ref": tk_ref, "parent": parent_target,
+                                   "title": tk["title"],
+                                   "summary": f"new subtask {tk['title']!r} under {pname!r}",
+                                   "_obj": tk})
+            tk_target = {"ref": tk_ref}
+        else:
+            tk_target = tk["id"]
+            prev = snap_tasks.get(str(tk["id"]))
+            if prev is not None and prev != tk["title"]:
+                kind = "subtask" if parent_target is not None else "task"
+                renames.append({"type": "update_task", "id": tk["id"], "title": tk["title"],
+                                "summary": f"rename {kind} {prev!r} -> {tk['title']!r}", "_obj": tk})
+        for lg in tk["logs"]:
+            body = _log_body(lg, user_id, billable)
+            if lg["id"] is None:
+                log_writes.append({"type": "create_timelog", "task": tk_target, "body": body,
+                                   "summary": _summary(lg, tk, "new"), "_obj": lg})
+            else:
+                sid = str(lg["id"])
+                seen.add(sid)
+                prev = snap_logs.get(sid)
+                if prev is None or _log_signature(prev) != _log_signature(lg):
+                    log_writes.append({"type": "update_timelog", "id": lg["id"], "body": body,
+                                       "summary": _summary(lg, tk, "edit"), "_obj": lg})
+        # A [d] marker on any of the task's logs completes that task (any depth).
+        if any(lg.get("done") for lg in tk["logs"]):
+            completes.append({"type": "complete_task", "task": tk_target,
+                              "summary": f"mark task {tk['title'][:40]!r} complete", "_obj": tk})
+        for sub in tk["subtasks"]:
+            process_task(sub, tk_target, tl_target, tl_name)
 
     for p in parsed["projects"]:
         if p["id"] is None:
@@ -734,34 +854,7 @@ def compute_plan(parsed: dict, snapshot: dict, user_id: int) -> dict:
                     renames.append({"type": "update_tasklist", "id": tl["id"], "name": tl["name"],
                                     "summary": f"rename list {prev!r} -> {tl['name']!r}", "_obj": tl})
             for tk in tl["tasks"]:
-                if tk["id"] is None:
-                    tk_ref = new_ref("task")
-                    creates_tk.append({"type": "create_task", "ref": tk_ref, "tasklist": tl_target,
-                                       "title": tk["title"], "summary": f"new task {tk['title']!r} in {tl['name']!r}",
-                                       "_obj": tk})
-                    tk_target = {"ref": tk_ref}
-                else:
-                    tk_target = tk["id"]
-                    prev = snap_tasks.get(str(tk["id"]))
-                    if prev is not None and prev != tk["title"]:
-                        renames.append({"type": "update_task", "id": tk["id"], "title": tk["title"],
-                                        "summary": f"rename task {prev!r} -> {tk['title']!r}", "_obj": tk})
-                for lg in tk["logs"]:
-                    body = _log_body(lg, user_id, billable)
-                    if lg["id"] is None:
-                        log_writes.append({"type": "create_timelog", "task": tk_target, "body": body,
-                                           "summary": _summary(lg, tk, "new"), "_obj": lg})
-                    else:
-                        sid = str(lg["id"])
-                        seen.add(sid)
-                        prev = snap_logs.get(sid)
-                        if prev is None or _log_signature(prev) != _log_signature(lg):
-                            log_writes.append({"type": "update_timelog", "id": lg["id"], "body": body,
-                                               "summary": _summary(lg, tk, "edit"), "_obj": lg})
-                # A [d] marker on any of the task's logs completes the parent task.
-                if any(lg.get("done") for lg in tk["logs"]):
-                    completes.append({"type": "complete_task", "task": tk_target,
-                                      "summary": f"mark task {tk['title'][:40]!r} complete", "_obj": tk})
+                process_task(tk, None, tl_target, tl["name"])
     for sid, prev in snap_logs.items():
         if sid in seen:
             continue
@@ -797,6 +890,8 @@ def _execute(a: dict, client: "Client", created: dict):
         client.update_tasklist(a["id"], a["name"])
     elif t == "create_task":
         created[a["ref"]] = client.create_task(int(_resolve(a["tasklist"], created)), a["title"])
+    elif t == "create_subtask":
+        created[a["ref"]] = client.create_subtask(int(_resolve(a["parent"], created)), a["title"])
     elif t == "update_task":
         client.update_task(a["id"], a["title"])
     elif t == "complete_task":
@@ -811,7 +906,7 @@ def _execute(a: dict, client: "Client", created: dict):
 
 def _mutate_on_success(a: dict, created: dict):
     """Fold applied results back into the parsed tree so re-parse sees IDs."""
-    if a["type"] in ("create_tasklist", "create_task"):
+    if a["type"] in ("create_tasklist", "create_task", "create_subtask"):
         a["_obj"]["id"] = created[a["ref"]]
     elif a["type"] == "create_timelog":
         a["_obj"]["id"] = a.get("_new_id")

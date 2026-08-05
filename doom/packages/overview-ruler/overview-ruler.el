@@ -17,6 +17,15 @@
 
 (defconst mp/overview-ruler--buffer-name "*overview-ruler*")
 (defvar mp/overview-ruler--timer nil)
+(defvar mp/overview-ruler--refreshing nil
+  "Non-nil while a refresh is in flight, to guard against reentrancy when we
+create or delete the side window inside `window-configuration-change-hook'.")
+
+;; Set in the ruler buffer on each render so a click can map a pixel back to a
+;; line in the source window it currently reflects.
+(defvar-local mp/overview-ruler--src-win nil)
+(defvar-local mp/overview-ruler--src-lines nil)
+(defvar-local mp/overview-ruler--img-height nil)
 
 ;; Per-source-buffer git cache so we don't run a vc diff on every refresh.
 (defvar-local mp/overview-ruler--git-cache nil)
@@ -30,13 +39,13 @@
       fallback))
 
 (defvar mp/overview-ruler-colors
-  '((git-add    . "#aaaaaa")   ; added lines    (left lane)
-    (git-remove . "#333333")   ; deleted lines  (left lane)
-    (git-change . "#777777")   ; modified lines (left lane)
+  '((git-add    . "#3fb950")   ; added lines    (left lane, green)
+    (git-remove . "#f85149")   ; deleted lines  (left lane, red)
+    (git-change . "#d29922")   ; modified lines (left lane, amber)
     (error      . "#f85149")   ; red            (right lane)
-    (warning    . "#58a6ff")   ; blue           (right lane)
-    (info       . "#6e7681")   ; gray           (right lane)
-    (conflict   . "#19d3e0"))  ; cyan           (full width)
+    (warning    . "#d29922")   ; amber          (right lane)
+    (info       . "#58a6ff")   ; blue           (right lane)
+    (conflict   . "#bc8cff"))  ; purple         (full width)
   "Color palette for the overview ruler's lanes.")
 
 (defun mp/overview-ruler--color (key)
@@ -60,6 +69,10 @@ Reflects the last SAVED state unless `diff-hl-flydiff-mode' is on."
     (ignore-errors
       (let* ((alist (diff-hl-changes))
              (working (cdr (assq :working alist)))
+             ;; `diff-hl-changes' hands back the diff *buffer name* (a string)
+             ;; for the common case, an actual buffer sometimes, or a literal
+             ;; change list for added/removed files.  Normalize all three.
+             (working (if (stringp working) (get-buffer working) working))
              (changes (if (bufferp working)
                           (diff-hl-changes-from-buffer working)
                         working))
@@ -179,21 +192,49 @@ the full width on top of both lanes."
                          :fill (mp/overview-ruler--color 'conflict))))
       (when (and top-line bot-line)
         (let ((top (funcall y-of top-line))
-              (bot (funcall y-of bot-line)))
+              (bot (funcall y-of bot-line))
+              (edge (mp/overview-ruler--face-color 'region :background "#6e7681")))
           (svg-rectangle svg 0 top (1- w) (max 2 (- bot top))
-                         :fill "none"
-                         :stroke (mp/overview-ruler--face-color 'region :background "#6e7681")
-                         :stroke-width 1)))
+                         :fill edge :fill-opacity 0.15
+                         :stroke edge :stroke-width 1)))
       (with-current-buffer (get-buffer-create mp/overview-ruler--buffer-name)
         (let ((inhibit-read-only t))
           (erase-buffer)
-          (insert-image (svg-image svg)))))))
+          (insert-image (svg-image svg))
+          (setq mp/overview-ruler--src-win src-win
+                mp/overview-ruler--src-lines n
+                mp/overview-ruler--img-height h))))))
+
+(defun mp/overview-ruler--goto (event)
+  "Move point in the source window to the line clicked on the ruler."
+  (interactive "e")
+  (let ((posn (event-start event)))
+    (with-current-buffer (window-buffer (posn-window posn))
+      (let* ((y (cdr (posn-object-x-y posn)))
+             (win mp/overview-ruler--src-win)
+             (n mp/overview-ruler--src-lines)
+             (h mp/overview-ruler--img-height))
+        (when (and y win (window-live-p win) n h (> h 0))
+          (let ((line (max 1 (min n (1+ (floor (* (/ (float y) h) n)))))))
+            (select-window win)
+            (goto-char (point-min))
+            (forward-line (1- line))
+            (recenter)))))))
+
+(defvar mp/overview-ruler--map
+  (let ((m (make-sparse-keymap)))
+    ;; Click to jump; swallow the press so no drag-select / drag-scroll happens.
+    (define-key m [down-mouse-1] #'ignore)
+    (define-key m [mouse-1] #'mp/overview-ruler--goto)
+    m)
+  "Keymap active in the ruler buffer.")
 
 (defun mp/overview-ruler--setup-buffer (buf)
   "Initialize the ruler BUF: read-only, no chrome."
   (with-current-buffer buf
     (setq mode-line-format nil header-line-format nil cursor-type nil
           truncate-lines t buffer-read-only t)
+    (use-local-map mp/overview-ruler--map)
     (buffer-disable-undo)))
 
 (defun mp/overview-ruler--window ()
@@ -209,17 +250,34 @@ the full width on top of both lanes."
           (when win (set-window-fringes win 0 0))
           win))))
 
+(defun mp/overview-ruler--hide ()
+  "Delete the ruler side window if it is showing."
+  (let ((win (get-buffer-window mp/overview-ruler--buffer-name t)))
+    (when (window-live-p win) (delete-window win))))
+
 (defun mp/overview-ruler--refresh ()
-  "Refresh the ruler for the currently selected file window."
-  (when (bound-and-true-p mp/overview-ruler-mode)
-    (let* ((win (selected-window))
-           (buf (window-buffer win)))
-      (unless (or (window-minibuffer-p win)
-                  (string= (buffer-name buf) mp/overview-ruler--buffer-name)
-                  (not (buffer-file-name (or (buffer-base-buffer buf) buf))))
+  "Refresh the ruler for the currently selected window.
+Only `prog-mode' file buffers get a ruler; for anything else it is taken
+down, so it never lingers over Org, dired, magit, help, etc."
+  (when (and (bound-and-true-p mp/overview-ruler-mode)
+             (not mp/overview-ruler--refreshing))
+    (let* ((mp/overview-ruler--refreshing t)
+           (win (selected-window))
+           (buf (window-buffer win))
+           (base (or (buffer-base-buffer buf) buf)))
+      (cond
+       ;; Transient focus (minibuffer, or the ruler itself): leave as is.
+       ((or (window-minibuffer-p win)
+            (string= (buffer-name buf) mp/overview-ruler--buffer-name))
+        nil)
+       ;; A prog-mode file buffer: show and (re)draw.
+       ((and (buffer-file-name base)
+             (with-current-buffer base (derived-mode-p 'prog-mode)))
         (let ((ruler (mp/overview-ruler--window)))
           (when (window-live-p ruler)
-            (mp/overview-ruler--render buf win ruler)))))))
+            (mp/overview-ruler--render buf win ruler))))
+       ;; Anything else: take the ruler down.
+       (t (mp/overview-ruler--hide))))))
 
 (define-minor-mode mp/overview-ruler-mode
   "Global VSCode-style overview ruler with git and diagnostic lanes."

@@ -1,14 +1,21 @@
 # overview-ruler
 
 A minimap-style **overview ruler** rendered with SVG down the side of the
-buffer, marking search matches, diagnostics and the current viewport — a
-lightweight VS Code minimap.
+buffer, marking git changes, diagnostics, merge conflicts and the current
+viewport — a lightweight VS Code minimap.
 
-Extracted verbatim from config.org's *Plugins › Overview Ruler* section.
+It only appears over `prog-mode` file buffers; for Org, dired, magit, help,
+etc. the ruler window is taken down automatically.
+
+Lanes: git changes on the left (green add / red delete / amber change),
+diagnostics on the right (red error / amber warning / blue info), merge
+conflicts span the full width (purple), and the current viewport is the
+translucent outlined box.
 
 ## Usage
 
-Toggle with `SPC t o` (`mp/overview-ruler-mode`).
+Toggle with `SPC t o` (`mp/overview-ruler-mode`). **Click** any indicator to
+jump the source window's point to that line.
 
 ## Loading
 

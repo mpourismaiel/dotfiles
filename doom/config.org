@@ -1194,7 +1194,7 @@ z1..z9 keys, LEVEL is read from the triggering digit."
 A minimap-style overview ruler marking matches, diagnostics and the viewport
 down the side of the buffer. Lives in the [[file:packages/overview-ruler/README.md][overview-ruler package]].
 #+begin_src emacs-lisp
-(mp/require-package "overview-ruler")
+;; (mp/require-package "overview-ruler")
 #+end_src
 **** Project Scripts runner
 #+begin_src emacs-lisp

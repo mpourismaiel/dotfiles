@@ -3,6 +3,8 @@
 Log time to [Teamwork.com](https://teamwork.com) from an editable Org buffer.
 Pull the project / task-list / task tree plus your time logs for a date range,
 edit, then submit a reviewed diff (streamed, ordered, with retry + abort).
+Tasks nest to any depth: a heading demoted below a task (`****` or deeper) is a
+subtask, and subtasks take logs, renames and `[d]` completion like any task.
 Delete a project heading to stop fetching it (a local preference — it is never
 deleted in Teamwork). Credentials live in the system keyring.
 
