@@ -26,6 +26,16 @@ DEST="${DOOMDIR:-$HOME/.config/doom}/packages"
 
 EMACS="${EMACS:-emacs}"
 
+# Serialize concurrent deploys. `SPC p S` tangles config.org, whose
+# `org-babel-tangle' advice fires a *background* deploy.sh, while the same
+# script then runs deploy.sh again in the foreground. Without a lock their two
+# rsyncs race on creating a brand-new package dir and one dies with
+# `mkdir "…/<pkg>" failed: File exists (17)`. Block on a lock so they run one
+# after another (the second pass is idempotent). Released automatically on exit.
+LOCK="${TMPDIR:-/tmp}/doom-packages-deploy.lock"
+exec 9>"$LOCK"
+flock 9
+
 red()   { printf '\033[31m%s\033[0m\n' "$*"; }
 green() { printf '\033[32m%s\033[0m\n' "$*"; }
 dim()   { printf '\033[2m%s\033[0m\n'  "$*"; }

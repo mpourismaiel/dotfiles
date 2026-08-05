@@ -152,7 +152,7 @@
        ;;fortran           ; in FORTRAN, GOD is REAL (unless declared INTEGER)
        ;;fsharp            ; ML stands for Microsoft's Language
        ;;fstar             ; (dependent) types and (monadic) effects and Z3
-       ;;gdscript          ; the language you waited for
+       (gdscript +lsp +tree-sitter) ; the language you waited for
        (go +lsp +tree-sitter) ; the hipster dialect
        (graphql +lsp)    ; Give queries a REST
        ;;(haskell +lsp)    ; a language that's lazier than I am
@@ -1396,6 +1396,23 @@ model and custom faces — live together in the [[file:packages/agent-shell-extr
 (mp/require-package "agent-shell-extras")
 #+end_src
 
+**** Workspace HUD
+A togglable HUD that floats on the right edge of the frame as a borderless,
+non-focusable *child frame* — a real layer on top of the windows, not a window
+in the tree, so magit/splits never fight it (and it auto-hides over magit).
+Content is one SVG image (like [[file:packages/svg-header/README.md][svg-header]]) with vector icons: project / git
+branch / dirty + the changed files with per-file line counts, LSP + diagnostics
+(hidden when no LSP), an *Agents* section (button to launch agent-shell + live
+model/effort/permission/tokens/status/elapsed for active agents), and a
+context-aware *Debugger* section (dape controls for the current buffer). Buttons
+are clickable. Event-driven, GUI only. Native reimagining of [[https://github.com/nohzafk/emacs-workspace-hud][emacs-workspace-hud]]
+(no xwidget/WASM). Lives in the [[file:packages/workspace-hud/README.md][workspace-hud package]]. Toggle with =SPC t W=;
+set ~mp/workspace-hud-debug~ to log to =*workspace-hud-log*=.
+#+begin_src emacs-lisp
+(mp/require-package "workspace-hud")
+(map! :leader :desc "Workspace HUD" "t W" #'mp/workspace-hud-toggle)
+#+end_src
+
 **** Copilot Auto suggestions
 #+begin_src emacs-lisp
 (use-package! copilot
@@ -1574,6 +1591,73 @@ This section exists to stop Pipenv from being inferred, created, or invoked in t
   ;; The Python env segment can shell out to `pipenv run ...` on Python buffers.
   ;; Disable it so merely visiting files can't hit pipenv.
   (setq doom-modeline-env-enable-python nil))
+#+end_src
+
+**** Godot / GDScript
+Full Godot 4 game-dev setup. The =:lang gdscript= module (=+lsp +tree-sitter=)
+provides the major mode, the tree-sitter grammar, =gdformat= on-save formatting,
+and LSP wiring; this section adds *real Godot 4 debugging* on top of it.
+
+***** How the pieces connect
+- *LSP* (completion, go-to-definition, hover, diagnostics, rename) comes from
+  Godot's built-in language server. Open the project in the Godot editor and it
+  listens on port =6005= (Editor Settings -> Network -> Language Server).
+  =lsp-mode= connects there automatically -- nothing to configure. No editor
+  open means no LSP.
+- *Debugging* uses [[https://github.com/svaante/dape][dape]] talking to Godot's
+  built-in Debug Adapter on port =6006= (Editor Settings -> Network -> Debug
+  Adapter). dape ships the =godot= config out of the box, so =M-x dape RET godot
+  RET= launches the game with the debugger attached. (This is why the
+  =:tools debugger= / =dap-mode= module is deliberately left off.) Note the
+  package's own =gdscript-debug-*= commands are Godot 3-only and do nothing here.
+- *Running* the project or current scene uses the module's =gdscript-godot-*=
+  commands under =SPC m r= (they shell out to the auto-detected =godot=
+  executable).
+- *Formatting* uses =gdformat= from the =gdtoolkit= Python package; with
+  =(format +onsave)= on, GDScript buffers reformat on save once it is installed:
+  =pip install "gdtoolkit>=4"= (v4 targets Godot 4 syntax).
+
+***** Typical workflow
+1. Open the project once in the Godot editor (starts LSP:6005 + DAP:6006).
+2. Edit =.gd= files in Emacs with full completion and navigation.
+3. Toggle breakpoints with =SPC m d b= on the lines you care about.
+4. =SPC m d d= -> pick =godot=: the game launches, breakpoints hit; step with
+   =SPC m d n/s/o=, inspect state with =SPC m d i=, evaluate in =SPC m d R=.
+
+***** dape configuration
+#+begin_src emacs-lisp
+(use-package! dape
+  :defer t
+  :init
+  ;; Info + REPL windows on the right, source on the left.
+  (setq dape-buffer-window-arrangement 'right)
+  :config
+  ;; Persist breakpoints across Emacs sessions (guarded: no-ops when no file).
+  (add-hook 'kill-emacs-hook #'dape-breakpoint-save)
+  (dape-breakpoint-load))
+#+end_src
+
+***** GDScript keybindings
+The module already binds =SPC m r= (run) and =SPC m h= (help). Its stock =SPC m d=
+"debug" prefix drives the Godot 3-only debugger, so rebind that whole prefix onto
+dape. Binding =gdscript-mode-map= also covers =gdscript-ts-mode=, which derives
+from it; running after the module's own =use-package!= means these overrides win.
+#+begin_src emacs-lisp
+(after! gdscript-mode
+  (map! :localleader
+        :map gdscript-mode-map
+        (:prefix ("d" . "debug")
+         :desc "Start / select session" "d" #'dape
+         :desc "Toggle breakpoint"      "b" #'dape-breakpoint-toggle
+         :desc "Continue"               "c" #'dape-continue
+         :desc "Next"                   "n" #'dape-next
+         :desc "Step in"                "s" #'dape-step-in
+         :desc "Step out"               "o" #'dape-step-out
+         :desc "Pause"                  "p" #'dape-pause
+         :desc "Restart"                "r" #'dape-restart
+         :desc "Quit session"           "q" #'dape-quit
+         :desc "Info buffers"           "i" #'dape-info
+         :desc "REPL"                   "R" #'dape-repl)))
 #+end_src
 
 *** Keybindings
@@ -1816,6 +1900,17 @@ shell-integration/terminfo assets under =etc/= are bundled.
 ;; if package state changes during future experiments.
 (package! pipenv :disable t)
 (package! renpy-mode :recipe (:host github :repo "Reagankm/renpy-mode"))
+#+end_src
+
+**** Debugging (dape)
+[[https://github.com/svaante/dape][dape]] is a Debug Adapter Protocol client for Emacs (a lighter, dependency-free
+alternative to =dap-mode=; this is why the =:tools debugger= module stays off).
+It ships a built-in =godot= configuration that attaches to a running Godot 4
+editor's DAP server on port =6006=, which is what powers GDScript debugging in
+the *Godot / GDScript* section under Config.
+
+#+begin_src emacs-lisp
+(package! dape)
 #+end_src
 
 **** LSP Bridge
