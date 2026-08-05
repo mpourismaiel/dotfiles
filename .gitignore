@@ -28,4 +28,8 @@ dist/
 
 ags/config.json
 doom/private.el
+# Clutch DB connections — contain credentials. Never commit either form:
+# the plaintext, or the encrypted .gpg (encrypted-at-rest in a public repo
+# is still an offline-crackable secret). Both live only on the local machine.
 doom/connections.json
+doom/connections.json.gpg
