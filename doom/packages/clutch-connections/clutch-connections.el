@@ -214,6 +214,15 @@ Always targets `mp/clutch-connections-gpg-file'; EasyPG encrypts on save."
 (defvar mp/clutch--new-label "＋ New connection…"
   "Pseudo-candidate used to trigger connection creation.")
 
+(defun mp/clutch--sort-candidates (cands)
+  "Keep `mp/clutch--new-label' pinned first; preserve file order otherwise.
+Used as the completion `display-sort-function' so the create entry never gets
+sorted down among the saved connections."
+  (if (member mp/clutch--new-label cands)
+      (cons mp/clutch--new-label
+            (remove mp/clutch--new-label (copy-sequence cands)))
+    cands))
+
 (defun mp/clutch--completion-table (names raw)
   "Build a completion table over NAMES annotated from RAW alist."
   (let ((annot
@@ -227,6 +236,8 @@ Always targets `mp/clutch-connections-gpg-file'; EasyPG encrypts on save."
     (lambda (str pred action)
       (if (eq action 'metadata)
           `(metadata (annotation-function . ,annot)
+                     (display-sort-function . mp/clutch--sort-candidates)
+                     (cycle-sort-function . mp/clutch--sort-candidates)
                      (category . mp/clutch-connection))
         (complete-with-action action names str pred)))))
 
@@ -257,12 +268,22 @@ Uses `completing-read', so vertico/consult render it with live annotations."
 (defun mp/clutch--connection-action (name)
   "Prompt for an action to run against connection NAME."
   (pcase (completing-read (format "Connection %s → " name)
-                          '("Edit" "Copy URI" "Rename" "Delete")
+                          '("Connect" "Edit" "Copy URI" "Rename" "Delete")
                           nil t)
+    ("Connect"  (mp/clutch-connection-connect name))
     ("Edit"     (mp/clutch-connection-edit name))
     ("Copy URI" (mp/clutch-connection-copy-uri name))
     ("Rename"   (mp/clutch-connection-rename name))
     ("Delete"   (mp/clutch-connection-delete name))))
+
+;;;###autoload
+(defun mp/clutch-connection-connect (name)
+  "Open a clutch query console connected to saved connection NAME."
+  (interactive (list (mp/clutch--pick-connection "Connect to: ")))
+  (require 'clutch)
+  ;; Make sure clutch sees the current on-disk connections before connecting.
+  (mp/clutch-apply-connections)
+  (clutch-query-console name))
 
 ;;;###autoload
 (defun mp/clutch-connection-create ()
