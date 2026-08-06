@@ -613,6 +613,56 @@ whole dir is one repo; books are folders inside it).
 *** Code
 Code: [[file:pill/FinanceMenu.qml][=pill/FinanceMenu.qml=]]
 
+** TetrisMenu.qml
+*** Description
+A very basic Tetris (=win.menu === 9=), opened from a tiny S-tetromino button
+drawn just right of the expanded-pill clock (=tetrisBtn=, in [[file:pill/init.qml][=init.qml=]]'s Row 1,
+which calls =win.openTetris()=; the button is mouse-only and stays outside the
+clock's roving hover square so it never triggers the calendar — it is a *sibling*
+of the clock inside a wrapper Item =dtRow=, since a child drawn past its parent's
+width gets no pointer events). Menu 9 runs wider + taller than a normal pane
+(=tetrisWidth= 480 × =tetrisHeight= 556) to fit a 10×20 well of 24px cells
+(240×480) on the left; on the right a score/best/level/lines grid, the *next
+three* pieces, a rules cheat-sheet and *New game* / *Pause* buttons. The score
+also rides in the header trailing slot.
+
+All logic is plain JS in the component: classic seven-piece shapes with four
+precomputed rotation states, a 7-bag randomiser, simple ±1/±2 wall kicks on
+rotate, soft/hard drop, and line-clear scoring (100/300/500/800 × level, level =
+1 + ⌊lines/10⌋). A =Timer= is the gravity clock — its interval shrinks with the
+level (=max(90, 520 − (level−1)·45)= ms) and it only runs while the pane exists
+and the game is neither paused nor over. Rendering is a =Repeater= of 200 cells
+bound to a =view= array (board merged with the falling piece), refreshed via a
+=rev= counter bumped on every state change. The *next-three* preview also reads
+=rev= — the =queue= is shifted/pushed in place (its identity never changes), so
+without the =rev= dependency the binding never re-fired and the preview went stale.
+
+*Line-clear flair (deferred clear).* Locking a piece doesn't remove full rows
+immediately: it records their indices in =flashRows= and starts =flashTimer=
+(260 ms). A per-row =Repeater= flares a bright bar over each (flash-up 70 ms →
+fade 190 ms); the piece is already =cur = null=, so gravity idles during the
+flash. When the timer fires, =finalizeClear()= drops the rows, scores them,
+spawns the next piece, and — for 2/3/4-line clears — pops a centred banner
+(=DOUBLE= / =TRIPLE= / accent-coloured =TETRIS!=) that scales-in (=OutBack=) and
+fades. Closing mid-flash finalises first (=Component.onDestruction=) so a full,
+un-cleared row is never persisted.
+
+The pane *grabs the compositor keyboard* (menu 9 is in =grabsKeyboard=, and
+excluded from [[*MenuKbNav.qml][=MenuKbNav=]]): a focused key-sink Item drives it and
+=forceActiveFocus()=-es itself on load (so keys reach the game immediately; the
+=New game= / =Pause= buttons re-grab focus after a mouse click too). ←/→ move,
+↑ or X rotate CW, Z rotate CCW, ↓ soft-drop, Space hard-drop, P pause, Esc
+*saves and closes* (→ the expanded dashboard, or the previous window); on game
+over Enter/Space restarts.
+
+*Progress persists.* The whole game (board, falling piece, next queue + bag,
+score, high score, paused/over flags) is written to =settings.tetris= (the shared
+=launcher.json= adapter) on every lock / pause and on pane destruction, and
+reloaded on open — so closing the pane, or restarting the shell, resumes exactly
+where you left off.
+*** Code
+Code: [[file:pill/TetrisMenu.qml][=pill/TetrisMenu.qml=]]
+
 ** Launcher.qml
 *** Description
 KDE-style app launcher, opened by clicking the hovered pill body, the Row-2 grid
@@ -1580,10 +1630,12 @@ pane grabs the keyboard when open, so it can be triaged entirely from the keyboa
 (arrows / Enter / =i= / =x= / Delete / Escape — see
 [[*NotificationHistory.qml][§ NotificationHistory.qml]]).
 
-*Expanded view + keyboard nav (IPC).* The same =IpcHandler= exposes =expand= /
-=expandOn(screen)=, which open the expanded dashboard (like clicking the collapsed
-pill) in *keyboard-nav mode* (=win.kbNav=) — the one state where the pill grabs the
-keyboard without a text field. Bind a *Custom Shortcut* running
+*Expanded view + keyboard nav.* Clicking the collapsed pill *and* the =expand= /
+=expandOn(screen)= IPC both open the expanded dashboard in *keyboard-nav mode*
+(=win.kbNav=) — the state where the pill grabs the keyboard without a text field
+(so arrows/Escape/menu-jumps work the moment the dashboard appears, and any pane
+opened from it — e.g. Tetris — keeps the keyboard). Bind the IPC to a shortcut with
+=qs -p …/init.qml ipc call pill expand=. Bind a *Custom Shortcut* running
 =qs -p …/init.qml ipc call pill expand=. Focus rides the shared hover square
 (=win.hoverItem=), so mousing over any item re-focuses it; the clock/date block is
 focused first. Arrows move between the zones exactly as laid out — clock → right →
@@ -1597,10 +1649,9 @@ focused first, arrows spatial, Enter clicks, tab bars step left/right; the
 notification and clipboard panes keep their own richer handling, and the calendar
 grid stays mouse-only). *Escape steps back*: menu → expanded dashboard → closed
 (restoring focus to the previous window). The mode ends whenever the pill fully
-closes (Escape, backdrop click, launching an app), and it never engages for a
-mouse-opened pill — those keep the hands-off focus policy. The notification /
-clipboard / launcher IPC commands are unchanged: opened that way (no kbNav),
-their Escape still closes the pill outright.
+closes (Escape, backdrop click, launching an app). The notification / clipboard /
+launcher IPC commands are unchanged: opened that way (no kbNav), their Escape
+still closes the pill outright.
 
 *Brightness shortcut (IPC).* The same =IpcHandler= exposes =brightnessUp= /
 =brightnessDown=, which step the *active monitor's* screen brightness by ≈5% via the

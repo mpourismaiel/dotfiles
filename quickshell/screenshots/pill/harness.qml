@@ -31,6 +31,24 @@ FloatingWindow {
         property string orgAgendaDir: "~/org"
         property bool financeEnabled: true
         property string financeDir: "~/Documents/finance"
+        // seed a mid-game Tetris so the screenshot shows a real stack, not an empty well
+        property var tetris: ({
+            "board": (function () {
+                var b = [];
+                for (var r = 0; r < 20; r++) {
+                    var row = [];
+                    for (var c = 0; c < 10; c++)
+                        row.push((r >= 15 && !((r + c) % 4 === 0 && c > 5)) ? ["I","J","L","O","S","T","Z"][(r + c) % 7] : "");
+                    b.push(row);
+                }
+                return b;
+            })(),
+            "cur": { "type": "T", "rot": 0, "x": 4, "y": 2 },
+            "queue": ["I", "L", "S", "Z"],
+            "bag": ["O", "J"],
+            "score": 1240, "lines": 7, "level": 1, "high": 3200,
+            "over": false, "paused": false
+        })
     }
 
     // mock clock strings so the dashboard is deterministic
@@ -77,6 +95,7 @@ FloatingWindow {
         { name: "menu-finance-wishlist", comp: cFinWish },
         { name: "menu-finance-forecast", comp: cFinFore },
         { name: "menu-finance-plan", comp: cFinPlan },
+        { name: "menu-tetris",   comp: cTetris },
         { name: "settings",      comp: cSettings },
         { name: "menu-notifhistory", comp: cNotifHist },
         { name: "notif-stack",   comp: cNotifStack },
@@ -214,12 +233,35 @@ FloatingWindow {
                 Column {
                     anchors.left: parent.left; anchors.top: parent.top
                     anchors.topMargin: -10; spacing: 9
-                    Column {
-                        spacing: 1
-                        Text { text: win.clockShort; color: theme.text; font.family: theme.serif; font.pixelSize: 34; lineHeight: 0.9 }
-                        Text { text: win.clockDate; color: theme.textDim; font.family: theme.mono
-                               font.pixelSize: theme.fsSmall; font.letterSpacing: theme.labelSpacing
-                               font.capitalization: Font.AllUppercase; lineHeight: 0.95 }
+                    Item {
+                        implicitWidth: dtColMock.implicitWidth; implicitHeight: dtColMock.implicitHeight
+                        Column {
+                            id: dtColMock
+                            spacing: 1
+                            Text { id: clockTimeMock; text: win.clockShort; color: theme.text; font.family: theme.serif; font.pixelSize: 34; lineHeight: 0.9 }
+                            Text { text: win.clockDate; color: theme.textDim; font.family: theme.mono
+                                   font.pixelSize: theme.fsSmall; font.letterSpacing: theme.labelSpacing
+                                   font.capitalization: Font.AllUppercase; lineHeight: 0.95 }
+                        }
+                        // tiny tetromino button beside the clock (mirrors init.qml)
+                        Rectangle {
+                            anchors.left: dtColMock.right; anchors.leftMargin: 12
+                            anchors.verticalCenter: clockTimeMock.verticalCenter
+                            width: 26; height: 26; radius: theme.radiusSmall; color: "transparent"
+                            Item {
+                                id: tetGlyphMock
+                                anchors.centerIn: parent; width: 15; height: 10
+                                readonly property int u: 5
+                                Repeater {
+                                    model: [[1,0],[2,0],[0,1],[1,1]]
+                                    delegate: Rectangle {
+                                        required property var modelData
+                                        x: modelData[0] * tetGlyphMock.u; y: modelData[1] * tetGlyphMock.u
+                                        width: tetGlyphMock.u - 1; height: tetGlyphMock.u - 1; radius: 1; color: theme.accent
+                                    }
+                                }
+                            }
+                        }
                     }
                     DesktopDots {
                         theme: theme
@@ -268,6 +310,7 @@ FloatingWindow {
     Component { id: cClip; MenuHost { pillH: 670; ClipboardMenu { anchors.fill: parent; theme: theme; clip: clip; memos: memos } } }
     Component { id: cCal;  MenuHost { pillW: 760; CalendarMenu  { anchors.fill: parent; theme: theme; org: org; fin: fin; cal: cal } } }
     Component { id: cFin;  MenuHost { pillW: 760; FinanceMenu   { anchors.fill: parent; theme: theme; fin: fin } } }
+    Component { id: cTetris; MenuHost { pillW: 480; pillH: 556; TetrisMenu { anchors.fill: parent; theme: theme; settings: mockSettings } } }
     // the launcher's Settings page (Org Agenda page shown: toggle + directory field)
     Component { id: cSettings; MenuHost { pillW: 760; SettingsMenu { anchors.fill: parent; theme: theme; acc: null; settings: mockSettings; page: 1 } } }
     Component {
