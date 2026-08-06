@@ -76,6 +76,10 @@ FloatingWindow {
     }
 
     // ======================= gallery states =======================
+    // SHOT_ONLY (env) renders just the states whose name contains this substring,
+    // skipping the rest instantly — a fast single-target loop while iterating on one
+    // pane. Empty = render everything (the full regression pass; run this when done).
+    property string only: (Quickshell.env("SHOT_ONLY") || "")
     property int _shot: -1
     property var _states: [
         { name: "resting",       comp: cResting },
@@ -110,6 +114,9 @@ FloatingWindow {
     function _next() {
         win._shot++;
         if (win._shot >= win._states.length) { Qt.quit(); return; }
+        // SHOT_ONLY: skip non-matching states with no grab delay (keeps the same
+        // _shot index, so filenames match a full run — e.g. pill-17-menu-tetris.png)
+        if (win.only && win._states[win._shot].name.indexOf(win.only) < 0) { Qt.callLater(win._next); return; }
         stage.sourceComponent = win._states[win._shot].comp;
         grabTimer.restart();
     }

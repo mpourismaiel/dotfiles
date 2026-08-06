@@ -9,10 +9,18 @@ debug motion, even while both overlays are running.
 
 ```sh
 quickshell/screenshots/shoot.sh          # copy sources + render every still → PNGs
+quickshell/screenshots/shoot.sh menu-tetris  # FAST: only pill states whose name contains
+                                         #   this substring (pill-only; skips emaqs + contact
+                                         #   sheets; leaves other PNGs untouched). ~2s vs ~35s.
 quickshell/screenshots/check.sh          # same, then assert all stages rendered clean
 quickshell/screenshots/animate.sh        # record animation scenes → mp4 + gif + frame strips
 SHOT_DIR=/some/build/dir shoot.sh        # override the build dir (default /tmp/shot)
 ```
+
+Use the targeted form (`shoot.sh <name-substring>`, or `SHOT_ONLY=<substring>`) for the
+per-edit loop while iterating on one pane; run the **no-arg full pass when you're done**
+to confirm nothing else regressed. State names are in `pill/harness.qml`'s `_states`
+(e.g. `menu-tetris`, `dashboard`, `menu-finance-add`).
 
 Output lands in `$SHOT_DIR/out` (default `/tmp/shot/out`): stills (PNGs +
 `_pill-contact.png` / `_emaqs-contact.png` contact sheets) from `shoot.sh`; and per-scene
