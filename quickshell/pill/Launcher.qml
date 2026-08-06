@@ -19,10 +19,11 @@ import QtQml.Models
 import Quickshell
 import Quickshell.Widgets
 import Quickshell.Io
-// KRunner search backend (same one Plasma's launcher/KRunner use) + its icon
-// renderer, which resolves both themed icon names and QIcon decorations.
-import org.kde.milou as Milou
-import org.kde.kirigami as Kirigami
+// NOTE: the KRunner search backend (org.kde.milou) + its Kirigami icon renderer
+// are NOT imported here. They live in LauncherSearch.qml, loaded through a Loader
+// (`searchLoader` below), so that on a machine without KDE's QML modules the
+// failed import takes down only that Loader — not the whole launcher/pill. When
+// the backend is absent the launcher falls back to local app-name filtering.
 
 Item {
     id: root
@@ -69,32 +70,38 @@ Item {
     // grid only on the resting view; searching is always the results list
     readonly property bool showGrid: !searching && settings.grid
     
-    // ---- KRunner search (org.kde.milou ResultsModel) ----
-    // The exact backend Plasma's launcher / KRunner / Overview use: it runs every
-    // search plugin the user has enabled (Applications, System Settings, Power,
-    // Locations, Places, Windows, web shortcuts, calculator, …) and streams
-    // grouped, ranked matches. We bind the raw query in and render the model
-    // directly; running a row calls back into KRunner so each match launches/opens
-    // exactly as it would there. `count` comes off the bound ListView (the model
-    // itself doesn't expose one).
-    Milou.ResultsModel {
-        id: krunner
-        queryString: root.searching ? search.text.trim() : ""
-    }
+    // ---- KRunner search (org.kde.milou), loaded out-of-line + graceful fallback ----
+    // The rich search backend lives in LauncherSearch.qml behind `searchLoader`.
+    // On KDE it loads and `searchBackend` is true — searching shows the full
+    // KRunner results (Applications, System Settings, Power, Locations, web
+    // shortcuts, calculator, …). Without KDE's QML modules the Loader fails to
+    // instantiate its item, `searchBackend` is false, and we fall back to
+    // filtering the local DesktopEntry list by name (`localResults`) so the
+    // launcher still searches — just apps, not the whole KRunner plugin set.
+    readonly property bool searchBackend: searchLoader.item !== null
+    readonly property var localResults: (searching && !searchBackend)
+        ? apps.filter(a => (a.name || "").toLowerCase().indexOf(q) >= 0)
+        : []
+    // number of rows the current search shows (KRunner count, or local matches)
+    readonly property int resultCount: !searching ? 0
+        : (searchBackend ? searchLoader.item.count : localResults.length)
     
     // ---- keyboard selection (arrow-key navigation) ----
     // The live view is the resting grid/list (over `model`) or, while searching,
     // the KRunner results list; navigation clamps to whichever is showing and
     // resets whenever the visible set changes (new query, or grid/list toggle).
     property int currentIndex: 0
-    readonly property int navCount: searching ? resultsList.count : model.length
+    readonly property int navCount: searching ? resultCount : model.length
     onQChanged: currentIndex = 0
     onShowGridChanged: currentIndex = 0
     function setSel(i) {
         const n = navCount;
         currentIndex = n === 0 ? 0 : Math.max(0, Math.min(n - 1, i));
         if (n === 0) return;
-        if (searching) resultsList.positionViewAtIndex(currentIndex, ListView.Contain);
+        // while searching: the KRunner list if the backend loaded, else the
+        // fallback (local) list which reuses the resting `list` view.
+        if (searching && searchBackend) searchLoader.item.positionAt(currentIndex);
+        else if (searching) list.positionViewAtIndex(currentIndex, ListView.Contain);
         else if (showGrid) grid.positionViewAtIndex(currentIndex, GridView.Contain);
         else list.positionViewAtIndex(currentIndex, ListView.Contain);
     }
@@ -106,7 +113,14 @@ Item {
     function activateCurrent() {
         if (calcResult !== null) { copy(calcResult); root.launched(); return; }
         if (searching) {
-            if (navCount > 0 && krunner.run(krunner.index(currentIndex, 0))) root.launched();
+            if (navCount === 0) return;
+            if (searchBackend) {
+                if (searchLoader.item.runIndex(currentIndex)) root.launched();
+            } else {
+                const r = localResults;
+                r[Math.max(0, Math.min(r.length - 1, currentIndex))].execute();
+                root.launched();
+            }
             return;
         }
         const n = model.length;
@@ -511,14 +525,15 @@ Item {
             anchors.bottom: parent.bottom
     
             // ---- resting list view (favourites / all apps, when grid is off) ----
-            // While searching this hides and the KRunner results list below takes
-            // over; the resting list is a plain DesktopEntry list (star + context).
+            // While searching *with* the KRunner backend this hides and the results
+            // list (searchLoader) takes over; when the backend is absent it stays
+            // visible and shows the local name-filtered fallback (see localResults).
             ListView {
                 id: list
     
                 anchors.fill: parent
-                visible: !root.showGrid && !root.searching
-                model: root.model
+                visible: !root.showGrid && (!root.searching || !root.searchBackend)
+                model: (root.searching && !root.searchBackend) ? root.localResults : root.model
                 clip: true
                 spacing: 2
                 cacheBuffer: 600
@@ -608,128 +623,22 @@ Item {
     
             }
     
-            // ---- KRunner results list (shown while searching) ----
-            // A flat, category-grouped ListView bound straight to the Milou model;
-            // the section header is the KRunner category ("Applications", "System
-            // Settings", "Locations", …). Each row shows the match's own icon (a
-            // themed name or a QIcon, both via Kirigami.Icon), its title and subtext;
-            // clicking or pressing Enter runs it back through KRunner.
-            ListView {
-                id: resultsList
-    
+            // ---- KRunner results (shown while searching, if the backend loaded) ----
+            // The results list lives in LauncherSearch.qml, pulled in through this
+            // Loader so a missing org.kde.milou/kirigami module fails just here (item
+            // stays null → `searchBackend` false → the local fallback list above
+            // shows instead). setSource passes the theme/query bindings + a back-ref
+            // at creation so the file's required properties resolve.
+            Loader {
+                id: searchLoader
+
                 anchors.fill: parent
-                visible: root.searching
-                model: krunner
-                clip: true
-                spacing: 2
-                cacheBuffer: 600
-                boundsBehavior: Flickable.StopAtBounds
-                section.property: "category"
-                section.criteria: ViewSection.FullString
-    
-                section.delegate: Item {
-                    id: secHeader
-    
-                    required property string section
-    
-                    width: resultsList.width
-                    height: 30
-    
-                    Text {
-                        anchors.left: parent.left
-                        anchors.leftMargin: 10
-                        anchors.bottom: parent.bottom
-                        anchors.bottomMargin: 6
-                        text: secHeader.section
-                        color: root.theme.faint
-                        font.family: root.theme.mono
-                        font.pixelSize: root.theme.fsSmall
-                        font.letterSpacing: root.theme.labelSpacing
-                        font.capitalization: Font.AllUppercase
-                    }
-    
-                }
-    
-                delegate: Rectangle {
-                    id: resRow
-    
-                    required property var model
-                    required property int index
-    
-                    width: resultsList.width
-                    height: root.theme.rowHeight
-                    radius: root.theme.radiusRow
-                    color: resRow.index === root.currentIndex ? root.theme.accentDim : resMa.containsMouse ? root.theme.rowHi : "transparent"
-    
-                    Row {
-                        anchors.left: parent.left
-                        anchors.leftMargin: 8
-                        anchors.right: parent.right
-                        anchors.rightMargin: 12
-                        anchors.verticalCenter: parent.verticalCenter
-                        spacing: 10
-    
-                        Kirigami.Icon {
-                            anchors.verticalCenter: parent.verticalCenter
-                            implicitWidth: 24
-                            implicitHeight: 24
-                            source: resRow.model.decoration
-                        }
-    
-                        Column {
-                            anchors.verticalCenter: parent.verticalCenter
-                            width: parent.width - 24 - 10
-                            spacing: 1
-    
-                            Text {
-                                width: parent.width
-                                elide: Text.ElideRight
-                                text: resRow.model.display
-                                color: root.theme.text
-                                font.family: root.theme.family
-                                font.pixelSize: root.theme.fsNormal
-                            }
-    
-                            Text {
-                                width: parent.width
-                                visible: text.length > 0
-                                height: visible ? implicitHeight : 0
-                                elide: Text.ElideRight
-                                text: resRow.model.subtext || ""
-                                color: root.theme.textDim
-                                font.family: root.theme.family
-                                font.pixelSize: root.theme.fsSmall
-                            }
-    
-                        }
-    
-                    }
-    
-                    MouseArea {
-                        id: resMa
-    
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        acceptedButtons: Qt.LeftButton | Qt.RightButton
-                        onClicked: (mouse) => {
-                            if (mouse.button === Qt.RightButton) {
-                                // only app results resolve to a DesktopEntry; others get no menu
-                                const e = root.entryForResult(resRow.model);
-                                if (e) {
-                                    const p = mapToItem(root, mouse.x, mouse.y);
-                                    root.appMenuRequested(e, root.isFav(e), root.isPinned(e), p.x, p.y);
-                                }
-                                return ;
-                            }
-                            if (krunner.run(krunner.index(resRow.index, 0)))
-                                root.launched();
-    
-                        }
-                    }
-    
-                }
-    
+                visible: root.searching && root.searchBackend
+                Component.onCompleted: setSource("LauncherSearch.qml", {
+                    "theme": Qt.binding(() => root.theme),
+                    "launcher": root,
+                    "query": Qt.binding(() => root.searching ? search.text.trim() : "")
+                })
             }
     
             // ---- grid view (resting view when grid mode is on) ----
@@ -923,7 +832,7 @@ Item {
             // empty state
             Text {
                 anchors.centerIn: parent
-                visible: root.apps.length === 0 || (root.searching ? (resultsList.count === 0 && root.calcResult === null) : root.model.length === 0)
+                visible: root.apps.length === 0 || (root.searching ? (root.resultCount === 0 && root.calcResult === null) : root.model.length === 0)
                 text: root.apps.length === 0 ? "Loading applications…" : root.searching ? "No results" : "No applications"
                 color: root.theme.textDim
                 font.family: root.theme.family

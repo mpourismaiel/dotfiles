@@ -17,7 +17,7 @@ DEST="$HOME/.config/quickshell/pill"
 mkdir -p "$DEST"
 copied=0
 for f in *; do
-    case "$f" in deploy.sh|check.sh|README.md|CLAUDE.md) continue ;; esac
+    case "$f" in deploy.sh|check.sh|install.sh|README.md|CLAUDE.md) continue ;; esac
     [ -f "$f" ] || continue
     if ! cmp -s "$f" "$DEST/$f"; then
         cp -p "$f" "$DEST/$f"

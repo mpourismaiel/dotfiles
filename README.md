@@ -1,14 +1,35 @@
 # Dotfiles
 
-This repo has a long history and that's why the folder structure is weird these days.
-I used to use AwesomeWM so you can find that in the history, and used Hyprland for a while so there's a branch for that.
-Currently I use KDE and most of the configuration is just additional virtual desktops, shortcuts, and some visual panel edits.
+A long-lived, slightly messy dotfiles repo. I used AwesomeWM, then Hyprland, and
+now **KDE Plasma 6 on Wayland** — hence the odd folder layout and the branches in
+history.
 
-I currently just keep important stuff and might edit it further later on so this is just some notes:
+## The pill 👉 [`quickshell/pill`](quickshell/pill)
 
-- I use ZSH + Starship for the prompt. There are a bunch of ZSH functions that I use daily.
-- For videos I use a fantastic MPV config I found on GitHub that I don't remember right now, I downloaded the code to fiddle around with but it was doing its job perfectly so I've left it alone. I have to find a reference to the repo some time.
-- I used to use a custom script for managing my notes but then switched to Obsidian and then switched to another script just for todos and now I just use Emacs and plan to move notes and todos there.
-- Emacs has been my latest journey and its feeling great. I've been using Doom and have used LLM to both learn Emacs-Lisp and write a huge chunk of the config. To my limited knowledge to code does what its supposed to do and its a literate config so its easy to understand.
+The one thing worth your time. A [Quickshell](https://quickshell.org) shell that
+replaces KDE's panels with a single pill at the top-center of every monitor — it
+morphs between a clock, a hover dashboard, and click-open menus (network, volume,
+bluetooth, battery, calendar, finance, clipboard, notifications) with a built-in
+app launcher, and it doubles as the notification daemon.
 
-I hope you are not using my config.
+- **Install:** [`quickshell/INSTALL.md`](quickshell/INSTALL.md) — one-command
+  script for Arch, full dependency list, and what degrades off KDE.
+- **Internals:** [`quickshell/pill/README.md`](quickshell/pill/README.md).
+
+There's also `quickshell/emaqs`, a small bottom-edge Emacs-Doom workspace pill —
+only useful if you live in Emacs.
+
+## Everything else
+
+Personal config with nothing special going on, kept here mostly to sync it:
+
+- **`zsh` / `starship`** — prompt + shell functions I use daily.
+- **`mpv`** — stock `mpv.conf`/`input.conf`; the good parts are other people's
+  scripts: [uosc](https://github.com/tomasklaen/uosc) (UI),
+  [thumbfast](https://github.com/po5/thumbfast) (hover thumbnails), and the
+  [Eisa01/mpv-scripts](https://github.com/Eisa01/mpv-scripts) suite (history,
+  bookmarks, copy/paste, undo). Assembled from a config repo I can no longer
+  find — those three are the credit.
+- **`doom`** — my Emacs Doom config. Literate, LLM-assisted, very personal.
+
+I hope you're not using my config. 🙂
