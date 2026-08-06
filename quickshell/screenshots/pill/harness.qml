@@ -100,6 +100,7 @@ FloatingWindow {
         { name: "menu-finance-forecast", comp: cFinFore },
         { name: "menu-finance-plan", comp: cFinPlan },
         { name: "menu-tetris",   comp: cTetris },
+        { name: "menu-tetris-share", comp: cTetrisShare },
         { name: "settings",      comp: cSettings },
         { name: "menu-notifhistory", comp: cNotifHist },
         { name: "notif-stack",   comp: cNotifStack },
@@ -318,6 +319,12 @@ FloatingWindow {
     Component { id: cCal;  MenuHost { pillW: 760; CalendarMenu  { anchors.fill: parent; theme: theme; org: org; fin: fin; cal: cal } } }
     Component { id: cFin;  MenuHost { pillW: 760; FinanceMenu   { anchors.fill: parent; theme: theme; fin: fin } } }
     Component { id: cTetris; MenuHost { pillW: 480; pillH: 556; TetrisMenu { anchors.fill: parent; theme: theme; settings: mockSettings } } }
+    // Tetris with the screenshot share card up (shareMode toggled after load; no grab
+    // Process runs — this just previews the pretty card layout).
+    Component { id: cTetrisShare; MenuHost { pillW: 480; pillH: 556;
+        TetrisMenu { id: tsh; anchors.fill: parent; theme: theme; settings: mockSettings }
+        Timer { running: true; interval: 60; onTriggered: { tsh.shotName = "tetris-20260806-101500.png"; tsh.shareMode = true; } }
+    } }
     // the launcher's Settings page (Org Agenda page shown: toggle + directory field)
     Component { id: cSettings; MenuHost { pillW: 760; SettingsMenu { anchors.fill: parent; theme: theme; acc: null; settings: mockSettings; page: 1 } } }
     Component {

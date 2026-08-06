@@ -1110,6 +1110,14 @@ ShellRoot {
             readonly property int capSnapY: 44        // drop within this of the top → dock
             // whether the pill is currently floating (rounded, no wings)
             readonly property bool capFloating: capDragging || (capShow && capPositioned && !capAttached)
+            // the open Tetris pane (menu 9) is draggable like the capture pill: drag its
+            // body to park it anywhere; free-float, clamped on-screen, no snap. Resets to
+            // centre when the pane closes (see onOpenChanged). Only these props feed the
+            // pill position while it's the active menu.
+            property bool tetrisMoved: false
+            property bool tetrisDragging: false
+            property real tetrisPosX: 0
+            property real tetrisPosY: 0
 
             // ---- movable idle pill ----
             // The resting pill can be dragged anywhere on screen (X and Y). This is a
@@ -1138,10 +1146,11 @@ ShellRoot {
             // while either drag is live so the pill tracks the pointer 1:1.
             property real pillCenterX:
                 capShow ? (capPositioned ? capPosX + pill.width / 2 : width / 2)
+                : (tetrisMoved && open && menu === 9) ? tetrisPosX + pill.width / 2
                 : (idleMoved && !dash) ? idleCenterX
                 : width / 2
             Behavior on pillCenterX {
-                enabled: !capDragging && !idleDragging
+                enabled: !capDragging && !idleDragging && !tetrisDragging
                 NumberAnimation { duration: theme.anim; easing.type: Easing.OutCubic }
             }
             // send the pill back to its top-centre home (middle-click on the resting
@@ -1423,6 +1432,10 @@ ShellRoot {
                     win.kbNav = false;
                 }
             }
+            // a closed (or non-Tetris) pane forgets the dragged Tetris position, so
+            // reopening Tetris starts centred again.
+            onOpenChanged: if (!win.open) win.tetrisMoved = false;
+            onMenuChanged: if (win.menu !== 9) win.tetrisMoved = false;
             screen: modelData
             WlrLayershell.layer: WlrLayer.Overlay
             // grab the keyboard only when the pill genuinely needs it (see
@@ -1609,8 +1622,8 @@ ShellRoot {
                         event.accepted = true;
                     } else {
                         // first-level menu jumps, mirrored in the calendar menu
-                        // (finance is skipped when the feature is off)
-                        const m = event.key === Qt.Key_F ? (settings.financeEnabled ? 8 : -1) : event.key === Qt.Key_C ? 6 : event.key === Qt.Key_N ? 4 : event.key === Qt.Key_W ? 0 : event.key === Qt.Key_V ? 1 : event.key === Qt.Key_B ? 2 : -1;
+                        // (finance is skipped when the feature is off); t = Tetris
+                        const m = event.key === Qt.Key_F ? (settings.financeEnabled ? 8 : -1) : event.key === Qt.Key_C ? 6 : event.key === Qt.Key_N ? 4 : event.key === Qt.Key_W ? 0 : event.key === Qt.Key_V ? 1 : event.key === Qt.Key_B ? 2 : event.key === Qt.Key_T ? 9 : -1;
                         if (m >= 0) {
                             win.launcher = false;
                             win.menu = m;
@@ -1691,12 +1704,13 @@ ShellRoot {
                 // notification morph floated 6px below the edge; a positioned capture
                 // pill, or a dragged idle pill, uses its own y.
                 y: win.capShow ? (win.capPositioned ? win.capPosY : 0)
+                   : (win.tetrisMoved && win.open && win.menu === 9) ? win.tetrisPosY
                    : (win.idleMoved && !win.dash) ? win.idlePosY
                    : win.notifMorph ? 6 : 0
                 // animate y for every non-drag transition (expand, snap, reset-home) —
                 // matches pillCenterX so a reset glides both axes, not just x. Frozen
                 // only while a drag is live so the pill tracks the pointer 1:1.
-                Behavior on y { enabled: !win.capDragging && !win.idleDragging; NumberAnimation { duration: theme.anim; easing.type: Easing.OutCubic } }
+                Behavior on y { enabled: !win.capDragging && !win.idleDragging && !win.tetrisDragging; NumberAnimation { duration: theme.anim; easing.type: Easing.OutCubic } }
 
                 // drag the capture pill by its body (buttons still click — the handler
                 // only steals the grab once you drag past threshold). Drop near the top
@@ -1760,6 +1774,33 @@ ShellRoot {
                         win.idlePosX = Math.max(0, Math.min(sp.x - idleDrag._ox, win.width - pill.width));
                         win.idlePosY = Math.max(0, Math.min(sp.y - idleDrag._oy, win.height - pill.height));
                         win.idleCenterX = win.idlePosX + pill.width / 2;
+                    }
+                }
+
+                // drag the open Tetris pane by its body to park it anywhere (buttons /
+                // header still click — target null steals the grab only past threshold).
+                // Free move, clamped on-screen, no snap; recentres when the pane closes.
+                DragHandler {
+                    id: tetrisDrag
+                    enabled: win.open && win.menu === 9
+                    target: null
+                    property real _ox: 0
+                    property real _oy: 0
+                    onActiveChanged: {
+                        if (tetrisDrag.active) {
+                            tetrisDrag._ox = tetrisDrag.centroid.position.x;
+                            tetrisDrag._oy = tetrisDrag.centroid.position.y;
+                            win.tetrisPosX = pill.x; win.tetrisPosY = pill.y;   // seed → no jump
+                            win.tetrisMoved = true; win.tetrisDragging = true;
+                        } else {
+                            win.tetrisDragging = false;
+                        }
+                    }
+                    onCentroidChanged: {
+                        if (!tetrisDrag.active) return;
+                        const sp = tetrisDrag.centroid.scenePosition;
+                        win.tetrisPosX = Math.max(0, Math.min(sp.x - tetrisDrag._ox, win.width - pill.width));
+                        win.tetrisPosY = Math.max(0, Math.min(sp.y - tetrisDrag._oy, win.height - pill.height));
                     }
                 }
                 // the voice recorder leads the chains: a larger resting pill (220x36,

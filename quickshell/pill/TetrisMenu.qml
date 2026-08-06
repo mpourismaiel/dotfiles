@@ -10,9 +10,12 @@ pragma ComponentBehavior: Bound
 //
 // Keys (the pane grabs the keyboard while it is menu 9, see init.qml
 // grabsKeyboard): ←/→ move · ↑ or X rotate CW · Z rotate CCW · ↓ soft-drop ·
-// Space hard-drop · P pause · Esc close. On game over, Enter/Space starts a new
-// game.
+// Space/Enter hard-drop · P pause · Esc close. On game over, Enter/Space starts
+// a new game. Opens paused; a screenshot button in the header saves a pretty
+// snapshot (well + next + score/level) to ~/Pictures/Screenshots (+ clipboard).
 import QtQuick
+import Quickshell
+import Quickshell.Io
 
 Item {
     id: root
@@ -227,11 +230,37 @@ Item {
             newGame();
         }
     }
-    Component.onCompleted: load()
+    // load, then always open PAUSED (a fresh game or a resumed one waits for the
+    // player to hit P / Resume — so the pane never starts dropping the instant it
+    // opens, and the opening screenshot is a still frame).
+    Component.onCompleted: { load(); if (!over) { paused = true; rev++; } }
     // resume exactly here next time the pane opens. If we're mid-flash (closed in
     // the ~260ms window), finish the clear first so we never persist a full,
     // un-cleared row with no active piece.
     Component.onDestruction: { if (flashRows.length > 0) finalizeClear(); save(); }
+
+    // ---- screenshot: grab the pretty share card → save + copy ----
+    property bool shareMode: false          // share card overlay is up (also the grab source)
+    property string shotName: ""            // filename of the last saved shot
+    readonly property string shotTmp: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/tetris-share.png"
+    readonly property string shotDir: (Quickshell.env("HOME") || "/tmp") + "/Pictures/Screenshots"
+    Process { id: shotSaver }               // command set per-shot: mkdir + cp + wl-copy
+    Timer { id: shotDismiss; interval: 1600; onTriggered: root.shareMode = false }
+    function takeShot() {
+        shareMode = true;                                   // reveal the card so it renders...
+        Qt.callLater(function () {                          // ...then grab it next tick
+            shareCard.grabToImage(function (res) {
+                if (!res) { root.shareMode = false; return; }
+                res.saveToFile(root.shotTmp);
+                root.shotName = "tetris-" + Qt.formatDateTime(new Date(), "yyyyMMdd-hhmmss") + ".png";
+                shotSaver.command = ["sh", "-c",
+                    "mkdir -p '" + root.shotDir + "' && cp '" + root.shotTmp + "' '" + root.shotDir + "/" + root.shotName +
+                    "' && (wl-copy --type image/png < '" + root.shotTmp + "' || true)"];
+                shotSaver.running = true;
+                shotDismiss.restart();
+            });
+        });
+    }
 
     // ---- derived: the board merged with the falling piece, for rendering ----
     readonly property var view: {
@@ -291,7 +320,9 @@ Item {
             case Qt.Key_Up:
             case Qt.Key_X:      root.rotate(1);     e.accepted = true; break;
             case Qt.Key_Z:      root.rotate(-1);    e.accepted = true; break;
-            case Qt.Key_Space:  root.hardDrop();    e.accepted = true; break;
+            case Qt.Key_Space:
+            case Qt.Key_Return:
+            case Qt.Key_Enter:  root.hardDrop();    e.accepted = true; break;
             case Qt.Key_P:      root.togglePause(); e.accepted = true; break;
             case Qt.Key_Escape: root.save(); root.closeRequested(); e.accepted = true; break;
             }
@@ -306,13 +337,29 @@ Item {
             theme: root.theme
             title: "Tetris"
             onBack: root.closeRequested()
-            // score, right-aligned in the header trailing slot
-            Text {
+            // screenshot button, right-aligned in the header trailing slot — saves
+            // a pretty snapshot of the board + next + score/level.
+            Rectangle {
                 anchors.verticalCenter: parent.verticalCenter
-                text: root.score.toString()
-                color: root.theme.text
-                font.family: root.theme.serif
-                font.pixelSize: root.theme.fsLarge + 4
+                width: 32
+                height: 26
+                radius: root.theme.radiusBtn
+                color: shotMa.containsMouse ? root.theme.rowHi : root.theme.row
+                border.width: 1
+                border.color: root.theme.border
+                MSym {
+                    anchors.centerIn: parent
+                    icon: "photo_camera"
+                    size: 17
+                    color: shotMa.containsMouse ? root.theme.text : root.theme.textDim
+                }
+                MouseArea {
+                    id: shotMa
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: { root.takeShot(); keys.forceActiveFocus(); }
+                }
             }
         }
 
@@ -610,6 +657,207 @@ Item {
                     }
                 }
             }
+        }
+    }
+
+    // ---- screenshot share overlay: the pretty snapshot card + a "saved" toast ----
+    // `shareCard` is the grabToImage target — its contents are exactly what lands in
+    // the PNG (board · next · score/level), independent of the veil/toast around it.
+    Rectangle {
+        anchors.fill: parent
+        visible: root.shareMode
+        color: Qt.rgba(0, 0, 0, 0.74)
+
+        MouseArea { anchors.fill: parent; onClicked: root.shareMode = false }   // click to dismiss
+
+        Rectangle {
+            id: shareCard
+            anchors.centerIn: parent
+            width: 340
+            height: shareCol.implicitHeight + 40
+            radius: root.theme.radiusPanel
+            color: root.theme.bgElevated
+            border.width: 1
+            border.color: root.theme.borderStrong
+
+            Column {
+                id: shareCol
+                x: 20
+                y: 20
+                width: parent.width - 40
+                spacing: 14
+
+                // wordmark
+                Text {
+                    text: "TETRIS"
+                    color: root.theme.accent
+                    font.family: root.theme.serif
+                    font.pixelSize: root.theme.fsLarge + 9
+                }
+
+                Row {
+                    spacing: 16
+
+                    // mini board — filled cells only, on a dark well (clean for a shot)
+                    Rectangle {
+                        width: root.cols * 12 + 2
+                        height: root.rows * 12 + 2
+                        color: "#0f0c08"
+                        radius: root.theme.radiusSmall
+                        border.width: 1
+                        border.color: root.theme.border
+                        clip: true
+                        Item {
+                            x: 1; y: 1
+                            width: root.cols * 12
+                            height: root.rows * 12
+                            Repeater {
+                                model: root.rows * root.cols
+                                delegate: Item {
+                                    id: mcell
+                                    required property int index
+                                    readonly property int cc: index % root.cols
+                                    readonly property int rr: Math.floor(index / root.cols)
+                                    readonly property string t: {
+                                        var v = root.view;
+                                        return (v && v[rr]) ? v[rr][cc] : "";
+                                    }
+                                    x: cc * 12
+                                    y: rr * 12
+                                    width: 12
+                                    height: 12
+                                    Rectangle {
+                                        anchors.fill: parent
+                                        anchors.margins: 1
+                                        radius: 2
+                                        visible: mcell.t !== ""
+                                        color: mcell.t !== "" ? root.colors[mcell.t] : "transparent"
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // stats + next
+                    Column {
+                        spacing: 12
+
+                        Column {
+                            spacing: 1
+                            Text {
+                                text: "SCORE"
+                                color: root.theme.faint
+                                font.family: root.theme.mono
+                                font.pixelSize: root.theme.fsSmall
+                                font.letterSpacing: root.theme.labelSpacing
+                            }
+                            Text {
+                                text: root.score.toString()
+                                color: root.theme.text
+                                font.family: root.theme.serif
+                                font.pixelSize: root.theme.fsLarge + 12
+                            }
+                        }
+
+                        Row {
+                            spacing: 20
+                            Column {
+                                spacing: 1
+                                Text {
+                                    text: "LEVEL"
+                                    color: root.theme.faint
+                                    font.family: root.theme.mono
+                                    font.pixelSize: root.theme.fsSmall
+                                    font.letterSpacing: root.theme.labelSpacing
+                                }
+                                Text {
+                                    text: root.level.toString()
+                                    color: root.theme.text
+                                    font.family: root.theme.serif
+                                    font.pixelSize: root.theme.fsLarge + 4
+                                }
+                            }
+                            Column {
+                                spacing: 1
+                                Text {
+                                    text: "LINES"
+                                    color: root.theme.faint
+                                    font.family: root.theme.mono
+                                    font.pixelSize: root.theme.fsSmall
+                                    font.letterSpacing: root.theme.labelSpacing
+                                }
+                                Text {
+                                    text: root.lines.toString()
+                                    color: root.theme.text
+                                    font.family: root.theme.serif
+                                    font.pixelSize: root.theme.fsLarge + 4
+                                }
+                            }
+                        }
+
+                        Column {
+                            spacing: 5
+                            Text {
+                                text: "NEXT"
+                                color: root.theme.faint
+                                font.family: root.theme.mono
+                                font.pixelSize: root.theme.fsSmall
+                                font.letterSpacing: root.theme.labelSpacing
+                            }
+                            Row {
+                                spacing: 6
+                                Repeater {
+                                    model: 3
+                                    delegate: Rectangle {
+                                        id: np
+                                        required property int index
+                                        readonly property string t: {
+                                            root.rev;
+                                            return (root.queue && root.queue.length > index) ? root.queue[index] : "";
+                                        }
+                                        readonly property int u: 8
+                                        width: u * 4 + 6
+                                        height: u * 2 + 6
+                                        radius: root.theme.radiusSmall
+                                        color: "#0f0c08"
+                                        border.width: 1
+                                        border.color: root.theme.border
+                                        Item {
+                                            anchors.centerIn: parent
+                                            width: np.u * 4
+                                            height: np.u * 2
+                                            Repeater {
+                                                model: np.t !== "" ? root.shapes[np.t][0] : []
+                                                delegate: Rectangle {
+                                                    required property var modelData
+                                                    x: modelData[0] * np.u
+                                                    y: modelData[1] * np.u
+                                                    width: np.u - 1
+                                                    height: np.u - 1
+                                                    radius: 1
+                                                    color: np.t !== "" ? root.colors[np.t] : "transparent"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // saved toast under the card (NOT part of the grab)
+        Text {
+            anchors.horizontalCenter: shareCard.horizontalCenter
+            anchors.top: shareCard.bottom
+            anchors.topMargin: 14
+            text: root.shotName ? ("Saved · " + root.shotName) : "Saving…"
+            color: root.theme.textDim
+            font.family: root.theme.mono
+            font.pixelSize: root.theme.fsSmall
+            font.letterSpacing: root.theme.labelSpacing
         }
     }
 }

@@ -620,11 +620,22 @@ drawn just right of the expanded-pill clock (=tetrisBtn=, in [[file:pill/init.qm
 which calls =win.openTetris()=; the button is mouse-only and stays outside the
 clock's roving hover square so it never triggers the calendar — it is a *sibling*
 of the clock inside a wrapper Item =dtRow=, since a child drawn past its parent's
-width gets no pointer events). Menu 9 runs wider + taller than a normal pane
-(=tetrisWidth= 480 × =tetrisHeight= 556) to fit a 10×20 well of 24px cells
-(240×480) on the left; on the right a score/best/level/lines grid, the *next
-three* pieces, a rules cheat-sheet and *New game* / *Pause* buttons. The score
-also rides in the header trailing slot.
+width gets no pointer events). Also opens with *t* from the expanded keyboard-nav
+dashboard (a first-level jump alongside f/c/n/w/v/b). Menu 9 runs wider + taller
+than a normal pane (=tetrisWidth= 480 × =tetrisHeight= 556) to fit a 10×20 well of
+24px cells (240×480) on the left; on the right a score/best/level/lines grid, the
+*next three* pieces, a rules cheat-sheet and *New game* / *Pause* buttons. It
+*opens paused* (a fresh or resumed game waits for P / Resume). The header trailing
+slot holds a *screenshot button* (=photo_camera=): it flips =shareMode= on, and on
+the next tick =grabToImage=-es a self-contained "share card" (accent =TETRIS=
+wordmark · a clean filled-cell mini board · SCORE/LEVEL/LINES · the next three)
+to =$XDG_RUNTIME_DIR/tetris-share.png=, then a =Process= copies it to
+=~/Pictures/Screenshots/tetris-<ts>.png= and =wl-copy=s it; a dark veil + a
+"Saved · <name>" toast show around the card (neither is part of the grab) and
+auto-dismiss after 1.6 s (or on click). The whole open pane is *draggable* by its
+body like the capture pill (=tetrisDrag= DragHandler in [[file:pill/init.qml][=init.qml=]], target null so
+buttons still click; feeds =tetrisPosX/Y= into =pillCenterX= / =pill.y=; free
+float, clamped on-screen, recentres when the pane closes).
 
 All logic is plain JS in the component: classic seven-piece shapes with four
 precomputed rotation states, a 7-bag randomiser, simple ±1/±2 wall kicks on
@@ -651,7 +662,7 @@ The pane *grabs the compositor keyboard* (menu 9 is in =grabsKeyboard=, and
 excluded from [[*MenuKbNav.qml][=MenuKbNav=]]): a focused key-sink Item drives it and
 =forceActiveFocus()=-es itself on load (so keys reach the game immediately; the
 =New game= / =Pause= buttons re-grab focus after a mouse click too). ←/→ move,
-↑ or X rotate CW, Z rotate CCW, ↓ soft-drop, Space hard-drop, P pause, Esc
+↑ or X rotate CW, Z rotate CCW, ↓ soft-drop, Space/Enter hard-drop, P pause, Esc
 *saves and closes* (→ the expanded dashboard, or the previous window); on game
 over Enter/Space restarts.
 
@@ -1642,8 +1653,8 @@ focused first. Arrows move between the zones exactly as laid out — clock → r
 taskbar tiles; clock → down → launcher icon; taskbar → down / launcher → right →
 the Row-2 strip (tray icons first, then the status icons, one left/right run);
 Enter "clicks" the focused item (each dashboard item carries a =keyClick()=).
-f/c/n/w/v/b jump straight to finance / calendar / notifications / network / volume
-/ bluetooth as a first level; the same jumps work inside the calendar menu. Open
+f/c/n/w/v/b/t jump straight to finance / calendar / notifications / network / volume
+/ bluetooth / tetris as a first level; f/c/n/w/v/b also work inside the calendar menu. Open
 menus get generic keyboard focus from [[*MenuKbNav.qml][=MenuKbNav=]] (back button
 focused first, arrows spatial, Enter clicks, tab bars step left/right; the
 notification and clipboard panes keep their own richer handling, and the calendar
