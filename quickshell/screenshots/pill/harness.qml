@@ -49,6 +49,26 @@ FloatingWindow {
             "score": 1240, "lines": 7, "level": 1, "high": 3200,
             "over": false, "paused": false
         })
+        // seed a mid-game Block Blast so the screenshot shows a real board + tray
+        property var blockBlast: ({
+            "board": (function () {
+                var b = [];
+                var fill = ["i4", "sq2", "jL", "tT", "sS", "cl2", "cl3", "d3"];
+                for (var r = 0; r < 10; r++) {
+                    var row = [];
+                    for (var c = 0; c < 10; c++)
+                        row.push(((r + c) % 3 === 0 && !(r === 4 && c > 5)) ? fill[(r * 10 + c) % fill.length] : "");
+                    b.push(row);
+                }
+                return b;
+            })(),
+            "tray": [
+                { "kind": "jL", "cells": [[0,0],[0,1],[1,1],[2,1]] },
+                { "kind": "sq3", "cells": [[0,0],[1,0],[2,0],[0,1],[1,1],[2,1],[0,2],[1,2],[2,2]] },
+                { "kind": "d2", "cells": [[0,0],[1,0]] }
+            ],
+            "score": 860, "best": 2140, "combo": 3, "over": false
+        })
     }
 
     // mock clock strings so the dashboard is deterministic
@@ -101,6 +121,9 @@ FloatingWindow {
         { name: "menu-finance-plan", comp: cFinPlan },
         { name: "menu-tetris",   comp: cTetris },
         { name: "menu-tetris-share", comp: cTetrisShare },
+        { name: "menu-blockblast", comp: cBlockBlast },
+        { name: "menu-blockblast-combo", comp: cBlockBlastCombo },
+        { name: "menu-blockblast-share", comp: cBlockBlastShare },
         { name: "settings",      comp: cSettings },
         { name: "menu-notifhistory", comp: cNotifHist },
         { name: "notif-stack",   comp: cNotifStack },
@@ -251,21 +274,41 @@ FloatingWindow {
                                    font.pixelSize: theme.fsSmall; font.letterSpacing: theme.labelSpacing
                                    font.capitalization: Font.AllUppercase; lineHeight: 0.95 }
                         }
-                        // tiny tetromino button beside the clock (mirrors init.qml)
-                        Rectangle {
+                        // two tiny game buttons stacked beside the clock (mirrors init.qml):
+                        // S-tetromino (Tetris) over plus/T (Block Blast)
+                        Column {
                             anchors.left: dtColMock.right; anchors.leftMargin: 12
                             anchors.verticalCenter: clockTimeMock.verticalCenter
-                            width: 26; height: 26; radius: theme.radiusSmall; color: "transparent"
-                            Item {
-                                id: tetGlyphMock
-                                anchors.centerIn: parent; width: 15; height: 10
-                                readonly property int u: 5
-                                Repeater {
-                                    model: [[1,0],[2,0],[0,1],[1,1]]
-                                    delegate: Rectangle {
-                                        required property var modelData
-                                        x: modelData[0] * tetGlyphMock.u; y: modelData[1] * tetGlyphMock.u
-                                        width: tetGlyphMock.u - 1; height: tetGlyphMock.u - 1; radius: 1; color: theme.accent
+                            spacing: 4
+                            Rectangle {
+                                width: 26; height: 26; radius: theme.radiusSmall; color: "transparent"
+                                Item {
+                                    id: tetGlyphMock
+                                    anchors.centerIn: parent; width: 15; height: 10
+                                    readonly property int u: 5
+                                    Repeater {
+                                        model: [[1,0],[2,0],[0,1],[1,1]]
+                                        delegate: Rectangle {
+                                            required property var modelData
+                                            x: modelData[0] * tetGlyphMock.u; y: modelData[1] * tetGlyphMock.u
+                                            width: tetGlyphMock.u - 1; height: tetGlyphMock.u - 1; radius: 1; color: theme.accent
+                                        }
+                                    }
+                                }
+                            }
+                            Rectangle {
+                                width: 26; height: 26; radius: theme.radiusSmall; color: "transparent"
+                                Item {
+                                    id: blockGlyphMock
+                                    anchors.centerIn: parent; width: 15; height: 10
+                                    readonly property int u: 5
+                                    Repeater {
+                                        model: [[1,0],[0,1],[1,1],[2,1]]
+                                        delegate: Rectangle {
+                                            required property var modelData
+                                            x: modelData[0] * blockGlyphMock.u; y: modelData[1] * blockGlyphMock.u
+                                            width: blockGlyphMock.u - 1; height: blockGlyphMock.u - 1; radius: 1; color: theme.accent
+                                        }
                                     }
                                 }
                             }
@@ -324,6 +367,17 @@ FloatingWindow {
     Component { id: cTetrisShare; MenuHost { pillW: 480; pillH: 556;
         TetrisMenu { id: tsh; anchors.fill: parent; theme: theme; settings: mockSettings }
         Timer { running: true; interval: 60; onTriggered: { tsh.shotName = "tetris-20260806-101500.png"; tsh.shareMode = true; } }
+    } }
+    Component { id: cBlockBlast; MenuHost { pillW: 480; pillH: 556; BlockBlastMenu { anchors.fill: parent; theme: theme; settings: mockSettings } } }
+    // Block Blast mid-combo-flare (fires popCombo ~450ms before the 800ms grab, so
+    // the "3× COMBO" flare is caught at full pop). Preview only — no real drop.
+    Component { id: cBlockBlastCombo; MenuHost { pillW: 480; pillH: 556;
+        BlockBlastMenu { id: bcm; anchors.fill: parent; theme: theme; settings: mockSettings }
+        Timer { running: true; interval: 350; onTriggered: bcm.popCombo(3) }
+    } }
+    Component { id: cBlockBlastShare; MenuHost { pillW: 480; pillH: 556;
+        BlockBlastMenu { id: bsh; anchors.fill: parent; theme: theme; settings: mockSettings }
+        Timer { running: true; interval: 60; onTriggered: { bsh.shotName = "blockblast-20260807-101500.png"; bsh.shareMode = true; } }
     } }
     // the launcher's Settings page (Org Agenda page shown: toggle + directory field)
     Component { id: cSettings; MenuHost { pillW: 760; SettingsMenu { anchors.fill: parent; theme: theme; acc: null; settings: mockSettings; page: 1 } } }

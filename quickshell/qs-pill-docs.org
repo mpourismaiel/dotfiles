@@ -620,7 +620,8 @@ drawn just right of the expanded-pill clock (=tetrisBtn=, in [[file:pill/init.qm
 which calls =win.openTetris()=; the button is mouse-only and stays outside the
 clock's roving hover square so it never triggers the calendar — it is a *sibling*
 of the clock inside a wrapper Item =dtRow=, since a child drawn past its parent's
-width gets no pointer events). Also opens with *t* from the expanded keyboard-nav
+width gets no pointer events). The two game buttons live in a small vertical
+=Column= (=gameBtns=): the S-tetromino on top, the Block Blast plus/T glyph below. Also opens with *t* from the expanded keyboard-nav
 dashboard (a first-level jump alongside f/c/n/w/v/b). Menu 9 runs wider + taller
 than a normal pane (=tetrisWidth= 480 × =tetrisHeight= 556) to fit a 10×20 well of
 24px cells (240×480) on the left; on the right a score/best/level/lines grid, the
@@ -632,10 +633,18 @@ wordmark · a clean filled-cell mini board · SCORE/LEVEL/LINES · the next thre
 to =$XDG_RUNTIME_DIR/tetris-share.png=, then a =Process= copies it to
 =~/Pictures/Screenshots/tetris-<ts>.png= and =wl-copy=s it; a dark veil + a
 "Saved · <name>" toast show around the card (neither is part of the grab) and
-auto-dismiss after 1.6 s (or on click). The whole open pane is *draggable* by its
-body like the capture pill (=tetrisDrag= DragHandler in [[file:pill/init.qml][=init.qml=]], target null so
-buttons still click; feeds =tetrisPosX/Y= into =pillCenterX= / =pill.y=; free
-float, clamped on-screen, recentres when the pane closes).
+auto-dismiss after 1.6 s (or on click). The open pane is *draggable-to-park* — but
+only by a little *grip handle* (=drag_indicator=) in the header, right of the title
+(NOT by the body, which would fight Block Blast's block drag-and-drop). The grip's
+=DragHandler= emits =parkDragStart/Move/End(sceneX, sceneY)= signals; the
+=menuLoader= =Connections= block in [[file:pill/init.qml][=init.qml=]] translates them into =tetrisPosX/Y=
+(seeded from =pill.x/y= at grab, clamped on-screen), which feed =pillCenterX= /
+=pill.y=; the park recentres when the pane closes. A parked pane *floats fully
+rounded* (no wings) like the capture / idle pill — =gameFloating= (=gamePane &&
+tetrisMoved=) joins the shared =pillFloating=, so the surface sheds its wings the
+moment the grip-drag starts. The same grip + signals drive Block Blast (they share
+the =tetris*= park state and the =gamePane= predicate, =menu === 9 || menu === 10=,
+since only one game is open at a time).
 
 All logic is plain JS in the component: classic seven-piece shapes with four
 precomputed rotation states, a 7-bag randomiser, simple ±1/±2 wall kicks on
@@ -673,6 +682,53 @@ reloaded on open — so closing the pane, or restarting the shell, resumes exact
 where you left off.
 *** Code
 Code: [[file:pill/TetrisMenu.qml][=pill/TetrisMenu.qml=]]
+
+** BlockBlastMenu.qml
+*** Description
+A Block-Blast / Woodoku-style puzzle (=win.menu === 10=), opened from the plus/T
+button *below* the Tetris button (=blockBtn=, calling =win.openBlockBlast()=). It
+reuses the game-pane size (=tetrisWidth= 480 × =tetrisHeight= 556) and is *mouse-only*
+— it does NOT grab the keyboard (it's absent from =grabsKeyboard= and [[*MenuKbNav.qml][=MenuKbNav=]]).
+
+A compact *top bar* holds SCORE / BEST (left) and *New game* (right); below it the
+*10×10 grid* over a *tray of three blocks* fill the whole rest of the pane. =cell= is
+*derived* — =floor(min(width, height − topBar − tray − gaps) / 10)= — so the grid is
+as large as the leftover space allows (no wasted ground, no fixed cell size). The
+header carries the shared park *grip* (see Tetris) plus a *screenshot button* whose
+share card is an accent =BLOCK BLAST= wordmark · a filled-cell mini board · SCORE/BEST,
+saved to =~/Pictures/Screenshots/blockblast-<ts>.png= and =wl-copy='d.
+
+*Blocks.* Eleven distinct blocks, one *unique colour* each — the shapes that exist
+in Tetris reuse the Tetris colours (4×1 line = I cyan, 2×2 = O yellow, =x··/xxx= =
+J blue, =·x·/xxx= = T purple, =x·/xx/·x= = S green), the rest get their own (1×1
+rose, 2×1 teal, 3×1 olive, 3×3 square orange, 2×2 corner-L red, 3×3 corner-L
+orchid). Each is defined once as base =[col,row]= cells; =orientations()= generates
+every distinct *rotation ×4 and mirror* (deduped by a sorted cell-key), and
+presentation picks a uniform block kind then a uniform orientation of it.
+
+*Play.* Press a tray block → a floating *proxy* (grid-cell scale) follows the
+pointer, and a *snap-shadow* previews the nearest fitting grid position (only shown
+when it fits); release over a valid shadow and =dropAnim= slides the proxy into it
+before =place()= stamps it, release elsewhere and it just cancels. Placing fills
+cells; after each drop, *every fully-filled row and column clears at once* (rows +
+columns simultaneously, multiple allowed) — the cleared cells flash bright (=fbf7ee=,
+70 ms up → 190 ms fade, =flashTimer= 260 ms) then vanish in =finalizeFlash()=.
+Scoring is =10 × C × (C>1 ? C·0.5 : 1)= for =C= lines in one drop (1→10, 2→20,
+3→45, 4→80…), then × a *combo* multiplier — the count of consecutive drops that
+each cleared something (reset by a non-clearing drop). A centred banner names the
+clear (=DOUBLE=/=TRIPLE=/=QUAD!=); once the combo reaches 2 a bigger, bouncier
+*combo flare* ("=3× COMBO=", accent-coloured, scale + rotation =OutBack=) fires
+instead. The three tray blocks may be
+placed in *any order*; when all three are gone, =deal()= offers three fresh ones,
+retrying until *at least one fits* the board. After each drop the game checks
+game-over: if none of the blocks still in the tray can be placed anywhere, it's
+over (there is no timer, level or gravity — it's purely turn-based).
+
+*Progress persists* to =settings.blockBlast= (board, tray, score, best, combo,
+over), saved on every drop and on destruction (finalising any pending flash first),
+reloaded on open.
+*** Code
+Code: [[file:pill/BlockBlastMenu.qml][=pill/BlockBlastMenu.qml=]]
 
 ** Launcher.qml
 *** Description

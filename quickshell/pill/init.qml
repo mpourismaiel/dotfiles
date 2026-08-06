@@ -930,6 +930,7 @@ ShellRoot {
             property var favorites: []      // [DesktopEntry.id] — launcher favourites
             property var pinned: []         // [DesktopEntry.id] — taskbar pins, in order
             property var tetris: ({})        // saved Tetris game (board/piece/queue/score) — see TetrisMenu
+            property var blockBlast: ({})    // saved Block Blast game (board/tray/score/combo) — see BlockBlastMenu
             // ---- optional features (configured from the launcher's Settings page) ----
             // Both ship OFF so a fresh checkout works without an org/hledger setup;
             // enabling them in Settings persists here and points the bridges at a
@@ -998,7 +999,7 @@ ShellRoot {
             readonly property bool restUnderline: !orgHidden
                 && (orgAgenda.hasDue || calEvents.hasMeetingSoon)
             property bool dash: open || launcher || focused || ctxMode
-            property int menu: 4 // 0 net, 1 vol, 2 bt, 3 batt, 5 clipboard, 6 calendar, 7 voice memo, 8 finance, 9 tetris, 4 notif (default pane)
+            property int menu: 4 // 0 net, 1 vol, 2 bt, 3 batt, 5 clipboard, 6 calendar, 7 voice memo, 8 finance, 9 tetris, 10 block blast, 4 notif (default pane)
             // keyboard-focus gating. The pill grabs the compositor keyboard ONLY while
             // it actually needs it: the launcher, clipboard, or notification menu is up
             // (they auto-focus a field / drive arrow-key nav), or *some* editable field
@@ -1023,15 +1024,19 @@ ShellRoot {
             // the calendar menu is wider than the other panes — it puts the month grid
             // next to a selected-day / Org-agenda detail column.
             readonly property int calWidth: 760
-            // the Tetris pane (menu 9) runs wider + taller than a normal menu so the
-            // 10×24px well (240px) and its side column both get room to breathe.
+            // the game panes (menu 9 Tetris, menu 10 Block Blast) run wider + taller
+            // than a normal menu so the board and its side column both get room to
+            // breathe (Tetris' 10×24px well is 240px; Block Blast's 8×30px grid too).
             readonly property int tetrisWidth: 480
             readonly property int tetrisHeight: 556
+            // both game panes are draggable-to-park by the same machinery — only one is
+            // ever open at a time, so they share the tetris* park state below.
+            readonly property bool gamePane: win.open && (win.menu === 9 || win.menu === 10)
             readonly property int openHeight: 470
             // open + launcher pill height
             // the clipboard-history menu runs 200px taller than the other panes so more
             // history is visible; every other open menu (and the launcher) uses openHeight.
-            readonly property int openPaneHeight: (open && menu === 5) ? openHeight + 200 : (open && menu === 7) ? 440 : (open && menu === 9) ? tetrisHeight : openHeight
+            readonly property int openPaneHeight: (open && menu === 5) ? openHeight + 200 : (open && menu === 7) ? 440 : (open && (menu === 9 || menu === 10)) ? tetrisHeight : openHeight
             // hovered dashboard geometry (its own generous, HTML-scale size — distinct
             // from the open menu's 520 so the two rows can breathe).
             readonly property int hoverWidth: 640
@@ -1110,14 +1115,18 @@ ShellRoot {
             readonly property int capSnapY: 44        // drop within this of the top → dock
             // whether the pill is currently floating (rounded, no wings)
             readonly property bool capFloating: capDragging || (capShow && capPositioned && !capAttached)
-            // the open Tetris pane (menu 9) is draggable like the capture pill: drag its
-            // body to park it anywhere; free-float, clamped on-screen, no snap. Resets to
-            // centre when the pane closes (see onOpenChanged). Only these props feed the
-            // pill position while it's the active menu.
+            // the open game panes (menu 9 / 10) are draggable-to-park like the capture
+            // pill — but only by the little grip beside the title (the pane body no
+            // longer drags). Free-float, clamped on-screen, no snap; resets to centre
+            // when the pane closes (see onOpenChanged). Only these props feed the pill
+            // position while a game is the active menu. `_gameGrabOX/OY` hold the
+            // pointer-to-pill offset captured when a grip-drag begins.
             property bool tetrisMoved: false
             property bool tetrisDragging: false
             property real tetrisPosX: 0
             property real tetrisPosY: 0
+            property real _gameGrabOX: 0
+            property real _gameGrabOY: 0
 
             // ---- movable idle pill ----
             // The resting pill can be dragged anywhere on screen (X and Y). This is a
@@ -1146,7 +1155,7 @@ ShellRoot {
             // while either drag is live so the pill tracks the pointer 1:1.
             property real pillCenterX:
                 capShow ? (capPositioned ? capPosX + pill.width / 2 : width / 2)
-                : (tetrisMoved && open && menu === 9) ? tetrisPosX + pill.width / 2
+                : (tetrisMoved && gamePane) ? tetrisPosX + pill.width / 2
                 : (idleMoved && !dash) ? idleCenterX
                 : width / 2
             Behavior on pillCenterX {
@@ -1167,7 +1176,11 @@ ShellRoot {
             // from the top edge. A shared `pillFloating` unions this with the capture
             // case so the surface morph reacts to either.
             readonly property bool idleFloating: idleDragging || (idleMoved && !dash && !capShow && !idleAttached)
-            readonly property bool pillFloating: capFloating || idleFloating
+            // a game pane (Tetris / Block Blast) parked off its top-centre home floats
+            // fully rounded like the capture / idle pill — it never re-docks (no snap),
+            // so any move rounds it; a fresh, un-moved pane stays edge-attached (wings).
+            readonly property bool gameFloating: gamePane && tetrisMoved
+            readonly property bool pillFloating: capFloating || idleFloating || gameFloating
 
             // Keep the controls near the selection but off it. If the default
             // top-centre home doesn't cover the selection, stay there. Otherwise hug
@@ -1426,16 +1439,34 @@ ShellRoot {
                 }
             }
 
+            // open (or toggle shut) the Block Blast pane (menu 10) — fired by the tiny
+            // plus/T button below the Tetris button. Mirrors openTetris.
+            function openBlockBlast() {
+                if (win.open && win.menu === 10) {
+                    const wasGrabbing = win.grabsKeyboard;
+                    win.open = false;
+                    if (wasGrabbing)
+                        root.restoreFocus();
+
+                } else {
+                    win.launcher = false;
+                    win.ctxGroup = null;
+                    win.trayItem = null;
+                    win.menu = 10;
+                    win.open = true;
+                }
+            }
+
             onDashChanged: {
                 if (!win.dash) {
                     win.hoverItem = null;
                     win.kbNav = false;
                 }
             }
-            // a closed (or non-Tetris) pane forgets the dragged Tetris position, so
-            // reopening Tetris starts centred again.
+            // a closed (or non-game) pane forgets the dragged park position, so
+            // reopening a game starts centred again.
             onOpenChanged: if (!win.open) win.tetrisMoved = false;
-            onMenuChanged: if (win.menu !== 9) win.tetrisMoved = false;
+            onMenuChanged: if (win.menu !== 9 && win.menu !== 10) win.tetrisMoved = false;
             screen: modelData
             WlrLayershell.layer: WlrLayer.Overlay
             // grab the keyboard only when the pill genuinely needs it (see
@@ -1704,7 +1735,7 @@ ShellRoot {
                 // notification morph floated 6px below the edge; a positioned capture
                 // pill, or a dragged idle pill, uses its own y.
                 y: win.capShow ? (win.capPositioned ? win.capPosY : 0)
-                   : (win.tetrisMoved && win.open && win.menu === 9) ? win.tetrisPosY
+                   : (win.tetrisMoved && win.gamePane) ? win.tetrisPosY
                    : (win.idleMoved && !win.dash) ? win.idlePosY
                    : win.notifMorph ? 6 : 0
                 // animate y for every non-drag transition (expand, snap, reset-home) —
@@ -1777,35 +1808,15 @@ ShellRoot {
                     }
                 }
 
-                // drag the open Tetris pane by its body to park it anywhere (buttons /
-                // header still click — target null steals the grab only past threshold).
-                // Free move, clamped on-screen, no snap; recentres when the pane closes.
-                DragHandler {
-                    id: tetrisDrag
-                    enabled: win.open && win.menu === 9
-                    target: null
-                    property real _ox: 0
-                    property real _oy: 0
-                    onActiveChanged: {
-                        if (tetrisDrag.active) {
-                            tetrisDrag._ox = tetrisDrag.centroid.position.x;
-                            tetrisDrag._oy = tetrisDrag.centroid.position.y;
-                            win.tetrisPosX = pill.x; win.tetrisPosY = pill.y;   // seed → no jump
-                            win.tetrisMoved = true; win.tetrisDragging = true;
-                        } else {
-                            win.tetrisDragging = false;
-                        }
-                    }
-                    onCentroidChanged: {
-                        if (!tetrisDrag.active) return;
-                        const sp = tetrisDrag.centroid.scenePosition;
-                        win.tetrisPosX = Math.max(0, Math.min(sp.x - tetrisDrag._ox, win.width - pill.width));
-                        win.tetrisPosY = Math.max(0, Math.min(sp.y - tetrisDrag._oy, win.height - pill.height));
-                    }
-                }
+                // NOTE: the game panes (Tetris / Block Blast) are NOT dragged by their
+                // body — a stray drag while playing Block Blast would fight the block
+                // drag-and-drop. Instead each game's header carries a little grip that
+                // emits parkDrag* signals; the menuLoader Connections block (below)
+                // translates those into the tetris* park position, driving pill.x/y
+                // exactly as the old body handler did.
                 // the voice recorder leads the chains: a larger resting pill (220x36,
                 // iPhone-memo style) — voiceMorph already yields to open/launcher/ctx.
-                width: win.capShow ? (captureLoader.item ? captureLoader.item.implicitWidth + theme.pad * 2 : 520) : win.voiceMorph ? 220 : win.showBurst ? (burstLoader.item ? burstLoader.item.implicitWidth : 96) : win.launcher ? win.launcherWidth : win.ctxMode ? 520 : (win.notifMorph ? (morphStack.item ? morphStack.item.implicitWidth : 420) : (win.open ? (win.menu === 6 || win.menu === 8 ? win.calWidth : win.menu === 9 ? win.tetrisWidth : 520) : (win.dash ? win.hoverWidth : Math.max(56 + root.privacyCount * 20 + root.notifRestWidth, win.restUnderline ? collapsedPill.implicitWidth + 28 : 0))))
+                width: win.capShow ? (captureLoader.item ? captureLoader.item.implicitWidth + theme.pad * 2 : 520) : win.voiceMorph ? 220 : win.showBurst ? (burstLoader.item ? burstLoader.item.implicitWidth : 96) : win.launcher ? win.launcherWidth : win.ctxMode ? 520 : (win.notifMorph ? (morphStack.item ? morphStack.item.implicitWidth : 420) : (win.open ? (win.menu === 6 || win.menu === 8 ? win.calWidth : (win.menu === 9 || win.menu === 10) ? win.tetrisWidth : 520) : (win.dash ? win.hoverWidth : Math.max(56 + root.privacyCount * 20 + root.notifRestWidth, win.restUnderline ? collapsedPill.implicitWidth + 28 : 0))))
                 // in ctx mode the pill sizes to whichever menu loader is active (app
                 // context menu or tray menu).
                 height: win.capShow ? (captureLoader.item ? captureLoader.item.implicitHeight + theme.pad * 2 : 120) : win.voiceMorph ? 36 : win.showBurst ? (burstLoader.item ? burstLoader.item.implicitHeight : 28) : (win.open || win.launcher) ? win.openPaneHeight : win.ctxMode ? Math.min(win.openHeight, ((ctxLoader.item || trayLoader.item) ? (ctxLoader.item || trayLoader.item).implicitHeight + theme.pad * 2 : 300)) : (win.notifMorph ? morphStack.implicitHeight : (win.dash ? win.hoverHeight : (win.restUnderline ? 48 : 28)))
@@ -2282,8 +2293,8 @@ ShellRoot {
                         // through. This wrapper spans both, so the button lands in bounds.
                         Item {
                             id: dtRow
-                            implicitWidth: dateTimeBlock.implicitWidth + 12 + tetrisBtn.width
-                            implicitHeight: dateTimeBlock.implicitHeight
+                            implicitWidth: dateTimeBlock.implicitWidth + 12 + gameBtns.width
+                            implicitHeight: Math.max(dateTimeBlock.implicitHeight, gameBtns.height)
                             width: implicitWidth
                             height: implicitHeight
 
@@ -2355,17 +2366,22 @@ ShellRoot {
 
                         }
 
-                            // tiny tetromino button, just right of the clock — opens the
-                            // Tetris pane (menu 9). Drawn as a small S-piece from four
-                            // squares. A sibling of the clock (inside dtRow), so it keeps
-                            // its own hover state, receives its own clicks, and never
-                            // triggers the calendar.
-                            Rectangle {
-                                id: tetrisBtn
-
+                            // two tiny game buttons stacked to the right of the clock: the
+                            // S-tetromino opens Tetris (menu 9); the plus/T below it opens
+                            // Block Blast (menu 10). Each is drawn from little squares.
+                            // Siblings of the clock (inside dtRow), so each keeps its own
+                            // hover state, receives its own clicks, and never triggers the
+                            // calendar.
+                            Column {
+                                id: gameBtns
                                 anchors.left: dateTimeBlock.right
                                 anchors.leftMargin: 12
                                 anchors.verticalCenter: clockTime.verticalCenter
+                                spacing: 4
+
+                            Rectangle {
+                                id: tetrisBtn
+
                                 width: 26
                                 height: 26
                                 radius: theme.radiusSmall
@@ -2408,7 +2424,56 @@ ShellRoot {
                                 }
 
                             }
-    
+
+                            // Block Blast button — the plus/T glyph, right below Tetris.
+                            Rectangle {
+                                id: blockBtn
+
+                                width: 26
+                                height: 26
+                                radius: theme.radiusSmall
+                                color: blockMa.containsMouse ? theme.accentSoft : "transparent"
+
+                                // plus/T piece: three across the bottom, one centred on top
+                                Item {
+                                    id: blockGlyph
+                                    anchors.centerIn: parent
+                                    width: 15
+                                    height: 10
+                                    readonly property int u: 5
+                                    Repeater {
+                                        model: [[1,0],[0,1],[1,1],[2,1]]
+                                        delegate: Rectangle {
+                                            required property var modelData
+                                            x: modelData[0] * blockGlyph.u
+                                            y: modelData[1] * blockGlyph.u
+                                            width: blockGlyph.u - 1
+                                            height: blockGlyph.u - 1
+                                            radius: 1
+                                            color: blockMa.containsMouse ? theme.text : theme.accent
+                                        }
+                                    }
+                                }
+
+                                MouseArea {
+                                    id: blockMa
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: win.openBlockBlast()
+                                }
+
+                                Behavior on color {
+                                    ColorAnimation {
+                                        duration: theme.animFast
+                                    }
+
+                                }
+
+                            }
+
+                            }
+
                         }
     
                         // hollow dots (click to switch) + one filled dot that slides
@@ -2698,7 +2763,7 @@ ShellRoot {
     
                         anchors.fill: parent
                         active: win.open
-                        sourceComponent: win.menu === 0 ? cNet : win.menu === 1 ? cVol : win.menu === 2 ? cBt : win.menu === 3 ? cBatt : win.menu === 5 ? cClip : win.menu === 6 ? cCal : win.menu === 7 ? cVoice : win.menu === 8 ? cFin : win.menu === 9 ? cTetris : cNotif
+                        sourceComponent: win.menu === 0 ? cNet : win.menu === 1 ? cVol : win.menu === 2 ? cBt : win.menu === 3 ? cBatt : win.menu === 5 ? cClip : win.menu === 6 ? cCal : win.menu === 7 ? cVoice : win.menu === 8 ? cFin : win.menu === 9 ? cTetris : win.menu === 10 ? cBlockBlast : cNotif
                     }
                     // chevron back -> collapse panel
     
@@ -2729,7 +2794,24 @@ ShellRoot {
                         function onCalendarRequested() {
                             win.menu = 6;
                         }
-    
+
+                        // game park-drag (Tetris / Block Blast header grip): translate the
+                        // grip's scene-space drag into the shared tetris* park position, so
+                        // pill.x/y follow it exactly as the old body DragHandler did.
+                        function onParkDragStart(sx, sy) {
+                            win.tetrisPosX = pill.x; win.tetrisPosY = pill.y;   // seed → no jump
+                            win._gameGrabOX = sx - pill.x;
+                            win._gameGrabOY = sy - pill.y;
+                            win.tetrisMoved = true; win.tetrisDragging = true;
+                        }
+                        function onParkDragMove(sx, sy) {
+                            win.tetrisPosX = Math.max(0, Math.min(sx - win._gameGrabOX, win.width - pill.width));
+                            win.tetrisPosY = Math.max(0, Math.min(sy - win._gameGrabOY, win.height - pill.height));
+                        }
+                        function onParkDragEnd() {
+                            win.tetrisDragging = false;
+                        }
+
                         target: menuLoader.item
                         ignoreUnknownSignals: true
                     }
@@ -2745,7 +2827,7 @@ ShellRoot {
                         z: -1
                         theme: theme
                         target: menuLoader.item
-                        active: win.kbNav && win.open && win.menu !== 4 && win.menu !== 5 && win.menu !== 9
+                        active: win.kbNav && win.open && win.menu !== 4 && win.menu !== 5 && win.menu !== 9 && win.menu !== 10
                         shortcuts: win.menu === 6
                         onEscaped: win.open = false // back to the expanded dashboard
                         onShortcutRequested: (m) => {
@@ -3204,6 +3286,7 @@ ShellRoot {
     Component { id: cCal;  CalendarMenu  { theme: theme; org: orgAgenda; fin: finance; cal: calEvents } }
     Component { id: cFin;  FinanceMenu   { theme: theme; fin: finance } }
     Component { id: cTetris; TetrisMenu   { theme: theme; settings: settings } }
+    Component { id: cBlockBlast; BlockBlastMenu { theme: theme; settings: settings } }
     Component { id: cVoice; VoiceMemoMenu { theme: theme; settings: settings; setup: voiceSetup } }
     Component { id: cNotif; NotificationHistory { theme: theme; notifs: notifs } }
     // the active-notification deck, reused for the pill morph and the floating stack

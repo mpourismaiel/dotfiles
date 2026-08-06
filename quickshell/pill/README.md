@@ -62,6 +62,7 @@ Control-panel menus (opened via `win.menu` index in init.qml):
 - `FinanceState.qml` + `FinanceMenu.qml` (menu 8) — hledger calendar/forecast/register/balances/wishlist, privacy + evening-nag machines.
 - `Clipboard.qml` + `ClipboardMenu.qml` — cliphist history + fuzzy search.
 - `VoiceMemoMenu.qml` (menu 7), `VoiceRecorderPill.qml`, `VoiceSetup.qml`, `PolishConfig.qml`, `Memos.qml` — voice-memo config, recording face, transcription setup/state.
+- `TetrisMenu.qml` (menu 9) + `BlockBlastMenu.qml` (menu 10) — two little games, opened from the stacked buttons beside the clock; keyboard Tetris and mouse-drag 10×10 block puzzle. Both park-draggable by a header grip, state in `settings.tetris` / `settings.blockBlast`.
 - `NotificationHistory.qml` — grouped notification history.
 
 Notifications:

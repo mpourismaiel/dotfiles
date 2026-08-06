@@ -23,6 +23,13 @@ Item {
     required property var settings          // shared JsonAdapter — persistence lives in settings.tetris
     signal closeRequested()
 
+    // park-drag: the header grip drives these; init.qml catches them and moves the
+    // whole pane (see the Connections block wired to menuLoader.item). The pane body
+    // no longer drags — only this grip — so it matches Block Blast.
+    signal parkDragStart(real sx, real sy)
+    signal parkDragMove(real sx, real sy)
+    signal parkDragEnd()
+
     // ---- geometry ----
     readonly property int cols: 10
     readonly property int rows: 20
@@ -337,6 +344,34 @@ Item {
             theme: root.theme
             title: "Tetris"
             onBack: root.closeRequested()
+            // drag grip — park the pane anywhere by this handle (right of the title).
+            // Emits scene-pos park signals; init.qml moves the whole pill.
+            Rectangle {
+                anchors.verticalCenter: parent.verticalCenter
+                width: 32
+                height: 26
+                radius: root.theme.radiusBtn
+                color: (gripDrag.active || gripMa.hovered) ? root.theme.rowHi : root.theme.row
+                border.width: 1
+                border.color: root.theme.border
+                MSym {
+                    anchors.centerIn: parent
+                    icon: "drag_indicator"
+                    size: 17
+                    color: (gripDrag.active || gripMa.hovered) ? root.theme.text : root.theme.textDim
+                }
+                HoverHandler { id: gripMa }
+                DragHandler {
+                    id: gripDrag
+                    target: null
+                    cursorShape: Qt.SizeAllCursor
+                    onActiveChanged: {
+                        if (gripDrag.active) root.parkDragStart(gripDrag.centroid.scenePosition.x, gripDrag.centroid.scenePosition.y);
+                        else root.parkDragEnd();
+                    }
+                    onCentroidChanged: if (gripDrag.active) root.parkDragMove(gripDrag.centroid.scenePosition.x, gripDrag.centroid.scenePosition.y);
+                }
+            }
             // screenshot button, right-aligned in the header trailing slot — saves
             // a pretty snapshot of the board + next + score/level.
             Rectangle {
