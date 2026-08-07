@@ -2,7 +2,7 @@
 # standalone script and also definable function when sourced
 
 script_path="${(%):-%x}"
-config_file="/home/mahdi/.zsh/extra_config.zsh"
+config_file="$HOME/.zsh/extra_config.zsh"
 
 if [[ ! -f "$config_file" ]]; then
   echo "extra_config not found: $config_file" >&2
