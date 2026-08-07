@@ -8,7 +8,8 @@
 #   3. drops the two display fonts Arch doesn't package (DM Serif Display, and
 #      optionally Newsreader + Instrument Serif) into ~/.local/share/fonts,
 #   4. copies the pill into ~/.config/quickshell/pill (the live config location),
-#   5. prints how to start it.
+#   5. on KDE, offers to install the pill's suggested global shortcuts,
+#   6. prints how to start it.
 #
 # It is safe to re-run: every step is idempotent (pacman --needed, font files are
 # overwritten, the copy just refreshes ~/.config/quickshell/pill).
@@ -124,13 +125,62 @@ if [ "$DO_COPY" -eq 1 ]; then
     mkdir -p "$DEST"
     for f in "$SRC"/*; do
         b=$(basename "$f")
-        # skip dev-only tooling and docs — they never belong in the live config
-        case "$b" in install.sh|deploy.sh|check.sh|README.md|CLAUDE.md|INSTALL.md) continue ;; esac
+        # skip dev-only tooling and docs — they never belong in the live config.
+        # kde-shortcuts.kksrc is handled separately below (paths get rewritten to
+        # this user before it lands in the config dir), so skip the raw copy here.
+        case "$b" in install.sh|deploy.sh|check.sh|README.md|CLAUDE.md|INSTALL.md|kde-shortcuts.kksrc) continue ;; esac
         [ -f "$f" ] || continue
         cp -p "$f" "$DEST/$b"
     done
     chmod +x "$DEST"/*.sh 2>/dev/null || true
     echo "  copied $(ls "$DEST" | wc -l) files"
+fi
+
+# --- 4b. optional: KDE global shortcuts --------------------------------------
+# The repo ships a set of global-shortcut bindings the pill is designed around
+# (Meta+V clipboard history, Print screenshot, Meta+S open, volume/brightness
+# keys, …), exported from KDE as kde-shortcuts.kksrc. Those bindings are what
+# make the pill feel like a first-class shell. On KDE we OFFER to install them,
+# after rewriting the maintainer's hard-coded paths to this user's config. They
+# are optional and easy to change or remove afterwards in System Settings.
+KKSRC_IN="$SRC/kde-shortcuts.kksrc"
+is_kde=0
+case "${XDG_CURRENT_DESKTOP:-}" in *KDE*|*kde*) is_kde=1 ;; esac
+command -v plasmashell >/dev/null 2>&1 && is_kde=1
+SHORTCUTS_DONE=0
+if [ "$is_kde" -eq 1 ] && [ -f "$KKSRC_IN" ]; then
+    do_shortcuts=0
+    if [ -t 0 ]; then
+        printf '\n\033[1;36m==>\033[0m %s' \
+            "KDE detected. Install the pill's suggested global shortcuts (Meta+V clipboard, Print screenshot, Meta+S open, volume/brightness keys, …)? [y/N] "
+        read -r ans || ans=""
+        case "$ans" in y|Y|yes|YES|Yes) do_shortcuts=1 ;; esac
+    else
+        warn "KDE detected but input is not a terminal — skipping the optional
+         global shortcuts. Re-run this installer interactively to add them."
+    fi
+    if [ "$do_shortcuts" -eq 1 ]; then
+        mkdir -p "$DEST"
+        KKSRC_OUT="$DEST/kde-shortcuts.kksrc"
+        # rewrite the maintainer's paths (absolute and ~) to this user's config,
+        # then any remaining home references, so the Exec lines point at the copy
+        # of the pill this installer just placed.
+        sed -e "s#/home/mahdi/.config/quickshell/pill#$DEST#g" \
+            -e "s#~/.config/quickshell/pill#$DEST#g" \
+            -e "s#/home/mahdi#$HOME#g" \
+            "$KKSRC_IN" > "$KKSRC_OUT"
+        SHORTCUTS_DONE=1
+        say "Prepared the shortcut bindings for you at:
+    $KKSRC_OUT
+
+KDE has no reliable command-line importer, so activating them is a single
+one-time click:
+    System Settings → Keyboard → Shortcuts → the ⋮ (or 'Import') menu → Import…
+    then pick the file above.
+
+Every binding is just a suggestion — change or remove any of them afterwards in
+that same Shortcuts screen."
+    fi
 fi
 
 # --- 5. done -----------------------------------------------------------------
@@ -151,4 +201,5 @@ Notes:
     brightness, power menu, launcher *search*) degrade — see ../INSTALL.md.
   • Optional features (voice transcription, Google Calendar, finance) each
     need extra one-time setup; see quickshell/pill/README.md and CAPTURE.md.
+$( [ "$SHORTCUTS_DONE" -eq 1 ] && printf '  • Import the prepared global shortcuts: System Settings → Keyboard →\n    Shortcuts → Import… → %s\n' "$DEST/kde-shortcuts.kksrc" )
 EOF

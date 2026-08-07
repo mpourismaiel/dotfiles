@@ -1457,6 +1457,26 @@ ShellRoot {
                 }
             }
 
+            // open (or toggle shut) the games menu (menu 11) — the little arcade
+            // list, fired by the game-controller button right of the desktop dots.
+            // Picking a game there routes to openTetris / openBlockBlast (see the
+            // menuLoader Connections). Mirrors openBlockBlast.
+            function openGames() {
+                if (win.open && win.menu === 11) {
+                    const wasGrabbing = win.grabsKeyboard;
+                    win.open = false;
+                    if (wasGrabbing)
+                        root.restoreFocus();
+
+                } else {
+                    win.launcher = false;
+                    win.ctxGroup = null;
+                    win.trayItem = null;
+                    win.menu = 11;
+                    win.open = true;
+                }
+            }
+
             onDashChanged: {
                 if (!win.dash) {
                     win.hoverItem = null;
@@ -1653,8 +1673,8 @@ ShellRoot {
                         event.accepted = true;
                     } else {
                         // first-level menu jumps, mirrored in the calendar menu
-                        // (finance is skipped when the feature is off); t = Tetris
-                        const m = event.key === Qt.Key_F ? (settings.financeEnabled ? 8 : -1) : event.key === Qt.Key_C ? 6 : event.key === Qt.Key_N ? 4 : event.key === Qt.Key_W ? 0 : event.key === Qt.Key_V ? 1 : event.key === Qt.Key_B ? 2 : event.key === Qt.Key_T ? 9 : -1;
+                        // (finance is skipped when the feature is off); g = games menu
+                        const m = event.key === Qt.Key_F ? (settings.financeEnabled ? 8 : -1) : event.key === Qt.Key_C ? 6 : event.key === Qt.Key_N ? 4 : event.key === Qt.Key_W ? 0 : event.key === Qt.Key_V ? 1 : event.key === Qt.Key_B ? 2 : event.key === Qt.Key_G ? 11 : -1;
                         if (m >= 0) {
                             win.launcher = false;
                             win.menu = m;
@@ -2285,16 +2305,16 @@ ShellRoot {
                         anchors.topMargin: -10
                         spacing: 9
     
-                        // clock + tetris button, side by side, in one wrapper Item. The
-                        // button is a SIBLING of the clock here (not nested inside it): a
-                        // child drawn past its parent's width never receives pointer
-                        // events — Qt only hit-tests children within the parent rect — so
-                        // when it lived inside `dateTimeBlock` its clicks fell straight
-                        // through. This wrapper spans both, so the button lands in bounds.
+                        // the clock block. Held at ≥56px tall (its old height, back when
+                        // the two game buttons sat stacked to its right) so the desktop
+                        // dots / hairline baseline below it stays exactly where it was
+                        // after the game buttons moved down next to the dots — the row
+                        // heights below (dots at y≈86, Row 2 at y:100) are hard-coded to
+                        // that baseline.
                         Item {
                             id: dtRow
-                            implicitWidth: dateTimeBlock.implicitWidth + 12 + gameBtns.width
-                            implicitHeight: Math.max(dateTimeBlock.implicitHeight, gameBtns.height)
+                            implicitWidth: dateTimeBlock.implicitWidth
+                            implicitHeight: Math.max(dateTimeBlock.implicitHeight, 56)
                             width: implicitWidth
                             height: implicitHeight
 
@@ -2366,54 +2386,69 @@ ShellRoot {
 
                         }
 
-                            // two tiny game buttons stacked to the right of the clock: the
-                            // S-tetromino opens Tetris (menu 9); the plus/T below it opens
-                            // Block Blast (menu 10). Each is drawn from little squares.
-                            // Siblings of the clock (inside dtRow), so each keeps its own
-                            // hover state, receives its own clicks, and never triggers the
-                            // calendar.
-                            Column {
-                                id: gameBtns
-                                anchors.left: dateTimeBlock.right
-                                anchors.leftMargin: 12
-                                anchors.verticalCenter: clockTime.verticalCenter
-                                spacing: 4
+                        }
 
+                        // the virtual-desktop dots + the games button, on one baseline.
+                        // The dots hide when there's only a single virtual desktop (nothing
+                        // to switch between); the games button then slides left into their
+                        // place and the hairline rule below follows (its x keys off
+                        // deskRow.width). The row keeps the dots' 9px height so the button —
+                        // taller — just overhangs it, centred, leaving the dots exactly on
+                        // their original baseline.
+                        Item {
+                            id: deskRow
+                            implicitWidth: gameMenuBtn.x + gameMenuBtn.width
+                            implicitHeight: deskDots.implicitHeight
+                            width: implicitWidth
+                            height: implicitHeight
+
+                            // hollow dots (click to switch) + one filled dot that slides
+                            // to the active desktop — the same move as the desktop burst.
+                            // Hidden (and taking no width — Row/anchors skip it) when only
+                            // one desktop exists.
+                            DesktopDots {
+                                id: deskDots
+
+                                anchors.left: parent.left
+                                anchors.verticalCenter: parent.verticalCenter
+                                visible: root.desktops.length > 1
+                                theme: theme
+                                desktops: root.desktops
+                                activeIdx: root.deskActiveIdx
+                                interactive: true
+                                onSwitchRequested: (id) => {
+                                    return root.switchDesktop(id);
+                                }
+                            }
+
+                            // games button — a game-controller glyph that opens the games
+                            // menu (menu 11: Tetris, Block Blast, …). Sits right of the
+                            // dots, or at the row's left edge when the dots are hidden.
                             Rectangle {
-                                id: tetrisBtn
+                                id: gameMenuBtn
 
-                                width: 26
-                                height: 26
+                                anchors.left: deskDots.visible ? deskDots.right : parent.left
+                                anchors.leftMargin: deskDots.visible ? 12 : 0
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: 22
+                                height: 22
                                 radius: theme.radiusSmall
-                                color: tetrisMa.containsMouse ? theme.accentSoft : "transparent"
+                                color: (gameMa.containsMouse || (win.open && win.menu === 11)) ? theme.accentSoft : "transparent"
 
-                                // S-tetromino: two cells top-right, two bottom-left
-                                Item {
-                                    id: tetGlyph
+                                MSym {
                                     anchors.centerIn: parent
-                                    width: 15
-                                    height: 10
-                                    readonly property int u: 5
-                                    Repeater {
-                                        model: [[1,0],[2,0],[0,1],[1,1]]
-                                        delegate: Rectangle {
-                                            required property var modelData
-                                            x: modelData[0] * tetGlyph.u
-                                            y: modelData[1] * tetGlyph.u
-                                            width: tetGlyph.u - 1
-                                            height: tetGlyph.u - 1
-                                            radius: 1
-                                            color: tetrisMa.containsMouse ? theme.text : theme.accent
-                                        }
-                                    }
+                                    icon: "sports_esports"
+                                    size: 16
+                                    fill: (win.open && win.menu === 11) ? 1 : 0
+                                    color: (gameMa.containsMouse || (win.open && win.menu === 11)) ? theme.text : theme.accent
                                 }
 
                                 MouseArea {
-                                    id: tetrisMa
+                                    id: gameMa
                                     anchors.fill: parent
                                     hoverEnabled: true
                                     cursorShape: Qt.PointingHandCursor
-                                    onClicked: win.openTetris()
+                                    onClicked: win.openGames()
                                 }
 
                                 Behavior on color {
@@ -2425,71 +2460,8 @@ ShellRoot {
 
                             }
 
-                            // Block Blast button — the plus/T glyph, right below Tetris.
-                            Rectangle {
-                                id: blockBtn
-
-                                width: 26
-                                height: 26
-                                radius: theme.radiusSmall
-                                color: blockMa.containsMouse ? theme.accentSoft : "transparent"
-
-                                // plus/T piece: three across the bottom, one centred on top
-                                Item {
-                                    id: blockGlyph
-                                    anchors.centerIn: parent
-                                    width: 15
-                                    height: 10
-                                    readonly property int u: 5
-                                    Repeater {
-                                        model: [[1,0],[0,1],[1,1],[2,1]]
-                                        delegate: Rectangle {
-                                            required property var modelData
-                                            x: modelData[0] * blockGlyph.u
-                                            y: modelData[1] * blockGlyph.u
-                                            width: blockGlyph.u - 1
-                                            height: blockGlyph.u - 1
-                                            radius: 1
-                                            color: blockMa.containsMouse ? theme.text : theme.accent
-                                        }
-                                    }
-                                }
-
-                                MouseArea {
-                                    id: blockMa
-                                    anchors.fill: parent
-                                    hoverEnabled: true
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: win.openBlockBlast()
-                                }
-
-                                Behavior on color {
-                                    ColorAnimation {
-                                        duration: theme.animFast
-                                    }
-
-                                }
-
-                            }
-
-                            }
-
                         }
-    
-                        // hollow dots (click to switch) + one filled dot that slides
-                        // to the active desktop — the same move as the desktop burst.
-                        DesktopDots {
-                            id: deskDots
-    
-                            theme: theme
-                            desktops: root.desktops
-                            activeIdx: root.deskActiveIdx
-                            interactive: true
-                            onSwitchRequested: (id) => {
-                                return root.switchDesktop(id);
-                            }
-                        }
-    
+
                     }
     
                     // grouped app icons (taskbar)
@@ -2525,10 +2497,12 @@ ShellRoot {
                 }
     
                 // hairline rule separating the two dashboard rows (hover state only).
-                // Starts just to the right of the virtual-desktop dots (whose row sits
-                // on this baseline) and runs to the pill's right edge.
+                // Starts just to the right of the desktop-dots + games-button row
+                // (deskRow) — which shrinks to just the button when the dots hide, so
+                // the rule automatically extends left to fill that space — and runs to
+                // the pill's right edge.
                 Rectangle {
-                    x: theme.pad + 8 + deskDots.width + 16
+                    x: theme.pad + 8 + deskRow.width + 16
                     y: 86
                     width: pill.width - (theme.pad + 8) - x
                     height: 1
@@ -2763,7 +2737,7 @@ ShellRoot {
     
                         anchors.fill: parent
                         active: win.open
-                        sourceComponent: win.menu === 0 ? cNet : win.menu === 1 ? cVol : win.menu === 2 ? cBt : win.menu === 3 ? cBatt : win.menu === 5 ? cClip : win.menu === 6 ? cCal : win.menu === 7 ? cVoice : win.menu === 8 ? cFin : win.menu === 9 ? cTetris : win.menu === 10 ? cBlockBlast : cNotif
+                        sourceComponent: win.menu === 0 ? cNet : win.menu === 1 ? cVol : win.menu === 2 ? cBt : win.menu === 3 ? cBatt : win.menu === 5 ? cClip : win.menu === 6 ? cCal : win.menu === 7 ? cVoice : win.menu === 8 ? cFin : win.menu === 9 ? cTetris : win.menu === 10 ? cBlockBlast : win.menu === 11 ? cGames : cNotif
                     }
                     // chevron back -> collapse panel
     
@@ -2793,6 +2767,15 @@ ShellRoot {
                         }
                         function onCalendarRequested() {
                             win.menu = 6;
+                        }
+
+                        // GamesMenu (menu 11) row picked → hand off to that game's
+                        // own pane (Tetris menu 9 / Block Blast menu 10).
+                        function onPlayRequested(gameMenu) {
+                            if (gameMenu === 9)
+                                win.openTetris();
+                            else if (gameMenu === 10)
+                                win.openBlockBlast();
                         }
 
                         // game park-drag (Tetris / Block Blast header grip): translate the
@@ -3287,6 +3270,7 @@ ShellRoot {
     Component { id: cFin;  FinanceMenu   { theme: theme; fin: finance } }
     Component { id: cTetris; TetrisMenu   { theme: theme; settings: settings } }
     Component { id: cBlockBlast; BlockBlastMenu { theme: theme; settings: settings } }
+    Component { id: cGames; GamesMenu { theme: theme; settings: settings } }
     Component { id: cVoice; VoiceMemoMenu { theme: theme; settings: settings; setup: voiceSetup } }
     Component { id: cNotif; NotificationHistory { theme: theme; notifs: notifs } }
     // the active-notification deck, reused for the pill morph and the floating stack
