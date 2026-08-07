@@ -1660,6 +1660,128 @@ from it; running after the module's own =use-package!= means these overrides win
          :desc "REPL"                   "R" #'dape-repl)))
 #+end_src
 
+**** Twine / Twee (SugarCube)
+Authoring Twine 2 interactive fiction as [[https://www.motoslave.net/tweego/][Tweego]]
+=.twee= source, compiled to a single HTML file. The =tweego= binary (installed
+system-wide) already ships the =sugarcube-2= story format as its default, so the
+compiler side needs nothing. There is no SugarCube major mode on MELPA, so this
+section defines a small self-contained =twee-mode= (syntax highlighting for
+passages, macros, variables and links) plus =tweego= build/watch commands --
+there is no external package to pull in.
+
+***** twee-mode
+#+begin_src emacs-lisp
+(defvar twee-mode-syntax-table
+  (let ((table (make-syntax-table)))
+    ;; C-style /* ... */ block comments. SugarCube also has /% %/ and
+    ;; <!-- -->, but only the C-style pair maps cleanly onto a syntax table.
+    (modify-syntax-entry ?/ ". 14" table)
+    (modify-syntax-entry ?* ". 23" table)
+    (modify-syntax-entry ?$ "_" table)
+    (modify-syntax-entry ?_ "_" table)
+    table)
+  "Syntax table for `twee-mode'.")
+
+(defvar twee-font-lock-keywords
+  `(;; Passage headers: ":: Name [tags] {position}".
+    ("^\\(::\\)[ \t]*\\([^[{\n]*\\)\\(\\[[^]\n]*\\]\\)?[ \t]*\\({[^}\n]*}\\)?"
+     (1 font-lock-comment-delimiter-face)
+     (2 font-lock-function-name-face)
+     (3 font-lock-type-face nil t)
+     (4 font-lock-preprocessor-face nil t))
+    ;; SugarCube macros: <<macro ...>> and <</macro>>.
+    ("\\(<<\\)\\(/?\\)\\([A-Za-z_][A-Za-z0-9_-]*\\)"
+     (1 font-lock-keyword-face)
+     (3 font-lock-keyword-face))
+    ("\\(>>\\)" (1 font-lock-keyword-face))
+    ;; Story ($) and temporary (_) variables.
+    ("\\(?:^\\|[^A-Za-z0-9_]\\)\\([$_][A-Za-z][A-Za-z0-9_.]*\\)"
+     (1 font-lock-variable-name-face))
+    ;; Links: [[target]], [[text|target]], [[text->target]], [[target<-text]].
+    ("\\[\\[[^]\n]*\\]\\]" . font-lock-constant-face))
+  "Font-lock keywords for `twee-mode'.")
+
+;;;###autoload
+(define-derived-mode twee-mode prog-mode "Twee"
+  "Major mode for editing Twee 3 / SugarCube interactive-fiction source."
+  :syntax-table twee-mode-syntax-table
+  (setq-local comment-start "/* ")
+  (setq-local comment-end " */")
+  (setq-local font-lock-defaults '(twee-font-lock-keywords)))
+
+;;;###autoload
+(dolist (ext '("\\.twee\\'" "\\.tw\\'" "\\.tw2\\'" "\\.twee2\\'"))
+  (add-to-list 'auto-mode-alist (cons ext #'twee-mode)))
+#+end_src
+
+***** tweego build commands
+Build the whole project directory to one HTML file named after the project root.
+=SPC m b= compiles, =C-u SPC m b= (or =SPC m t=) builds in test mode, =SPC m w=
+starts a watching rebuild, and =SPC m o= opens the last-built HTML in the browser.
+#+begin_src emacs-lisp
+(defvar mp/tweego--last-output nil
+  "Absolute path of the HTML file produced by the last `mp/tweego-build'.")
+
+(defcustom mp/tweego-format "sugarcube-2"
+  "Story-format ID passed to tweego's -f flag."
+  :type 'string
+  :group 'twee)
+
+(defun mp/tweego--root ()
+  "Best-guess project root for a Twee build."
+  (or (and (fboundp 'projectile-project-root) (projectile-project-root))
+      (when-let ((proj (project-current))) (project-root proj))
+      default-directory))
+
+(defun mp/tweego--output (root)
+  "Absolute path of the HTML output for ROOT, named after the project."
+  (expand-file-name
+   (concat (file-name-nondirectory (directory-file-name root)) ".html")
+   root))
+
+(defun mp/tweego-build (&optional test)
+  "Compile the current Twee project to HTML with tweego.
+With prefix arg TEST, build in test mode (-t)."
+  (interactive "P")
+  (let* ((root (mp/tweego--root))
+         (out  (mp/tweego--output root))
+         (default-directory root))
+    (setq mp/tweego--last-output out)
+    (compile (format "tweego -f %s%s -o %s ."
+                     (shell-quote-argument mp/tweego-format)
+                     (if test " -t" "")
+                     (shell-quote-argument (file-relative-name out root))))))
+
+(defun mp/tweego-watch ()
+  "Watch the current Twee project and rebuild the HTML on every change."
+  (interactive)
+  (let* ((root (mp/tweego--root))
+         (out  (mp/tweego--output root))
+         (default-directory root)
+         (compilation-buffer-name-function (lambda (_mode) "*tweego-watch*")))
+    (setq mp/tweego--last-output out)
+    (compile (format "tweego -w -f %s -o %s ."
+                     (shell-quote-argument mp/tweego-format)
+                     (shell-quote-argument (file-relative-name out root))))))
+
+(defun mp/tweego-open ()
+  "Open the last-built HTML story in the default browser."
+  (interactive)
+  (let ((out (or mp/tweego--last-output
+                 (mp/tweego--output (mp/tweego--root)))))
+    (if (file-exists-p out)
+        (browse-url-of-file out)
+      (user-error "No build found at %s -- run a build first" out))))
+
+(map! :after twee-mode
+      :localleader
+      :map twee-mode-map
+      :desc "Build story"       "b" #'mp/tweego-build
+      :desc "Build (test mode)" "t" (cmd! (mp/tweego-build t))
+      :desc "Watch & rebuild"   "w" #'mp/tweego-watch
+      :desc "Open built HTML"   "o" #'mp/tweego-open)
+#+end_src
+
 *** Keybindings
 This section documents the custom bindings defined in this configuration.
 **** General Shortcuts
