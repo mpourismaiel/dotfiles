@@ -789,7 +789,10 @@ that closes while on, driving =fin.togglePrivacy()= — amounts mask as =••�
 the calendar's finance signals hide (see [[*FinanceState.qml][=FinanceState=]]).
 The eye shows the *effective* privacy state, so it lights up automatically while
 the screen is shared; clicking it then overrides for that share only, and the
-manual choice returns when sharing ends.
+manual choice returns when sharing ends. It is visible when Finance is enabled
+=or= whenever masking is actually in effect (=fin.enabled || fin.privacy=): a
+screen share also hides the calendar and org sections, so with Finance off the
+eye would otherwise be the one override the user cannot reach.
 Code: part of [[file:pill/Launcher.qml][=pill/Launcher.qml=]] (was noweb chunk =launcher-toggles=).
 
 **** Launcher.qml — power buttons

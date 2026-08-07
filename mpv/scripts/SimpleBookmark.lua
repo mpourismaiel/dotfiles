@@ -242,6 +242,11 @@ local o = {
 local utils = require 'mp.utils'
 local msg = require 'mp.msg'
 
+-- mpv 0.37 removed utils.shared_script_property_set; user-data replaced it.
+if not utils.shared_script_property_set then
+	utils.shared_script_property_set = function(n, v) mp.set_property('user-data/' .. n, v) end
+end
+
 o.filters_and_sequence = utils.parse_json(o.filters_and_sequence)
 o.keywords_filter_list = utils.parse_json(o.keywords_filter_list)
 o.list_filters_sort = utils.parse_json(o.list_filters_sort)
