@@ -217,6 +217,11 @@ local o = {
 local utils = require 'mp.utils'
 local msg = require 'mp.msg'
 
+-- mpv 0.37 removed utils.shared_script_property_set; user-data replaced it.
+if not utils.shared_script_property_set then
+	utils.shared_script_property_set = function(n, v) mp.set_property('user-data/' .. n, v) end
+end
+
 o.history_blacklist = utils.parse_json(o.history_blacklist)
 o.history_incognito_mode_keybind = utils.parse_json(o.history_incognito_mode_keybind)
 o.filters_and_sequence = utils.parse_json(o.filters_and_sequence)
