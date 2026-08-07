@@ -333,9 +333,10 @@ Item {
     
         // finance privacy: an open eye normally, a closed eye (accent = "on") while
         // amounts are masked — auto-on during screen shares (see FinanceState).
-        // Hidden unless the Finance feature is enabled (Settings).
+        // Also shown while masking is active with Finance off: a screen share hides
+        // the calendar and org sections too, so the override must stay reachable.
         MSym {
-            visible: root.fin && root.fin.enabled
+            visible: root.fin && (root.fin.enabled || root.fin.privacy)
             icon: root.fin && root.fin.privacy ? "visibility_off" : "visibility"
             size: 18
             fill: root.fin && root.fin.privacy ? 1 : 0
