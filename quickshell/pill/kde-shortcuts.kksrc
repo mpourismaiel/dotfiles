@@ -1,0 +1,125 @@
+[Custom Commands][net.local.qs-10.desktop]
+Exec=qs -p /home/mahdi/.config/quickshell/pill/init.qml ipc call pill clearNotifications
+Name=Quickshell - Notifications - Clear history
+
+[Custom Commands][net.local.qs-11.desktop]
+Exec=qs -p /home/mahdi/.config/quickshell/pill/init.qml ipc call pill notifications
+Name=Quickshell - Notifications - View History
+
+[Custom Commands][net.local.qs-12.desktop]
+Exec=qs -p ~/.config/quickshell/pill/init.qml ipc call pill expand
+Name=Quickshell - Open
+
+[Custom Commands][net.local.qs-13.desktop]
+Exec=qs -p ~/.config/quickshell/pill/init.qml ipc call pill recordStop
+Name=Quickshell - Record - Stop
+
+[Custom Commands][net.local.qs-15.desktop]
+Exec=qs -p ~/.config/quickshell/pill/init.qml ipc call pill record
+Name=Quickshell - Record
+
+[Custom Commands][net.local.qs-17.desktop]
+Exec=qs -p ~/.config/quickshell/pill/init.qml ipc call pill screenshot
+Name=Quickshell - Screenshot
+
+[Custom Commands][net.local.qs-18.desktop]
+Exec=qs -p ~/.config/quickshell/pill/init.qml ipc call pill screenshotRegion
+Name=Quickshell - Screenshot Region
+
+[Custom Commands][net.local.qs-2.desktop]
+Exec=qs -p /home/mahdi/.config/quickshell/pill/init.qml ipc call pill brightnessUp
+Name=Quickshell - Brighness - Up
+
+[Custom Commands][net.local.qs-3.desktop]
+Exec=qs -p /home/mahdi/.config/quickshell/pill/init.qml ipc call pill brightnessDown
+Name=Quickshell - Brighness - Down
+
+[Custom Commands][net.local.qs-4.desktop]
+Exec=qs -p /home/mahdi/.config/quickshell/pill/init.qml ipc call pill volumeUp
+Name=Quickshell - Volume - Up
+
+[Custom Commands][net.local.qs-5.desktop]
+Exec=qs -p /home/mahdi/.config/quickshell/pill/init.qml ipc call pill volumeDown
+Name=Quickshell - Volume - Down
+
+[Custom Commands][net.local.qs-6.desktop]
+Exec=qs -p /home/mahdi/.config/quickshell/pill/init.qml ipc call pill volumeMute
+Name=Quickshell - Volume - Mute
+
+[Custom Commands][net.local.qs-7.desktop]
+Exec=qs -p /home/mahdi/.config/quickshell/pill/init.qml ipc call pill voiceToggle
+Name=Quickshell - Transcribe
+
+[Custom Commands][net.local.qs-8.desktop]
+Exec=qs -p /home/mahdi/.config/quickshell/pill/init.qml ipc call pill voicePolishToggle
+Name=Quickshell - Transcribe and Polish
+
+[Custom Commands][net.local.qs-9.desktop]
+Exec=qs -p /home/mahdi/.config/quickshell/pill/init.qml ipc call pill dismissNotifications
+Name=Quickshell - Notifications - Dismiss
+
+[Custom Commands][net.local.qs-voice-polish.desktop]
+Exec=qs -p /home/mahdi/.config/quickshell/pill/init.qml ipc call pill voicePolishToggle
+Name=Quickshell - Voice - Transcribe + Polish
+
+[Custom Commands][net.local.qs-voice.desktop]
+Exec=qs -p /home/mahdi/.config/quickshell/pill/init.qml ipc call pill voiceToggle
+Name=Quickshell - Voice - Transcribe
+
+[Custom Commands][net.local.qs.desktop]
+Exec=qs -p /home/mahdi/.config/quickshell/pill/init.qml ipc call pill clipboard
+Name=Quickshell - Clipboard History
+
+[net.local.qs-10.desktop][Global Shortcuts]
+_launch=Meta+/
+
+[net.local.qs-11.desktop][Global Shortcuts]
+_launch=Meta+N
+
+[net.local.qs-12.desktop][Global Shortcuts]
+_launch=Meta+S
+
+[net.local.qs-13.desktop][Global Shortcuts]
+_launch=Meta+F4
+
+[net.local.qs-15.desktop][Global Shortcuts]
+_launch=Meta+F5
+
+[net.local.qs-17.desktop][Global Shortcuts]
+_launch=Print
+
+[net.local.qs-18.desktop][Global Shortcuts]
+_launch=Shift+Print
+
+[net.local.qs-2.desktop][Global Shortcuts]
+_launch=Monitor Brightness Up
+
+[net.local.qs-3.desktop][Global Shortcuts]
+_launch=Monitor Brightness Down
+
+[net.local.qs-4.desktop][Global Shortcuts]
+_launch=Volume Up
+
+[net.local.qs-5.desktop][Global Shortcuts]
+_launch=Volume Down
+
+[net.local.qs-6.desktop][Global Shortcuts]
+_launch=Volume Mute
+
+[net.local.qs-7.desktop][Global Shortcuts]
+_launch=Meta+Z
+
+[net.local.qs-8.desktop][Global Shortcuts]
+_launch=Meta+Shift+Z
+
+[net.local.qs-9.desktop][Global Shortcuts]
+_launch=Meta+Esc
+
+[net.local.qs-voice-polish.desktop][Global Shortcuts]
+_launch=Meta+Shift+X
+
+[net.local.qs-voice.desktop][Global Shortcuts]
+_launch=Meta+X
+
+[net.local.qs.desktop][Global Shortcuts]
+_launch=Meta+V
