@@ -596,6 +596,7 @@ Replaces Doom-era `+eval/test' (which was an unbound command)."
   "b y" #'mp/yank-buffer-contents
   "b z" #'bury-buffer
   "b Z" #'mp/kill-buried-buffers
+  "b h" #'mp/dashboard          ; workspace dashboard / home
   "b ]" #'next-buffer
   "b [" #'previous-buffer
   "b -" #'mp/toggle-narrow-buffer
@@ -882,7 +883,7 @@ Replaces Doom-era `+eval/test' (which was an unbound command)."
   "TAB s" #'mp/workspace-save-session
   "TAB l" #'mp/workspace-load-session
   "TAB `" #'mp/workspace-other
-  "TAB ." #'persp-switch
+  "TAB ." #'mp/workspace-switch
   "TAB [" #'mp/workspace-switch-left
   "TAB ]" #'mp/workspace-switch-right
   "TAB 1" #'mp/workspace-switch-to-0
@@ -911,7 +912,7 @@ Replaces Doom-era `+eval/test' (which was an unbound command)."
   "<tab> l" #'mp/workspace-load-session
   "<tab> x" #'mp/workspace-kill-session
   "<tab> `" #'mp/workspace-other
-  "<tab> ." #'persp-switch
+  "<tab> ." #'mp/workspace-switch
   "<tab> [" #'mp/workspace-switch-left
   "<tab> ]" #'mp/workspace-switch-right
   "<tab> 1" #'mp/workspace-switch-to-0

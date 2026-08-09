@@ -161,7 +161,21 @@
   ;; evil-collection's dired `q' (quit-window, one buffer at a time) shadows
   ;; dirvish's quit; rebind it to the real teardown.
   (with-eval-after-load 'evil
-    (evil-define-key 'normal dirvish-mode-map "q" #'dirvish-quit)))
+    (evil-define-key 'normal dirvish-mode-map "q" #'dirvish-quit))
+  ;; Keep the cursor from being yanked into the preview pane.  In
+  ;; `dirvish--build-layout' the header/footer/parent panes are all created
+  ;; with `no-other-window' (and dedicated), but the preview window is left
+  ;; both selectable and non-dedicated so you can `C-x o' into it.  That makes
+  ;; the preview the ONLY dirvish window `display-buffer'/`pop-to-buffer' is
+  ;; free to reuse or split — so any stray (often async) popup that appears
+  ;; while a preview is showing lands point inside the preview and steals
+  ;; focus off the file list.  Give the preview window the same guard its
+  ;; sibling panes get; `C-M-v' still scrolls it via `other-window-scroll-buffer'.
+  (defun mp/dirvish-preview-no-other-window (dv &rest _)
+    (when-let* ((w (dv-preview-window dv)) ((window-live-p w)))
+      (set-window-parameter w 'no-other-window t)))
+  (advice-add 'dirvish--build-layout :after
+              #'mp/dirvish-preview-no-other-window))
 
 ;;; Custom packages
 

@@ -41,8 +41,34 @@ to base/personal; any other name is a subfolder of the base dir."
 (with-eval-after-load 'ledger-mode
   (setq ledger-binary-path "hledger"
         ledger-default-date-format ledger-iso-date-format
+        ledger-clear-whole-transactions 1
+        ;; CRITICAL for hledger: on activation `ledger-mode' runs
+        ;; `ledger-check-version', which shells out with ledger-CLI-only flags
+        ;; (`--date-format %Y-%m-%d'). hledger doesn't understand `--date-format'
+        ;; and parses the format string as a subcommand -> "command %Y-%m-%d is
+        ;; not recognized" on every journal open. Doom's :lang ledger module set
+        ;; this nil; the port dropped it. Never version-check against hledger.
+        ledger-mode-should-check-version nil
         ;; account declarations in main.journal feed completion everywhere
-        ledger-accounts-file (mp/hledger--main-file)))
+        ledger-accounts-file (mp/hledger--main-file))
+
+  ;; Fail gracefully if the binary is missing, instead of erroring.
+  (advice-add 'ledger-check-version :around
+              (lambda (fn)
+                (if (executable-find ledger-binary-path)
+                    (funcall fn)
+                  (message "Couldn't find `%s' executable" ledger-binary-path))))
+
+  (add-hook 'ledger-mode-hook #'outline-minor-mode)
+
+  ;; imenu support (jump to outline headings / transactions).
+  (add-hook 'ledger-mode-hook
+            (lambda ()
+              (setq-local imenu-generic-expression
+                          `((nil ,(concat
+                                   "^[\\*]+[ \t]+\\([^\n\r]+\\)\\|"
+                                   "^[0-9]\\{4\\}[-/.][0-9]\\{2\\}[-/.][0-9]\\{2\\}[ \t]+[^\n]+")
+                                 0))))))
 
 ;; The stock `ledger' flycheck checker shells out with ledger-CLI-only flags;
 ;; flycheck-hledger is the hledger-native replacement.

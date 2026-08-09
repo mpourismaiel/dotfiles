@@ -18,6 +18,26 @@
   :after agent-shell
   :demand t)
 
+;; Prompt editing keys. Defaults (from evil-collection-comint, inherited via
+;; comint-mode-map) put SUBMIT on RET and prompt HISTORY on plain Up/Down,
+;; which fights ordinary multi-line editing. Rebind on agent-shell-mode-map's
+;; insert state (more specific than comint-mode-map, so it wins — this is the
+;; same mechanism evil-collection-agent-shell uses for n/p):
+;;   Enter      -> newline        C-<return> -> submit
+;;   Up/Down    -> move cursor    C-Up/C-Down -> prompt history
+(with-eval-after-load 'agent-shell
+  (evil-define-key 'insert agent-shell-mode-map
+    (kbd "<return>")   #'newline
+    (kbd "RET")        #'newline
+    (kbd "C-<return>") #'agent-shell-submit
+    (kbd "<up>")       #'previous-line
+    (kbd "<down>")     #'next-line
+    (kbd "C-<up>")     #'comint-previous-input
+    (kbd "C-<down>")   #'comint-next-input)
+  ;; Submit from normal state too.
+  (evil-define-key 'normal agent-shell-mode-map
+    (kbd "C-<return>") #'agent-shell-submit))
+
 ;;; ECA (Editor Code Assistant) — inline completion & rewrite
 ;; eca-emacs is an editor-agnostic AI client (Emacs talks JSONRPC to an
 ;; external `eca' server, downloaded automatically on first use).  We use it

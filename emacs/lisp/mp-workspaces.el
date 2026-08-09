@@ -1,4 +1,4 @@
-;;; mp-workspaces.el --- Perspective workspaces, projectile, persistence, splash -*- lexical-binding: t; -*-
+;;; mp-workspaces.el --- Perspective workspaces, projectile, persistence, dashboard -*- lexical-binding: t; -*-
 
 ;;; Projectile
 
@@ -47,7 +47,7 @@
   :config
   (persp-mode 1))
 
-;; Everything below calls persp-* at command time, but the splash/session code
+;; Everything below calls persp-* at command time, but the dashboard/session code
 ;; at the bottom of this file needs perspective loaded.
 (elpaca-wait)
 
@@ -65,13 +65,13 @@ workspaces take the next index instead of renumbering everything."
   (reverse (persp-names)))
 
 (defun mp/workspace--show-fresh ()
-  "Make a newly-created workspace visibly fresh: one window, splash shown."
+  "Make a newly-created workspace visibly fresh: one window, dashboard shown."
   (delete-other-windows)
-  (switch-to-buffer (mp/splash-buffer)))
+  (switch-to-buffer (mp/dashboard-buffer)))
 
 (defun mp/workspace-new ()
   "Create and switch to a new automatically-named workspace.
-The new workspace opens on the splash overview (like the old dashboard),
+The new workspace opens on the dashboard overview (like the old dashboard),
 so it is obvious the switch happened."
   (interactive)
   (let* ((taken (mp/workspace-names))
@@ -82,7 +82,7 @@ so it is obvious the switch happened."
     (mp/workspace--show-fresh)))
 
 (defun mp/workspace-new-named (name)
-  "Create and switch to workspace NAME, showing the splash overview."
+  "Create and switch to workspace NAME, showing the dashboard overview."
   (interactive (list (read-string "Workspace name: ")))
   (let ((existed (member name (persp-names))))
     (persp-switch name)
@@ -95,7 +95,7 @@ so it is obvious the switch happened."
 (defun mp/workspace-kill ()
   "Kill the current workspace.
 Killing the last remaining workspace replaces it with a fresh one showing
-the splash overview instead of leaving a dead frame."
+the dashboard overview instead of leaving a dead frame."
   (interactive)
   (let ((name (persp-current-name)))
     (remhash name mp/workspace-project-roots)
@@ -173,7 +173,7 @@ matching the SPC TAB 1..9 switch keys."
               name))))
 
 ;; Opening a project via `SPC p p' (projectile) assigns it to the current
-;; workspace, so labels/splash know the association without using bundles.
+;; workspace, so labels/dashboard know the association without using bundles.
 (defun mp/workspace--record-project ()
   (when-let* ((root (and (fboundp 'projectile-project-root)
                          (projectile-project-root))))
@@ -195,6 +195,24 @@ matching the SPC TAB 1..9 switch keys."
                                 'face 'success)
                   (format " %s " (mp/workspace--label name))))
               (mp/workspace-names) " "))))
+
+(defun mp/workspace-switch ()
+  "Switch to a workspace picked from a labelled list.
+Shows the same `INDEX project' labels, in the same creation order, as
+`mp/workspace-display' (SPC TAB TAB) — not raw perspective names."
+  (interactive)
+  (let* ((names  (mp/workspace-names))
+         (labels (mapcar #'mp/workspace--label names))
+         ;; A table with `display-sort-function' identity keeps creation order
+         ;; (prescient won't reorder it: vertico-prescient-override-sorting nil).
+         (table  (lambda (str pred action)
+                   (if (eq action 'metadata)
+                       '(metadata (display-sort-function . identity)
+                                  (category . mp-workspace))
+                     (complete-with-action action labels str pred))))
+         (choice (completing-read "Workspace: " table nil t))
+         (idx    (seq-position labels choice #'equal)))
+    (when idx (persp-switch (nth idx names)))))
 
 (defun mp/workspace-close-window-or-workspace ()
   "Close the window; if it is the last one, kill the workspace."
@@ -330,7 +348,10 @@ matching the SPC TAB 1..9 switch keys."
 
 ;;; Splash (dashboard replacement): workspace + project overview
 
-(defun mp/splash--recent-project-files (root n)
+(defvar mp/dashboard-buffer-name "*dashboard*"
+  "Name of the workspace dashboard / fallback buffer.")
+
+(defun mp/dashboard--recent-project-files (root n)
   (when root
     (seq-take
      (seq-filter (lambda (f) (string-prefix-p (expand-file-name root)
@@ -338,15 +359,34 @@ matching the SPC TAB 1..9 switch keys."
                  recentf-list)
      n)))
 
-(defun mp/splash--heading (text)
+(defun mp/dashboard--ghostel-p (buf)
+  "Non-nil if BUF is a Ghostel terminal."
+  (and (buffer-live-p buf)
+       (with-current-buffer buf (derived-mode-p 'ghostel-mode))))
+
+(defun mp/dashboard--agent-p (buf)
+  "Non-nil if BUF is an agent-shell buffer."
+  (and (buffer-live-p buf)
+       (let ((name (buffer-name buf)))
+         (or (string-match-p "\\`Agent @ " name)
+             (string-prefix-p "*agent-shell" name)
+             (with-current-buffer buf (derived-mode-p 'agent-shell-mode))))))
+
+(defun mp/dashboard--shell-buffers ()
+  "All open Ghostel + agent-shell buffers."
+  (seq-filter (lambda (b) (or (mp/dashboard--agent-p b)
+                              (mp/dashboard--ghostel-p b)))
+              (buffer-list)))
+
+(defun mp/dashboard--heading (text)
   (insert (propertize (format "   %s\n" text) 'face 'font-lock-keyword-face)))
 
-(defun mp/splash-refresh ()
-  "(Re)build the splash buffer for the current workspace.
+(defun mp/dashboard-refresh ()
+  "(Re)build the dashboard buffer for the current workspace.
 Degrades gracefully when perspective isn't loaded yet (this runs as
 `initial-buffer-choice' during startup, before elpaca settles — an error
 here would silently fall back to *scratch*)."
-  (let* ((buf (get-buffer-create "*splash*"))
+  (let* ((buf (get-buffer-create mp/dashboard-buffer-name))
          (persp-ready (bound-and-true-p persp-mode))
          (current (if persp-ready (mp/workspace-current-name) "main"))
          (root (and persp-ready
@@ -373,7 +413,7 @@ here would silently fall back to *scratch*)."
 
         ;; Active workspaces (RET/click switches).
         (when persp-ready
-          (mp/splash--heading "Workspaces")
+          (mp/dashboard--heading "Workspaces")
           (dolist (name (mp/workspace-names))
             (let ((n name))
               (insert-text-button
@@ -384,8 +424,22 @@ here would silently fall back to *scratch*)."
                'follow-link t)))
           (insert "\n"))
 
+        ;; Terminals & agents (RET/click switches to the buffer). All open
+        ;; Ghostel terminals and agent-shell sessions, workspace-independent.
+        (when-let* ((shells (mp/dashboard--shell-buffers)))
+          (mp/dashboard--heading "Terminals & Agents")
+          (dolist (b shells)
+            (let ((sbuf b))
+              (insert-text-button
+               (format "     %s %s\n"
+                       (if (mp/dashboard--agent-p sbuf) "🤖" "▸")
+                       (buffer-name sbuf))
+               'action (lambda (_) (switch-to-buffer sbuf))
+               'follow-link t)))
+          (insert "\n"))
+
         ;; Known projects (RET/click opens in THIS workspace).
-        (mp/splash--heading "Projects")
+        (mp/dashboard--heading "Projects")
         (dolist (project (seq-take (and (fboundp 'projectile-relevant-known-projects)
                                         (projectile-relevant-known-projects))
                                    10))
@@ -399,8 +453,8 @@ here would silently fall back to *scratch*)."
         (insert "\n")
 
         ;; Recent files of the current project.
-        (when-let* ((recent (mp/splash--recent-project-files root 6)))
-          (mp/splash--heading "Recent")
+        (when-let* ((recent (mp/dashboard--recent-project-files root 6)))
+          (mp/dashboard--heading "Recent")
           (dolist (file recent)
             (let ((f file))
               (insert-text-button
@@ -417,21 +471,82 @@ here would silently fall back to *scratch*)."
       (setq-local cursor-type nil))
     buf))
 
-(defun mp/splash-buffer ()
-  "Return the splash buffer, refreshed."
-  (mp/splash-refresh))
+(defun mp/dashboard-buffer ()
+  "Return the dashboard buffer, refreshed."
+  (mp/dashboard-refresh))
 
-(setq initial-buffer-choice #'mp/splash-buffer)
+(defun mp/dashboard ()
+  "Open the workspace dashboard in the current window."
+  (interactive)
+  (switch-to-buffer (mp/dashboard-buffer)))
 
-;;; Fresh splits (port of the Splits section; dashboard -> splash)
+(setq initial-buffer-choice #'mp/dashboard-buffer)
+
+;;; Dashboard as the workspace fallback buffer
+;; Invariant: when the current workspace has no "interesting" buffer (a file,
+;; terminal or agent) the selected window shows the dashboard; the moment a
+;; real buffer is open again, a hidden dashboard is killed so it never lingers.
+
+(defun mp/dashboard--interesting-p (buf)
+  "Non-nil if BUF is worth keeping a workspace alive for."
+  (and (buffer-live-p buf)
+       (not (equal (buffer-name buf) mp/dashboard-buffer-name))
+       (or (buffer-file-name (buffer-base-buffer buf))
+           (mp/dashboard--ghostel-p buf)
+           (mp/dashboard--agent-p buf))))
+
+(defun mp/dashboard--workspace-buffers ()
+  (if (fboundp 'persp-current-buffers)
+      (seq-filter #'buffer-live-p (persp-current-buffers))
+    (buffer-list)))
+
+(defun mp/dashboard--workspace-empty-p ()
+  (not (seq-some #'mp/dashboard--interesting-p (mp/dashboard--workspace-buffers))))
+
+(defvar mp/dashboard--enforcing nil
+  "Reentrancy guard while the fallback enforcer mutates windows/buffers.")
+
+(defun mp/dashboard--enforce ()
+  "Keep the dashboard as the workspace fallback (see the invariant above)."
+  (when (and (bound-and-true-p persp-mode)
+             (not mp/dashboard--enforcing)
+             (not (active-minibuffer-window))
+             (window-live-p (selected-window)))
+    (let ((mp/dashboard--enforcing t))
+      (ignore-errors
+        (if (mp/dashboard--workspace-empty-p)
+            ;; Nothing real here -> surface the dashboard.
+            (let ((shown (window-buffer (selected-window))))
+              (unless (or (mp/dashboard--interesting-p shown)
+                          (equal (buffer-name shown) mp/dashboard-buffer-name))
+                (switch-to-buffer (mp/dashboard-buffer))))
+          ;; Real buffers exist -> don't let a hidden dashboard linger.
+          (when-let* ((buf (get-buffer mp/dashboard-buffer-name)))
+            (unless (get-buffer-window buf t)
+              (kill-buffer buf))))))))
+
+(defvar mp/dashboard--enforce-scheduled nil)
+
+(defun mp/dashboard--schedule-enforce (&rest _)
+  "Coalesce enforce triggers into one deferred run (safe from redisplay)."
+  (unless mp/dashboard--enforce-scheduled
+    (setq mp/dashboard--enforce-scheduled t)
+    (run-at-time 0 nil (lambda ()
+                         (setq mp/dashboard--enforce-scheduled nil)
+                         (mp/dashboard--enforce)))))
+
+(add-hook 'kill-buffer-hook #'mp/dashboard--schedule-enforce)
+(add-hook 'window-buffer-change-functions #'mp/dashboard--schedule-enforce)
+
+;;; Fresh splits (port of the Splits section; dashboard is the fresh buffer)
 
 (defun mp/split-target-buffer ()
   "Populate a newly-created split.
 Splitting from a Ghostel terminal opens a fresh terminal in the new
-split; otherwise show the splash overview."
+split; otherwise show the dashboard overview."
   (if (derived-mode-p 'ghostel-mode)
       (mp/ghostel-new)
-    (switch-to-buffer (mp/splash-buffer))))
+    (switch-to-buffer (mp/dashboard-buffer))))
 
 (defun mp/split-window-right-fresh ()
   "Split right and show a fresh buffer."

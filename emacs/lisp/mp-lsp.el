@@ -108,6 +108,11 @@ gdscript is deliberately absent (Godot LSP is TCP-only -> eglot).")
   :defer t
   :init (setq yas-snippet-dirs nil))
 
+;; NOTE: lsp-bridge's Package-Requires pulls in markdown-mode, which mp-langs
+;; also declares first-class. That re-declaration conflict (and the whole class
+;; of transitive-dep-also-declared-first-class) is neutralised globally by the
+;; `mp/elpaca--enqueue-tolerant-a' advice in init.el.
+
 (use-package lsp-bridge
   :ensure (:host github :repo "manateelazycat/lsp-bridge"
            :files (:defaults "*.py" "acm" "core" "langserver" "multiserver" "resources")

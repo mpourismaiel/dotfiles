@@ -77,6 +77,21 @@
 (when (file-exists-p mp/lock-file)
   (setq elpaca-lock-file mp/lock-file))
 
+;; Tolerate re-declaring a package that elpaca already pulled in as a
+;; transitive dependency (e.g. markdown-mode via lsp-bridge, expand-region via
+;; embrace). Before `after-init-time' is set — i.e. during normal/daemon
+;; startup, though NOT during `-batch -l init.el' where it is already set —
+;; `elpaca--enqueue' takes a conflict branch that `warn's and returns a string
+;; instead of an elpaca struct, which crashes the use-package expansion and
+;; aborts the rest of init. Force elpaca's own post-init branch (a harmless
+;; re-enqueue) for those duplicate orders. Installed before any module loads.
+(defun mp/elpaca--enqueue-tolerant-a (fn &rest args)
+  "Around advice: neutralise elpaca's init-time re-declaration crash."
+  (let ((after-init-time (or after-init-time t)))
+    (apply fn args)))
+;; elpaca is already loaded by the bootstrap above.
+(advice-add 'elpaca--enqueue :around #'mp/elpaca--enqueue-tolerant-a)
+
 ;; use-package integration: every use-package call defers to elpaca via
 ;; `:ensure t'. Built-ins opt out with `:ensure nil'.
 (elpaca elpaca-use-package
@@ -99,17 +114,39 @@ Guarded: a missing package logs a message instead of breaking startup."
 
 ;;; Modules (order matters)
 
-(require 'mp-core)        ; defaults, paths, NVM, private data, helpful
-(require 'mp-evil)        ; evil + flotilla + evil-collection
-(require 'mp-keys)        ; general.el leader engine + global bindings
-(require 'mp-completion)  ; vertico/consult/embark/corfu/orderless/prescient
-(require 'mp-ui)          ; theme, modeline, popups, visual polish
-(require 'mp-treesit)     ; grammars, folding, text objects
-(require 'mp-lsp)         ; lsp-bridge default, eglot fallback, flycheck, apheleia
-(require 'mp-workspaces)  ; perspective + projectile + persistence + splash
-(require 'mp-org)         ; org
-(require 'mp-langs)       ; per-language setup (incl. python guards)
-(require 'mp-tools)       ; magit, ghostel, dape, color-rg, clutch, docker, ...
-(require 'mp-ai)          ; agent-shell + eca
+;; Load each module in isolation: a failure in one (a bad recipe, an elpaca
+;; queue conflict, ...) must not abort the requires that follow it — otherwise
+;; a single broken package silently takes out every later module. Errors are
+;; collected and surfaced instead of aborting startup.
+(defvar mp/module-load-errors nil
+  "Alist of (MODULE . ERROR) for modules that failed to load.")
+
+(dolist (module '(mp-core        ; defaults, paths, NVM, private data, helpful
+                  mp-evil        ; evil + flotilla + evil-collection
+                  mp-keys        ; general.el leader engine + global bindings
+                  mp-completion  ; vertico/consult/embark/corfu/orderless
+                  mp-ui          ; theme, modeline, popups, visual polish
+                  mp-treesit     ; grammars, folding, text objects
+                  mp-lsp         ; lsp-bridge, eglot, flycheck, apheleia
+                  mp-workspaces  ; perspective + projectile + persistence + splash
+                  mp-org         ; org
+                  mp-langs       ; per-language setup (incl. python guards)
+                  mp-tools       ; magit, ghostel, dape, color-rg, clutch, ...
+                  mp-ai))        ; agent-shell + eca
+  (condition-case err
+      (require module)
+    (error
+     (push (cons module err) mp/module-load-errors)
+     (message "mp: module `%s' failed to load: %S" module err))))
+
+(when mp/module-load-errors
+  (add-hook 'elpaca-after-init-hook
+            (lambda ()
+              (display-warning
+               'mp (format "%d config module(s) failed to load: %s.  See *Messages*."
+                           (length mp/module-load-errors)
+                           (mapconcat (lambda (e) (symbol-name (car e)))
+                                      mp/module-load-errors ", "))
+               :error))))
 
 ;;; init.el ends here
