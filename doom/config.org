@@ -1413,20 +1413,95 @@ set ~mp/workspace-hud-debug~ to log to =*workspace-hud-log*=.
 (map! :leader :desc "Workspace HUD" "t W" #'mp/workspace-hud-toggle)
 #+end_src
 
-**** Copilot Auto suggestions
+**** ECA (Editor Code Assistant) — inline completion & rewrite
+[[https://github.com/editor-code-assistant/eca-emacs][eca-emacs]] is an editor-agnostic AI client (Emacs talks JSONRPC to an external
+=eca= server, downloaded automatically on first use). We use it *only* for its
+two non-chat features — inline *ghost-text completion* and region *rewrite* —
+since chat already lives in [[*AI][agent-shell]]. It fully replaces the old Copilot
+setup.
+
+Unlike agent-shell, ECA does *not* speak ACP: the =eca= server connects to Claude
+directly via Anthropic's API. Provider, model and *prompt* choices are
+server-side in =~/.config/eca/config.json= (created outside of tangling), which
+points =completion= at a fast model plus a strict code-only prompt file
+(=~/.config/eca/prompts/completion.md= — overriding the built-in prompt so the
+model never wraps the suggestion in prose or code fences) and =rewrite= at Sonnet.
+Authenticate once per machine with =/login= → =anthropic= in an ECA chat to use
+your Claude subscription; nothing here sets an API key.
+
+Completion is auto-enabled in every =prog-mode= buffer (exactly like the old
+Copilot hook). The minor mode is a cheap no-op until a session is running — its
+auto-trigger only fires on self-insert *and* when a session is live — so it costs
+nothing before you start one with =SPC d e= (=M-x eca=). Starting a session pops
+up a chat buffer; =eca-chat-focus-on-open= is nil so it never steals focus — just
+bury it.
+
+Accepting a suggestion, at point (ECA hosts these in its own overlay keymap):
+- =TAB= — accept the whole suggestion.
+- =C-TAB= — accept the next *word* only (prefix arg = N words), keeping the rest as
+  ghost text, so you can take 5 words of a 20-word suggestion.
+- =C-RET= — accept up to the end of the next *line*.
+
+The word/line partial-accept commands are ours; upstream ECA ships only the
+whole-suggestion =TAB= accept.
 #+begin_src emacs-lisp
-(use-package! copilot
-  :ensure t
-  :bind (:map copilot-completion-map
-              ("<tab>" . copilot-accept-completion)
-              ("TAB" . copilot-accept-completion)
-              ("C-<tab>" . copilot-accept-completion-by-word)
-              ("C-TAB" . copilot-accept-completion-by-word)
-              ("C-n" . copilot-next-completion)
-              ("C-p" . copilot-previous-completion))
+(use-package! eca
+  :defer t
+  :commands (eca eca-stop eca-completion-mode eca-rewrite)
   :init
-  (setq copilot-indent-offset-warning-disable t)
-  :hook (prog-mode . copilot-mode))
+  ;; Auto-enable ghost-text completion in every code buffer, like Copilot's
+  ;; prog-mode hook did.  Harmless before a session exists: the auto-trigger
+  ;; only fires on self-insert and when `(eca-session)' is live.
+  (add-hook 'prog-mode-hook #'eca-completion-mode)
+  :config
+  (setq eca-completion-idle-delay 0.5        ; calmer than the 0.2 default
+        eca-completion-syntax-highlight t
+        eca-chat-focus-on-open nil)          ; chat lives in agent-shell; don't steal focus
+
+  ;; --- Partial acceptance (upstream only ships whole-suggestion accept) ---
+  (defun mp/eca-completion--accept-partial (transform-fn)
+    "Accept the leading slice of the current ECA suggestion.
+TRANSFORM-FN gets the full suggestion string and returns the leading substring
+to insert now; the remainder stays shown as ghost text.  Falls back to a full
+accept when that slice is empty or already the whole suggestion."
+    (when (eca-completion--overlay-visible)
+      (let* ((text    (overlay-get eca-completion--overlay 'completion))
+             (id      (overlay-get eca-completion--overlay 'id))
+             (partial (funcall transform-fn text)))
+        (if (or (null partial)
+                (= (length partial) 0)
+                (>= (length partial) (length text)))
+            (eca-completion-accept)
+          (let ((rest (substring text (length partial))))
+            (eca-completion--clear-overlay)
+            (insert partial)
+            (eca-completion--display-overlay-completion rest id (point) (point)))))))
+
+  (defun mp/eca-completion-accept-word (&optional n)
+    "Accept the next N words (default 1) of the ECA suggestion, keep the rest."
+    (interactive "p")
+    (mp/eca-completion--accept-partial
+     (lambda (text)
+       (let ((pos 0) (count 0) (len (length text)) (n (or n 1)))
+         (while (and (< count n) (< pos len)
+                     (string-match "[^[:alnum:]_]*[[:alnum:]_]+" text pos))
+           (setq pos (match-end 0) count (1+ count)))
+         (substring text 0 pos)))))
+
+  (defun mp/eca-completion-accept-line ()
+    "Accept up to the end of the next line of the ECA suggestion, keep the rest."
+    (interactive)
+    (mp/eca-completion--accept-partial
+     (lambda (text)
+       (let ((nl (string-search "\n" text)))
+         (if nl (substring text 0 (1+ nl)) text)))))
+
+  ;; TAB already accepts the whole suggestion (bound by ECA in its overlay
+  ;; keymap).  Add word/line partial-accept beside it, once that map exists.
+  (with-eval-after-load 'eca-completion
+    (define-key eca-completion-map (kbd "C-<tab>")    #'mp/eca-completion-accept-word)
+    (define-key eca-completion-map (kbd "C-TAB")      #'mp/eca-completion-accept-word)
+    (define-key eca-completion-map (kbd "C-<return>") #'mp/eca-completion-accept-line)))
 #+end_src
 
 *** LSP Bridge
@@ -1434,7 +1509,7 @@ set ~mp/workspace-hud-debug~ to log to =*workspace-hud-log*=.
 completion UI (~acm~). It replaces =lsp-mode= *and* =corfu= /in the buffers where
 it runs/ — the two stacks cannot share a buffer, so this is wired up as an
 *opt-in, per-buffer toggle* rather than a global mode. The default VSCode-feel
-stack (Corfu + lsp-mode + Prescient + Copilot) is left completely intact; nothing
+stack (Corfu + lsp-mode + Prescient + ECA) is left completely intact; nothing
 below runs until you invoke =SPC t b= (=mp/lsp-bridge-toggle=) in a buffer.
 
 The Python backend runs from a dedicated venv so it never touches the system
@@ -1455,7 +1530,7 @@ updating.
         acm-enable-doc t                 ; documentation popup beside candidates
         acm-enable-quick-access nil
         acm-enable-tabnine nil
-        acm-enable-copilot nil           ; keep copilot.el as the sole Copilot source
+        acm-enable-copilot nil           ; no Copilot in acm; AI completion is ECA
         acm-candidate-match-function 'orderless-flex)
   ;; Editor behaviour.
   (setq lsp-bridge-enable-hover-diagnostic t
@@ -1791,7 +1866,11 @@ This section documents the custom bindings defined in this configuration.
       :desc "Run nearest test" "t t" #'+eval/test
       :desc "Run all project tests" "t a" #'+eval/test-all
       (:prefix ("d" . "agent")
-       :desc "Agent shell" "a" #'agent-shell))
+       :desc "Agent shell" "a" #'agent-shell
+       :desc "ECA: start/attach session" "e" #'eca
+       :desc "ECA: stop session" "E" #'eca-stop
+       :desc "ECA: toggle completion (this buffer)" "c" #'eca-completion-mode
+       :desc "ECA: rewrite region" "r" #'eca-rewrite))
 #+end_src
 
 ***** Code Navigation
@@ -1999,15 +2078,15 @@ shell-integration/terminfo assets under =etc/= are bundled.
 - https://github.com/xenodium/acp.el
 - https://github.com/xenodium/agent-shell
 - https://github.com/zackattackz/agent-shell-notifications
-- https://github.com/copilot-emacs/copilot.el
+- https://github.com/editor-code-assistant/eca-emacs
 
 #+begin_src emacs-lisp
 (package! acp)
 (package! agent-shell)
 (package! agent-shell-notifications
   :recipe (:host github :repo "zackattackz/agent-shell-notifications"))
-(package! copilot
-  :recipe (:host github :repo "copilot-emacs/copilot.el" :files ("*.el")))
+(package! eca
+  :recipe (:host github :repo "editor-code-assistant/eca-emacs" :files ("*.el")))
 #+end_src
 
 *** Programming
