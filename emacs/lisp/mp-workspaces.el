@@ -384,6 +384,27 @@ Shows the same `INDEX project' labels, in the same creation order, as
   "The active workspace row in the dashboard list."
   :group 'mp)
 
+(defface mp/dashboard-hl '((t :inherit hl-line :extend t))
+  "Highlight for the dashboard link at point.
+`:extend' makes it cover whole lines, so multi-line links (agents) are
+highlighted across both their lines while keeping the link line and the
+description line visually distinct via their own foreground faces."
+  :group 'mp)
+
+;; Every clickable item is tagged as a `block' spanning all of its lines (one
+;; line for most, two for agents) so the highlight can cover the whole link and
+;; `]'/`[' can jump link-to-link.
+(defvar mp/dashboard--block-counter 0)
+
+(defmacro mp/dashboard--as-block (&rest body)
+  "Run BODY (which inserts one item) and tag its inserted lines as one block."
+  (declare (indent 0))
+  (let ((start (make-symbol "start")))
+    `(let ((,start (point)))
+       (prog1 (progn ,@body)
+         (put-text-property ,start (point) 'mp/dashboard-block
+                            (cl-incf mp/dashboard--block-counter))))))
+
 (defun mp/dashboard--icon (fn name)
   "Nerd-icon glyph NAME via FN, tinted like a heading; \"\" if unavailable."
   (if (fboundp fn)
@@ -567,11 +588,12 @@ stamp this on `agent-shell-submit' instead.")
   "Insert INDENT then a tight clickable LABEL running ACTION on RET/click.
 The newline lives outside the button so its underline (if any) and the
 indentation never extend across the line — no more hanging underlines."
-  (insert indent)
-  (insert-text-button label
-                      'action action 'follow-link t 'mouse-face 'highlight
-                      'face face 'help-echo help-echo)
-  (insert "\n"))
+  (mp/dashboard--as-block
+    (insert indent)
+    (insert-text-button label
+                        'action action 'follow-link t 'mouse-face 'highlight
+                        'face face 'help-echo help-echo)
+    (insert "\n")))
 
 ;;;; Dashboard mode + workspace switching
 ;; `n'/`p' really switch the active workspace (so super-menu, magit, agent-shell
@@ -587,9 +609,13 @@ indentation never extend across the line — no more hanging underlines."
 (define-key mp/dashboard-mode-map "p" #'mp/dashboard-switch-prev)
 (define-key mp/dashboard-mode-map "q" #'mp/dashboard-quit)
 (define-key mp/dashboard-mode-map "g" #'mp/dashboard-refresh)
+(define-key mp/dashboard-mode-map "]" #'mp/dashboard-next-link)
+(define-key mp/dashboard-mode-map "[" #'mp/dashboard-prev-link)
 
 (define-derived-mode mp/dashboard-mode special-mode "Dashboard"
-  "Major mode for the workspace overview dashboard.")
+  "Major mode for the workspace overview dashboard."
+  ;; Follow point with a block-aware highlight (covers both lines of an agent).
+  (add-hook 'post-command-hook #'mp/dashboard--hl-update nil t))
 
 (with-eval-after-load 'evil
   ;; Single keys are shadowed by evil motion state; bind them in the dashboard's
@@ -598,7 +624,49 @@ indentation never extend across the line — no more hanging underlines."
     "n" #'mp/dashboard-switch-next
     "p" #'mp/dashboard-switch-prev
     "q" #'mp/dashboard-quit
+    "]" #'mp/dashboard-next-link
+    "[" #'mp/dashboard-prev-link
     "gr" #'mp/dashboard-refresh))
+
+;;;; Link navigation + highlight
+
+(defun mp/dashboard-next-link ()
+  "Move point to the next link, wrapping around."
+  (interactive) (forward-button 1 t nil t))
+
+(defun mp/dashboard-prev-link ()
+  "Move point to the previous link, wrapping around."
+  (interactive) (backward-button 1 t nil t))
+
+(defvar-local mp/dashboard--hl-overlay nil
+  "Overlay highlighting the dashboard block (link) at point.")
+
+(defun mp/dashboard--block-bounds ()
+  "Bounds (BEG . END) of the block at point, or nil when point is not on one."
+  (let ((id (get-text-property (point) 'mp/dashboard-block)))
+    (when id
+      (let ((beg (point)) (end (point)))
+        (while (and (> beg (point-min))
+                    (eq (get-text-property (1- beg) 'mp/dashboard-block) id))
+          (setq beg (1- beg)))
+        (while (and (< end (point-max))
+                    (eq (get-text-property end 'mp/dashboard-block) id))
+          (setq end (1+ end)))
+        (cons beg end)))))
+
+(defun mp/dashboard--hl-update ()
+  "Move the highlight overlay to the block at point (or hide it)."
+  (when (derived-mode-p 'mp/dashboard-mode)
+    (let ((bounds (mp/dashboard--block-bounds)))
+      (cond
+       ((null bounds)
+        (when mp/dashboard--hl-overlay (delete-overlay mp/dashboard--hl-overlay)))
+       (t
+        (unless (overlayp mp/dashboard--hl-overlay)
+          (setq mp/dashboard--hl-overlay (make-overlay 1 1))
+          (overlay-put mp/dashboard--hl-overlay 'face 'mp/dashboard-hl)
+          (overlay-put mp/dashboard--hl-overlay 'priority -50))
+        (move-overlay mp/dashboard--hl-overlay (car bounds) (cdr bounds)))))))
 
 (defun mp/dashboard--current-persp-buffers ()
   "Buffers of the current perspective, in global most-recently-used order."
@@ -666,6 +734,7 @@ here would silently fall back to *scratch*)."
         ;; workspace so the svg header line reports the right project (it reads
         ;; `projectile-project-name' off `default-directory').
         (setq default-directory (or root (expand-file-name "~/")))
+        (setq mp/dashboard--block-counter 0)
         (erase-buffer)
         (insert "\n\n")
         ;; Title: the same "INDEX project" label used everywhere else, or
@@ -699,7 +768,35 @@ here would silently fall back to *scratch*)."
                :face (if act 'mp/dashboard-active 'mp/dashboard-item))))
           (insert "\n"))
 
-        ;; Git status of the current workspace's project.
+        ;; Agents: each agent-shell with its own title header + live status
+        ;; (running / waiting-for-you / idle) and workspace · model · effort ·
+        ;; perms · context · runtime.  RET/click navigates to the owning workspace.
+        ;; The title line is the link; the detail line below is its description —
+        ;; both share one highlight block (see `mp/dashboard--as-block').
+        (when-let* ((agents (seq-filter #'mp/dashboard--agent-p (buffer-list))))
+          (mp/dashboard--heading
+           (mp/dashboard--icon #'nerd-icons-mdicon "nf-md-robot") "Agents")
+          (dolist (b agents)
+            (let* ((sbuf b)
+                   (status (mp/dashboard--agent-status sbuf))
+                   (ws     (mp/dashboard--buffer-workspace-label sbuf))
+                   (detail (mp/dashboard--agent-detail sbuf))
+                   (sub    (mapconcat
+                            #'identity
+                            (delq nil (list ws (and detail (not (string-empty-p detail)) detail)))
+                            "  ·  ")))
+              (mp/dashboard--as-block
+                (insert "    ")
+                (insert-text-button
+                 (truncate-string-to-width (mp/dashboard--agent-title sbuf) 52 nil nil "…")
+                 'action (let ((sb sbuf)) (lambda (_) (mp/dashboard--goto-buffer sb)))
+                 'follow-link t 'mouse-face 'highlight
+                 'face 'mp/dashboard-item 'help-echo (buffer-name sbuf))
+                (insert "  " (cdr status) "\n")
+                (unless (string-empty-p sub) (mp/dashboard--line sub)))))
+          (insert "\n"))
+
+        ;; Git status of the current workspace's project (kept after Agents).
         (when root
           (mp/dashboard--heading
            (mp/dashboard--icon #'nerd-icons-octicon "nf-oct-git_branch") "Git")
@@ -723,46 +820,22 @@ here would silently fall back to *scratch*)."
             (insert "\n")
             (mp/dashboard--line
              (if changes (format "%d changed" (length changes)) "working tree clean"))
-            ;; Changed files: colored status code + clickable path.
+            ;; Changed files: colored status code + clickable path (RET opens it).
             (dolist (line (seq-take changes 10))
               (let* ((code (substring line 0 2))
                      (path (let ((p (substring line 3)))
                              (if (string-match " -> " p) (substring p (match-end 0)) p)))
                      (full (expand-file-name path root)))
-                (insert "    "
-                        (propertize (format "%-2s " code) 'face (mp/dashboard--git-face code)))
-                (insert-text-button path
-                                    'action (let ((f full)) (lambda (_) (find-file f)))
-                                    'follow-link t 'mouse-face 'highlight
-                                    'face 'mp/dashboard-item 'help-echo full)
-                (insert "\n")))
+                (mp/dashboard--as-block
+                  (insert "    "
+                          (propertize (format "%-2s " code) 'face (mp/dashboard--git-face code)))
+                  (insert-text-button path
+                                      'action (let ((f full)) (lambda (_) (find-file f)))
+                                      'follow-link t 'mouse-face 'highlight
+                                      'face 'mp/dashboard-item 'help-echo full)
+                  (insert "\n"))))
             (when (> (length changes) 10)
               (mp/dashboard--line (format "… %d more" (- (length changes) 10)))))
-          (insert "\n"))
-
-        ;; Agents: each agent-shell with its own title header + live status
-        ;; (running / waiting-for-you / idle) and workspace · model · effort ·
-        ;; perms · context · runtime.  RET/click navigates to the owning workspace.
-        (when-let* ((agents (seq-filter #'mp/dashboard--agent-p (buffer-list))))
-          (mp/dashboard--heading
-           (mp/dashboard--icon #'nerd-icons-mdicon "nf-md-robot") "Agents")
-          (dolist (b agents)
-            (let* ((sbuf b)
-                   (status (mp/dashboard--agent-status sbuf))
-                   (ws     (mp/dashboard--buffer-workspace-label sbuf))
-                   (detail (mp/dashboard--agent-detail sbuf))
-                   (sub    (mapconcat
-                            #'identity
-                            (delq nil (list ws (and detail (not (string-empty-p detail)) detail)))
-                            "  ·  ")))
-              (insert "    ")
-              (insert-text-button
-               (truncate-string-to-width (mp/dashboard--agent-title sbuf) 52 nil nil "…")
-               'action (let ((sb sbuf)) (lambda (_) (mp/dashboard--goto-buffer sb)))
-               'follow-link t 'mouse-face 'highlight
-               'face 'mp/dashboard-item 'help-echo (buffer-name sbuf))
-              (insert "  " (cdr status) "\n")
-              (unless (string-empty-p sub) (mp/dashboard--line sub))))
           (insert "\n"))
 
         ;; Terminals (ghostel): show its workspace and whether a command is
@@ -778,18 +851,19 @@ here would silently fall back to *scratch*)."
                    (ws    (mp/dashboard--buffer-workspace-label tbuf))
                    (title (with-current-buffer tbuf
                             (or (bound-and-true-p ghostel--title) (buffer-name tbuf)))))
-              (insert "    ")
-              (insert-text-button
-               title
-               'action (let ((tb tbuf)) (lambda (_) (mp/dashboard--goto-buffer tb)))
-               'follow-link t 'mouse-face 'highlight
-               'face 'mp/dashboard-item 'help-echo (buffer-name tbuf))
-              (insert "  " (if running
-                               (propertize "● running — unsafe to close" 'face 'warning)
-                             (propertize "○ idle — safe to close" 'face 'font-lock-comment-face)))
-              (when ws
-                (insert (propertize (format "  ·  %s" ws) 'face 'font-lock-comment-face)))
-              (insert "\n")))
+              (mp/dashboard--as-block
+                (insert "    ")
+                (insert-text-button
+                 title
+                 'action (let ((tb tbuf)) (lambda (_) (mp/dashboard--goto-buffer tb)))
+                 'follow-link t 'mouse-face 'highlight
+                 'face 'mp/dashboard-item 'help-echo (buffer-name tbuf))
+                (insert "  " (if running
+                                 (propertize "● running — unsafe to close" 'face 'warning)
+                               (propertize "○ idle — safe to close" 'face 'font-lock-comment-face)))
+                (when ws
+                  (insert (propertize (format "  ·  %s" ws) 'face 'font-lock-comment-face)))
+                (insert "\n"))))
           (insert "\n"))
 
         ;; Known projects (RET/click opens in THIS workspace).
@@ -806,10 +880,14 @@ here would silently fall back to *scratch*)."
         (insert "\n")
 
         (insert (propertize
-                 "  n/p switch workspace · q enter · RET open · SPC p p projects · SPC TAB n new\n"
+                 "  ]/[ links · RET open · n/p switch workspace · q enter · SPC p p projects\n"
                  'face 'font-lock-comment-face)))
+      ;; Park point on the first link so `]'/`[' have a starting point and the
+      ;; highlight shows immediately; the block cursor stays hidden.
       (goto-char (point-min))
-      (setq-local cursor-type nil))
+      (when-let* ((b (next-button (point-min)))) (goto-char (button-start b)))
+      (setq-local cursor-type nil)
+      (mp/dashboard--hl-update))
     buf))
 
 (defun mp/dashboard-buffer ()
@@ -849,6 +927,21 @@ freshly-rebuilt dashboard."
 (defun mp/dashboard--workspace-empty-p ()
   (not (seq-some #'mp/dashboard--interesting-p (mp/dashboard--workspace-buffers))))
 
+(defun mp/dashboard--throwaway-p (buf)
+  "Non-nil if BUF is a boring placeholder the dashboard may replace.
+Only scratch/messages/the-dashboard/an-empty-fundamental buffer count.
+Anything the user deliberately opened — magit, help, dired, a compilation
+buffer, etc. — is left alone even in an otherwise-empty workspace, so the
+fallback never yanks such a buffer out from under them."
+  (let ((name (buffer-name buf)))
+    (or (string-prefix-p "*scratch*" name)
+        (string= name "*Messages*")
+        (string= name mp/dashboard-buffer-name)
+        (with-current-buffer buf
+          (and (eq major-mode 'fundamental-mode)
+               (not (buffer-file-name))
+               (= (buffer-size) 0))))))
+
 (defvar mp/dashboard--enforcing nil
   "Reentrancy guard while the fallback enforcer mutates windows/buffers.")
 
@@ -861,10 +954,13 @@ freshly-rebuilt dashboard."
     (let ((mp/dashboard--enforcing t))
       (ignore-errors
         (if (mp/dashboard--workspace-empty-p)
-            ;; Nothing real here -> surface the dashboard.
+            ;; Nothing real here -> surface the dashboard, but ONLY over a
+            ;; throwaway placeholder.  A deliberately-opened buffer (magit,
+            ;; help, dired…) stays, even though it isn't "interesting" enough
+            ;; to keep the workspace alive on its own.
             (let ((shown (window-buffer (selected-window))))
-              (unless (or (mp/dashboard--interesting-p shown)
-                          (equal (buffer-name shown) mp/dashboard-buffer-name))
+              (when (and (mp/dashboard--throwaway-p shown)
+                         (not (equal (buffer-name shown) mp/dashboard-buffer-name)))
                 (switch-to-buffer (mp/dashboard-buffer))))
           ;; Real buffers exist -> don't let a hidden dashboard linger.
           (when-let* ((buf (get-buffer mp/dashboard-buffer-name)))
