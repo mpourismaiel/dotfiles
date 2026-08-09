@@ -70,16 +70,20 @@ workspaces take the next index instead of renumbering everything."
   (switch-to-buffer (mp/dashboard-buffer)))
 
 (defun mp/workspace-new ()
-  "Create and switch to a new automatically-named workspace.
-The new workspace opens on the dashboard overview (like the old dashboard),
-so it is obvious the switch happened."
+  "Create and switch to a fresh, project-less workspace.
+Named `empty workspace - N', where N counts up from the number of
+workspaces that already exist — so a new workspace never inherits a name
+(or project) that a previous one used.  Opens on the dashboard overview so
+the switch is obvious."
   (interactive)
-  (let* ((taken (mp/workspace-names))
-         (n (cl-loop for i from 1
-                     unless (member (format "#%d" i) taken)
-                     return i)))
-    (persp-switch (format "#%d" n))
-    (mp/workspace--show-fresh)))
+  (let* ((names (persp-names))
+         (n (1+ (length names))))
+    (while (member (format "empty workspace - %d" n) names) (cl-incf n))
+    (let ((wname (format "empty workspace - %d" n)))
+      ;; Belt and braces: make sure no stale project association survives.
+      (remhash wname mp/workspace-project-roots)
+      (persp-switch wname)
+      (mp/workspace--show-fresh))))
 
 (defun mp/workspace-new-named (name)
   "Create and switch to workspace NAME, showing the dashboard overview."
@@ -160,17 +164,25 @@ file-visiting buffer in that workspace."
                   (file (seq-some #'buffer-file-name (persp-buffers persp))))
         (locate-dominating-file file ".git"))))
 
+(defun mp/workspace--empty-name (name)
+  "Display name for a project-less workspace NAME: `empty workspace - NAME'.
+Auto-created workspaces are already named `empty workspace - N', so avoid
+doubling the prefix in that case."
+  (if (string-prefix-p "empty workspace" name)
+      name
+    (format "empty workspace - %s" name)))
+
 (defun mp/workspace--label (name)
-  "Positional label for workspace NAME: \"INDEX project\" (or the raw name
-when no project is assigned). Indices are 1-based positions in
-`persp-names', so killing a middle workspace renumbers the ones after it —
-matching the SPC TAB 1..9 switch keys."
+  "Display label for workspace NAME.
+With a project assigned: \"INDEX project\", where INDEX is the 1-based
+position in `persp-names' (matching the SPC TAB 1..9 switch keys, so
+killing a middle workspace renumbers the ones after it).  With no project:
+`empty workspace - NAME'."
   (let ((idx (1+ (or (seq-position (mp/workspace-names) name) 0)))
         (root (mp/workspace--project-root name)))
-    (format "%d %s" idx
-            (if root
-                (file-name-nondirectory (directory-file-name root))
-              name))))
+    (if root
+        (format "%d %s" idx (file-name-nondirectory (directory-file-name root)))
+      (mp/workspace--empty-name name))))
 
 ;; Opening a project via `SPC p p' (projectile) assigns it to the current
 ;; workspace, so labels/dashboard know the association without using bundles.
@@ -351,14 +363,6 @@ Shows the same `INDEX project' labels, in the same creation order, as
 (defvar mp/dashboard-buffer-name "*dashboard*"
   "Name of the workspace dashboard / fallback buffer.")
 
-(defun mp/dashboard--recent-project-files (root n)
-  (when root
-    (seq-take
-     (seq-filter (lambda (f) (string-prefix-p (expand-file-name root)
-                                              (expand-file-name f)))
-                 recentf-list)
-     n)))
-
 (defun mp/dashboard--ghostel-p (buf)
   "Non-nil if BUF is a Ghostel terminal."
   (and (buffer-live-p buf)
@@ -372,14 +376,270 @@ Shows the same `INDEX project' labels, in the same creation order, as
              (string-prefix-p "*agent-shell" name)
              (with-current-buffer buf (derived-mode-p 'agent-shell-mode))))))
 
-(defun mp/dashboard--shell-buffers ()
-  "All open Ghostel + agent-shell buffers."
-  (seq-filter (lambda (b) (or (mp/dashboard--agent-p b)
-                              (mp/dashboard--ghostel-p b)))
-              (buffer-list)))
+(defface mp/dashboard-item '((t :inherit link :underline nil))
+  "Clickable dashboard item — like a link but without the hanging underline."
+  :group 'mp)
 
-(defun mp/dashboard--heading (text)
-  (insert (propertize (format "   %s\n" text) 'face 'font-lock-keyword-face)))
+(defface mp/dashboard-active '((t :inherit link :underline nil :weight bold))
+  "The active workspace row in the dashboard list."
+  :group 'mp)
+
+(defun mp/dashboard--icon (fn name)
+  "Nerd-icon glyph NAME via FN, tinted like a heading; \"\" if unavailable."
+  (if (fboundp fn)
+      (or (ignore-errors (funcall fn name :face 'font-lock-keyword-face)) "")
+    ""))
+
+(defun mp/dashboard--heading (icon text)
+  "Insert a section heading TEXT prefixed by ICON (a nerd-icon glyph)."
+  (insert "  ")
+  (unless (string-empty-p icon) (insert icon " "))
+  (insert (propertize text 'face 'font-lock-keyword-face) "\n"))
+
+(defun mp/dashboard--line (text &optional face)
+  "Insert an indented, non-clickable dashboard TEXT line."
+  (insert (propertize (format "    %s\n" text) 'face (or face 'font-lock-comment-face))))
+
+(defun mp/dashboard--human (n)
+  "Human-readable token count N: 820 -> 820, 220815 -> 221k, 1000000 -> 1m."
+  (cond ((null n) "?")
+        ((>= n 1000000) (let ((m (/ n 1e6)))
+                          (if (= m (floor m)) (format "%dm" (floor m)) (format "%.1fm" m))))
+        ((>= n 1000) (format "%dk" (round (/ n 1000.0))))
+        (t (format "%d" n))))
+
+(defun mp/dashboard--duration (secs)
+  "Compact duration for SECS: 45 -> 45s, 3232 -> 53m, 7400 -> 2h3m."
+  (let* ((s (floor secs)) (h (/ s 3600)) (m (/ (% s 3600) 60)))
+    (cond ((> h 0) (format "%dh%dm" h m))
+          ((> m 0) (format "%dm" m))
+          (t (format "%ds" s)))))
+
+;;;; Buffer -> workspace navigation
+
+(defun mp/dashboard--buffer-workspace (buf)
+  "Name of a perspective that owns BUF (preferring the current one), or nil."
+  (when (and (bound-and-true-p persp-mode) (fboundp 'perspectives-hash))
+    (let* ((cur (persp-current-name))
+           (cur-persp (gethash cur (perspectives-hash))))
+      (if (and cur-persp (memq buf (persp-buffers cur-persp)))
+          cur
+        (let (hit)
+          (maphash (lambda (name persp)
+                     (when (and (not hit) (memq buf (persp-buffers persp)))
+                       (setq hit name)))
+                   (perspectives-hash))
+          hit)))))
+
+(defun mp/dashboard--buffer-workspace-label (buf)
+  "Display label of the workspace that owns BUF (e.g. \"2 elvou-app\"), or nil."
+  (when-let* ((ws (mp/dashboard--buffer-workspace buf)))
+    (mp/workspace--label ws)))
+
+(defun mp/dashboard--goto-buffer (buf)
+  "Switch to BUF, first switching to a workspace that owns it (if any)."
+  (when (buffer-live-p buf)
+    (when-let* ((ws (mp/dashboard--buffer-workspace buf)))
+      (unless (equal ws (persp-current-name)) (persp-switch ws)))
+    (switch-to-buffer buf)))
+
+;;;; Git
+
+(defun mp/dashboard--git-status (root)
+  "Return a plist describing the git repo at ROOT.
+Keys: :branch :upstream :ahead :behind :changes, where :changes is the list
+of `git status --porcelain' file lines (nil when clean / not a repo)."
+  (let* ((default-directory root)
+         (lines (ignore-errors
+                  (process-lines "git" "status" "--porcelain" "--branch")))
+         (head (car lines))
+         (changes (cdr lines))
+         (branch nil) (upstream nil) (ahead 0) (behind 0))
+    (when (and head (string-prefix-p "## " head))
+      (let ((h (substring head 3)))
+        ;; "branch...upstream [ahead N, behind M]" | "branch" | "HEAD (no branch)"
+        (if (string-match "\\`\\(.+?\\)\\.\\.\\.\\([^ ]+\\)\\(?: \\[\\(.*\\)\\]\\)?\\'" h)
+            (progn
+              (setq branch (match-string 1 h) upstream (match-string 2 h))
+              (when-let* ((ab (match-string 3 h)))
+                (when (string-match "ahead \\([0-9]+\\)" ab)
+                  (setq ahead (string-to-number (match-string 1 ab))))
+                (when (string-match "behind \\([0-9]+\\)" ab)
+                  (setq behind (string-to-number (match-string 1 ab))))))
+          (setq branch h))))
+    (list :branch branch :upstream upstream :ahead ahead :behind behind
+          :changes changes)))
+
+(defun mp/dashboard--git-face (code)
+  "Face for a two-char porcelain status CODE (color by change kind)."
+  (let ((c (string-trim code)))
+    (cond ((string-prefix-p "?" c)       'font-lock-comment-face) ; untracked
+          ((seq-contains-p c ?U)         'error)                  ; conflict
+          ((seq-contains-p c ?D)         'error)                  ; deleted
+          ((seq-contains-p c ?A)         'success)                ; added
+          ((or (seq-contains-p c ?R)
+               (seq-contains-p c ?C))    'font-lock-function-name-face) ; renamed/copied
+          ((seq-contains-p c ?M)         'warning)                ; modified
+          (t                             'default))))
+
+;;;; Agent-shell status
+
+(defvar-local mp/agent--last-prompt-time nil
+  "Time the user last submitted a prompt in this agent-shell buffer.
+Agent-shell's own `:last-activity-time' also ticks on every incoming
+notification, so it can't answer \"how long since I last prompted\"; we
+stamp this on `agent-shell-submit' instead.")
+
+(defun mp/agent--stamp-prompt (&rest _)
+  "Record the current time as this agent buffer's last prompt submission."
+  (when (derived-mode-p 'agent-shell-mode)
+    (setq mp/agent--last-prompt-time (current-time))))
+
+(with-eval-after-load 'agent-shell
+  (advice-add 'agent-shell-submit :after #'mp/agent--stamp-prompt))
+
+(defun mp/dashboard--agent-runtime (buf)
+  "Seconds since BUF's agent session started (parsed from its transcript path)."
+  (when-let* ((f (with-current-buffer buf
+                   (bound-and-true-p agent-shell--transcript-file)))
+              (base (file-name-base f))
+              ((string-match
+                "\\`\\([0-9]+\\)-\\([0-9]+\\)-\\([0-9]+\\)-\\([0-9]+\\)-\\([0-9]+\\)-\\([0-9]+\\)"
+                base)))
+    (let ((start (encode-time
+                  (list (string-to-number (match-string 6 base))
+                        (string-to-number (match-string 5 base))
+                        (string-to-number (match-string 4 base))
+                        (string-to-number (match-string 3 base))
+                        (string-to-number (match-string 2 base))
+                        (string-to-number (match-string 1 base))
+                        nil -1 nil))))
+      (float-time (time-subtract (current-time) start)))))
+
+(defun mp/dashboard--agent-title (buf)
+  "The agent session title for BUF, falling back to the buffer name."
+  (with-current-buffer buf
+    (or (ignore-errors (map-nested-elt (agent-shell--state) '(:session :title)))
+        (buffer-name buf))))
+
+(defun mp/dashboard--agent-status (buf)
+  "Return (SYMBOL . PROPERTIZED-STRING) for BUF: waiting / running / idle."
+  (with-current-buffer buf
+    (cond
+     ((ignore-errors (agent-shell--permission-pending-p))
+      (cons 'waiting (propertize "● waiting for you" 'face 'warning)))
+     ((ignore-errors (agent-shell--active-requests-p (agent-shell--state)))
+      (cons 'running (propertize "● running" 'face 'success)))
+     (t (cons 'idle (propertize "○ idle" 'face 'font-lock-comment-face))))))
+
+(defun mp/dashboard--agent-detail (buf)
+  "One-line `model · effort · perms · context · total · since-prompt' for BUF."
+  (with-current-buffer buf
+    (ignore-errors
+      (let* ((state  (agent-shell--state))
+             (kind   (map-nested-elt state '(:agent-config :mode-line-name)))
+             (model  (agent-shell-get-model-name state))
+             (effort (agent-shell-get-thought-level-name state))
+             (mode   (agent-shell-get-mode-name state))
+             (usage  (map-elt state :usage))
+             (used   (map-elt usage :context-used))
+             (size   (map-elt usage :context-size))
+             (total  (mp/dashboard--agent-runtime buf))
+             (since  (when mp/agent--last-prompt-time
+                       (float-time (time-subtract (current-time)
+                                                  mp/agent--last-prompt-time))))
+             (segs
+              (delq nil
+                    (list
+                     (let ((m (replace-regexp-in-string " *(recommended)" "" (or model ""))))
+                       (string-trim (format "%s %s" (or kind "") m)))
+                     (when effort (format "effort %s" effort))
+                     (when mode (format "perms %s" mode))
+                     (when (and used size (> size 0))
+                       (format "%s/%s (%d%%)" (mp/dashboard--human used)
+                               (mp/dashboard--human size)
+                               (round (* 100.0 (/ used (float size))))))
+                     (when total (format "%s total" (mp/dashboard--duration total)))
+                     (when since (format "%s since prompt" (mp/dashboard--duration since)))))))
+        (mapconcat #'identity (delete "" segs) "  ·  ")))))
+
+(cl-defun mp/dashboard--item (label action &key (indent "    ") (face 'mp/dashboard-item) help-echo)
+  "Insert INDENT then a tight clickable LABEL running ACTION on RET/click.
+The newline lives outside the button so its underline (if any) and the
+indentation never extend across the line — no more hanging underlines."
+  (insert indent)
+  (insert-text-button label
+                      'action action 'follow-link t 'mouse-face 'highlight
+                      'face face 'help-echo help-echo)
+  (insert "\n"))
+
+;;;; Dashboard mode + workspace switching
+;; `n'/`p' really switch the active workspace (so super-menu, magit, agent-shell
+;; and everything else agree) while keeping the dashboard on screen for further
+;; browsing.  `q' / RET-on-a-row enters a workspace, landing on its last buffer.
+
+(defvar mp/dashboard-mode-map (make-sparse-keymap)
+  "Keymap for `mp/dashboard-mode'.")
+
+;; Top-level (not inside the `defvar' initializer) so reloading this file
+;; actually updates the bindings — `defvar' won't reassign an already-bound map.
+(define-key mp/dashboard-mode-map "n" #'mp/dashboard-switch-next)
+(define-key mp/dashboard-mode-map "p" #'mp/dashboard-switch-prev)
+(define-key mp/dashboard-mode-map "q" #'mp/dashboard-quit)
+(define-key mp/dashboard-mode-map "g" #'mp/dashboard-refresh)
+
+(define-derived-mode mp/dashboard-mode special-mode "Dashboard"
+  "Major mode for the workspace overview dashboard.")
+
+(with-eval-after-load 'evil
+  ;; Single keys are shadowed by evil motion state; bind them in the dashboard's
+  ;; own map for normal+motion so they win inside this buffer only.
+  (evil-define-key '(normal motion) mp/dashboard-mode-map
+    "n" #'mp/dashboard-switch-next
+    "p" #'mp/dashboard-switch-prev
+    "q" #'mp/dashboard-quit
+    "gr" #'mp/dashboard-refresh))
+
+(defun mp/dashboard--current-persp-buffers ()
+  "Buffers of the current perspective, in global most-recently-used order."
+  (if (bound-and-true-p persp-mode)
+      (let ((members (persp-current-buffers)))
+        (seq-filter (lambda (b) (memq b members)) (buffer-list)))
+    (buffer-list)))
+
+(defun mp/dashboard-quit ()
+  "Leave the dashboard for the current workspace's most-recent real buffer.
+With no such buffer (an empty workspace) stay put."
+  (interactive)
+  (if-let* ((buf (seq-find #'mp/dashboard--interesting-p
+                           (mp/dashboard--current-persp-buffers))))
+      (switch-to-buffer buf)
+    (message "No open buffer in this workspace")))
+
+(defun mp/dashboard-enter (name)
+  "Switch to workspace NAME and land on its most-recent real buffer."
+  (persp-switch name)
+  (mp/dashboard-quit))
+
+(defun mp/dashboard--switch (step)
+  "Switch to the STEP-neighbour workspace, keeping the dashboard on screen."
+  (when (bound-and-true-p persp-mode)
+    (let* ((names (mp/workspace-names))
+           (pos (or (seq-position names (mp/workspace-current-name)) 0))
+           (target (nth (mod (+ pos step) (length names)) names)))
+      (unless (equal target (mp/workspace-current-name)) (persp-switch target))
+      ;; `persp-switch' restores TARGET's window layout; collapse to a single
+      ;; window showing the (refreshed) dashboard so browsing stays clean.
+      (delete-other-windows)
+      (switch-to-buffer (mp/dashboard-buffer)))))
+
+(defun mp/dashboard-switch-next ()
+  "Switch to the next workspace (staying on the dashboard)."
+  (interactive) (mp/dashboard--switch 1))
+
+(defun mp/dashboard-switch-prev ()
+  "Switch to the previous workspace (staying on the dashboard)."
+  (interactive) (mp/dashboard--switch -1))
 
 (defun mp/dashboard-refresh ()
   "(Re)build the dashboard buffer for the current workspace.
@@ -388,86 +648,167 @@ Degrades gracefully when perspective isn't loaded yet (this runs as
 here would silently fall back to *scratch*)."
   (let* ((buf (get-buffer-create mp/dashboard-buffer-name))
          (persp-ready (bound-and-true-p persp-mode))
-         (current (if persp-ready (mp/workspace-current-name) "main"))
-         (root (and persp-ready
-                    (or (mp/workspace--project-root current)
-                        (and (fboundp 'projectile-project-root)
-                             (projectile-project-root)))))
-         (branch (when root
-                   (let ((default-directory root))
-                     (car (ignore-errors
-                            (process-lines "git" "rev-parse" "--abbrev-ref" "HEAD")))))))
+         (active (and persp-ready (mp/workspace-current-name))))
     (with-current-buffer buf
-      (let ((inhibit-read-only t))
+      ;; Establish the mode up front: `define-derived-mode' runs
+      ;; `kill-all-local-variables', which would otherwise clobber the
+      ;; `default-directory' / preview state we set while rendering.
+      (unless (derived-mode-p 'mp/dashboard-mode) (mp/dashboard-mode))
+      (let* ((inhibit-read-only t)
+             (current (or active "main"))
+             ;; The workspace's *assigned* (or buffer-inferred) project — not a
+             ;; projectile fallback — so "empty workspace" stays accurate.
+             (root (and persp-ready (mp/workspace--project-root current)))
+             (idx (1+ (or (and persp-ready
+                               (seq-position (mp/workspace-names) current))
+                          0))))
+        ;; Keep the shared *dashboard* buffer's directory in sync with the shown
+        ;; workspace so the svg header line reports the right project (it reads
+        ;; `projectile-project-name' off `default-directory').
+        (setq default-directory (or root (expand-file-name "~/")))
         (erase-buffer)
         (insert "\n\n")
-        (insert (propertize (format "   %s\n" current)
-                            'face '(:height 1.6 :weight bold)))
+        ;; Title: the same "INDEX project" label used everywhere else, or
+        ;; "empty workspace - NAME" when nothing is assigned.
+        (insert (propertize
+                 (format "  %s\n"
+                         (if root
+                             (format "%d %s" idx
+                                     (file-name-nondirectory (directory-file-name root)))
+                           (mp/workspace--empty-name current)))
+                 'face '(:height 1.6 :weight bold)))
         (insert (propertize (if root
-                                (format "   %s%s\n"
-                                        (abbreviate-file-name root)
-                                        (if branch (format "  ·  %s" branch) ""))
-                              "   no project — pick one below or SPC p p\n")
+                                (format "  %s\n" (abbreviate-file-name root))
+                              "  no project — pick one below or SPC p p\n")
                             'face 'font-lock-comment-face))
         (insert "\n")
 
-        ;; Active workspaces (RET/click switches).
+        ;; Workspaces.  `>' marks the active one; RET/click enters a workspace
+        ;; (landing on its last buffer), `n'/`p' switch while staying here.
         (when persp-ready
-          (mp/dashboard--heading "Workspaces")
+          (mp/dashboard--heading
+           (mp/dashboard--icon #'nerd-icons-mdicon "nf-md-view_dashboard") "Workspaces")
           (dolist (name (mp/workspace-names))
-            (let ((n name))
-              (insert-text-button
-               (format "   %s%s\n"
-                       (if (equal n current) "▶ " "  ")
-                       (mp/workspace--label n))
-               'action (lambda (_) (persp-switch n))
-               'follow-link t)))
+            (let* ((n name) (act (equal n current)))
+              (mp/dashboard--item
+               (mp/workspace--label n)
+               (lambda (_) (mp/dashboard-enter n))
+               ;; `>' marker lives in the (plain) indent so the button stays
+               ;; tight to the label — nothing highlights past the text.
+               :indent (if act "  > " "    ")
+               :face (if act 'mp/dashboard-active 'mp/dashboard-item))))
           (insert "\n"))
 
-        ;; Terminals & agents (RET/click switches to the buffer). All open
-        ;; Ghostel terminals and agent-shell sessions, workspace-independent.
-        (when-let* ((shells (mp/dashboard--shell-buffers)))
-          (mp/dashboard--heading "Terminals & Agents")
-          (dolist (b shells)
-            (let ((sbuf b))
+        ;; Git status of the current workspace's project.
+        (when root
+          (mp/dashboard--heading
+           (mp/dashboard--icon #'nerd-icons-octicon "nf-oct-git_branch") "Git")
+          (let* ((st       (mp/dashboard--git-status root))
+                 (branch   (plist-get st :branch))
+                 (upstream (plist-get st :upstream))
+                 (ahead    (plist-get st :ahead))
+                 (behind   (plist-get st :behind))
+                 (changes  (plist-get st :changes)))
+            ;; Branch / upstream / ahead-behind.
+            (insert "    "
+                    (propertize (or branch "detached") 'face 'font-lock-function-name-face))
+            (if upstream
+                (progn
+                  (insert (propertize (format " → %s" upstream) 'face 'font-lock-comment-face))
+                  (when (> ahead 0)  (insert (propertize (format "  ↑%d" ahead) 'face 'success)))
+                  (when (> behind 0) (insert (propertize (format "  ↓%d" behind) 'face 'warning)))
+                  (when (and (zerop ahead) (zerop behind))
+                    (insert (propertize "  ✓ up to date" 'face 'font-lock-comment-face))))
+              (insert (propertize "  (no upstream)" 'face 'font-lock-comment-face)))
+            (insert "\n")
+            (mp/dashboard--line
+             (if changes (format "%d changed" (length changes)) "working tree clean"))
+            ;; Changed files: colored status code + clickable path.
+            (dolist (line (seq-take changes 10))
+              (let* ((code (substring line 0 2))
+                     (path (let ((p (substring line 3)))
+                             (if (string-match " -> " p) (substring p (match-end 0)) p)))
+                     (full (expand-file-name path root)))
+                (insert "    "
+                        (propertize (format "%-2s " code) 'face (mp/dashboard--git-face code)))
+                (insert-text-button path
+                                    'action (let ((f full)) (lambda (_) (find-file f)))
+                                    'follow-link t 'mouse-face 'highlight
+                                    'face 'mp/dashboard-item 'help-echo full)
+                (insert "\n")))
+            (when (> (length changes) 10)
+              (mp/dashboard--line (format "… %d more" (- (length changes) 10)))))
+          (insert "\n"))
+
+        ;; Agents: each agent-shell with its own title header + live status
+        ;; (running / waiting-for-you / idle) and workspace · model · effort ·
+        ;; perms · context · runtime.  RET/click navigates to the owning workspace.
+        (when-let* ((agents (seq-filter #'mp/dashboard--agent-p (buffer-list))))
+          (mp/dashboard--heading
+           (mp/dashboard--icon #'nerd-icons-mdicon "nf-md-robot") "Agents")
+          (dolist (b agents)
+            (let* ((sbuf b)
+                   (status (mp/dashboard--agent-status sbuf))
+                   (ws     (mp/dashboard--buffer-workspace-label sbuf))
+                   (detail (mp/dashboard--agent-detail sbuf))
+                   (sub    (mapconcat
+                            #'identity
+                            (delq nil (list ws (and detail (not (string-empty-p detail)) detail)))
+                            "  ·  ")))
+              (insert "    ")
               (insert-text-button
-               (format "     %s %s\n"
-                       (if (mp/dashboard--agent-p sbuf) "🤖" "▸")
-                       (buffer-name sbuf))
-               'action (lambda (_) (switch-to-buffer sbuf))
-               'follow-link t)))
+               (truncate-string-to-width (mp/dashboard--agent-title sbuf) 52 nil nil "…")
+               'action (let ((sb sbuf)) (lambda (_) (mp/dashboard--goto-buffer sb)))
+               'follow-link t 'mouse-face 'highlight
+               'face 'mp/dashboard-item 'help-echo (buffer-name sbuf))
+              (insert "  " (cdr status) "\n")
+              (unless (string-empty-p sub) (mp/dashboard--line sub))))
+          (insert "\n"))
+
+        ;; Terminals (ghostel): show its workspace and whether a command is
+        ;; running, so it's clear if the terminal is safe to close.  RET/click
+        ;; navigates to its workspace.
+        (when-let* ((terms (seq-filter #'mp/dashboard--ghostel-p (buffer-list))))
+          (mp/dashboard--heading
+           (mp/dashboard--icon #'nerd-icons-octicon "nf-oct-terminal") "Terminals")
+          (dolist (b terms)
+            (let* ((tbuf b)
+                   (running (with-current-buffer tbuf
+                              (bound-and-true-p ghostel--command-running)))
+                   (ws    (mp/dashboard--buffer-workspace-label tbuf))
+                   (title (with-current-buffer tbuf
+                            (or (bound-and-true-p ghostel--title) (buffer-name tbuf)))))
+              (insert "    ")
+              (insert-text-button
+               title
+               'action (let ((tb tbuf)) (lambda (_) (mp/dashboard--goto-buffer tb)))
+               'follow-link t 'mouse-face 'highlight
+               'face 'mp/dashboard-item 'help-echo (buffer-name tbuf))
+              (insert "  " (if running
+                               (propertize "● running — unsafe to close" 'face 'warning)
+                             (propertize "○ idle — safe to close" 'face 'font-lock-comment-face)))
+              (when ws
+                (insert (propertize (format "  ·  %s" ws) 'face 'font-lock-comment-face)))
+              (insert "\n")))
           (insert "\n"))
 
         ;; Known projects (RET/click opens in THIS workspace).
-        (mp/dashboard--heading "Projects")
+        (mp/dashboard--heading
+         (mp/dashboard--icon #'nerd-icons-octicon "nf-oct-repo") "Projects")
         (dolist (project (seq-take (and (fboundp 'projectile-relevant-known-projects)
                                         (projectile-relevant-known-projects))
                                    10))
           (let ((p project))
-            (insert-text-button
-             (format "     %s\n"
-                     (file-name-nondirectory (directory-file-name p)))
-             'action (lambda (_) (mp/open-project-root p))
-             'follow-link t
-             'help-echo p)))
+            (mp/dashboard--item
+             (file-name-nondirectory (directory-file-name p))
+             (lambda (_) (mp/open-project-root p))
+             :help-echo p)))
         (insert "\n")
 
-        ;; Recent files of the current project.
-        (when-let* ((recent (mp/dashboard--recent-project-files root 6)))
-          (mp/dashboard--heading "Recent")
-          (dolist (file recent)
-            (let ((f file))
-              (insert-text-button
-               (format "     %s\n" (file-relative-name f root))
-               'action (lambda (_) (find-file f))
-               'follow-link t)))
-          (insert "\n"))
-
         (insert (propertize
-                 "   SPC p p projects · SPC TAB n new workspace · SPC SPC menu\n"
+                 "  n/p switch workspace · q enter · RET open · SPC p p projects · SPC TAB n new\n"
                  'face 'font-lock-comment-face)))
       (goto-char (point-min))
-      (special-mode)
       (setq-local cursor-type nil))
     buf))
 
@@ -476,9 +817,14 @@ here would silently fall back to *scratch*)."
   (mp/dashboard-refresh))
 
 (defun mp/dashboard ()
-  "Open the workspace dashboard in the current window."
+  "Show the workspace dashboard.
+When the dashboard is already the current buffer, re-render it in place
+(picking up live agent/terminal/git status); otherwise switch to a
+freshly-rebuilt dashboard."
   (interactive)
-  (switch-to-buffer (mp/dashboard-buffer)))
+  (if (equal (buffer-name) mp/dashboard-buffer-name)
+      (mp/dashboard-refresh)
+    (switch-to-buffer (mp/dashboard-buffer))))
 
 (setq initial-buffer-choice #'mp/dashboard-buffer)
 
