@@ -730,6 +730,57 @@ reloaded on open.
 *** Code
 Code: [[file:pill/BlockBlastMenu.qml][=pill/BlockBlastMenu.qml=]]
 
+** BrickBreakerMenu.qml
+*** Description
+A paddle-less "ballz"-style *brick breaker* (=win.menu === 12=), routed from the
+Games list (=onPlayRequested(12) → win.openBrickBreaker()=). It has its *own* pane
+size (=brickWidth= 576 × =brickHeight= 416): the square field is only 300 tall, but
+the *side column* (stats + specials legend + rules + buttons) is the taller element,
+so the pane is sized to fit *that*, and the well is *vertically centred* in the row.
+It shares the Tetris *layout* (a well on the left, a stats/rules/controls column on
+the right) and *park grip*. Unlike Block Blast it
+*grabs the keyboard* (present in =grabsKeyboard= for P / N / Esc) — but aiming is all
+mouse. Opens *paused*, like Tetris.
+
+*Field.* A =6×10= grid of *wide* cells (=cellW= 50 × =cellH= 30 → a square 300×300
+well). The launch line *is* the floor (the bottom edge); bricks fill from the top
+and descend, so the field doubles as the bounce space — no separate gutter.
+
+*The round loop.* When idle you *aim* by pressing anywhere in the field and dragging
+from the floor: a *fading dotted line* (=aimDots=) previews 300px of the shot path
+including its first wall reflection, stopping at a brick. The aim is clamped to ≥15°
+off horizontal. *Release* to fire — the =balls= launch *one-by-one, 0.03s apart*
+(=fireT=), from =launchX=, each with the aimed velocity. Balls bounce off walls and
+bricks (−1 health/hit) and fall back; the *first* to touch the floor sets =launchX=
+for the *next* round. Once every launched ball is home the round advances
+(=advanceRound()=): the whole grid *shifts down one row*, a fresh row spawns at the
+top and =balls= increments. *Game over* the moment a shift would push a brick past
+the bottom row.
+
+*New rows.* =spawnRow(rn)= fills a random *2–6 of the 6 cells* (=pickFill()=, weighted
+toward fewer: 2:5 3:4 4:3 5:2 6:1), each brick's *health = the round number* =rn=.
+=balls == round= (start 1, +1 each round) *plus* any earned from bonus bricks, so ball
+count grows forever — but at 0.03s spacing even 100 balls launch in ~3s.
+
+*Specials* (flat *8%* per spawned brick, one of three uniformly, normal health;
+=hitBrick()= resolves damage then drains a destruction queue that chains):
+- *spray* (=blur_on=, cyan) — each hit also deals its damage to all *8 neighbours*.
+- *explode* (=flare=, orange) — when destroyed, wipes its *entire row outright*,
+  chaining any other specials caught in it (explosion is destroy-not-damage, so a
+  sprayed brick caught in a blast dies without spraying).
+- *addball* (=add_circle=, green) — grants one *permanent* extra ball when destroyed.
+
+*Speed.* The sim is a real 16ms =sim= timer *sub-stepped* =speedMul= times per tick
+(fractional-smooth; each sub-step moves ≤ =baseSpeed= 4.6px < a cell, so balls never
+tunnel). =speedMul= ramps with time-in-flight and resets each round: 1× until 5s,
+→1.5× (5s), →2× (10s), →5× (15s). A =Speed= readout in the stats shows it live.
+
+*Progress persists* to =settings.brickBreaker= (grid, round, balls, launchX, over,
+best — flight is transient, resumed idle), saved on every round and on destruction.
+=best= is the highest round reached, shown in the Games list.
+*** Code
+Code: [[file:pill/BrickBreakerMenu.qml][=pill/BrickBreakerMenu.qml=]]
+
 ** Launcher.qml
 *** Description
 KDE-style app launcher, opened by clicking the hovered pill body, the Row-2 grid

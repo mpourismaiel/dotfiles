@@ -191,6 +191,21 @@ For permission-request, wire Allow/Deny to the captured respond closure."
   (setq agent-shell-notifications-send-function #'mp/agent-shell--emaqs-send
         agent-shell-notifications-close-function #'mp/agent-shell--emaqs-close)
 
+  ;; ---- dismiss the emaqs "finished" card when its shell buffer is focused -----
+  ;; `agent-shell-notifications' only closes notifications on window *selection*
+  ;; change (`--on-window-activity'), which misses a same-window
+  ;; `switch-to-buffer' — the window stays selected, only its buffer changes, so
+  ;; focusing the shell that way would leave the finished card stuck on the emaqs
+  ;; pill.  Close the "finished" card (id "fin:BUFFER") whenever an agent-shell
+  ;; buffer becomes the selected window's buffer.
+  (defun mp/agent-shell--emaqs-dismiss-on-focus (&rest _)
+    "Close the emaqs finished card for the now-focused agent-shell buffer."
+    (let ((buf (window-buffer (selected-window))))
+      (when (and (buffer-live-p buf)
+                 (with-current-buffer buf (derived-mode-p 'agent-shell-mode)))
+        (mp/agent-shell--emaqs-close (format "fin:%s" (buffer-name buf))))))
+  (add-hook 'window-buffer-change-functions #'mp/agent-shell--emaqs-dismiss-on-focus)
+
   ;; ---- dispatch an emaqs button/click back into Emacs ------------------------
   (defun mp/agent-shell-emaqs-action (id key)
     "Run the stashed :on-action for emaqs notification ID with KEY.

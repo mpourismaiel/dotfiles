@@ -171,13 +171,13 @@ ShellRoot {
                 width: win.menuOpen ? menuW
                      : win.expanded ? Math.max(120, wsRow.implicitWidth + theme.pad * 2)
                      : win.showPermission ? permCardW
-                     : win.showFinished ? Math.min(460, finRow.implicitWidth + theme.pad * 2 + 24)
+                     : win.showFinished ? finRow.implicitWidth + theme.pad * 2 + 24
                      : win.showDots ? 58
                      : collapsedW
                 height: win.menuOpen ? menuH
                       : win.expanded ? barH
                       : win.showPermission ? permCard.cardHeight
-                      : win.showFinished ? 34
+                      : win.showFinished ? Math.max(34, finRow.implicitHeight + 14)
                       : collapsedH
                 opacity: win.fsHide ? 0 : ((win.dash || win.agentCard) ? 1 : theme.idleOpacity)
 
@@ -316,6 +316,10 @@ ShellRoot {
                                     font.pixelSize: theme.fsSmall
                                     font.letterSpacing: theme.labelSpacing
                                     font.capitalization: Font.AllUppercase
+                                    // keep a long buffer name from pushing the card off-screen:
+                                    // fit content, but elide past a sane cap.
+                                    elide: Text.ElideRight
+                                    width: Math.min(implicitWidth, 220)
                                 }
                                 Rectangle {                       // hairline divider
                                     anchors.verticalCenter: parent.verticalCenter
@@ -614,7 +618,8 @@ ShellRoot {
                                 Text {
                                     id: lbl
                                     anchors.centerIn: parent
-                                    text: del.modelData
+                                    // display the human label; switch by the raw name (del.modelData)
+                                    text: emacs.labelFor(del.modelData)
                                     color: (win.hoverIdx === del.index || emacs.currentIdx === del.index)
                                            ? theme.text : theme.textDim
                                     font.family: theme.mono
@@ -702,7 +707,8 @@ ShellRoot {
                     MenuHeader {
                         id: header
                         theme: theme
-                        title: win.menuWs
+                        // menuWs is the raw name (used for actions); show its label
+                        title: emacs.labelFor(win.menuWs)
                         onBack: win.closeMenu()
 
                         // trailing: magit + close (opposite the header)
@@ -840,7 +846,7 @@ ShellRoot {
                                 width: parent.width
                                 horizontalAlignment: Text.AlignHCenter
                                 wrapMode: Text.WordWrap
-                                text: "Close workspace “" + win.menuWs + "”?"
+                                text: "Close workspace “" + emacs.labelFor(win.menuWs) + "”?"
                                 color: theme.text
                                 font.family: theme.serif
                                 font.pixelSize: theme.fsLarge + 2

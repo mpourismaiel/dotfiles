@@ -7,10 +7,18 @@ import Quickshell.Io
 
 QtObject {
     id: root
-    property var names: []                 // ["awesome", "elvou-app", …]
+    property var names: []                 // raw perspective names — used for actions
+    property var labels: []                 // display labels, parallel to names
     property string current: ""            // current workspace name
     readonly property int currentIdx: names.indexOf(current)
     property var bufferGroups: []          // [{ group, items:[name,…] }, …]
+
+    // human label for a raw perspective NAME ("main" -> "1 awesome"); the bar
+    // switches by name but shows this, matching the dashboard / super-menu.
+    function labelFor(name) {
+        var i = names.indexOf(name);
+        return (i >= 0 && i < labels.length && labels[i]) ? labels[i] : name;
+    }
 
     function loadWorkspaces() {
         if (wsProc.running) return;
@@ -42,6 +50,7 @@ QtObject {
                 try {
                     var o = JSON.parse(this.text) || {};
                     root.names = o.names || [];
+                    root.labels = o.labels || [];
                     root.current = o.current || "";
                 } catch (e) {}
             }

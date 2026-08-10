@@ -14,7 +14,7 @@ Item {
     required property var theme
     required property var settings          // shared JsonAdapter — best scores live under settings.<game>
     signal closeRequested()
-    signal playRequested(int gameMenu)      // 9 = Tetris, 10 = Block Blast
+    signal playRequested(int gameMenu)      // 9 = Tetris, 10 = Block Blast, 12 = Brick Breaker
 
     // one entry per game. `glyph` is a 3×2 cell mask drawn as little squares (the
     // same identity the old clock-side buttons used); `best` reads each game's
@@ -33,6 +33,13 @@ Item {
             "desc": "Drop blocks to fill rows and columns.",
             "best": (root.settings.blockBlast && root.settings.blockBlast.best) || 0,
             "glyph": [[1, 0], [0, 1], [1, 1], [2, 1]]     // plus/T piece
+        },
+        {
+            "menu": 12,
+            "name": "Brick Breaker",
+            "desc": "Aim, launch the balls, smash the bricks.",
+            "best": (root.settings.brickBreaker && root.settings.brickBreaker.best) || 0,
+            "glyph": [[0, 0], [1, 0], [2, 0], [1, 1]]     // wall + ball
         }
     ]
 

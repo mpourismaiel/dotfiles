@@ -931,6 +931,7 @@ ShellRoot {
             property var pinned: []         // [DesktopEntry.id] — taskbar pins, in order
             property var tetris: ({})        // saved Tetris game (board/piece/queue/score) — see TetrisMenu
             property var blockBlast: ({})    // saved Block Blast game (board/tray/score/combo) — see BlockBlastMenu
+            property var brickBreaker: ({})  // saved Brick Breaker game (grid/round/balls/launchX/best) — see BrickBreakerMenu
             // ---- optional features (configured from the launcher's Settings page) ----
             // Both ship OFF so a fresh checkout works without an org/hledger setup;
             // enabling them in Settings persists here and points the bridges at a
@@ -999,7 +1000,7 @@ ShellRoot {
             readonly property bool restUnderline: !orgHidden
                 && (orgAgenda.hasDue || calEvents.hasMeetingSoon)
             property bool dash: open || launcher || focused || ctxMode
-            property int menu: 4 // 0 net, 1 vol, 2 bt, 3 batt, 5 clipboard, 6 calendar, 7 voice memo, 8 finance, 9 tetris, 10 block blast, 4 notif (default pane)
+            property int menu: 4 // 0 net, 1 vol, 2 bt, 3 batt, 5 clipboard, 6 calendar, 7 voice memo, 8 finance, 9 tetris, 10 block blast, 11 games, 12 brick breaker, 4 notif (default pane)
             // keyboard-focus gating. The pill grabs the compositor keyboard ONLY while
             // it actually needs it: the launcher, clipboard, or notification menu is up
             // (they auto-focus a field / drive arrow-key nav), or *some* editable field
@@ -1015,7 +1016,7 @@ ShellRoot {
             // The notification pane (menu 4) also grabs the keyboard: it drives its own
             // arrow/Enter/i/x navigation (see NotificationHistory.qml) and its inline-reply
             // field wants the keystrokes from the first press.
-            readonly property bool grabsKeyboard: win.launcher || (win.open && (win.menu === 5 || win.menu === 4 || win.menu === 9)) || win.kbInputFocused || win.kbNav || win.deadlines
+            readonly property bool grabsKeyboard: win.launcher || (win.open && (win.menu === 5 || win.menu === 4 || win.menu === 9 || win.menu === 12)) || win.kbInputFocused || win.kbNav || win.deadlines
             // open-state pill geometry, in ONE place: the control panel and the
             // launcher both lay out to these, so resizing the open/launcher pill here
             // can't leave the launcher mis-sized (the bug from the last resize).
@@ -1024,19 +1025,25 @@ ShellRoot {
             // the calendar menu is wider than the other panes — it puts the month grid
             // next to a selected-day / Org-agenda detail column.
             readonly property int calWidth: 760
-            // the game panes (menu 9 Tetris, menu 10 Block Blast) run wider + taller
-            // than a normal menu so the board and its side column both get room to
-            // breathe (Tetris' 10×24px well is 240px; Block Blast's 8×30px grid too).
+            // the game panes (menu 9 Tetris, 10 Block Blast, 12 Brick Breaker) run
+            // wider + taller than a normal menu so the board and its side column both
+            // get room to breathe (Tetris' 10×24px well is 240px; the others fit too).
             readonly property int tetrisWidth: 480
             readonly property int tetrisHeight: 556
-            // both game panes are draggable-to-park by the same machinery — only one is
+            // Brick Breaker (menu 12) has its own size — its 6×10 field is a square
+            // 300×300 well, but the side column (stats + specials legend + rules +
+            // buttons) is the taller element, so the pane is sized to fit that
+            // (~side height + 64px chrome), and wider than tall (well + side column).
+            readonly property int brickWidth: 576
+            readonly property int brickHeight: 416
+            // the game panes are draggable-to-park by the same machinery — only one is
             // ever open at a time, so they share the tetris* park state below.
-            readonly property bool gamePane: win.open && (win.menu === 9 || win.menu === 10)
+            readonly property bool gamePane: win.open && (win.menu === 9 || win.menu === 10 || win.menu === 12)
             readonly property int openHeight: 470
             // open + launcher pill height
             // the clipboard-history menu runs 200px taller than the other panes so more
             // history is visible; every other open menu (and the launcher) uses openHeight.
-            readonly property int openPaneHeight: (open && menu === 5) ? openHeight + 200 : (open && menu === 7) ? 440 : (open && (menu === 9 || menu === 10)) ? tetrisHeight : openHeight
+            readonly property int openPaneHeight: (open && menu === 5) ? openHeight + 200 : (open && menu === 7) ? 440 : (open && menu === 12) ? brickHeight : (open && (menu === 9 || menu === 10)) ? tetrisHeight : openHeight
             // hovered dashboard geometry (its own generous, HTML-scale size — distinct
             // from the open menu's 520 so the two rows can breathe).
             readonly property int hoverWidth: 640
@@ -1477,6 +1484,24 @@ ShellRoot {
                 }
             }
 
+            // open (or toggle shut) the Brick Breaker pane (menu 12) — routed from the
+            // games list (see the menuLoader Connections). Mirrors openBlockBlast.
+            function openBrickBreaker() {
+                if (win.open && win.menu === 12) {
+                    const wasGrabbing = win.grabsKeyboard;
+                    win.open = false;
+                    if (wasGrabbing)
+                        root.restoreFocus();
+
+                } else {
+                    win.launcher = false;
+                    win.ctxGroup = null;
+                    win.trayItem = null;
+                    win.menu = 12;
+                    win.open = true;
+                }
+            }
+
             onDashChanged: {
                 if (!win.dash) {
                     win.hoverItem = null;
@@ -1486,7 +1511,7 @@ ShellRoot {
             // a closed (or non-game) pane forgets the dragged park position, so
             // reopening a game starts centred again.
             onOpenChanged: if (!win.open) win.tetrisMoved = false;
-            onMenuChanged: if (win.menu !== 9 && win.menu !== 10) win.tetrisMoved = false;
+            onMenuChanged: if (win.menu !== 9 && win.menu !== 10 && win.menu !== 12) win.tetrisMoved = false;
             screen: modelData
             WlrLayershell.layer: WlrLayer.Overlay
             // grab the keyboard only when the pill genuinely needs it (see
@@ -1836,7 +1861,7 @@ ShellRoot {
                 // exactly as the old body handler did.
                 // the voice recorder leads the chains: a larger resting pill (220x36,
                 // iPhone-memo style) — voiceMorph already yields to open/launcher/ctx.
-                width: win.capShow ? (captureLoader.item ? captureLoader.item.implicitWidth + theme.pad * 2 : 520) : win.voiceMorph ? 220 : win.showBurst ? (burstLoader.item ? burstLoader.item.implicitWidth : 96) : win.launcher ? win.launcherWidth : win.ctxMode ? 520 : (win.notifMorph ? (morphStack.item ? morphStack.item.implicitWidth : 420) : (win.open ? (win.menu === 6 || win.menu === 8 ? win.calWidth : (win.menu === 9 || win.menu === 10) ? win.tetrisWidth : 520) : (win.dash ? win.hoverWidth : Math.max(56 + root.privacyCount * 20 + root.notifRestWidth, win.restUnderline ? collapsedPill.implicitWidth + 28 : 0))))
+                width: win.capShow ? (captureLoader.item ? captureLoader.item.implicitWidth + theme.pad * 2 : 520) : win.voiceMorph ? 220 : win.showBurst ? (burstLoader.item ? burstLoader.item.implicitWidth : 96) : win.launcher ? win.launcherWidth : win.ctxMode ? 520 : (win.notifMorph ? (morphStack.item ? morphStack.item.implicitWidth : 420) : (win.open ? (win.menu === 6 || win.menu === 8 ? win.calWidth : win.menu === 12 ? win.brickWidth : (win.menu === 9 || win.menu === 10) ? win.tetrisWidth : 520) : (win.dash ? win.hoverWidth : Math.max(56 + root.privacyCount * 20 + root.notifRestWidth, win.restUnderline ? collapsedPill.implicitWidth + 28 : 0))))
                 // in ctx mode the pill sizes to whichever menu loader is active (app
                 // context menu or tray menu).
                 height: win.capShow ? (captureLoader.item ? captureLoader.item.implicitHeight + theme.pad * 2 : 120) : win.voiceMorph ? 36 : win.showBurst ? (burstLoader.item ? burstLoader.item.implicitHeight : 28) : (win.open || win.launcher) ? win.openPaneHeight : win.ctxMode ? Math.min(win.openHeight, ((ctxLoader.item || trayLoader.item) ? (ctxLoader.item || trayLoader.item).implicitHeight + theme.pad * 2 : 300)) : (win.notifMorph ? morphStack.implicitHeight : (win.dash ? win.hoverHeight : (win.restUnderline ? 48 : 28)))
@@ -2737,7 +2762,7 @@ ShellRoot {
     
                         anchors.fill: parent
                         active: win.open
-                        sourceComponent: win.menu === 0 ? cNet : win.menu === 1 ? cVol : win.menu === 2 ? cBt : win.menu === 3 ? cBatt : win.menu === 5 ? cClip : win.menu === 6 ? cCal : win.menu === 7 ? cVoice : win.menu === 8 ? cFin : win.menu === 9 ? cTetris : win.menu === 10 ? cBlockBlast : win.menu === 11 ? cGames : cNotif
+                        sourceComponent: win.menu === 0 ? cNet : win.menu === 1 ? cVol : win.menu === 2 ? cBt : win.menu === 3 ? cBatt : win.menu === 5 ? cClip : win.menu === 6 ? cCal : win.menu === 7 ? cVoice : win.menu === 8 ? cFin : win.menu === 9 ? cTetris : win.menu === 10 ? cBlockBlast : win.menu === 11 ? cGames : win.menu === 12 ? cBrickBreaker : cNotif
                     }
                     // chevron back -> collapse panel
     
@@ -2769,13 +2794,15 @@ ShellRoot {
                             win.menu = 6;
                         }
 
-                        // GamesMenu (menu 11) row picked → hand off to that game's
-                        // own pane (Tetris menu 9 / Block Blast menu 10).
+                        // GamesMenu (menu 11) row picked → hand off to that game's own
+                        // pane (Tetris 9 / Block Blast 10 / Brick Breaker 12).
                         function onPlayRequested(gameMenu) {
                             if (gameMenu === 9)
                                 win.openTetris();
                             else if (gameMenu === 10)
                                 win.openBlockBlast();
+                            else if (gameMenu === 12)
+                                win.openBrickBreaker();
                         }
 
                         // game park-drag (Tetris / Block Blast header grip): translate the
@@ -2810,7 +2837,7 @@ ShellRoot {
                         z: -1
                         theme: theme
                         target: menuLoader.item
-                        active: win.kbNav && win.open && win.menu !== 4 && win.menu !== 5 && win.menu !== 9 && win.menu !== 10
+                        active: win.kbNav && win.open && win.menu !== 4 && win.menu !== 5 && win.menu !== 9 && win.menu !== 10 && win.menu !== 12
                         shortcuts: win.menu === 6
                         onEscaped: win.open = false // back to the expanded dashboard
                         onShortcutRequested: (m) => {
@@ -3271,6 +3298,7 @@ ShellRoot {
     Component { id: cTetris; TetrisMenu   { theme: theme; settings: settings } }
     Component { id: cBlockBlast; BlockBlastMenu { theme: theme; settings: settings } }
     Component { id: cGames; GamesMenu { theme: theme; settings: settings } }
+    Component { id: cBrickBreaker; BrickBreakerMenu { theme: theme; settings: settings } }
     Component { id: cVoice; VoiceMemoMenu { theme: theme; settings: settings; setup: voiceSetup } }
     Component { id: cNotif; NotificationHistory { theme: theme; notifs: notifs } }
     // the active-notification deck, reused for the pill morph and the floating stack

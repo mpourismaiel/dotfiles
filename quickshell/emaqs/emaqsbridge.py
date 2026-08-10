@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
-# emaqsbridge.py — Doom-workspace / buffer backend for emaqs, via the Emacs daemon.
+# emaqsbridge.py — workspace / buffer backend for emaqs, via the Emacs daemon.
+#
+# Workspaces are perspective.el perspectives (the vanilla successor to Doom's
+# +workspace-* API), wrapped by the user's mp/workspace-* helpers.
 #
 #   workspaces        print JSON {"names":[…], "current":"…"}
 #   buffers [WS]      print JSON [{"group":…, "items":[…]}, …] for workspace WS
 #   switch NAME       switch to workspace NAME, raise + focus Emacs
 #   openbuf NAME WS   show buffer NAME (switching to WS first), raise + focus
 #   magit WS          magit-status at WS's project root, raise + focus
-#   close WS          kill workspace WS (+workspace/kill, buffers included)
+#   close WS          kill workspace WS (persp-kill, buffers included)
 #   agent-action ID KEY   dispatch an emaqs agent-shell button/click into the daemon
 #
 # All calls talk to the running Emacs daemon with emacsclient. Buffer grouping reuses
@@ -21,19 +24,40 @@ HELPERS = r"""
 (progn
   (require 'json)
   (require 'cl-lib)
+  ;; Vanilla port: Doom's +workspace-* API is gone; workspaces are now
+  ;; perspective.el perspectives wrapped by the user's mp/workspace-* helpers
+  ;; (see emacs/lisp/mp-workspaces.el). Prefer those, then raw persp-*, then the
+  ;; old +workspace-* names as a last resort so this bridge keeps working either way.
   (defun emaqs--ws-names ()
-    (if (fboundp '+workspace-list-names) (+workspace-list-names) '()))
+    (cond ((fboundp 'mp/workspace-names) (or (ignore-errors (mp/workspace-names)) '()))
+          ((fboundp 'persp-names) (or (ignore-errors (reverse (persp-names))) '()))
+          ((fboundp '+workspace-list-names) (+workspace-list-names))
+          (t '())))
   (defun emaqs--ws-current ()
-    (if (fboundp '+workspace-current-name) (+workspace-current-name) ""))
+    (or (cond ((fboundp 'mp/workspace-current-name) (ignore-errors (mp/workspace-current-name)))
+              ((fboundp 'persp-current-name) (ignore-errors (persp-current-name)))
+              ((fboundp '+workspace-current-name) (+workspace-current-name)))
+        ""))
+  ;; The bar SWITCHES by raw perspective name but DISPLAYS the same human label
+  ;; the dashboard/super-menu show ("INDEX project" / "empty workspace - NAME"),
+  ;; via mp/workspace--label. Perspective names ("main", "empty workspace - 2")
+  ;; are internal and mean nothing to the user, so send both.
+  (defun emaqs--ws-label (name)
+    (or (and (fboundp 'mp/workspace--label) (ignore-errors (mp/workspace--label name)))
+        name))
+  (defun emaqs--ws-labels ()
+    (mapcar #'emaqs--ws-label (emaqs--ws-names)))
   (defun emaqs-workspaces ()
     (json-encode (list (cons "names" (vconcat (emaqs--ws-names)))
+                       (cons "labels" (vconcat (emaqs--ws-labels)))
                        (cons "current" (emaqs--ws-current)))))
   ;; buffers of workspace NAME ("" = current) WITHOUT switching to it.
   (defun emaqs--ws-buffers (name)
-    (let ((persp (and name (not (string= name "")) (fboundp '+workspace-get)
-                      (ignore-errors (+workspace-get name t)))))
+    (let ((persp (and name (not (string= name "")) (fboundp 'perspectives-hash)
+                      (ignore-errors (gethash name (perspectives-hash))))))
       (cond
-       ((and persp (fboundp '+workspace-buffer-list)) (+workspace-buffer-list persp))
+       ((and persp (fboundp 'persp-buffers)) (persp-buffers persp))
+       ((fboundp 'persp-current-buffers) (persp-current-buffers))
        ((fboundp '+workspace-buffer-list) (+workspace-buffer-list))
        (t (buffer-list)))))
   ;; group predicates — prefer the user's own super-menu helpers, else fall back.
@@ -69,20 +93,36 @@ HELPERS = r"""
       (when buffers
         (push (list (cons "group" "Buffers") (cons "items" (vconcat buffers))) groups))
       (json-encode (vconcat groups))))
-  ;; raise + focus an Emacs frame, mirrored from the pill's pill-open.
+  ;; raise + focus an Emacs frame, mirrored from the pill's pill-open. Prefer the
+  ;; frame this eval is already selected in — with perspective.el the perspective
+  ;; set is FRAME-LOCAL, and emacsclient -e runs in the user's real GUI frame; a
+  ;; blind "first visible frame" could grab a stray frame (e.g. an "F1" that only
+  ;; has the default "main"), which is a different workspace universe entirely.
   (defun emaqs--raise ()
-    (let ((f (or (seq-find #'frame-visible-p (frame-list)) (car (frame-list)))))
+    (let ((f (if (frame-visible-p (selected-frame))
+                 (selected-frame)
+               (or (seq-find #'frame-visible-p (frame-list)) (car (frame-list))))))
       (when (frame-live-p f)
         (make-frame-visible f)
         (raise-frame f)
         (select-frame-set-input-focus f))
       f))
   (defun emaqs--goto-ws (name)
-    (when (and name (not (string= name "")) (fboundp '+workspace-switch)
-               (not (string= name (emaqs--ws-current))))
-      (ignore-errors (+workspace-switch name))))
+    (when (and name (not (string= name "")) (not (string= name (emaqs--ws-current))))
+      (cond ((fboundp 'persp-switch) (ignore-errors (persp-switch name)))
+            ((fboundp '+workspace-switch) (ignore-errors (+workspace-switch name))))))
+  ;; The *dashboard* is a SINGLE shared buffer that only re-renders on demand; a
+  ;; bare persp-switch restores a window layout that may still show the dashboard
+  ;; as rendered for the PREVIOUS workspace. Re-render it in place after a switch
+  ;; (the user's own n/p keys go through mp/dashboard-refresh; emaqs must too).
+  (defun emaqs--refresh-dashboard ()
+    (when (and (fboundp 'mp/dashboard-refresh)
+               (boundp 'mp/dashboard-buffer-name)
+               (get-buffer-window mp/dashboard-buffer-name t))
+      (ignore-errors (mp/dashboard-refresh))))
   (defun emaqs-switch (name)
     (emaqs--goto-ws name)
+    (emaqs--refresh-dashboard)
     (emaqs--raise)
     nil)
   (defun emaqs-open-buffer (name wsname)
@@ -93,16 +133,21 @@ HELPERS = r"""
         (with-selected-frame (selected-frame) (switch-to-buffer buf))))
     nil)
   (defun emaqs--project-root (name)
-    (let ((bufs (emaqs--ws-buffers name)))
-      (seq-some (lambda (b)
-                  (with-current-buffer b
-                    (when (buffer-file-name)
-                      (or (and (fboundp 'projectile-project-root)
-                               (ignore-errors (projectile-project-root)))
-                          (and (fboundp 'vc-root-dir)
-                               (ignore-errors (vc-root-dir)))
-                          (file-name-directory (buffer-file-name))))))
-                bufs)))
+    ;; Prefer the workspace's assigned/inferred root (mp/workspace--project-root);
+    ;; "" means the current workspace. Fall back to scanning its file buffers.
+    (let ((wsname (if (or (null name) (string= name "")) (emaqs--ws-current) name)))
+      (or (and (fboundp 'mp/workspace--project-root)
+               (ignore-errors (mp/workspace--project-root wsname)))
+          (seq-some (lambda (b)
+                      (and (buffer-live-p b)
+                           (with-current-buffer b
+                             (when (buffer-file-name)
+                               (or (and (fboundp 'projectile-project-root)
+                                        (ignore-errors (projectile-project-root)))
+                                   (and (fboundp 'vc-root-dir)
+                                        (ignore-errors (vc-root-dir)))
+                                   (file-name-directory (buffer-file-name)))))))
+                    (emaqs--ws-buffers name)))))
   (defun emaqs-magit (name)
     (let ((root (emaqs--project-root name)))
       (emaqs--goto-ws name)
@@ -115,7 +160,9 @@ HELPERS = r"""
     nil)
   (defun emaqs-close (name)
     (when (and name (not (string= name "")))
-      (cond ((fboundp '+workspace/kill) (ignore-errors (+workspace/kill name)))
+      (cond ((fboundp 'mp/workspace-delete) (ignore-errors (mp/workspace-delete name)))
+            ((fboundp 'persp-kill) (ignore-errors (persp-kill name)))
+            ((fboundp '+workspace/kill) (ignore-errors (+workspace/kill name)))
             ((fboundp '+workspace-delete) (ignore-errors (+workspace-delete name)))))
     nil))
 """
