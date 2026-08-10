@@ -201,19 +201,6 @@ other windows are simply deleted. The buffer is never killed."
   :config
   (ultra-scroll-mode 1))
 
-;;; Emoji
-
-;; Global emojify is heavy; scope it to prose buffers.
-(use-package emojify
-  :hook ((text-mode . emojify-mode)
-         (org-mode . emojify-mode))
-  :init
-  ;; Keep the downloaded emoji assets under var/ — the deploy rsync --delete
-  ;; would wipe them from the config root and re-trigger the download prompt
-  ;; on every deploy. Download without asking.
-  (setq emojify-emojis-dir (expand-file-name "emojis/" mp/var-dir)
-        emojify-download-emojis-p t))
-
 ;;; Rainbow delimiters
 
 (use-package rainbow-delimiters

@@ -706,7 +706,7 @@ Replaces Doom-era `+eval/test' (which was an unbound command)."
 
   ;; i — insert
   "i"   '(:ignore t :which-key "insert")
-  "i e" #'emojify-insert-emoji
+  "i e" #'emoji-search
   "i f" #'mp/insert-file-path
   "i r" #'evil-show-registers
   "i u" #'insert-char
