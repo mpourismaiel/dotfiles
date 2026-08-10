@@ -158,10 +158,20 @@
         dirvish-reuse-session nil
         dired-listing-switches
         "-l --almost-all --human-readable --group-directories-first --no-group")
-  ;; evil-collection's dired `q' (quit-window, one buffer at a time) shadows
-  ;; dirvish's quit; rebind it to the real teardown.
+  ;; evil-collection only sets up `dired-mode-map', but dirvish buffers run
+  ;; under `dirvish-mode-map' (which merely inherits dired's as a parent), and
+  ;; the h/l/d/R/? keys Doom's dired module used to add were never part of
+  ;; evil-collection (it puts parent-dir on `^'/`-', leaves l/d/R/? on abstract
+  ;; theme symbols).  Re-bind them here, plus dirvish's own `q' teardown which
+  ;; evil-collection's `q' (quit-window, one buffer at a time) otherwise shadows.
   (with-eval-after-load 'evil
-    (evil-define-key 'normal dirvish-mode-map "q" #'dirvish-quit))
+    (evil-define-key 'normal dirvish-mode-map
+      "q" #'dirvish-quit
+      "h" #'dired-up-directory          ; parent directory
+      "l" #'dired-find-file             ; enter directory / open file
+      "d" #'dired-flag-file-deletion    ; flag for deletion (`x' executes)
+      "R" #'dired-do-rename             ; rename / move
+      "?" #'dirvish-dispatch))          ; help transient
   ;; Keep the cursor from being yanked into the preview pane.  In
   ;; `dirvish--build-layout' the header/footer/parent panes are all created
   ;; with `no-other-window' (and dedicated), but the preview window is left
