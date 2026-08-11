@@ -103,7 +103,10 @@ Loading is lazy — =loadWorkspaces= runs when the bar opens (and after a close)
 =loadBuffers= when a workspace is right-clicked; nothing polls. =switchTo= updates
 =current= optimistically so the focus highlight moves at once. After a =closeWorkspace=,
 =Reloadtimer= re-syncs the workspace list a beat later, once Emacs has processed the
-delete.
+delete. =setAgentSession(buffer, kind, value)= changes an agent-shell buffer's model
+or session mode from the menu's per-buffer pickers — it optimistically rewrites that
+buffer's entry in =bufferGroups.sessions= (so the picker reflects the pick at once)
+then dispatches =emaqsbridge.py agent-session= on its own =sessProc=.
 *** Code
 Code: [[file:emaqs/EmaqsBridge.qml][=emaqs/EmaqsBridge.qml=]]
 
@@ -115,10 +118,19 @@ mirrors [[file:qs-pill-docs.org::*orgbridge.py][=orgbridge.py=]]. Commands:
 - =workspaces= → JSON ={ "names": […], "current": "…" }=.
 - =buffers [WS]= → JSON =[{ "group": "Buffers"|"Agent Shell"|"Ghostel", "items": […] }]=
   for workspace =WS= (default current), grouped/sorted like the =SPC SPC= super-menu.
+  The *Agent Shell* group additionally carries =sessions=, a map keyed by buffer name
+  → ={ models:[{token,label}], modes:[…], model, mode }= read live from each shell's
+  =agent-shell--state=, so the menu can render its per-buffer model/mode pickers.
 - =switch NAME= → switch to workspace =NAME=, raise + focus the Emacs frame.
 - =openbuf NAME WS= → (switch to =WS= if needed then) show buffer =NAME=, raise + focus.
 - =magit WS= → =magit-status= at =WS='s project root, raise + focus.
 - =close WS= → kill workspace =WS= (=+workspace/kill=, killing its buffers too).
+- =agent-action ID KEY= → dispatch a permission Allow/Deny (or a body-click switch)
+  back into the agent-shell responder closure stashed in the user's config.
+- =agent-session BUF KIND VALUE= → set agent-shell buffer =BUF='s model (=KIND=
+  ="model"=) or session mode (="mode"=) to option id =VALUE= (from a permission-card
+  or workspace-menu picker). The setter (=mp/agent-shell-emaqs-set-session=) lives in
+  the user's config, so these two agent commands skip the =emaqs-…= Lisp prelude.
 
 The buffer grouping *reuses the user's own super-menu predicates* when present
 (=mp/normal-buffer-p= etc.) and falls back to simple checks otherwise, so the list
@@ -168,13 +180,26 @@ methods Emacs calls into one JSON line each on stdout, which [[*AgentBridge.qml]
 reads:
 - =Notify(id, kind, buffer, workspace, title, body, actions_json)= → a
   permission-request (=kind="permission"=, =actions= = =[[key,label],…]=) or a
-  finished turn (=kind="finished"=).
+  finished turn (=kind="finished"=). *Its 7-argument signature is frozen* — never
+  extend it, or an Emacs/bridge version skew would reject every notification.
+- =Meta(id, meta_json)= → *optional, additive* card enrichment, sent by Emacs
+  *just before* the matching =Notify=. The bridge stashes it by =id= and folds it
+  into that =Notify='s emitted =meta= (and also emits a standalone =\{"op":"meta"\}=
+  so an already-shown card refreshes). =meta_json= is a small JSON object: the
+  permission's *operation type* (=optype= — the ACP tool-call kind, e.g. ="execute"=
+  / ="read"= / ="edit"= / ="fetch"=, so the card can say *what* is being asked), the
+  available *models/modes* (=models=/=modes= as =[{token,label}]=) with the current
+  pick (=model=/=mode=) for the in-card dropdowns, and the finished turn's =elapsed=
+  prompt time. Because it is a separate method, an old Emacs that never calls it — or
+  an old bridge that lacks it — simply yields a card with no extra data, never a
+  broken one.
 - =Close(id)= → drop the notification with that id (the agent answered elsewhere).
 - =Working(buffer, workspace, "1"|"0")= → the shell started / stopped working.
 
 One-way (Emacs → emaqs); the reverse path — Allow/Deny/switch — goes back through
-=emaqsbridge.py agent-action=. Best-effort: if emaqs (this service) is down, Emacs's
-async calls simply get an unowned-name error and drop.
+=emaqsbridge.py agent-action=, and a model/session-mode change from the permission
+card's dropdowns through =emaqsbridge.py agent-session=. Best-effort: if emaqs (this
+service) is down, Emacs's async calls simply get an unowned-name error and drop.
 *** Code
 Code: [[file:emaqs/agentbridge.py][=emaqs/agentbridge.py=]]
 
@@ -185,8 +210,9 @@ instantiated once in init.qml as =AgentBridge { id: agent }=. It runs
 [[*agentbridge.py][=agentbridge.py=]] as a long-lived =Process= and folds its JSON
 lines into three reactive pieces of state:
 - =notifs= — the live notification cards (=kind= = ="permission"= or ="finished"=),
-  keyed by =id= (=upsert=/=remove= on =notify=/=close=). =permissionNotif= /
-  =finishedNotif= expose the newest of each for the collapsed morph.
+  keyed by =id= (=upsert=/=remove= on =notify=/=close=). Each carries a =meta= object
+  (operation type, elapsed time, model/mode option lists + current pick).
+  =permissionNotif= / =finishedNotif= expose the newest of each for the collapsed morph.
 - =workingList= — one entry =\{buffer, workspace\}= per shell currently working;
   =workingCount= drives the three-dots chevron and the left-of-title badge, and
   =workspaceWorking= drives the per-workspace pulse in the expanded bar.
@@ -196,8 +222,12 @@ lines into three reactive pieces of state:
 
 Buttons dispatch back to Emacs via =action(id, key)= → =emaqsbridge.py agent-action=;
 =dismiss(id)= just drops the card locally (an unanswered permission is still
-answerable inside Emacs). This object polls nothing — it is purely push-driven, so it
-is idle-cheap when no agent is running.
+answerable inside Emacs). =setSession(id, buffer, kind, value)= changes a shell's
+model or session mode from the permission card's dropdowns — it optimistically updates
+the local notif =meta= (so the picker reflects the choice immediately, since the daemon
+won't re-=Notify= for the same request) then dispatches =emaqsbridge.py agent-session=.
+This object polls nothing — it is purely push-driven, so it is idle-cheap when no agent
+is running.
 *** Code
 Code: [[file:emaqs/AgentBridge.qml][=emaqs/AgentBridge.qml=]]
 
@@ -250,11 +280,25 @@ Emacs has processed the delete). Buffers are pulled *when a workspace is right-c
 you actually interact.
 
 *Agent-shell surfacing.* Fed by [[*AgentBridge.qml][=AgentBridge=]] (=agent=), the
-*collapsed* tab morphs — in priority order — into a *permission card* (buffer name,
-what the agent wants to do, *Allow*/*Deny*; a body click switches to the shell), a
-one-line *"buffer Agent finished! ✕"*, or three *bouncing dots* while any agent is
-working, before falling back to the chevron. All three are click-through-safe (the
-tab-expand click is disabled while a card shows, so its own buttons win). In the
+*collapsed* tab morphs — in priority order — into a *permission card*, a one-line
+*"buffer Agent finished! ✕"*, or three *bouncing dots* while any agent is working,
+before falling back to the chevron. The permission card leads with an *operation-type*
+eyebrow (icon + label derived from the tool-call =meta.optype= — "Run command" /
+"Read files" / "Edit files" / "Send request" / …, so you see *what* is being asked at
+a glance), then the buffer name and description, and a final row pairing two *icon
+buttons* (model + session mode) on the left with *Allow*/*Deny* on the right (a body
+click switches to the shell). The finished line appends *how long the whole prompt
+took* (=meta.elapsed=, stamped at send and measured at turn-complete). The model/mode
+icon buttons are the reusable =AgentPicker=: clicking one registers it as
+=win.agentSel= and a single win-level overlay paints its option list above everything
+(so it escapes the small card / the clipped menu), right-aligned and opening *upward*
+when there's room; a pick calls =setSession= (permission card) or
+=emacs.setAgentSession= (menu), applies immediately and leaves the surface up. The
+*same* pickers sit next to every agent-shell buffer in the workspace right-click menu
+(fed by that group's =sessions= map). All three morphs are click-through-safe (the
+tab-expand click is disabled while a card shows, so its own buttons win); while a
+picker list is open the window mask widens to the whole screen so the list is clickable
+and a click-away closes it. In the
 *expanded* bar, every working workspace's label gets a breathing accent *pulse*, a
 trailing *do-not-disturb* bell mutes all agent visuals (emaqs-local — Emacs still
 shows its in-buffer dialog), and a leading badge counts the working agents when more

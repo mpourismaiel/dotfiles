@@ -8,6 +8,12 @@
 #
 #   Notify(id, kind, buffer, workspace, title, body, actions_json)
 #                 -> {"op":"notify", ...}   kind = "permission" | "finished"
+#   Meta(id, meta_json)  -> stashed, then folded into the next Notify(id). Optional
+#                 and additive: carries the operation type (permission), elapsed
+#                 prompt time (finished) and model/session-mode options for the card.
+#                 Kept a SEPARATE method (not extra Notify args) so an Emacs and a
+#                 bridge at different versions never break each other — a skew just
+#                 means "no meta", never a rejected Notify.
 #   Close(id)     -> {"op":"close", "id":id}
 #   Working(buffer, workspace, active)  -> {"op":"working", ...}  active = "1"|"0"
 #
@@ -22,6 +28,10 @@ NODE = (
     '<method name="Notify">'
     + '<arg type="s" direction="in"/>' * 7 +
     '</method>'
+    '<method name="Meta">'
+    '<arg type="s" direction="in"/>'
+    '<arg type="s" direction="in"/>'
+    '</method>'
     '<method name="Close"><arg type="s" direction="in"/></method>'
     '<method name="Working">'
     '<arg type="s" direction="in"/>'
@@ -31,6 +41,9 @@ NODE = (
     '</interface></node>'
 )
 IFACE = Gio.DBusNodeInfo.new_for_xml(NODE).interfaces[0]
+
+# meta stashed by notification id, awaiting its Notify (Emacs sends Meta first).
+PENDING_META = {}
 
 
 def emit(obj):
@@ -46,8 +59,23 @@ def on_call(conn, sender, path, ifc, method, params, inv):
             acts = json.loads(actions) if actions else []
         except Exception:
             acts = []
+        # fold in any meta Emacs sent just before this Notify (may be absent).
+        meta = PENDING_META.pop(idv, {})
         emit({"op": "notify", "id": idv, "kind": kind, "buffer": buf,
-              "workspace": ws, "title": title, "body": body, "actions": acts})
+              "workspace": ws, "title": title, "body": body, "actions": acts,
+              "meta": meta})
+    elif method == "Meta":
+        idv, meta_json = args
+        try:
+            meta = json.loads(meta_json) if meta_json else {}
+        except Exception:
+            meta = {}
+        if not isinstance(meta, dict):
+            meta = {}
+        # stash for the imminent Notify(id); also emit so an already-shown card
+        # (a re-issued/updated meta) refreshes.
+        PENDING_META[idv] = meta
+        emit({"op": "meta", "id": idv, "meta": meta})
     elif method == "Close":
         emit({"op": "close", "id": args[0]})
     elif method == "Working":

@@ -11,6 +11,7 @@
 #   magit WS          magit-status at WS's project root, raise + focus
 #   close WS          kill workspace WS (persp-kill, buffers included)
 #   agent-action ID KEY   dispatch an emaqs agent-shell button/click into the daemon
+#   agent-session BUF KIND VALUE  set BUF's model ("model") or session mode ("mode")
 #
 # All calls talk to the running Emacs daemon with emacsclient. Buffer grouping reuses
 # the user's own super-menu predicates (mp/normal-buffer-p, mp/agent-shell-buffer-p,
@@ -24,6 +25,7 @@ HELPERS = r"""
 (progn
   (require 'json)
   (require 'cl-lib)
+  (require 'map nil t)
   ;; Vanilla port: Doom's +workspace-* API is gone; workspaces are now
   ;; perspective.el perspectives wrapped by the user's mp/workspace-* helpers
   ;; (see emacs/lisp/mp-workspaces.el). Prefer those, then raw persp-*, then the
@@ -67,6 +69,32 @@ HELPERS = r"""
       (and (buffer-live-p b) (not (string-prefix-p "*" (buffer-name b))))))
   (defun emaqs--agent-p (b)
     (and (fboundp 'mp/agent-shell-buffer-p) (mp/agent-shell-buffer-p b)))
+  ;; per-agent-shell-buffer model/session-mode info, for the menu's inline pickers.
+  ;; Reads the live agent-shell state (loaded in this daemon); nil for buffers that
+  ;; don't advertise it, so the menu simply shows no pickers there.
+  (defun emaqs--opts (items key)
+    (vconcat (mapcar (lambda (it)
+                       (list (cons "token" (or (map-elt it key) ""))
+                             (cons "label" (or (map-elt it :name) (map-elt it key) ""))))
+                     items)))
+  (defun emaqs--agent-session (bufname)
+    (let ((buf (get-buffer bufname)))
+      (when (and buf (buffer-live-p buf) (fboundp 'agent-shell--state)
+                 (fboundp 'agent-shell--get-available-models))
+        (with-current-buffer buf
+          (when (derived-mode-p 'agent-shell-mode)
+            (ignore-errors
+              (let ((st (agent-shell--state)))
+                (list (cons "models" (emaqs--opts (agent-shell--get-available-models st) :model-id))
+                      (cons "modes" (emaqs--opts (agent-shell--get-available-modes st) :id))
+                      (cons "model" (or (agent-shell--current-model-id st) ""))
+                      (cons "mode" (or (agent-shell--current-mode-id st) ""))))))))))
+  (defun emaqs--agent-sessions (names)
+    (let ((out (delq nil (mapcar (lambda (n)
+                                   (let ((s (emaqs--agent-session n)))
+                                     (and s (cons n s))))
+                                 names))))
+      (or out (make-hash-table))))
   (defun emaqs--ghostel-p (b)
     (and (fboundp 'mp/ghostel-buffer-p) (mp/ghostel-buffer-p b)))
   ;; sort buffer NAMES by their position in buffer-name-history (super-menu order).
@@ -89,7 +117,9 @@ HELPERS = r"""
       (when ghostel
         (push (list (cons "group" "Ghostel") (cons "items" (vconcat ghostel))) groups))
       (when agents
-        (push (list (cons "group" "Agent Shell") (cons "items" (vconcat agents))) groups))
+        (push (list (cons "group" "Agent Shell") (cons "items" (vconcat agents))
+                    (cons "sessions" (emaqs--agent-sessions agents)))
+              groups))
       (when buffers
         (push (list (cons "group" "Buffers") (cons "items" (vconcat buffers))) groups))
       (json-encode (vconcat groups))))
@@ -236,6 +266,11 @@ def main():
         # responder closure lives in the user's config, so no HELPERS prelude.
         _emacs("(mp/agent-shell-emaqs-action %s %s)" % (_esc(argv[2]), _esc(argv[3])),
                wait=False)
+    elif cmd == "agent-session" and len(argv) > 4:
+        # change the model / session mode of an agent-shell buffer from the pill's
+        # permission card; the setter lives in the user's config, no HELPERS prelude.
+        _emacs("(mp/agent-shell-emaqs-set-session %s %s %s)"
+               % (_esc(argv[2]), _esc(argv[3]), _esc(argv[4])), wait=False)
     else:
         sys.stdout.write("{}")
 

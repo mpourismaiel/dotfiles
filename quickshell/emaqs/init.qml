@@ -69,6 +69,10 @@ ShellRoot {
             property string menuWs: ""       // workspace the buffer menu is about
             property bool confirmClose: false
             property int hoverIdx: -1        // hovered workspace label, -1 none
+            // the open model/session-mode dropdown in the permission card (an
+            // AgentSelect), or null. Its list is drawn by the win-level overlay
+            // below, so it can escape the card's bounds (see agentDropLayer).
+            property var agentSel: null
 
             // "focus mode": clicking the tab expands the bar, which stays open until a
             // click elsewhere (backdrop) — or a workspace switch — moves focus away.
@@ -93,6 +97,45 @@ ShellRoot {
             // does a permission/finished card (those need attention).
             readonly property bool fsHide: root.activeFullscreen && !dash
                                            && !showPermission && !showFinished
+
+            // A compact icon-button model / session-mode picker. Clicking it
+            // registers as `win.agentSel`, so the shared overlay (below) paints its
+            // option list above everything. Used both on the permission card and
+            // next to each agent-shell buffer in the workspace menu. Hidden when
+            // there is nothing to offer. `currentToken` highlights the active choice
+            // in the list; the icon tints accent while its list is open.
+            component AgentPicker: Rectangle {
+                id: pk
+                property var options: []          // [{token,label}]
+                property string currentToken: ""
+                property string glyph: ""         // Material symbol
+                property int listWidth: 190       // width of the popped list
+                signal picked(string token)
+                readonly property bool openList: win.agentSel === pk
+                readonly property string curLabel: {
+                    for (var i = 0; i < options.length; i++)
+                        if (options[i].token === currentToken) return options[i].label;
+                    return "";
+                }
+                function pick(t) { pk.picked(t); win.agentSel = null; }
+                visible: options.length > 0
+                implicitWidth: 26; implicitHeight: 26
+                radius: theme.radiusBtn
+                color: (pk.openList || pma.containsMouse) ? theme.bgHover : theme.row
+                border.color: pk.openList ? theme.accent : theme.border
+                border.width: 1
+                MSym {
+                    anchors.centerIn: parent
+                    icon: pk.glyph; size: 15
+                    color: pk.openList ? theme.accent : theme.textDim
+                }
+                MouseArea {
+                    id: pma; anchors.fill: parent; hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: win.agentSel = (win.agentSel === pk ? null : pk)
+                }
+                Behavior on color { ColorAnimation { duration: theme.animFast } }
+            }
 
             function openMenu(ws) {
                 win.menuWs = ws;
@@ -128,7 +171,10 @@ ShellRoot {
             // the window grabs the whole screen (backdrop) so a click elsewhere
             // collapses it; while a fullscreen window is focused the tab is hidden
             // and the whole window is click-through.
-            mask: win.expanded ? fullRegion : (win.fsHide ? emptyRegion : tabRegion)
+            // an open in-card dropdown grabs the whole screen too, so its list
+            // (drawn outside the tab region) is clickable and a click-away closes it.
+            mask: (win.expanded || win.agentSel) ? fullRegion
+                                                 : (win.fsHide ? emptyRegion : tabRegion)
 
             anchors {
                 top: true
@@ -336,6 +382,17 @@ ShellRoot {
                                     font.capitalization: Font.AllUppercase
                                     font.bold: true
                                 }
+                                // how long the whole prompt took (when Emacs reports it)
+                                Text {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    visible: !!text
+                                    text: (finItem.n && finItem.n.meta && finItem.n.meta.elapsed)
+                                          ? ("· " + finItem.n.meta.elapsed) : ""
+                                    color: theme.textDim
+                                    font.family: theme.mono
+                                    font.pixelSize: theme.fsSmall
+                                    font.letterSpacing: 1
+                                }
                             }
                             MouseArea {
                                 anchors.fill: parent
@@ -370,6 +427,41 @@ ShellRoot {
                     opacity: win.showPermission ? 1 : 0
                     Behavior on opacity { NumberAnimation { duration: theme.animFast } }
                     property var n: win.permNotif
+                    readonly property var meta: (n && n.meta) ? n.meta : ({})
+                    // the ACP tool-call kind → a human label + icon, so the card
+                    // says *what* the agent is asking to do (run a command, read/edit
+                    // files, send a request…), not just "permission".
+                    readonly property string opKind: meta.optype ? meta.optype : ""
+                    readonly property string opLabel: {
+                        switch (opKind) {
+                        case "execute":     return "Run command";
+                        case "read":        return "Read files";
+                        case "edit":        return "Edit files";
+                        case "write":       return "Write file";
+                        case "delete":      return "Delete";
+                        case "move":        return "Move";
+                        case "search":      return "Search";
+                        case "fetch":       return "Send request";
+                        case "think":       return "Thinking";
+                        case "switch_mode": return "Switch mode";
+                        default:            return "Permission";
+                        }
+                    }
+                    readonly property string opIcon: {
+                        switch (opKind) {
+                        case "execute":     return "terminal";
+                        case "read":        return "description";
+                        case "edit":        return "edit";
+                        case "write":       return "note_add";
+                        case "delete":      return "delete";
+                        case "move":        return "drive_file_move";
+                        case "search":      return "search";
+                        case "fetch":       return "cloud";
+                        case "think":       return "psychology";
+                        case "switch_mode": return "tune";
+                        default:            return "pan_tool";
+                        }
+                    }
                     readonly property int cardPad: theme.pad + 4
                     readonly property int cardHeight: permCol.implicitHeight + cardPad * 2
 
@@ -401,19 +493,19 @@ ShellRoot {
                                 anchors.left: parent.left
                                 anchors.verticalCenter: parent.verticalCenter
                                 spacing: 9
-                                Rectangle {                       // accent badge (raised hand)
+                                Rectangle {                       // accent badge (op-type icon)
                                     anchors.verticalCenter: parent.verticalCenter
                                     width: 24; height: 24; radius: 12
                                     color: theme.accentSoft
                                     MSym {
                                         anchors.centerIn: parent
-                                        icon: "pan_tool"; size: 14; fill: 1; weight: 600
+                                        icon: permCard.opIcon; size: 14; fill: 1; weight: 600
                                         color: theme.accent
                                     }
                                 }
                                 Text {
                                     anchors.verticalCenter: parent.verticalCenter
-                                    text: "Permission"
+                                    text: permCard.opLabel
                                     color: theme.accent
                                     font.family: theme.mono
                                     font.pixelSize: theme.fsSmall
@@ -464,43 +556,74 @@ ShellRoot {
                             lineHeight: 1.2
                         }
 
-                        // row 4: Deny / Allow — mono-caps buttons, Allow leads (accent)
-                        Row {
-                            anchors.right: parent.right
-                            spacing: 8
-                            Repeater {
-                                model: permCard.n ? permCard.n.actions : []
-                                delegate: Rectangle {
-                                    id: actBtn
-                                    required property var modelData
-                                    required property int index
-                                    readonly property bool primary: index === 0
-                                    width: actLbl.implicitWidth + 30
-                                    height: 30; radius: theme.radiusBtn
-                                    color: primary ? (actMa.containsMouse ? theme.danger : theme.accent)
-                                                   : (actMa.containsMouse ? theme.rowHi : theme.row)
-                                    border.color: theme.border
-                                    border.width: primary ? 0 : 1
-                                    Text {
-                                        id: actLbl
-                                        anchors.centerIn: parent
-                                        text: actBtn.modelData[1]
-                                        color: actBtn.primary ? "white" : theme.text
-                                        font.family: theme.mono
-                                        font.pixelSize: theme.fsSmall
-                                        font.letterSpacing: 1.5
-                                        font.capitalization: Font.AllUppercase
-                                        font.bold: true
+                        // row 4: model + mode icon pickers (left) │ Deny / Allow (right).
+                        // The pickers only appear when the agent advertises options;
+                        // changing one applies immediately and leaves the dialog up
+                        // (decide model/mode *then* Allow/Deny).
+                        Item {
+                            width: parent.width
+                            height: 30
+                            Row {
+                                anchors.left: parent.left
+                                anchors.verticalCenter: parent.verticalCenter
+                                spacing: 6
+                                AgentPicker {
+                                    glyph: "neurology"; listWidth: 200
+                                    options: permCard.meta.models || []
+                                    currentToken: permCard.meta.model || ""
+                                    onPicked: (t) => {
+                                        if (permCard.n)
+                                            agent.setSession(permCard.n.id, permCard.n.buffer, "model", t);
                                     }
-                                    MouseArea {
-                                        id: actMa
-                                        anchors.fill: parent
-                                        hoverEnabled: true; cursorShape: Qt.PointingHandCursor
-                                        onClicked: {
-                                            if (permCard.n) { agent.action(permCard.n.id, actBtn.modelData[0]); agent.dismiss(permCard.n.id); }
+                                }
+                                AgentPicker {
+                                    glyph: "tune"; listWidth: 200
+                                    options: permCard.meta.modes || []
+                                    currentToken: permCard.meta.mode || ""
+                                    onPicked: (t) => {
+                                        if (permCard.n)
+                                            agent.setSession(permCard.n.id, permCard.n.buffer, "mode", t);
+                                    }
+                                }
+                            }
+                            Row {
+                                anchors.right: parent.right
+                                anchors.verticalCenter: parent.verticalCenter
+                                spacing: 8
+                                Repeater {
+                                    model: permCard.n ? permCard.n.actions : []
+                                    delegate: Rectangle {
+                                        id: actBtn
+                                        required property var modelData
+                                        required property int index
+                                        readonly property bool primary: index === 0
+                                        width: actLbl.implicitWidth + 30
+                                        height: 30; radius: theme.radiusBtn
+                                        color: primary ? (actMa.containsMouse ? theme.danger : theme.accent)
+                                                       : (actMa.containsMouse ? theme.rowHi : theme.row)
+                                        border.color: theme.border
+                                        border.width: primary ? 0 : 1
+                                        Text {
+                                            id: actLbl
+                                            anchors.centerIn: parent
+                                            text: actBtn.modelData[1]
+                                            color: actBtn.primary ? "white" : theme.text
+                                            font.family: theme.mono
+                                            font.pixelSize: theme.fsSmall
+                                            font.letterSpacing: 1.5
+                                            font.capitalization: Font.AllUppercase
+                                            font.bold: true
                                         }
+                                        MouseArea {
+                                            id: actMa
+                                            anchors.fill: parent
+                                            hoverEnabled: true; cursorShape: Qt.PointingHandCursor
+                                            onClicked: {
+                                                if (permCard.n) { agent.action(permCard.n.id, actBtn.modelData[0]); agent.dismiss(permCard.n.id); }
+                                            }
+                                        }
+                                        Behavior on color { ColorAnimation { duration: theme.animFast } }
                                     }
-                                    Behavior on color { ColorAnimation { duration: theme.animFast } }
                                 }
                             }
                         }
@@ -781,6 +904,13 @@ ShellRoot {
                                             color: bufMa.containsMouse ? theme.row : "transparent"
                                             Behavior on color { ColorAnimation { duration: theme.animFast } }
 
+                                            // agent-shell rows carry per-buffer model/mode
+                                            // session info (keyed by buffer name); other
+                                            // groups have none → no pickers.
+                                            readonly property var sess:
+                                                (grp.modelData.group === "Agent Shell" && grp.modelData.sessions)
+                                                ? (grp.modelData.sessions[bufRow.modelData] || null) : null
+
                                             Row {
                                                 anchors.left: parent.left
                                                 anchors.leftMargin: 10
@@ -796,7 +926,7 @@ ShellRoot {
                                                 }
                                                 Text {
                                                     anchors.verticalCenter: parent.verticalCenter
-                                                    width: bufRow.width - 40
+                                                    width: bufRow.width - 40 - (bufRow.sess ? 68 : 0)
                                                     text: bufRow.modelData
                                                     elide: Text.ElideRight
                                                     color: theme.text
@@ -812,6 +942,27 @@ ShellRoot {
                                                 onClicked: {
                                                     emacs.openBuffer(bufRow.modelData, win.menuWs);
                                                     win.collapseAll();
+                                                }
+                                            }
+                                            // model + mode icon pickers for this shell (on
+                                            // top of bufMa so they don't open the buffer).
+                                            Row {
+                                                visible: bufRow.sess !== null
+                                                anchors.right: parent.right
+                                                anchors.rightMargin: 10
+                                                anchors.verticalCenter: parent.verticalCenter
+                                                spacing: 6
+                                                AgentPicker {
+                                                    glyph: "neurology"; listWidth: 200
+                                                    options: bufRow.sess ? (bufRow.sess.models || []) : []
+                                                    currentToken: bufRow.sess ? (bufRow.sess.model || "") : ""
+                                                    onPicked: (t) => emacs.setAgentSession(bufRow.modelData, "model", t)
+                                                }
+                                                AgentPicker {
+                                                    glyph: "tune"; listWidth: 200
+                                                    options: bufRow.sess ? (bufRow.sess.modes || []) : []
+                                                    currentToken: bufRow.sess ? (bufRow.sess.mode || "") : ""
+                                                    onPicked: (t) => emacs.setAgentSession(bufRow.modelData, "mode", t)
                                                 }
                                             }
                                         }
@@ -892,6 +1043,68 @@ ShellRoot {
                                         }
                                     }
                                     Behavior on color { ColorAnimation { duration: theme.animFast } }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ---- shared dropdown overlay for the permission card's AgentSelects ----
+            // A win-level sibling of the pill (painted above it) so an open list can
+            // escape the small card's bounds. The card sits at the screen's bottom
+            // edge, so lists open *upward*. Only interactive because `mask` widens to
+            // the whole screen while a select is open (see win.mask above).
+            Item {
+                id: agentDropLayer
+                anchors.fill: parent
+                z: 2000
+                visible: win.agentSel !== null
+                // click-away closes the open list
+                MouseArea { anchors.fill: parent; onClicked: win.agentSel = null }
+                Rectangle {
+                    id: agentDropBox
+                    readonly property var sel: win.agentSel
+                    readonly property point p: sel ? sel.mapToItem(agentDropLayer, 0, 0)
+                                                   : Qt.point(0, 0)
+                    readonly property real selW: sel ? sel.width : 0
+                    readonly property real selH: sel ? sel.height : 0
+                    readonly property real upY: p.y - height - 4
+                    visible: sel !== null
+                    width: sel ? (sel.listWidth ? sel.listWidth : sel.width) : 0
+                    height: Math.min(agentDropCol.implicitHeight + 8, 240)
+                    // right-align the list to the (usually right-hand) picker, kept
+                    // fully on-screen; open upward when there's room, else downward.
+                    x: Math.max(6, Math.min(p.x + selW - width, agentDropLayer.width - width - 6))
+                    y: upY >= 6 ? upY : (p.y + selH + 4)
+                    radius: theme.radiusBtn
+                    color: theme.bgElevated
+                    border.color: theme.border; border.width: 1
+                    clip: true
+                    Column {
+                        id: agentDropCol
+                        width: parent.width; y: 4
+                        Repeater {
+                            model: agentDropBox.sel ? agentDropBox.sel.options : []
+                            Rectangle {
+                                required property var modelData
+                                width: parent.width; height: 28
+                                readonly property bool cur: agentDropBox.sel
+                                                            && agentDropBox.sel.currentToken === modelData.token
+                                color: oma.containsMouse ? theme.bgHover
+                                                         : (cur ? theme.accentSoft : "transparent")
+                                Text {
+                                    anchors.left: parent.left; anchors.leftMargin: 10
+                                    anchors.right: parent.right; anchors.rightMargin: 10
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    elide: Text.ElideRight; text: modelData.label
+                                    color: parent.cur ? theme.accent : theme.text
+                                    font.family: theme.family; font.pixelSize: theme.fsSmall
+                                }
+                                MouseArea {
+                                    id: oma; anchors.fill: parent; hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: agentDropBox.sel.pick(modelData.token)
                                 }
                             }
                         }

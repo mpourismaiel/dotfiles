@@ -8,7 +8,7 @@ import Quickshell.Io
 
 QtObject {
     id: root
-    property var notifs: []          // [{id,kind,buffer,workspace,title,body,actions}]
+    property var notifs: []          // [{id,kind,buffer,workspace,title,body,actions,meta}]
     property var workingList: []     // [{buffer, workspace}]
     property bool dnd: false          // emaqs-local do-not-disturb
 
@@ -39,6 +39,47 @@ QtObject {
         if (!actProc.running) actProc.running = true;
     }
     function dismiss(id) { removeNotif(id); }   // local hide only
+
+    // change the model / session mode of a permission's shell buffer. Optimistically
+    // reflect the pick locally (the daemon won't re-Notify for the same request), then
+    // dispatch to Emacs. KIND is "model" or "mode" — also the meta key it updates.
+    function setSession(id, buffer, kind, value) {
+        updateMeta(id, kind, value);
+        sessProc.command = ["python", Quickshell.shellPath("emaqsbridge.py"),
+                            "agent-session", buffer, kind, value];
+        if (!sessProc.running) sessProc.running = true;
+    }
+    // fold a bridge "meta" op into an already-shown card. If the card isn't here
+    // yet, ignore it — the paired Notify carries the same meta (the bridge stashes
+    // it), so nothing is lost.
+    function mergeMeta(id, meta) {
+        var out = [], found = false;
+        for (var i = 0; i < notifs.length; i++) {
+            var n = notifs[i];
+            if (n.id === id) {
+                found = true;
+                out.push({ id: n.id, kind: n.kind, buffer: n.buffer,
+                           workspace: n.workspace, title: n.title, body: n.body,
+                           actions: n.actions, meta: meta });
+            } else out.push(n);
+        }
+        if (found) notifs = out;
+    }
+    function updateMeta(id, key, value) {
+        var out = [];
+        for (var i = 0; i < notifs.length; i++) {
+            var n = notifs[i];
+            if (n.id === id) {
+                var m = {};
+                for (var k in n.meta) m[k] = n.meta[k];
+                m[key] = value;
+                out.push({ id: n.id, kind: n.kind, buffer: n.buffer,
+                           workspace: n.workspace, title: n.title, body: n.body,
+                           actions: n.actions, meta: m });
+            } else out.push(n);
+        }
+        notifs = out;
+    }
 
     // ---- state mutation (reassign wholesale so bindings re-evaluate) -------
     function removeNotif(id) {
@@ -71,12 +112,14 @@ QtObject {
         if (o.op === "notify")
             upsertNotif({ id: o.id, kind: o.kind, buffer: o.buffer,
                           workspace: o.workspace, title: o.title, body: o.body,
-                          actions: o.actions || [] });
+                          actions: o.actions || [], meta: o.meta || ({}) });
+        else if (o.op === "meta") mergeMeta(o.id, o.meta || ({}));
         else if (o.op === "close") removeNotif(o.id);
         else if (o.op === "working") setWorking(o.buffer, o.workspace, o.active);
     }
 
     property Process actProc: Process {}
+    property Process sessProc: Process {}
     property Process feed: Process {
         running: true
         command: ["python", Quickshell.shellPath("agentbridge.py")]

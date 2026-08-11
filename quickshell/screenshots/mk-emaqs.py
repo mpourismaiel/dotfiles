@@ -42,7 +42,8 @@ for line in [
     "            WlrLayershell.layer: WlrLayer.Overlay\n",
     "            WlrLayershell.keyboardFocus: WlrKeyboardFocus.None\n",
     "            exclusionMode: ExclusionMode.Ignore\n",
-    "            mask: win.expanded ? fullRegion : (win.fsHide ? emptyRegion : tabRegion)\n",
+    "            mask: (win.expanded || win.agentSel) ? fullRegion\n"
+    "                                                 : (win.fsHide ? emptyRegion : tabRegion)\n",
     "            Region { id: tabRegion; item: pill }\n",
     "            Region { id: fullRegion; item: backdrop }\n",
     "            Region { id: emptyRegion }\n",
@@ -71,8 +72,8 @@ GRAB = r'''
             readonly property var _states: [
                 { name: "collapsed",  fn: function(){ win.focused=false; win.menuOpen=false; agent.dnd=false; agent.workingCount=0; agent.workingList=[]; agent.permissionNotif=null; agent.finishedNotif=null; } },
                 { name: "working",    fn: function(){ win.focused=false; win.menuOpen=false; agent.workingCount=2; agent.workingList=[{workspace:"AWESOME"},{workspace:"DOOM"}]; agent.permissionNotif=null; agent.finishedNotif=null; } },
-                { name: "finished",   fn: function(){ win.focused=false; win.menuOpen=false; agent.workingCount=2; agent.workingList=[{workspace:"DOOM"},{workspace:"AWESOME"}]; agent.permissionNotif=null; agent.finishedNotif={id:"1", title:"claude: refactor pill"}; } },
-                { name: "permission", fn: function(){ win.focused=false; win.menuOpen=false; agent.workingCount=2; agent.workingList=[{workspace:"DOOM"},{workspace:"AWESOME"}]; agent.finishedNotif=null; agent.permissionNotif={id:"2", title:"claude: write tests", body:"Run shell command: qs -p init.qml to validate the harness output", actions:[["allow","Allow"],["deny","Deny"]]}; } },
+                { name: "finished",   fn: function(){ win.focused=false; win.menuOpen=false; agent.workingCount=2; agent.workingList=[{workspace:"DOOM"},{workspace:"AWESOME"}]; agent.permissionNotif=null; agent.finishedNotif={id:"1", title:"claude: refactor pill", meta:{elapsed:"2m 14s"}}; } },
+                { name: "permission", fn: function(){ win.focused=false; win.menuOpen=false; agent.workingCount=2; agent.workingList=[{workspace:"DOOM"},{workspace:"AWESOME"}]; agent.finishedNotif=null; agent.permissionNotif={id:"2", title:"claude: write tests", body:"Run shell command: qs -p init.qml to validate the harness output", actions:[["allow","Allow"],["deny","Deny"]], meta:{optype:"execute", model:"sonnet", mode:"default", models:[{token:"sonnet",label:"Sonnet 4.6"},{token:"opus",label:"Opus 4.8"}], modes:[{token:"default",label:"Default"},{token:"acceptEdits",label:"Accept Edits"},{token:"plan",label:"Plan"}]}}; } },
                 { name: "bar",        fn: function(){ agent.permissionNotif=null; agent.finishedNotif=null; agent.workingCount=2; agent.workingList=[{workspace:"AWESOME"},{workspace:"DOOM"}]; win.menuOpen=false; win.focused=true; } },
                 { name: "menu",       fn: function(){ win.focused=true; win.menuWs="AWESOME"; win.confirmClose=false; win.menuOpen=true; } },
                 { name: "confirm",    fn: function(){ win.focused=true; win.menuWs="AWESOME"; win.menuOpen=true; win.confirmClose=true; } }

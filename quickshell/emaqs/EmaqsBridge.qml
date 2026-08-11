@@ -38,6 +38,36 @@ QtObject {
     function magit(ws) { act(["magit", ws || ""]); }
     function closeWorkspace(ws) { act(["close", ws || ""]); reloadTimer.restart(); }
 
+    // change an agent-shell BUFFER's model or session mode from the workspace menu.
+    // KIND is "model" or "mode" (also the session key it updates). Optimistically
+    // reflect the pick in bufferGroups, then dispatch to Emacs on its own process so
+    // it never collides with a navigation action in flight.
+    function setAgentSession(buffer, kind, value) {
+        updateSession(buffer, kind, value);
+        sessProc.command = ["python", Quickshell.shellPath("emaqsbridge.py"),
+                            "agent-session", buffer, kind, value];
+        if (!sessProc.running) sessProc.running = true;
+    }
+    function updateSession(buffer, kind, value) {
+        var groups = [];
+        for (var i = 0; i < bufferGroups.length; i++) {
+            var g = bufferGroups[i];
+            if (g.sessions && g.sessions[buffer]) {
+                var ns = {};
+                for (var k in g.sessions) ns[k] = g.sessions[k];
+                var s = {};
+                for (var sk in ns[buffer]) s[sk] = ns[buffer][sk];
+                s[kind] = value;
+                ns[buffer] = s;
+                var ng = {};
+                for (var gk in g) ng[gk] = g[gk];
+                ng.sessions = ns;
+                groups.push(ng);
+            } else groups.push(g);
+        }
+        bufferGroups = groups;
+    }
+
     function act(args) {
         if (actProc.running) return;       // drop overlapping user actions
         actProc.command = ["python", Quickshell.shellPath("emaqsbridge.py")].concat(args);
@@ -65,6 +95,7 @@ QtObject {
         }
     }
     property Process actProc: Process {}
+    property Process sessProc: Process {}
     // re-sync workspaces shortly after a close so the closed one drops off the bar.
     property Timer reloadTimer: Timer {
         interval: 320

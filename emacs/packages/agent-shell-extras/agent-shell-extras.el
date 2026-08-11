@@ -66,6 +66,10 @@ shell buffer whose `default-directory' is the resolved project cwd."
     "Map a permission request-id to a plist of (:respond FN :options OPTS).")
   (defvar mp/agent-shell--emaqs-onaction (make-hash-table :test 'equal)
     "Map an emaqs notification id to its :on-action closure.")
+  (defvar mp/agent-shell--turn-start (make-hash-table :test 'equal)
+    "Map an agent-shell buffer name to the `float-time' its current turn began.
+Stamped when a command is sent; read (and cleared) at turn-complete so the
+emaqs \"finished\" card can report how long the whole prompt took.")
   (defvar mp/agent-shell--prev-permission-responder nil
     "Responder in effect before we installed our capturing one.")
 
@@ -102,6 +106,57 @@ an existing auto-approve responder keeps working (nil means show the dialog)."
                                            options)))
                   (map-elt opt :option-id)))
               kinds))
+
+  ;; ---- emaqs "meta": extra per-notification data (JSON'd into Notify's 8th arg) --
+  ;; Carries what the collapsed cards render beyond title/body: the permission's
+  ;; operation type ("execute"/"read"/"edit"/"fetch"…, so the card can say *what*
+  ;; is being asked), the available model/session-mode options + current pick (for
+  ;; the two in-card dropdowns), and the finished card's elapsed prompt time.
+  (defun mp/agent-shell--format-elapsed (secs)
+    "Format SECS (a real) as a compact \"1h 2m 3s\" / \"2m 14s\" / \"8s\" string."
+    (let* ((s (max 0 (round secs)))
+           (h (/ s 3600)) (m (/ (% s 3600) 60)) (sec (% s 60)))
+      (cond ((> h 0) (format "%dh %dm %ds" h m sec))
+            ((> m 0) (format "%dm %ds" m sec))
+            (t (format "%ds" sec)))))
+
+  (defun mp/agent-shell--emaqs-options (items id-key)
+    "Turn agent-shell model/mode ITEMS into a vector of {token,label} alists.
+ID-KEY is :model-id for models or :id for modes; :name is the human label."
+    (vconcat (mapcar (lambda (it)
+                       (list (cons "token" (or (map-elt it id-key) ""))
+                             (cons "label" (or (map-elt it :name) (map-elt it id-key) ""))))
+                     items)))
+
+  (defun mp/agent-shell--permission-meta (shell-buffer kind)
+    "Build the emaqs meta alist for a permission from SHELL-BUFFER, op KIND.
+Includes the model/session-mode option lists + current selection when the agent
+advertises them, so the card's dropdowns can offer and highlight them."
+    (let ((meta (list (cons "optype" (or kind "")))))
+      (ignore-errors
+        (when (buffer-live-p shell-buffer)
+          (with-current-buffer shell-buffer
+            (when (derived-mode-p 'agent-shell-mode)
+              (let* ((st (agent-shell--state))
+                     (models (agent-shell--get-available-models st))
+                     (modes (agent-shell--get-available-modes st)))
+                (when models
+                  (setq meta (nconc meta
+                                    (list (cons "models" (mp/agent-shell--emaqs-options models :model-id))
+                                          (cons "model" (or (agent-shell--current-model-id st) ""))))))
+                (when modes
+                  (setq meta (nconc meta
+                                    (list (cons "modes" (mp/agent-shell--emaqs-options modes :id))
+                                          (cons "mode" (or (agent-shell--current-mode-id st) "")))))))))))
+      meta))
+
+  (defun mp/agent-shell--finished-meta (bufname)
+    "Return the emaqs meta alist for BUFNAME's finished card (elapsed prompt time).
+Consumes the stored turn-start stamp; nil (→ no time shown) if none was recorded."
+    (let ((start (gethash bufname mp/agent-shell--turn-start)))
+      (remhash bufname mp/agent-shell--turn-start)
+      (when start
+        (list (cons "elapsed" (mp/agent-shell--format-elapsed (- (float-time) start)))))))
 
   ;; ---- which workspace owns a shell buffer (for the per-workspace pulse) ----
   ;; Doom's +workspace-* API replaced with perspective.el: (persp-names) for the
@@ -143,6 +198,9 @@ For permission-request, wire Allow/Deny to the captured respond closure."
            (plist-put plist :body (or msg ""))
            (plist-put plist :emaqs-id (format "perm:%s" (or request-id "")))
            (plist-put plist :emaqs-kind "permission")
+           (plist-put plist :emaqs-meta
+                      (mp/agent-shell--permission-meta
+                       shell-buffer (map-nested-elt event '(:data :tool-call :kind))))
            (if (and respond allow-id deny-id)
                (progn
                  (plist-put plist :emaqs-actions
@@ -162,6 +220,7 @@ For permission-request, wire Allow/Deny to the captured respond closure."
          (plist-put plist :emaqs-id (format "fin:%s" bufname))
          (plist-put plist :emaqs-kind "finished")
          (plist-put plist :emaqs-actions '())
+         (plist-put plist :emaqs-meta (mp/agent-shell--finished-meta bufname))
          plist)
         (_ plist))))
   (advice-add 'agent-shell-notifications--make-notification-plist :around
@@ -169,10 +228,16 @@ For permission-request, wire Allow/Deny to the captured respond closure."
 
   ;; ---- send/close: push to emaqs instead of freedesktop ----------------------
   (defun mp/agent-shell--emaqs-send (plist)
-    "Send PLIST to emaqs, stash its :on-action by id, and return the id."
+    "Send PLIST to emaqs, stash its :on-action by id, and return the id.
+Meta (op-type / elapsed / model+mode options) rides a SEPARATE, optional `Meta'
+call made just before `Notify' — never extra Notify args — so an emaqs bridge on
+a different version never rejects the Notify; it just shows the card without the
+extra data.  `Notify' keeps its original 7-argument signature forever."
     (let ((id (or (plist-get plist :emaqs-id) "")))
       (when-let* ((fn (plist-get plist :on-action)))
         (puthash id fn mp/agent-shell--emaqs-onaction))
+      (when-let* ((m (plist-get plist :emaqs-meta)))
+        (mp/agent-shell--emaqs-call "Meta" id (json-encode m)))
       (mp/agent-shell--emaqs-call
        "Notify" id
        (or (plist-get plist :emaqs-kind) "permission")
@@ -216,6 +281,21 @@ KEY is \"allow\", \"reject\" or \"default\" (a body click = switch to shell)."
       (remhash id mp/agent-shell--emaqs-onaction))
     nil)
 
+  ;; ---- change a shell's model / session mode from the emaqs permission card ----
+  (defun mp/agent-shell-emaqs-set-session (buffer kind value)
+    "Set agent-shell BUFFER's model or session mode from emaqs.
+KIND is \"model\" or \"mode\"; VALUE is the option id to select.  Runs in
+BUFFER so `agent-shell--state' resolves, and leaves the permission dialog up
+\(the pill only re-issues Notify when a fresh request arrives)."
+    (when-let* ((buf (get-buffer buffer)))
+      (with-demoted-errors "agent-shell emaqs set-session: %s"
+        (with-current-buffer buf
+          (when (derived-mode-p 'agent-shell-mode)
+            (pcase kind
+              ("model" (agent-shell--config-option-set-model-id :model-id value))
+              ("mode"  (agent-shell--config-option-set-mode-id :mode-id value)))))))
+    nil)
+
   ;; ---- working state: three-dots chevron & per-workspace pulse ---------------
   (defun mp/agent-shell--emaqs-working (buf active)
     "Tell emaqs whether BUF's agent is ACTIVE (working)."
@@ -225,8 +305,10 @@ KEY is \"allow\", \"reject\" or \"default\" (a body click = switch to shell)."
        (if active "1" "0"))))
 
   (defun mp/agent-shell--emaqs-working-start (&rest args)
-    "Mark the shell working when a command is sent (:before advice)."
+    "Mark the shell working, and stamp its turn start, when a command is sent."
     (when-let* ((buf (plist-get args :shell-buffer)))
+      (when (buffer-live-p buf)
+        (puthash (buffer-name buf) (float-time) mp/agent-shell--turn-start))
       (mp/agent-shell--emaqs-working buf t)))
   (advice-add 'agent-shell--send-command :before
               #'mp/agent-shell--emaqs-working-start)

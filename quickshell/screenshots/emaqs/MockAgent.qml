@@ -12,4 +12,5 @@ QtObject {
     property var finishedNotif: null          // { id, title }
     function action(id, key) {}
     function dismiss(id) {}
+    function setSession(id, buffer, kind, value) {}
 }
