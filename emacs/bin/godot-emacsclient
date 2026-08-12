@@ -1,0 +1,24 @@
+#!/bin/sh
+# Bridge from Godot's "Open in External Editor" to this Emacs config.
+#
+# Godot (Editor -> Editor Settings -> Text Editor -> External) calls the
+# configured program with the flags you give it.  Set:
+#
+#   Use External Editor : on
+#   Exec Path           : ~/.config/emacs-vanilla/bin/godot-emacsclient
+#   Exec Flags          : {file} {line} {col}
+#
+# We forward to a running Emacs server, routing the script into the workspace
+# bound to its project (see `mp/open-file-in-project-workspace').  Godot does
+# no shell quoting — each flag becomes one argv — which is why this wrapper
+# exists instead of putting the whole sexp in Exec Flags.
+
+file=$1
+line=${2:-1}
+col=${3:-1}
+
+# Godot sends 0 for "no particular position"; Emacs lines/cols are 1-based.
+[ "$line" -gt 0 ] 2>/dev/null || line=1
+[ "$col" -gt 0 ] 2>/dev/null || col=1
+
+exec emacsclient -n -e "(mp/open-file-in-project-workspace \"$file\" $line $col)"

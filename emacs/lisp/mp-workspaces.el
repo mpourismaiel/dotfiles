@@ -12,6 +12,8 @@
   ;; `server/Pipfile' must count as a project root before `.git' does
   ;; (monorepos like root-backend).
   (add-to-list 'projectile-project-root-files "Pipfile")
+  ;; A Godot project is rooted at its `project.godot', even before it has a VCS.
+  (add-to-list 'projectile-project-root-files "project.godot")
   (projectile-mode 1))
 
 ;; project.el: prefer language-specific roots inside monorepos over the

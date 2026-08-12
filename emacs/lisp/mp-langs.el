@@ -76,8 +76,42 @@ Godot's language server only listens while the editor is open; opening a
 .gd file without it must not signal."
   (ignore-errors (eglot-ensure)))
 
+(defun mp/gdscript-lsp-connect ()
+  "Attach (or re-attach) eglot to Godot's language server for this buffer.
+Godot's LSP (port 6005) only listens while its editor is open, so when a
+.gd buffer is opened first and Godot started afterwards eglot isn't
+connected — run this (SPC m l, or plain `M-x eglot') to connect."
+  (interactive)
+  (let ((server (and (fboundp 'eglot-current-server) (eglot-current-server))))
+    (if server
+        (eglot-reconnect server)
+      (eglot-ensure))))
+
+;; gdscript-mode soft-requires hydra (`require 'hydra nil t') and powers
+;; `gdscript-hydra-show' — a launcher menu (run project/scene/script, debug
+;; flags, format, history).  hydra isn't a hard dependency, so pull it in
+;; explicitly; without it that command just errors.  NOTE: gdscript-hydra.el
+;; must be byte-compiled *after* hydra exists, so on first setup rebuild the
+;; package once: `M-x elpaca-rebuild RET gdscript-mode RET' then restart.
+(use-package hydra
+  :demand t)
+
+;; Tree-sitter GDScript gives far richer highlighting than the hand-written
+;; font-lock (types, enums, members, etc).  Register the grammar source so it
+;; can be fetched+built with `M-x treesit-install-language-grammar RET gdscript
+;; RET' (needs a C compiler + git); once the grammar is present, `.gd' opens in
+;; `gdscript-ts-mode' via the remap below.  Restart Emacs after installing it.
+(when (require 'treesit nil t)
+  (add-to-list 'treesit-language-source-alist
+               '(gdscript "https://github.com/PrestonKnopp/tree-sitter-gdscript"))
+  (when (treesit-ready-p 'gdscript t)
+    (add-to-list 'major-mode-remap-alist '(gdscript-mode . gdscript-ts-mode))))
+
 (use-package gdscript-mode
-  :mode "\\.gd\\'"
+  :after hydra
+  :mode ("\\.gd\\'" . gdscript-mode)
+  ;; Autoloaded so the tree-sitter remap above can start it.
+  :commands (gdscript-ts-mode)
   :config
   (add-hook 'gdscript-mode-hook #'mp/gdscript-eglot-maybe)
   (when (boundp 'gdscript-ts-mode-hook)
@@ -100,7 +134,9 @@ Godot's language server only listens while the editor is open; opening a
   "d q" #'dape-quit
   "d i" #'dape-info
   "d R" #'dape-repl
+  "l"   '(mp/gdscript-lsp-connect :which-key "connect LSP")
   "r"   '(:ignore t :which-key "run")
+  "r r" #'gdscript-hydra-show          ; launcher menu (also on C-c r)
   "r p" #'gdscript-godot-run-project
   "r d" #'gdscript-godot-run-project-debug
   "r s" #'gdscript-godot-run-current-scene
@@ -108,6 +144,85 @@ Godot's language server only listens while the editor is open; opening a
   "h"   '(:ignore t :which-key "help")
   "h f" #'gdscript-docs-browse-symbol-at-point
   "h b" #'gdscript-docs-browse-api)
+
+;;; ---------------------------------------------------------------------------
+;;; Godot -> Emacs "Open in External Editor" routing
+;; Godot hands a script to `emacsclient' via bin/godot-emacsclient, which calls
+;; `mp/open-file-in-project-workspace'.  Rather than dropping the file into
+;; whatever workspace happens to be current, we route it to the workspace bound
+;; to its project — creating that workspace, a git repo, and a Projectile entry
+;; if they don't exist yet — so completion, debugging and the dashboard all
+;; light up for the project.
+
+(defun mp/project-root-for-file (file)
+  "Best project root for FILE, as a directory name with a trailing slash.
+Prefers the Godot project (the directory holding `project.godot'), then a
+VCS root, then a Projectile root, and finally FILE's own directory."
+  (let ((dir (file-name-directory (expand-file-name file))))
+    (file-name-as-directory
+     (expand-file-name
+      (or (locate-dominating-file dir "project.godot")
+          (locate-dominating-file dir ".git")
+          (and (fboundp 'projectile-project-root)
+               (let ((default-directory dir))
+                 (ignore-errors (projectile-project-root))))
+          dir)))))
+
+(defun mp/ensure-git-repo (root)
+  "Make sure ROOT is a git repository, running `git init' if it is not.
+Projectile treats `.git' as a project marker and the dashboard's git panel
+needs a repo to read, so a bare Godot project (no VCS) is given one.
+Returns ROOT unchanged."
+  (unless (file-directory-p (expand-file-name ".git" root))
+    (let ((default-directory root))
+      (with-demoted-errors "git init failed: %S"
+        (call-process "git" nil nil nil "init"))))
+  root)
+
+(defun mp/workspace-bound-to-root (root)
+  "Name of the existing workspace whose project is ROOT, or nil."
+  (let ((root (file-name-as-directory (expand-file-name root))))
+    (seq-find
+     (lambda (name)
+       (when-let* ((r (mp/workspace--project-root name)))
+         (equal (file-name-as-directory (expand-file-name r)) root)))
+     (persp-names))))
+
+(defun mp/fresh-workspace-name-for-root (root)
+  "A perspective name for ROOT: its basename, disambiguated if already taken."
+  (let* ((base (file-name-nondirectory (directory-file-name root)))
+         (name base) (n 2))
+    (while (member name (persp-names))
+      (setq name (format "%s<%d>" base n))
+      (cl-incf n))
+    name))
+
+(defun mp/open-file-in-project-workspace (file &optional line col)
+  "Visit FILE in the workspace bound to its project, at LINE:COL.
+Ensures the project is a git repo and a known Projectile project, switches
+to (creating if needed) the perspective bound to that project, records the
+binding, then opens FILE.  Entry point for the Godot editor via
+bin/godot-emacsclient."
+  (let* ((file (expand-file-name file))
+         (root (mp/project-root-for-file file)))
+    (mp/ensure-git-repo root)
+    (when (fboundp 'projectile-add-known-project)
+      (projectile-add-known-project root))
+    (when (bound-and-true-p persp-mode)
+      (let ((ws (or (mp/workspace-bound-to-root root)
+                    (mp/fresh-workspace-name-for-root root))))
+        (persp-switch ws)
+        (puthash ws root mp/workspace-project-roots)))
+    (setq default-directory root)
+    (find-file file)
+    (when (and (integerp line) (> line 0))
+      (goto-char (point-min))
+      (forward-line (1- line))
+      (when (and (integerp col) (> col 0))
+        (move-to-column (1- col))))
+    (when (fboundp 'select-frame-set-input-focus)
+      (select-frame-set-input-focus (selected-frame)))
+    (current-buffer)))
 
 ;;; ---------------------------------------------------------------------------
 ;;; dape (debug adapter client; ships a `godot' config out of the box)

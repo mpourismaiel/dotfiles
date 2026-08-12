@@ -47,6 +47,16 @@
   (setq exec-path-from-shell-arguments '("-l"))
   (exec-path-from-shell-initialize))
 
+;; ~/.local/bin — where `pip install --user' and pipx drop console scripts
+;; (e.g. gdformat from gdtoolkit).  It's only on the *interactive* shell PATH
+;; here, so exec-path-from-shell's `-l' (non-interactive login) misses it.
+;; Add it AFTER exec-path-from-shell, which rewrites `exec-path'/PATH wholesale
+;; and would otherwise drop this prepend.
+(let ((local-bin (expand-file-name "~/.local/bin")))
+  (when (file-directory-p local-bin)
+    (add-to-list 'exec-path local-bin)
+    (setenv "PATH" (concat local-bin path-separator (getenv "PATH")))))
+
 ;;; Files & state
 
 (setq delete-by-moving-to-trash t
@@ -194,6 +204,15 @@ Unlike `kill-word', this does NOT save the text to the kill ring."
 (let ((private-config (expand-file-name "private.el" mp/emacs-dir)))
   (when (file-exists-p private-config)
     (load-file private-config)))
+
+;;; Emacs server
+;; So `emacsclient' — and the Godot editor's "Open in External Editor" bridge
+;; (see `mp/open-file-in-project-workspace' in mp-langs.el) — can reach this
+;; Emacs.  A daemon already runs a server; only a plain `emacs' needs this.
+
+(require 'server)
+(unless (or (daemonp) (server-running-p))
+  (server-start))
 
 (provide 'mp-core)
 ;;; mp-core.el ends here
