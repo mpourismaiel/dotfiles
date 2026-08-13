@@ -113,6 +113,23 @@ gdscript is deliberately absent (Godot LSP is TCP-only -> eglot).")
 ;; of transitive-dep-also-declared-first-class) is neutralised globally by the
 ;; `mp/elpaca--enqueue-tolerant-a' advice in init.el.
 
+(defun mp/lsp-bridge-project-root (filename)
+  "Return the lsp-bridge project root for FILENAME.
+JS/TS-family files root at their nearest package.json/tsconfig.json so
+language servers resolve the project-local toolchain (typescript,
+tsconfig, eslint) in monorepos where the frontend lives in a
+subdirectory — the .git root would sit above it and tsserver would fail
+to find a TypeScript install.  Everything else falls back to the .git
+toplevel, which is lsp-bridge's default."
+  (let* ((dir (file-name-directory (or filename default-directory)))
+         (node (when (member (file-name-extension filename)
+                             '("ts" "tsx" "cts" "mts" "js" "jsx" "cjs" "mjs"))
+                 (or (locate-dominating-file dir "tsconfig.json")
+                     (locate-dominating-file dir "package.json")))))
+    (directory-file-name
+     (expand-file-name
+      (or node (locate-dominating-file dir ".git") dir)))))
+
 (use-package lsp-bridge
   :ensure (:host github :repo "manateelazycat/lsp-bridge"
            :files (:defaults "*.py" "acm" "core" "langserver" "multiserver" "resources")
@@ -141,12 +158,27 @@ gdscript is deliberately absent (Godot LSP is TCP-only -> eglot).")
         lsp-bridge-enable-search-words nil
         lsp-bridge-diagnostic-fetch-idle 1.0)
 
+  ;; References as a "peek": don't blow away the layout. The default handler
+  ;; runs `delete-other-windows' then splits fullscreen; instead keep the code
+  ;; window and open a compact panel below it, with jumps reusing the code
+  ;; window above — VSCode/lsp-ui-peek feel (lsp-bridge has no inline overlay).
+  (setq lsp-bridge-ref-delete-other-windows nil
+        lsp-bridge-ref-open-file-in-request-window t)
+
+  ;; Monorepo TS/JS: root at the nearest package.json/tsconfig.json (e.g. a
+  ;; `client/' subfolder) rather than the .git toplevel, so the language server
+  ;; finds the project-local typescript install + tsconfig. Without this, a
+  ;; frontend nested under a backend git root fails: "Could not find a valid
+  ;; TypeScript installation". Non-JS files keep the default .git root.
+  (setq lsp-bridge-get-project-path-by-filepath #'mp/lsp-bridge-project-root)
+
   ;; IDE navigation inside bridge buffers (port; now the default nav).
   (evil-define-key 'normal lsp-bridge-mode-map
     "gd"        #'lsp-bridge-find-def
     "gD"        #'lsp-bridge-find-references
     "gi"        #'lsp-bridge-find-impl
-    "gr"        #'lsp-bridge-rename
+    "gr"        #'lsp-bridge-find-references
+    "gR"        #'lsp-bridge-rename
     "K"         #'lsp-bridge-popup-documentation
     (kbd "] e") #'lsp-bridge-diagnostic-jump-next
     (kbd "[ e") #'lsp-bridge-diagnostic-jump-prev
@@ -214,7 +246,10 @@ otherwise degrades silently to no completion at all."
   (interactive)
   (let* ((venv-ok (file-executable-p lsp-bridge-python-command))
          (bridge-on (bound-and-true-p lsp-bridge-mode))
-         (proc (get-process "lsp-bridge"))
+         ;; The EPC backend process is named `lsp-bridge-name' ("*lsp-bridge*"),
+         ;; so `get-process "lsp-bridge"' never matched. Ask lsp-bridge itself.
+         (proc (and (fboundp 'lsp-bridge-process-live-p)
+                    (lsp-bridge-process-live-p)))
          (servers (cdr (seq-find (lambda (cell) (apply #'derived-mode-p (car cell)))
                                  mp/lsp-server-binaries)))
          (found (and servers (seq-find #'executable-find servers))))
