@@ -229,6 +229,11 @@ from."
 (defvar-local teamwork--data-state nil "One of nil, `stale', `fresh', `error'.")
 (defvar-local teamwork--state-msg nil "Last error message, shown in the header.")
 (defvar-local teamwork--return-to nil "Buffer to switch back to when this one is closed.")
+(defvar-local teamwork--view-override nil
+  "Optimistic (:all-tasklists BOOL :all-tasks BOOL) shown until the refetch lands.
+Set the instant a view toggle is clicked so the button flips at once.  It is not
+`permanent-local', so `teamwork--fill-buffer' wipes it once fresh data (whose
+header carries the real view) arrives.")
 (dolist (v '(teamwork--kind teamwork--key teamwork--account teamwork--fresh-args
              teamwork--submit-cmd teamwork--mode-fn teamwork--use-prev teamwork--data-state
              teamwork--state-msg teamwork--return-to))
@@ -314,7 +319,7 @@ Emacs happens to surface."
   "Return a plist describing the header for PREFIX (this buffer's header block)."
   (list :kind teamwork--kind
         :hidden (teamwork--parse-hidden prefix)
-        :view (teamwork--parse-view prefix)))
+        :view (or teamwork--view-override (teamwork--parse-view prefix))))
 
 ;; -- header actions --------------------------------------------------------- ;;
 (defun teamwork--unhide-project (id)
@@ -337,10 +342,19 @@ hidden-project reconciliation brings the project back."
   "Flip management view FLAG (`:all-tasklists' or `:all-tasks'), persist, refetch."
   (unless (equal teamwork--kind "manage")
     (user-error "View toggles apply to the management buffer only"))
-  (let* ((cur (plist-get (teamwork--parse-view (teamwork--header-prefix)) flag))
+  (let* ((view (or teamwork--view-override
+                   (teamwork--parse-view (teamwork--header-prefix))))
+         (cur (plist-get view flag))
          (opt (pcase flag (:all-tasklists "--show-all-tasklists")
                           (:all-tasks "--show-all-tasks")))
          (account (or teamwork--account (teamwork--buffer-account (current-buffer)))))
+    ;; Flip the button NOW (optimistic), before the async refetch, so the click
+    ;; feels immediate; the fresh buffer's header carries the real value and
+    ;; wipes this override.  Repaint the header at once.
+    (setq teamwork--view-override
+          (plist-put (copy-sequence view) flag (not cur))
+          teamwork--header-cache nil)
+    (force-mode-line-update)
     (apply #'teamwork--run-json "config-set" opt (if cur "false" "true")
            (when account (list "--account" account)))
     (message "Teamwork: completed %s now %s — refreshing…"
@@ -349,20 +363,26 @@ hidden-project reconciliation brings the project back."
     (teamwork-refresh)))
 
 (defun teamwork--header-buttons (view kind)
-  "Return ((LABEL HELP COMMAND) …) button specs for VIEW/KIND."
+  "Return ((LABEL HELP COMMAND STYLE) …) button specs for VIEW/KIND.
+STYLE is a plist read by the renderers: `:role' is `refetch' or `toggle', and a
+toggle carries `:on' (whether completed items are currently shown)."
   (let (btns)
     (push (list "⟳ Refetch" "Re-fetch now, applying hidden-list changes"
-                #'teamwork-refresh)
+                #'teamwork-refresh '(:role refetch))
           btns)
     (when (equal kind "manage")
-      (push (list (format "Lists: %s" (if (plist-get view :all-tasklists) "all" "active"))
-                  "Toggle showing completed task lists"
-                  (lambda () (interactive) (teamwork--toggle-view :all-tasklists)))
-            btns)
-      (push (list (format "Tasks: %s" (if (plist-get view :all-tasks) "all" "open"))
-                  "Toggle showing completed tasks"
-                  (lambda () (interactive) (teamwork--toggle-view :all-tasks)))
-            btns))
+      (let ((on (and (plist-get view :all-tasklists) t)))
+        (push (list (format "Lists: %s" (if on "all" "active"))
+                    "Toggle showing completed task lists"
+                    (lambda () (interactive) (teamwork--toggle-view :all-tasklists))
+                    (list :role 'toggle :on on))
+              btns))
+      (let ((on (and (plist-get view :all-tasks) t)))
+        (push (list (format "Tasks: %s" (if on "all" "open"))
+                    "Toggle showing completed tasks"
+                    (lambda () (interactive) (teamwork--toggle-view :all-tasks))
+                    (list :role 'toggle :on on))
+              btns)))
     (nreverse btns)))
 
 (defun teamwork--header-hint (kind state-help)
@@ -393,7 +413,13 @@ hidden-project reconciliation brings the project back."
          (parts (list (propertize (format " %s " (nth 0 sl))
                                   'face (nth 1 sl) 'help-echo (nth 2 sl)))))
     (dolist (b (teamwork--header-buttons view kind))
-      (push (teamwork--header-chunk (format "[%s]" (nth 0 b)) (nth 1 b) (nth 2 b)) parts))
+      (let* ((style (nth 3 b))
+             (face (pcase (plist-get style :role)
+                     ('refetch 'teamwork-new-face)
+                     ('toggle (if (plist-get style :on) 'teamwork-edit-face 'shadow))
+                     (_ 'teamwork-edit-face))))
+        (push (teamwork--header-chunk (format "[%s]" (nth 0 b)) (nth 1 b) (nth 2 b) face)
+              parts)))
     (when hidden
       (push (propertize "hidden:" 'face 'shadow) parts)
       (dolist (h hidden)
@@ -443,6 +469,9 @@ hidden-project reconciliation brings the project back."
          (fg (or (mp/header-line-buffer-foreground) "#c0caf5"))
          (dim (or (mp/header-line-position-foreground) "#7f8496"))
          (btn-bg (or (face-attribute 'mode-line :background nil t) "#2a2e38"))
+         (accent (or (face-attribute 'teamwork-edit-face :foreground nil t) "#4fa6ff"))
+         (danger (or (face-attribute 'teamwork-delete-face :foreground nil t) "#ff9a9a"))
+         (bd dim)                       ; subtle border for resting buttons
          (pad-x 8) (pad-y 5)
          (line-h (+ fh 4))
          (base-off (round (+ (/ (- line-h font-size) 2.0) (* font-size 0.8))))
@@ -461,11 +490,11 @@ hidden-project reconciliation brings the project back."
          (emit-text (s cx cy col)
            (push (list 'text s cx (+ cy base-off) col) ops))
          (new-row () (setq x pad-x y (+ y line-h)))
-         (emit-btn (s col bcol cmd)
+         (emit-btn (s col bcol cmd &optional border)
            (let ((w (+ (tw s) (* 2 hp))))
              (when (and (> x pad-x) (> (+ x w) (- width pad-x)))
                (new-row))
-             (when bcol (push (list 'rect x (+ y 2) w (- line-h 4) bcol) ops))
+             (when bcol (push (list 'rect x (+ y 2) w (- line-h 4) bcol border) ops))
              (emit-text s (+ x hp) y col)
              (when cmd (push (list x y (+ x w) (+ y line-h) cmd) boxes))
              (setq x (+ x w gap)))))
@@ -474,7 +503,16 @@ hidden-project reconciliation brings the project back."
                 (or (plist-get (nth 1 sl) :foreground) bg)
                 (or (plist-get (nth 1 sl) :background) btn-bg) nil)
       (dolist (b (teamwork--header-buttons view kind))
-        (emit-btn (nth 0 b) fg btn-bg (nth 2 b)))
+        (let* ((style (nth 3 b))
+               (role (plist-get style :role)))
+          ;; Refetch reads as an accent button; a view toggle glows accent while
+          ;; ON (completed items shown) and is a plain resting button while OFF.
+          (pcase role
+            ('refetch (emit-btn (nth 0 b) accent btn-bg (nth 2 b) accent))
+            ('toggle  (if (plist-get style :on)
+                          (emit-btn (nth 0 b) accent btn-bg (nth 2 b) accent)
+                        (emit-btn (nth 0 b) fg btn-bg (nth 2 b) bd)))
+            (_        (emit-btn (nth 0 b) fg btn-bg (nth 2 b) bd)))))
       ;; row 1: help / hint line
       (new-row)
       (emit-text (teamwork--header-hint kind (nth 2 sl)) x y dim)
@@ -486,15 +524,17 @@ hidden-project reconciliation brings the project back."
         (dolist (h hidden)
           (let ((id (car h)))
             (emit-btn (format "%s ✕" (if (string-empty-p (cdr h)) id (cdr h)))
-                      "#ff9a9a" btn-bg
-                      (lambda () (interactive) (teamwork--unhide-project id)))))))
+                      danger btn-bg
+                      (lambda () (interactive) (teamwork--unhide-project id))
+                      danger)))))          ; red outline → clearly a restore button
     (let* ((height (+ y line-h pad-y))
            (svg (svg-create width height)))
       (svg-rectangle svg 0 0 width height :fill bg)
       (dolist (op (nreverse ops))
         (pcase (car op)
-          ('rect (pcase-let ((`(,_ ,rx0 ,ry0 ,rw ,rh ,col) op))
-                   (svg-rectangle svg rx0 ry0 rw rh :fill col :rx rx)))
+          ('rect (pcase-let ((`(,_ ,rx0 ,ry0 ,rw ,rh ,col ,bd0) op))
+                   (apply #'svg-rectangle svg rx0 ry0 rw rh :fill col :rx rx
+                          (when bd0 (list :stroke bd0 :stroke-width 1)))))
           ('text (pcase-let ((`(,_ ,s ,tx ,ty ,col) op))
                    (svg-text svg (replace-regexp-in-string " " nbsp s)
                              :x tx :y ty :fill col :font-family family
@@ -512,7 +552,8 @@ degrades to a short message rather than breaking redisplay."
              (graphic (and (display-graphic-p) (featurep 'svg-header)
                            (fboundp 'mp/header-line-background)))
              (w (if graphic (window-pixel-width) (window-width)))
-             (sig (list teamwork--data-state teamwork--state-msg prefix w graphic)))
+             (sig (list teamwork--data-state teamwork--state-msg prefix w graphic
+                        teamwork--view-override)))
         (if (and teamwork--header-cache (equal (car teamwork--header-cache) sig))
             (cdr teamwork--header-cache)
           (let* ((model (teamwork--header-model prefix))
@@ -883,12 +924,12 @@ non-committable action preview sits between separators above the totals."
                 (insert "    " (propertize dl 'face 'font-lock-doc-face) "\n")))))
         ;; separator · pending-changes preview · separator · totals
         (insert "\n" rule "\n"
-                (propertize "pending changes (preview only)\n" 'face 'font-lock-comment-face)
+                (propertize "pending changes (preview only · q to close)\n" 'face 'font-lock-comment-face)
                 (or teamwork--plan-cache (propertize "  computing…\n" 'face 'shadow))
                 rule "\n"
                 (propertize (format "%d logs · %d:%02d total\n"
                                     (length logs) (/ total 60) (% total 60)) 'face 'bold)))
-      (unless (derived-mode-p 'special-mode) (special-mode))
+      (unless (derived-mode-p 'teamwork-logs-mode) (teamwork-logs-mode))
       (if (and win wstart)
           (progn (set-window-start win (min wstart (point-max)) t)
                  (set-window-point win (min (or wpt (point-min)) (point-max))))
@@ -898,6 +939,17 @@ non-committable action preview sits between separators above the totals."
   (when teamwork--log-timer (cancel-timer teamwork--log-timer))
   (when (timerp teamwork--plan-timer) (cancel-timer teamwork--plan-timer))
   (setq teamwork--log-timer nil teamwork--log-tick nil teamwork--plan-timer nil))
+
+(defun teamwork--log-preview-close ()
+  "Stop the log-preview timer, close its side window and kill the buffer."
+  (interactive)
+  (teamwork--stop-log-timer)
+  (when-let ((w (get-buffer-window teamwork-logs-buffer))) (delete-window w))
+  (when (get-buffer teamwork-logs-buffer) (kill-buffer teamwork-logs-buffer)))
+
+(define-derived-mode teamwork-logs-mode special-mode "TW-Logs"
+  "Read-only side window listing a timesheet buffer's time logs.  `q' closes it.")
+(define-key teamwork-logs-mode-map (kbd "q") #'teamwork--log-preview-close)
 
 (defun teamwork--log-tick-refresh ()
   "Idle callback: refresh the log preview when the timesheet buffer changed."
@@ -915,9 +967,7 @@ non-committable action preview sits between separators above the totals."
   "Toggle a live side window listing the buffer's time logs in chronological order."
   (interactive)
   (if (get-buffer-window teamwork-logs-buffer)
-      (progn (teamwork--stop-log-timer)
-             (when-let ((w (get-buffer-window teamwork-logs-buffer))) (delete-window w))
-             (when (get-buffer teamwork-logs-buffer) (kill-buffer teamwork-logs-buffer)))
+      (teamwork--log-preview-close)
     (setq teamwork--plan-cache nil teamwork--log-tick nil)
     (teamwork--render-log-preview)
     (display-buffer-in-side-window (get-buffer teamwork-logs-buffer)
@@ -937,16 +987,21 @@ non-committable action preview sits between separators above the totals."
 (defvar teamwork--changes-tick nil "Last seen modification tick of the source buffer.")
 (defvar teamwork--changes-proc nil "In-flight changes-preview process, if any.")
 
+(define-derived-mode teamwork-changes-mode special-mode "TW-Changes"
+  "Read-only side window previewing a teamwork buffer's pending changes.
+`q' closes it.")
+(define-key teamwork-changes-mode-map (kbd "q") #'teamwork--changes-preview-close)
+
 (defun teamwork--changes-render (text)
   "Render TEXT (a pending-changes summary) into the changes side buffer."
   (let ((buf (get-buffer-create teamwork-changes-buffer)))
     (with-current-buffer buf
       (let ((inhibit-read-only t) (buffer-read-only nil))
         (erase-buffer)
-        (insert (propertize "pending changes (preview only — C-c C-c to submit)\n\n"
+        (insert (propertize "pending changes (preview only — C-c C-c to submit · q to close)\n\n"
                             'face 'font-lock-comment-face))
         (insert (or text (propertize "  computing…\n" 'face 'shadow))))
-      (unless (derived-mode-p 'special-mode) (special-mode)))))
+      (unless (derived-mode-p 'teamwork-changes-mode) (teamwork-changes-mode)))))
 
 (defun teamwork--changes-compute ()
   "Run SUBMIT-CMD --json on the source buffer async; render the formatted plan."
@@ -993,6 +1048,13 @@ non-committable action preview sits between separators above the totals."
     (ignore-errors (kill-process teamwork--changes-proc)))
   (setq teamwork--changes-timer nil teamwork--changes-tick nil))
 
+(defun teamwork--changes-preview-close ()
+  "Stop the changes-preview timer, close its side window and kill the buffer."
+  (interactive)
+  (teamwork--changes-stop)
+  (when-let ((w (get-buffer-window teamwork-changes-buffer))) (delete-window w))
+  (when (get-buffer teamwork-changes-buffer) (kill-buffer teamwork-changes-buffer)))
+
 (defun teamwork--changes-tick-fn ()
   "Idle callback: recompute the changes preview when the source buffer changed."
   (let ((src teamwork--changes-src))
@@ -1010,9 +1072,7 @@ The same diff C-c C-c would apply, recomputed (debounced) as you edit."
   (interactive)
   (unless teamwork--kind (user-error "Not a teamwork buffer"))
   (if (get-buffer-window teamwork-changes-buffer)
-      (progn (teamwork--changes-stop)
-             (when-let ((w (get-buffer-window teamwork-changes-buffer))) (delete-window w))
-             (when (get-buffer teamwork-changes-buffer) (kill-buffer teamwork-changes-buffer)))
+      (teamwork--changes-preview-close)
     (setq teamwork--changes-src (current-buffer) teamwork--changes-tick nil)
     (teamwork--changes-render nil)
     (display-buffer-in-side-window (get-buffer-create teamwork-changes-buffer)
@@ -1347,6 +1407,7 @@ toggle \"Tasks: all\" in the header when it is hidden."
   "Colour face for action TYPE: green/new, blue/edit, red/delete."
   (cond ((string-prefix-p "create" type) 'teamwork-new-face)
         ((string-prefix-p "update" type) 'teamwork-edit-face)
+        ((string-prefix-p "move" type) 'teamwork-edit-face)
         ((string-prefix-p "delete" type) 'teamwork-delete-face)
         (t 'default)))
 
@@ -1356,35 +1417,74 @@ toggle \"Tasks: all\" in the header when it is hidden."
         ((string-match-p "task" type) teamwork-icon-task)
         (t teamwork-icon-log)))
 
+(defun teamwork--preview-close ()
+  "Close the submit-preview window and kill its buffer."
+  (interactive)
+  (when-let ((buf (get-buffer teamwork-preview-buffer)))
+    (when-let ((w (get-buffer-window buf))) (ignore-errors (delete-window w)))
+    (kill-buffer buf)))
+
+(defun teamwork--preview-defocused-p ()
+  "Non-nil when the submit preview is shown but is not the selected window.
+Selection resting in the minibuffer (the yes/no confirm prompt, echoed messages)
+does not count as defocused, so the prompt never dismisses the preview."
+  (let ((win (get-buffer-window teamwork-preview-buffer)))
+    (and win
+         (not (eq win (selected-window)))
+         (not (window-minibuffer-p (selected-window))))))
+
+(defun teamwork--preview-selection-changed (&optional _frame)
+  "Close the submit preview once it stops being the selected window.
+The close is deferred (deleting a window from inside a selection-change hook is
+unsafe) and re-checks focus when it fires, so a preview re-focused in the
+meantime survives."
+  (when (teamwork--preview-defocused-p)
+    (run-at-time 0 nil (lambda ()
+                         (when (teamwork--preview-defocused-p)
+                           (teamwork--preview-close))))))
+
+(define-derived-mode teamwork-submit-mode special-mode "TW-Submit"
+  "Read-only teamwork submit preview / live progress buffer.
+It takes focus when shown, `q' closes it, and it closes when it loses focus."
+  (setq-local window-selection-change-functions
+              (list #'teamwork--preview-selection-changed)))
+(define-key teamwork-submit-mode-map (kbd "q") #'teamwork--preview-close)
+
+(defun teamwork--preview-show (buf)
+  "Display submit-preview BUF below the selected window and give it focus."
+  (let ((w (display-buffer-below-selected buf nil)))
+    (when (window-live-p w) (select-window w))
+    w))
+
 (defun teamwork--render-preview (actions)
   "Render ACTIONS into the preview buffer; return it. Records status markers."
   (let ((buf (get-buffer-create teamwork-preview-buffer)))
     (with-current-buffer buf
-      (setq buffer-read-only nil)
-      (erase-buffer)
-      (insert (format "Teamwork submit — %d action(s)\n" (length actions)))
-      (insert "  "
-              (propertize "new" 'face 'teamwork-new-face) "   "
-              (propertize "edit" 'face 'teamwork-edit-face) "   "
-              (propertize "delete" 'face 'teamwork-delete-face) "     "
-              (format "%s list  %s task  %s log\n\n"
-                      teamwork-icon-tasklist teamwork-icon-task teamwork-icon-log))
-      (let ((vec (make-vector (length actions) nil))
-            (i 0))
-        (dolist (a actions)
-          (let* ((type (alist-get 'type a))
-                 (face (teamwork--action-face type)))
-            (insert " ")
-            (let ((m (point-marker)))
-              (aset vec i m)
-              (insert "…"))             ; single-char status cell (stable width)
-            (insert "  "
-                    (propertize (teamwork--action-icon type) 'face face) "  "
-                    (propertize (or (alist-get 'summary a) type) 'face face) "\n")
-            (setq i (1+ i))))
-        (setq-local teamwork--markers vec))
-      (goto-char (point-min))
-      (setq buffer-read-only t))
+      (unless (derived-mode-p 'teamwork-submit-mode) (teamwork-submit-mode))
+      (let ((inhibit-read-only t))
+        (erase-buffer)
+        (insert (format "Teamwork submit — %d action(s)\n" (length actions)))
+        (insert "  "
+                (propertize "new" 'face 'teamwork-new-face) "   "
+                (propertize "edit" 'face 'teamwork-edit-face) "   "
+                (propertize "delete" 'face 'teamwork-delete-face) "     "
+                (format "%s list  %s task  %s log\n\n"
+                        teamwork-icon-tasklist teamwork-icon-task teamwork-icon-log))
+        (let ((vec (make-vector (length actions) nil))
+              (i 0))
+          (dolist (a actions)
+            (let* ((type (alist-get 'type a))
+                   (face (teamwork--action-face type)))
+              (insert " ")
+              (let ((m (point-marker)))
+                (aset vec i m)
+                (insert "…"))           ; single-char status cell (stable width)
+              (insert "  "
+                      (propertize (teamwork--action-icon type) 'face face) "  "
+                      (propertize (or (alist-get 'summary a) type) 'face face) "\n")
+              (setq i (1+ i))))
+          (setq-local teamwork--markers vec))
+        (goto-char (point-min))))
     buf))
 
 (defun teamwork--set-status (idx glyph &optional face)
@@ -1426,12 +1526,13 @@ account (else the sidecar reads the buffer header)."
      :sentinel
      (lambda (proc _event)
        (when (memq (process-status proc) '(exit signal))
-         (with-current-buffer (get-buffer-create teamwork-preview-buffer)
-           (let ((inhibit-read-only t))
-             (goto-char (point-max))
-             (unless (zerop (process-exit-status proc))
-               (insert (format "\nsidecar exited %d; see %s\n"
-                               (process-exit-status proc) (buffer-name errbuf))))))
+         (when-let ((pbuf (get-buffer teamwork-preview-buffer)))
+           (with-current-buffer pbuf
+             (let ((inhibit-read-only t))
+               (goto-char (point-max))
+               (unless (zerop (process-exit-status proc))
+                 (insert (format "\nsidecar exited %d; see %s\n"
+                                 (process-exit-status proc) (buffer-name errbuf)))))))
          ;; reload the buffer from the (partially) applied file; it is now current
          (when (and (buffer-live-p target) (file-readable-p out))
            (let ((ob (generate-new-buffer " *teamwork-reload*")))
@@ -1443,8 +1544,10 @@ account (else the sidecar reads the buffer header)."
          (ignore-errors (delete-file out)))))))
 
 (defun teamwork--handle-event (ev)
-  "Update the preview buffer from a single stream event EV (an alist)."
-  (with-current-buffer (get-buffer-create teamwork-preview-buffer)
+  "Update the preview buffer from a single stream event EV (an alist).
+No-op if the preview was closed (its window lost focus) — apply still runs."
+  (when-let ((pbuf (get-buffer teamwork-preview-buffer)))
+   (with-current-buffer pbuf
     (let ((event (alist-get 'event ev))
           (idx (alist-get 'idx ev)))
       (pcase event
@@ -1467,7 +1570,7 @@ account (else the sidecar reads the buffer header)."
                                     (if (eq t (alist-get 'aborted ev)) "✗" "✓")
                                     (alist-get 'applied ev) (alist-get 'total ev)
                                     (if (eq t (alist-get 'aborted ev))
-                                        " — ABORTED; unapplied changes kept in the buffer" "")))))))))
+                                        " — ABORTED; unapplied changes kept in the buffer" ""))))))))))
 
 ;;;###autoload
 (defun teamwork-submit ()
@@ -1503,21 +1606,23 @@ background refresh, or force one with `teamwork-refresh' (C-c C-r)."
             (goto-char (point-max))
             (insert "PROBLEMS — fix these, nothing submitted:\n")
             (dolist (p problems) (insert "  ! " p "\n"))))
-        (display-buffer-below-selected (get-buffer teamwork-preview-buffer) nil)
+        (teamwork--preview-show (get-buffer teamwork-preview-buffer))
         (delete-file tmp) (delete-file out)
-        (message "Teamwork: fix the problems shown above."))
+        (message "Teamwork: fix the problems shown above (q to close)."))
        ((null actions)
         (delete-file tmp) (delete-file out)
         (message "Teamwork: no changes to submit."))
        (t
         (let ((pbuf (teamwork--render-preview actions)))
-          (display-buffer-below-selected pbuf nil)
+          (teamwork--preview-show pbuf)
           (if (yes-or-no-p (format "Apply %d change(s) to Teamwork%s? " (length actions)
                                    (if account (format " [%s]" account) "")))
-              (teamwork--apply tmp out target submit-cmd account)
-            ;; declined: close preview window, keep the buffer
-            (when-let ((w (get-buffer-window pbuf))) (delete-window w))
-            (kill-buffer pbuf)
+              ;; keep focus on the preview so its live progress stays in view
+              (progn (teamwork--apply tmp out target submit-cmd account)
+                     (when (window-live-p (get-buffer-window pbuf))
+                       (select-window (get-buffer-window pbuf))))
+            ;; declined: close preview window, keep the source buffer
+            (teamwork--preview-close)
             (delete-file tmp) (delete-file out)
             (message "Teamwork: submit cancelled."))))))))
 

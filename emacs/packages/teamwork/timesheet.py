@@ -395,6 +395,21 @@ class Client:
         """Update a task from a prebuilt `todo-item` body (only changed fields)."""
         return self._req("PUT", f"/tasks/{task_id}.json", body={"todo-item": item})
 
+    def move_task(self, task_id: int, tasklist_id=None, parent_id=None):
+        """Relocate a task to another task list and/or under another parent.
+
+        The v1 update endpoint can't move a task between lists, so this uses the
+        v3 task PATCH (camelCase body): `tasklistId` changes its list,
+        `parentTaskId` changes its parent (0 detaches it back to the top level).
+        Only the keys given are sent, so a pure reparent leaves the list alone."""
+        task = {}
+        if tasklist_id is not None:
+            task["tasklistId"] = int(tasklist_id)
+        if parent_id is not None:
+            task["parentTaskId"] = int(parent_id)
+        return self._req("PATCH", f"/projects/api/v3/tasks/{task_id}.json",
+                         body={"task": task})
+
     def delete_task(self, task_id: int):
         return self._req("DELETE", f"/tasks/{task_id}.json")
 
@@ -1263,8 +1278,8 @@ def compute_plan(parsed: dict, snapshot: dict, user_id: int) -> dict:
     a different endpoint than a top-level task, so it gets its own action type; a
     depth-first walk that appends a parent's create before its children's keeps
     parents ahead of children in the plan, so ref resolution works during apply."""
-    creates_tl, creates_tk, renames, tag_writes, log_writes, completes, deletes = \
-        [], [], [], [], [], [], []
+    creates_tl, creates_tk, renames, moves, tag_writes, log_writes, completes, deletes = \
+        [], [], [], [], [], [], [], []
     problems = list(parsed["problems"])
     manage = parsed["meta"].get("mode") == "manage"
     billable = parsed["meta"].get("billable_default", True)
@@ -1277,6 +1292,8 @@ def compute_plan(parsed: dict, snapshot: dict, user_id: int) -> dict:
     snap_pri = snapshot.get("task_priority", {})
     snap_asg = snapshot.get("task_assignees", {})     # {task_id: [name, …]}
     snap_done = snapshot.get("task_done", {})         # {task_id: bool}
+    snap_tl_of = snapshot.get("task_tasklist", {})    # {task_id: tasklist_id (str)}
+    snap_parent_of = snapshot.get("task_parent", {})  # {task_id: parent_id (str) | None}
     people = snapshot.get("people", {})               # {id: name}
     name2id = {v.strip().lower(): k for k, v in people.items()}
     present_pids = {p["id"] for p in parsed["projects"] if p["id"] is not None}
@@ -1361,6 +1378,42 @@ def compute_plan(parsed: dict, snapshot: dict, user_id: int) -> dict:
                     bits.append(f"assignees {shown}")
                 act["summary"] = f"update {kind} {(prev_title or tk['title'])[:40]!r}: " + ", ".join(bits)
                 renames.append(act)
+            # Move: the heading now sits under a different list or parent than the
+            # snapshot recorded — deleting a heading and re-pasting it elsewhere
+            # keeps its TASK_ID, so we relocate it in Teamwork instead of seeing a
+            # delete + create. Manage-only, like deletion; timesheet never
+            # restructures. A subtask is pinned to its parent, so it moves only
+            # when its parent changed (not when the parent itself changed lists —
+            # Teamwork carries the subtree along, and that parent gets its own
+            # move); a top-level task moves when its list changed or it was just
+            # promoted out of a parent.
+            if manage:
+                old_tl = snap_tl_of.get(sid)
+                old_parent = snap_parent_of.get(sid)   # str id or None
+                title40 = tk["title"][:40]
+                if parent_target is None:
+                    new_tl_id = None if isinstance(tl_target, dict) else str(tl_target)
+                    if new_tl_id is None:              # pasted into a brand-new list
+                        tl_moved = old_tl is not None
+                    else:
+                        tl_moved = old_tl is not None and new_tl_id != old_tl
+                    promoted = old_parent is not None
+                    if tl_moved or promoted:
+                        act = {"type": "move_task", "id": tk["id"],
+                               "tasklist": tl_target, "_obj": tk}
+                        if promoted:
+                            act["parent"] = 0          # detach from former parent
+                        where = "a new list" if isinstance(tl_target, dict) else repr(tl_name)
+                        act["summary"] = f"move task {title40!r} -> list {where}"
+                        moves.append(act)
+                else:
+                    new_parent_id = None if isinstance(parent_target, dict) else str(parent_target)
+                    parent_changed = new_parent_id is None or new_parent_id != old_parent
+                    if parent_changed:
+                        pname = (tk.get("parent") or {}).get("title", "")
+                        moves.append({"type": "move_task", "id": tk["id"],
+                                      "parent": parent_target, "_obj": tk,
+                                      "summary": f"move task {title40!r} -> under {pname!r}"})
         # Labels: only when the buffer stated them (the :LABELS: line is present).
         # A new task always gets its tags set after creation; an existing one only
         # when they differ from the snapshot (so unchanged tags cost no call).
@@ -1467,7 +1520,10 @@ def compute_plan(parsed: dict, snapshot: dict, user_id: int) -> dict:
             deletes.append({"type": "delete_tasklist", "id": int(tid),
                             "summary": f"delete list {snap_tls.get(tid, tid)!r} (and its tasks)"})
 
-    return {"actions": (creates_tl + creates_tk + renames + tag_writes
+    # Moves run after every create (their target list/parent may be brand new)
+    # and before deletes (relocate a task out of a list before that list is
+    # deleted, so it is not swept away by the cascade).
+    return {"actions": (creates_tl + creates_tk + renames + moves + tag_writes
                         + log_writes + completes + deletes),
             "problems": problems}
 
@@ -1517,6 +1573,10 @@ def _execute(a: dict, client: "Client", created: dict):
                                                   _build_task_item(a))
     elif t == "update_task":
         client.update_task(a["id"], _build_task_item(a))
+    elif t == "move_task":
+        tl = _resolve(a["tasklist"], created) if "tasklist" in a else None
+        pr = _resolve(a["parent"], created) if "parent" in a else None
+        client.move_task(a["id"], tasklist_id=tl, parent_id=pr)
     elif t == "delete_task":
         client.delete_task(a["id"])
     elif t == "set_task_tags":

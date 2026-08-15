@@ -20,7 +20,12 @@ buffer kinds share the same pull → edit → review-diff → streamed-apply flo
   deletes it in Teamwork on submit (children cascade); the preview lists every
   deletion. Deletion is management-only — timesheet mode never deletes tasks/lists.
   (Hidden completed items are kept out of the fetched snapshot too, so they are
-  never mistaken for deletions.)
+  never mistaken for deletions.) Because a heading carries its `TASK_ID`, **cutting
+  a task heading and pasting it under a different task list — or under another task,
+  or back out to the top level — moves it in Teamwork** rather than reading as a
+  delete + create, so its logs, comments and history travel with it. Subtasks
+  follow their parent automatically, so only the heading you actually moved is
+  relocated. Moving is management-only.
 
   Properties carry no prefix: the drawer keys are `TASK_ID` (never edit — it
   identifies the task), `DONE`, `LABELS`, `DUE`, `URGENCY`, `ASSIGNEE`. `LABELS`

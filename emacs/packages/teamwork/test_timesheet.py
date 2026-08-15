@@ -538,6 +538,7 @@ class _FakeClient:
         self.fail_task, self.fail_log = fail_task, fail_log
         self._tid, self._lid = 1000, 5000
         self.completed = []
+        self.moved = []
 
     def create_tasklist(self, pid, name):
         self._tid += 1
@@ -569,6 +570,9 @@ class _FakeClient:
 
     def update_task(self, *a):
         pass
+
+    def move_task(self, task_id, tasklist_id=None, parent_id=None):
+        self.moved.append((task_id, tasklist_id, parent_id))
 
     def complete_task(self, task_id):
         self.completed.append(task_id)
@@ -1091,6 +1095,96 @@ class ManageDeletions(unittest.TestCase):
             T.apply_stream(plan, client, parsed, out, snap)
         self.assertEqual(client.deleted, [500])
         self.assertEqual([_json.loads(l) for l in b.getvalue().splitlines()][-1]["applied"], 1)
+
+
+class MoveTask(unittest.TestCase):
+    """Deleting a heading and re-pasting it under a different list/parent keeps its
+    TASK_ID, so management relocates the task in Teamwork rather than deleting it."""
+
+    def setUp(self):
+        self.projects = [{"id": 100, "name": "P"}]
+        self.tls = [{"id": 200, "name": "L1", "project_id": 100},
+                    {"id": 210, "name": "L2", "project_id": 100}]
+        self.tasks = [
+            {"id": 300, "title": "A", "tasklist_id": 200, "project_id": 100,
+             "parent_id": None, "tags": [], "description": ""},
+            {"id": 400, "title": "A1", "tasklist_id": 200, "project_id": 100,
+             "parent_id": 300, "tags": [], "description": ""},
+            {"id": 500, "title": "B", "tasklist_id": 200, "project_id": 100,
+             "parent_id": None, "tags": [], "description": ""},
+        ]
+        self.snap = T.build_snapshot(self.projects, self.tls, self.tasks, [], {})
+
+    _P = "* P\n:PROPERTIES:\n:PROJECT_ID: 100\n:END:\n"
+    _L1 = "** L1\n:PROPERTIES:\n:TASKLIST_ID: 200\n:END:\n"
+    _L2 = "** L2\n:PROPERTIES:\n:TASKLIST_ID: 210\n:END:\n"
+    _A = "*** A\n:PROPERTIES:\n:TASK_ID: 300\n:END:\n"
+    _A1 = "**** A1\n:PROPERTIES:\n:TASK_ID: 400\n:END:\n"
+    _B = "*** B\n:PROPERTIES:\n:TASK_ID: 500\n:END:\n"
+
+    def _plan(self, body, mode="manage"):
+        head = ("#+TEAMWORK_MANAGE: user=42\n" if mode == "manage"
+                else "#+TEAMWORK: from=2026-06-01 to=2026-06-30 user=42\n")
+        return T.compute_plan(T.parse_org(head + self._P + body), self.snap, 42)
+
+    def _moves(self, plan):
+        return [a for a in plan["actions"] if a["type"] == "move_task"]
+
+    def test_move_top_level_task_to_other_list(self):
+        # B re-pasted under L2; A (+ its subtask A1) stays put in L1.
+        plan = self._plan(self._L1 + self._A + self._A1 + self._L2 + self._B)
+        self.assertEqual([a["type"] for a in plan["actions"]], ["move_task"])
+        mv = self._moves(plan)[0]
+        self.assertEqual((mv["id"], mv["tasklist"]), (500, 210))
+        self.assertNotIn("parent", mv)
+
+    def test_promote_subtask_to_top_level(self):
+        # A1 pulled out from under A to sit at the top level of L1.
+        plan = self._plan(self._L1 + self._A + "*** A1\n:PROPERTIES:\n:TASK_ID: 400\n:END:\n"
+                          + self._B)
+        mv = self._moves(plan)
+        self.assertEqual(len(mv), 1)
+        self.assertEqual((mv[0]["id"], mv[0]["tasklist"], mv[0]["parent"]), (400, 200, 0))
+
+    def test_demote_task_under_another_task(self):
+        # B nested under A as a subtask; A1 stays a subtask of A (no spurious move).
+        plan = self._plan(self._L1 + self._A + self._A1
+                          + "**** B\n:PROPERTIES:\n:TASK_ID: 500\n:END:\n")
+        mv = self._moves(plan)
+        self.assertEqual(len(mv), 1)
+        self.assertEqual((mv[0]["id"], mv[0]["parent"]), (500, 300))
+        self.assertNotIn("tasklist", mv[0])
+
+    def test_no_structural_change_no_move(self):
+        plan = self._plan(self._L1 + self._A + self._A1 + self._B + self._L2)
+        self.assertEqual(self._moves(plan), [])
+
+    def test_timesheet_mode_never_moves(self):
+        plan = self._plan(self._L1 + self._A + self._A1 + self._L2 + self._B, mode="timesheet")
+        self.assertEqual(self._moves(plan), [])
+
+    def test_move_into_brand_new_list_orders_after_create(self):
+        # New list L3 (no TASKLIST_ID) that B is pasted into: create it, then move.
+        body = (self._L1 + self._A + self._A1 + self._L2
+                + "** L3\n:PROPERTIES:\n:END:\n" + self._B)
+        plan = self._plan(body)
+        types = [a["type"] for a in plan["actions"]]
+        self.assertEqual(types, ["create_tasklist", "move_task"])
+        create, move = plan["actions"]
+        self.assertEqual(move["tasklist"], {"ref": create["ref"]})   # unresolved ref
+
+    def test_apply_executes_move(self):
+        import io, tempfile, contextlib
+        T.BACKOFF_BASE = 0
+        parsed = T.parse_org("#+TEAMWORK_MANAGE: user=42\n" + self._P
+                             + self._L1 + self._A + self._A1 + self._L2 + self._B)
+        plan = T.compute_plan(parsed, self.snap, 42)
+        client = _FakeClient()
+        out = tempfile.NamedTemporaryFile("w+", suffix=".org", delete=False).name
+        snap = tempfile.NamedTemporaryFile("w+", suffix=".json", delete=False).name
+        with contextlib.redirect_stdout(io.StringIO()):
+            T.apply_stream(plan, client, parsed, out, snap)
+        self.assertEqual(client.moved, [(500, 210, None)])
 
 
 class Comments(unittest.TestCase):
