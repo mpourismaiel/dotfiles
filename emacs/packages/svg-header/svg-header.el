@@ -709,11 +709,17 @@ syntax highlighting and a simulated line-number gutter."
 
 (defun mp/header-svg-format ()
   "Header-line construct rendering the multi-line SVG (text fallback in TTY)."
-  (if (display-graphic-p)
-      (propertize " " 'display (mp/header-svg-image)
-                  'keymap mp/header-svg-keymap
-                  'pointer 'hand)
-    (mp/header-line-format)))
+  (if (string-prefix-p " " (buffer-name))
+      ;; Internal/popup buffers (acm completion + doc frames, signature help,
+      ;; and any other lsp-bridge child-frame buffer — all named " *...*") must
+      ;; never carry the tall header.  Kill it outright so not even an empty
+      ;; header bar lingers on subsequent redisplays.
+      (progn (setq-local header-line-format nil) nil)
+    (if (display-graphic-p)
+        (propertize " " 'display (mp/header-svg-image)
+                    'keymap mp/header-svg-keymap
+                    'pointer 'hand)
+      (mp/header-line-format))))
 
 (setq-default tab-line-format nil)
 (setq-default header-line-format '(:eval (mp/header-svg-format)))

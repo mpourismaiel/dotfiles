@@ -130,6 +130,53 @@ toplevel, which is lsp-bridge's default."
      (expand-file-name
       (or node (locate-dominating-file dir ".git") dir)))))
 
+(defvar mp/lsp-bridge-signature-width 72
+  "Column width the lsp-bridge signature popup is hard-wrapped to.")
+
+(defun mp/lsp-bridge-signature-show (str)
+  "Render STR as the signature popup, hard-wrapped to `mp/lsp-bridge-signature-width'.
+lsp-bridge sizes the signature frame to its longest line, so a huge
+unwrapped type (e.g. a `StyleSheet.create' argument) smears full-width
+across the screen.  Pre-wrapping the text bounds the frame width."
+  (lsp-bridge-signature-show-with-frame
+   (if (or (null str) (string-empty-p str))
+       (or str "")
+     (with-temp-buffer
+       (insert str)
+       (let ((fill-column mp/lsp-bridge-signature-width))
+         (fill-region (point-min) (point-max)))
+       (buffer-string)))))
+
+(defun mp/lsp-bridge-signature-suppress-p (&rest _)
+  "Non-nil when lsp-bridge signature help should stay hidden right now.
+
+Only ever surface it in evil NORMAL state — never while inserting/typing —
+and never while the acm completion menu is visible.  lsp-bridge hides the
+signature on every command and re-fetches it on an idle timer whenever the
+cursor moved, which otherwise flickers it back up in insert state and on top
+of the acm menu at point."
+  (or (and (boundp 'acm-menu-frame)
+           (fboundp 'acm-frame-visible-p)
+           (acm-frame-visible-p acm-menu-frame))
+      (and (fboundp 'evil-normal-state-p)
+           (not (evil-normal-state-p)))))
+
+(defun mp/lsp-bridge-ref-open-thing ()
+  "Open the reference on the current line, keeping focus in the results list.
+
+lsp-bridge's references buffer is color-rg-derived: a file-path header
+followed by `LINE:COL:' match lines.  On a match line this jumps there; on
+a file header it opens that file's FIRST match — the same as pressing RET
+on its first reference line.  Focus stays in the list (like the native
+RET, `lsp-bridge-ref-open-file-and-stay') so you can keep browsing; use
+SPC to jump into the file, or `q' to close."
+  (interactive)
+  (beginning-of-line)
+  (when (looking-at-p lsp-bridge-ref-regexp-file)
+    (when-let ((pos (lsp-bridge-ref-find-next-position lsp-bridge-ref-regexp-position)))
+      (goto-char pos)))
+  (lsp-bridge-ref-open-file-and-stay))
+
 (use-package lsp-bridge
   :ensure (:host github :repo "manateelazycat/lsp-bridge"
            :files (:defaults "*.py" "acm" "core" "langserver" "multiserver" "resources")
@@ -152,18 +199,43 @@ toplevel, which is lsp-bridge's default."
         acm-candidate-match-function 'orderless-flex)
   ;; yas-minor-mode must be active for LSP placeholder expansion.
   (add-hook 'lsp-bridge-mode-hook #'yas-minor-mode)
+  ;; Signature help = the tooltip showing the parameter/type of the call point
+  ;; is inside. The default renderer (`message') dumps it into the echo area
+  ;; over the mode line; render it in a child frame docked at point instead, so
+  ;; it reads like VSCode's inline signature popup rather than an echo-area wrap.
   (setq lsp-bridge-enable-hover-diagnostic t
         lsp-bridge-enable-signature-help t
-        lsp-bridge-signature-show-function 'lsp-bridge-signature-show-with-frame
+        lsp-bridge-signature-show-function 'mp/lsp-bridge-signature-show
+        lsp-bridge-signature-show-with-frame-position "point"
         lsp-bridge-enable-search-words nil
         lsp-bridge-diagnostic-fetch-idle 1.0)
+  ;; Stop the signature popup and the acm completion menu from stacking at
+  ;; point: only fetch the signature on cursor movement, never while typing or
+  ;; while the completion menu is up (see `mp/lsp-bridge-signature-suppress-p').
+  (advice-add 'lsp-bridge-signature-help-fetch :before-while
+              (lambda (&rest _) (not (mp/lsp-bridge-signature-suppress-p)))
+              '((name . mp/lsp-bridge-signature-gate)))
 
-  ;; References as a "peek": don't blow away the layout. The default handler
-  ;; runs `delete-other-windows' then splits fullscreen; instead keep the code
-  ;; window and open a compact panel below it, with jumps reusing the code
-  ;; window above — VSCode/lsp-ui-peek feel (lsp-bridge has no inline overlay).
+  ;; References list. It's color-rg-derived (a fork), so no true inline peek is
+  ;; possible; keep the default popup handler (a plain bottom split — the one
+  ;; whose window `lsp-bridge-ref-quit'/`q' can delete cleanly) but stop it from
+  ;; blowing away the code window, and route jumps back into the request window.
   (setq lsp-bridge-ref-delete-other-windows nil
         lsp-bridge-ref-open-file-in-request-window t)
+  ;; The results buffer's single-key commands (q, RET, SPC, j/k, e, r, f, ...)
+  ;; live in `lsp-bridge-ref-mode-map', but evil normal state shadows them all.
+  ;; Give the buffer evil emacs-state so the native color-rg keys work — same
+  ;; treatment this config already gives the real `color-rg-mode'.
+  (with-eval-after-load 'evil
+    (evil-set-initial-state 'lsp-bridge-ref-mode 'emacs))
+  (with-eval-after-load 'lsp-bridge-ref
+    ;; RET: open at point, and on a file header open its first match.
+    (define-key lsp-bridge-ref-mode-map (kbd "RET") #'mp/lsp-bridge-ref-open-thing)
+    (define-key lsp-bridge-ref-mode-map (kbd "C-m") #'mp/lsp-bridge-ref-open-thing))
+  ;; The results buffer is a normal (non-child-frame) buffer, so the global SVG
+  ;; header-line would otherwise render on top of it — turn it off.
+  (add-hook 'lsp-bridge-ref-mode-hook
+            (lambda () (setq-local header-line-format nil)))
 
   ;; Monorepo TS/JS: root at the nearest package.json/tsconfig.json (e.g. a
   ;; `client/' subfolder) rather than the .git toplevel, so the language server
@@ -186,6 +258,24 @@ toplevel, which is lsp-bridge's default."
   (when (fboundp 'lsp-bridge-popup-complete-menu)
     (evil-define-key 'insert lsp-bridge-mode-map
       (kbd "C-SPC") #'lsp-bridge-popup-complete-menu))
+
+  ;; lsp-bridge keeps its own jump ring (popped by `gb'/`lsp-bridge-find-def-return'),
+  ;; separate from xref's marker stack. That leaves `g [' (xref-go-back) and
+  ;; `g ]' (xref-go-forward) empty after a bridge `gd' — "start of xref jump
+  ;; history". Push the origin onto xref's stack before each bridge jump so the
+  ;; global back/forward keys navigate bridge jumps too. (Bridge jumps are
+  ;; async; :before records point at call time — exactly where we want to
+  ;; return.)
+  (require 'xref)
+  (dolist (fn '(lsp-bridge-find-def
+                lsp-bridge-find-def-other-window
+                lsp-bridge-find-impl
+                lsp-bridge-find-impl-other-window
+                lsp-bridge-find-type-def
+                lsp-bridge-find-type-def-other-window))
+    (advice-add fn :before
+                (lambda (&rest _) (xref-push-marker-stack))
+                '((name . mp/lsp-bridge-push-xref))))
 
   ;; Bridge owns completion in its buffers; corfu must stand down.
   (add-hook 'lsp-bridge-mode-hook
