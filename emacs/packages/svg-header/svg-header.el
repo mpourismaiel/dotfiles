@@ -313,11 +313,24 @@ gives no usable color."
       (call-interactively 'agent-shell)
     (message "agent-shell is not available")))
 
+(defun mp/header-svg-cmd-eca ()
+  "Start or reuse this project's ECA session — the same as `SPC d e'.
+ECA keys sessions by workspace root and, when the current buffer is inside an
+existing session's root, reuses it; otherwise it starts a fresh one.  Since the
+click runs in the clicked buffer, the root is that buffer's project, so a
+session is only created when this project has none and never leaks between
+workspaces."
+  (interactive)
+  (if (fboundp 'eca)
+      (call-interactively 'eca)
+    (message "ECA is not available")))
+
 (defvar mp/header-svg-buttons
   '(("octicon" "nf-oct-file_directory" "D" mp/header-svg-cmd-dirvish)
     ("octicon" "nf-oct-terminal"       ">" mp/header-svg-cmd-terminal)
     ("octicon" "nf-oct-git_branch"     "G" mp/header-svg-cmd-magit)
-    ("mdicon"  "nf-md-robot"           "A" mp/header-svg-cmd-agent))
+    ("mdicon"  "nf-md-robot"           "A" mp/header-svg-cmd-agent)
+    ("mdicon"  "nf-md-auto_fix"        "E" mp/header-svg-cmd-eca))
   "Right-side SVG header buttons: (NERD-SET ICON-NAME FALLBACK COMMAND).")
 
 (defvar-local mp/header-svg-rows nil

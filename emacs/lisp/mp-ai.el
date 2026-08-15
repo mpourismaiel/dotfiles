@@ -57,14 +57,24 @@
   :defer t
   :commands (eca eca-stop eca-completion-mode eca-rewrite)
   :init
-  ;; Auto-enable ghost-text completion in every code buffer, like Copilot's
-  ;; prog-mode hook did.  Harmless before a session exists: the auto-trigger
-  ;; only fires on self-insert and when `(eca-session)' is live.
-  (add-hook 'prog-mode-hook #'eca-completion-mode)
+  ;; Auto-enable ghost-text completion in code buffers (like Copilot's
+  ;; prog-mode hook did) PLUS markdown and org.  markdown-mode, gfm-mode
+  ;; (README.md) and org-mode all derive from `text-mode', not `prog-mode', so
+  ;; the prog hook alone skips them — that's why .md/.org saw no suggestions.
+  ;; markdown-mode-hook also covers gfm-mode (gfm-mode derives from it).
+  ;; Harmless before a session exists: the auto-trigger only fires on
+  ;; self-insert and when `(eca-session)' is live.
+  (dolist (hook '(prog-mode-hook markdown-mode-hook org-mode-hook))
+    (add-hook hook #'eca-completion-mode))
   :config
   (setq eca-completion-idle-delay 0.5        ; calmer than the 0.2 default
         eca-completion-syntax-highlight t
-        eca-chat-focus-on-open nil)          ; chat lives in agent-shell; don't steal focus
+        eca-chat-focus-on-open nil           ; chat lives in agent-shell; don't steal focus
+        ;; In-chat action buttons (tool-call accept/reject, questions, …) are
+        ;; keyboard-only by default — `eca-buttonize' binds <mouse-1> to them
+        ;; ONLY when this is non-nil.  Turn it on so the actions ECA prints with
+        ;; their key hints are also clickable (RET / our C-<return> still work).
+        eca-buttons-allow-mouse t)
 
   ;; --- Partial acceptance (upstream only ships whole-suggestion accept) ---
   (defun mp/eca-completion--accept-partial (transform-fn)
@@ -110,6 +120,23 @@ accept when that slice is empty or already the whole suggestion."
     (define-key eca-completion-map (kbd "C-<tab>")    #'mp/eca-completion-accept-word)
     (define-key eca-completion-map (kbd "C-TAB")      #'mp/eca-completion-accept-word)
     (define-key eca-completion-map (kbd "C-<return>") #'mp/eca-completion-accept-line)))
+
+;; Chat prompt keys (the window `SPC d e' opens).  ECA's defaults put SUBMIT on
+;; RET and a literal newline on S-RET, which fights ordinary multi-line editing
+;; under evil.  Match the agent-shell setup above: Enter inserts a newline,
+;; C-Enter submits.  Use eca-chat--key-pressed-newline (not plain `newline') so
+;; it respects the prompt-field boundary and won't edit the read-only
+;; transcript; S-Enter is left at its default (also newline).  Bind on
+;; eca-chat-mode-map's insert state so it beats the mode map, and allow submit
+;; from normal state too.  (A live completion popup still accepts on TAB, and on
+;; C-Enter, since eca-chat--key-pressed-return accepts the popup when one is up.)
+(with-eval-after-load 'eca-chat
+  (evil-define-key 'insert eca-chat-mode-map
+    (kbd "<return>")   #'eca-chat--key-pressed-newline
+    (kbd "RET")        #'eca-chat--key-pressed-newline
+    (kbd "C-<return>") #'eca-chat--key-pressed-return)
+  (evil-define-key 'normal eca-chat-mode-map
+    (kbd "C-<return>") #'eca-chat--key-pressed-return))
 
 ;;; Agent shell extras
 ;; Per-project Claude config dir, desktop notifications, default model and
