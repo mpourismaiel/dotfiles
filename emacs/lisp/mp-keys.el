@@ -750,6 +750,10 @@ Replaces Doom-era `+eval/test' (which was an unbound command)."
   "o r" #'mp/open-repl
   "o R" #'mp/open-repl
   "o s" #'clutch-query-console
+  "o t" '(:ignore t :which-key "teamwork")
+  "o t t" #'teamwork-timesheet
+  "o t m" #'teamwork-management
+  "o t c" #'teamwork-comments
   "o l" '(:ignore t :which-key "finance")
   "o l l" #'mp/hledger-open-journal
   "o l L" #'mp/hledger-open-current-month

@@ -9,8 +9,12 @@
 (declare-function ghostel-project "ghostel")
 (declare-function ghostel--project-buffers "ghostel")
 (declare-function consult--read "consult")
+(declare-function consult--multi "consult")
 (declare-function consult--buffer-preview "consult")
 (declare-function mp/current-workspace-project-root "mp-workspaces")
+(declare-function my/project-script-files "project-scripts")
+(declare-function my/project-script-label "project-scripts")
+(declare-function my/run-project-script-file "project-scripts")
 
 (defun mp/project-root-default-directory (&optional dir)
   "Return the preferred project root for DIR, preferring explicit workspace roots."
@@ -34,50 +38,58 @@ this always creates a new terminal rather than reusing one."
       (ghostel-project '(4))
     (ghostel '(4))))
 
-(defun mp/ghostel-consult-pick (bufs)
-  "Pick among the project's Ghostel BUFS with live preview.
-The first candidate always creates a brand-new project Ghostel; every
-other candidate switches to that Ghostel in the current window."
+(defun mp/ghostel-menu (bufs scripts)
+  "Grouped picker for the C-` menu: Actions, Terminals, Project Scripts.
+
+BUFS are the project's Ghostel buffers, SCRIPTS its `__ignore__/scripts/'
+files.  Sections (in order): \"Actions\" (always, with \"New Ghostel\" on
+top as the default), \"Terminals\" (BUFS, with live preview, switched to on
+select), and \"Project Scripts\" (SCRIPTS, run in a Ghostel).  Narrow with
+the section keys `a' / `t' / `s' (after `consult-narrow-key')."
   (let* ((new "＋ New Ghostel")
-         (names (mapcar #'buffer-name bufs))
-         (preview (consult--buffer-preview))
-         (choice
-          (consult--read
-           (cons new names)
-           :prompt "Ghostel: "
-           :category 'buffer
-           :require-match t
-           :sort nil
-           :history 'buffer-name-history
-           :default new
-           :state
-           ;; Preview the buffer under point; the non-buffer "new" entry
-           ;; passes nil, which `consult--buffer-preview' treats as "no
-           ;; preview" (it restores the original window).
-           (lambda (action cand)
-             (funcall preview action (unless (equal cand new) cand))))))
-    (if (equal choice new)
-        (mp/ghostel-new)
-      (switch-to-buffer choice))))
+         (script-alist (mapcar (lambda (f) (cons (my/project-script-label f) f))
+                               scripts)))
+    (consult--multi
+     (list
+      `( :name "Actions"
+         :narrow ?a
+         :category ghostel-action
+         :default t                     ; makes "New Ghostel" the RET default
+         :items (,new)
+         :action ,(lambda (_) (mp/ghostel-new)))
+      `( :name "Terminals"
+         :narrow ?t
+         :category buffer
+         :items ,(mapcar #'buffer-name bufs)
+         ;; `consult--buffer-preview' is itself a state generator (0-arg,
+         ;; returns the (action cand) fn), exactly what :state wants.
+         :state ,#'consult--buffer-preview
+         :action ,#'switch-to-buffer)
+      `( :name "Project Scripts"
+         :narrow ?s
+         :category ghostel-script
+         :items ,(mapcar #'car script-alist)
+         :action ,(lambda (cand)
+                    (when-let* ((file (cdr (assoc cand script-alist))))
+                      (my/run-project-script-file file)))))
+     :prompt "Ghostel: "
+     :require-match t
+     :sort nil
+     :history 'buffer-name-history)))
 
 (defun mp/ghostel-open ()
-  "Open a Ghostel for the current project (never a popup).
+  "Always pop the grouped Ghostel menu (Actions / Terminals / Project Scripts).
 
-- Outside any project: open (or reuse) the default Ghostel.
-- In a project with no Ghostel open: create a fresh project-scoped one.
-- In a project that already has one or more Ghostels (focused or not):
-  prompt with a `consult' menu (live preview) listing the project's
-  Ghostel buffers.  The first entry always creates a brand-new Ghostel.
-
-Project membership uses Ghostel's own scoping (`ghostel--project-buffers',
-governed by `ghostel-project-buffer-scope')."
+Even with no terminal open the menu still shows; its top, default \"New
+Ghostel\" entry makes one on a bare RET.  Terminals and scripts are
+project-scoped (`ghostel--project-buffers' — governed by
+`ghostel-project-buffer-scope' — and `my/project-script-files'); both
+degrade to empty outside a project, where \"New Ghostel\" falls back to a
+non-project terminal."
   (interactive)
-  (if (not (project-current nil))
-      (ghostel)
-    (let ((bufs (ignore-errors (ghostel--project-buffers))))
-      (if (null bufs)
-          (ghostel-project)
-        (mp/ghostel-consult-pick bufs)))))
+  (mp/ghostel-menu
+   (ignore-errors (ghostel--project-buffers))
+   (ignore-errors (my/project-script-files))))
 
 ;; Line-moving helpers (mp/line-move-bounds, mp/move-lines--apply) removed:
 ;; mp/move-lines / mp/move-lines-up / mp/move-lines-down now live in

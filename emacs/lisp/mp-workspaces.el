@@ -611,13 +611,41 @@ indentation never extend across the line — no more hanging underlines."
 (define-key mp/dashboard-mode-map "p" #'mp/dashboard-switch-prev)
 (define-key mp/dashboard-mode-map "q" #'mp/dashboard-quit)
 (define-key mp/dashboard-mode-map "g" #'mp/dashboard-refresh)
+;; `j'/`k' (and the arrows) hop straight between links, so the indented links no
+;; longer need `h'/`l' or left/right to reach; `['/`]' do the same.
+(define-key mp/dashboard-mode-map "j" #'mp/dashboard-next-link)
+(define-key mp/dashboard-mode-map "k" #'mp/dashboard-prev-link)
+(define-key mp/dashboard-mode-map (kbd "<down>") #'mp/dashboard-next-link)
+(define-key mp/dashboard-mode-map (kbd "<up>")   #'mp/dashboard-prev-link)
 (define-key mp/dashboard-mode-map "]" #'mp/dashboard-next-link)
 (define-key mp/dashboard-mode-map "[" #'mp/dashboard-prev-link)
+
+(defun mp/dashboard--tame-evil-brackets ()
+  "Free `[' / `]' from `evil-collection-unimpaired' in the current buffer.
+Unimpaired's globally active minor-mode map shadows the dashboard's bracket
+bindings.  Its globalized mode re-enables it via `after-change-major-mode-hook'
+— which runs *after* this major mode's body — so the disable is deferred a tick
+so it sticks, then the keymaps are refreshed."
+  (let ((buf (current-buffer)))
+    (run-at-time
+     0 nil
+     (lambda ()
+       (when (buffer-live-p buf)
+         (with-current-buffer buf
+           (when (bound-and-true-p evil-collection-unimpaired-mode)
+             (evil-collection-unimpaired-mode -1)
+             (when (fboundp 'evil-normalize-keymaps)
+               (evil-normalize-keymaps)))))))))
 
 (define-derived-mode mp/dashboard-mode special-mode "Dashboard"
   "Major mode for the workspace overview dashboard."
   ;; Follow point with a block-aware highlight (covers both lines of an agent).
-  (add-hook 'post-command-hook #'mp/dashboard--hl-update nil t))
+  (add-hook 'post-command-hook #'mp/dashboard--hl-update nil t)
+  ;; `evil-collection-unimpaired' binds `[' / `]' as prefix keys in a globally
+  ;; active minor-mode map that outranks our own bindings, so the bracket keys
+  ;; would otherwise wait for a second key instead of jumping between links.
+  (when (bound-and-true-p evil-mode)
+    (mp/dashboard--tame-evil-brackets)))
 
 (with-eval-after-load 'evil
   ;; Single keys are shadowed by evil motion state; bind them in the dashboard's
@@ -626,6 +654,10 @@ indentation never extend across the line — no more hanging underlines."
     "n" #'mp/dashboard-switch-next
     "p" #'mp/dashboard-switch-prev
     "q" #'mp/dashboard-quit
+    "j" #'mp/dashboard-next-link
+    "k" #'mp/dashboard-prev-link
+    (kbd "<down>") #'mp/dashboard-next-link
+    (kbd "<up>")   #'mp/dashboard-prev-link
     "]" #'mp/dashboard-next-link
     "[" #'mp/dashboard-prev-link
     "gr" #'mp/dashboard-refresh))
@@ -768,6 +800,13 @@ here would silently fall back to *scratch*)."
                ;; tight to the label — nothing highlights past the text.
                :indent (if act "  > " "    ")
                :face (if act 'mp/dashboard-active 'mp/dashboard-item))))
+          ;; Trailing action: create a fresh workspace and switch to it (the
+          ;; same as `SPC TAB n'); `mp/workspace-new' lands on this dashboard.
+          (mp/dashboard--item
+           (concat (mp/dashboard--icon #'nerd-icons-mdicon "nf-md-plus")
+                   " New workspace")
+           (lambda (_) (mp/workspace-new))
+           :help-echo "Create a new empty workspace and switch to it (SPC TAB n)")
           (insert "\n"))
 
         ;; Agents: each agent-shell with its own title header + live status

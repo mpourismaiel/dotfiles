@@ -22,44 +22,48 @@
         (concat "✓ " name)
       name)))
 
+(defun my/run-project-script-file (file)
+  "Run FILE (a script under the project's __ignore__/scripts/) in a Ghostel.
+Reuses the script's terminal if it's still alive, otherwise spawns a fresh
+Ghostel named for the script.  Shared by `my/run-project-script' and the
+C-` Ghostel menu (see custom-shortcuts)."
+  (let* ((project (projectile-project-root))
+         (name (file-name-base file))
+         (key (concat project "::" file))
+         (buf-name (format "*project:%s*" name)))
+    (puthash key t my/project-running-scripts)
+    (let ((default-directory project)
+          (existing (get-buffer buf-name)))
+      ;; Reuse the script's terminal if it's still alive (rerun in the same
+      ;; buffer), otherwise spawn a fresh Ghostel named for the script.
+      (if (and existing
+               (buffer-live-p existing)
+               (buffer-local-value 'ghostel--term existing))
+          (pop-to-buffer existing)
+        (ghostel '(4))
+        ;; Ghostel names buffers from `ghostel-buffer-name'; rename after the
+        ;; fact instead of let-binding that defcustom (which trips a
+        ;; lexical/dynamic error under lexical-binding when ghostel isn't
+        ;; loaded yet). Renaming also makes Ghostel treat the buffer as
+        ;; manually named, so shell OSC title reports won't rename it away.
+        (rename-buffer buf-name t))
+      (ghostel-send-string (shell-quote-argument file))
+      (ghostel-send-key "return")
+      (delete-other-windows))))
+
 (defun my/run-project-script ()
   "Pick a project script and run it in a Ghostel terminal buffer."
   (interactive)
-  (let* ((project (projectile-project-root))
-         (files (my/project-script-files)))
+  (let ((files (my/project-script-files)))
     (unless files
       (user-error "No scripts found in __ignore__/scripts/"))
-
     (let* ((choices
             (mapcar (lambda (file)
                       (cons (my/project-script-label file) file))
                     files))
            (picked-label (completing-read "Run script: " choices nil t))
-           (file (cdr (assoc picked-label choices)))
-           (name (file-name-base file))
-           (key (concat project "::" file))
-           (buf-name (format "*project:%s*" name)))
-
-      (puthash key t my/project-running-scripts)
-
-      (let ((default-directory project)
-            (existing (get-buffer buf-name)))
-        ;; Reuse the script's terminal if it's still alive (rerun in the same
-        ;; buffer), otherwise spawn a fresh Ghostel named for the script.
-        (if (and existing
-                 (buffer-live-p existing)
-                 (buffer-local-value 'ghostel--term existing))
-            (pop-to-buffer existing)
-          (ghostel '(4))
-          ;; Ghostel names buffers from `ghostel-buffer-name'; rename after the
-          ;; fact instead of let-binding that defcustom (which trips a
-          ;; lexical/dynamic error under lexical-binding when ghostel isn't
-          ;; loaded yet). Renaming also makes Ghostel treat the buffer as
-          ;; manually named, so shell OSC title reports won't rename it away.
-          (rename-buffer buf-name t))
-        (ghostel-send-string (shell-quote-argument file))
-        (ghostel-send-key "return")
-        (delete-other-windows)))))
+           (file (cdr (assoc picked-label choices))))
+      (my/run-project-script-file file))))
 
 ;; Doom-era `map!' leader bind removed; mp-keys.el binds
 ;; SPC p S -> `my/run-project-script'.

@@ -325,8 +325,16 @@ workspaces."
       (call-interactively 'eca)
     (message "ECA is not available")))
 
+(defun mp/header-svg-cmd-dashboard ()
+  "Open the workspace dashboard (the same as `SPC b h')."
+  (interactive)
+  (if (fboundp 'mp/dashboard)
+      (call-interactively 'mp/dashboard)
+    (message "Dashboard is not available")))
+
 (defvar mp/header-svg-buttons
-  '(("octicon" "nf-oct-file_directory" "D" mp/header-svg-cmd-dirvish)
+  '(("mdicon"  "nf-md-view_dashboard" "H" mp/header-svg-cmd-dashboard)
+    ("octicon" "nf-oct-file_directory" "D" mp/header-svg-cmd-dirvish)
     ("octicon" "nf-oct-terminal"       ">" mp/header-svg-cmd-terminal)
     ("octicon" "nf-oct-git_branch"     "G" mp/header-svg-cmd-magit)
     ("mdicon"  "nf-md-robot"           "A" mp/header-svg-cmd-agent)
