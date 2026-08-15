@@ -111,11 +111,17 @@ def reconcile_hidden(prefs: dict, prev_present, hidden_prop) -> set:
 
     New hidden = (edited header, or saved prefs if no header)
                  ∪ (projects shown last pull whose heading is now gone).
+
+    The "heading gone" set is only trusted when the prior buffer actually rendered
+    a tree (prev_present non-empty). An EMPTY prev_present means the buffer showed
+    no project headings at all — a placeholder, an error, or the everything-hidden
+    state — NOT the user hand-deleting every project; treating it as "all deleted"
+    would hide `shown_last` wholesale and strand you with no visible projects.
     """
     hidden0 = {str(k) for k in (prefs.get("hidden") or {})}
     shown_last = {str(x) for x in (prefs.get("shown") or [])}
     base = set(hidden_prop) if hidden_prop is not None else hidden0
-    deleted = (shown_last - prev_present) if prev_present is not None else set()
+    deleted = (shown_last - prev_present) if prev_present else set()
     return base | deleted
 
 
@@ -274,7 +280,7 @@ class Client:
             for t in self.paged(f"/projects/{project_id}/tasklists.json", "tasklists")
         ]
 
-    def tasks(self, tasklist_id: int, project_id: int) -> list[dict]:
+    def tasks(self, tasklist_id: int, project_id: int, include_completed=False) -> list[dict]:
         """All tasks in a list, INCLUDING subtasks nested to any depth.
 
         `getSubTasks=yes` asks Teamwork to include subtasks in the response.
@@ -282,9 +288,14 @@ class Client:
         carrying a `parentTaskId`) or nested under a parent's `subTasks` array;
         we flatten either shape into one list, tagging every task with its
         `parent_id` (None for a top-level task) so the tree can be rebuilt.
-        Dedup by id guards against an endpoint returning a subtask both ways."""
-        raw = self.paged(f"/tasklists/{tasklist_id}/tasks.json", "todo-items",
-                         getSubTasks="yes", getTags="yes")
+        Dedup by id guards against an endpoint returning a subtask both ways.
+        INCLUDE_COMPLETED asks Teamwork for finished tasks too (off by default —
+        the timesheet only wants open work; management turns it on so a task's
+        DONE state round-trips and can be un-checked)."""
+        params = dict(getSubTasks="yes", getTags="yes")
+        if include_completed:
+            params["includeCompletedTasks"] = "yes"
+        raw = self.paged(f"/tasklists/{tasklist_id}/tasks.json", "todo-items", **params)
         out, seen = [], set()
 
         def add(t, parent_id):
@@ -303,6 +314,7 @@ class Client:
                 "due": _norm_due(t.get("dueDate") or t.get("due-date")),
                 "priority": _norm_priority(t.get("priority")),
                 "assignees": _assignee_ids(t),
+                "done": _task_completed(t),
             })
             for sub in (t.get("subTasks") or t.get("subtasks") or []):
                 add(sub, tid)
@@ -378,6 +390,9 @@ class Client:
 
     def complete_task(self, task_id: int):
         return self._req("PUT", f"/tasks/{task_id}/complete.json")
+
+    def uncomplete_task(self, task_id: int):
+        return self._req("PUT", f"/tasks/{task_id}/uncomplete.json")
 
     def set_task_tags(self, task_id: int, tags: list):
         """Replace a task's tags with TAGS (a list of names). The v1 tags API
@@ -482,6 +497,16 @@ def _norm_priority(s) -> str:
     """Canonical priority: '' (none) / low / medium / high."""
     s = (str(s or "")).strip().lower()
     return "" if s in ("", "none") else s
+
+
+def _task_completed(t: dict) -> bool:
+    """Whether a raw v1 todo-item is completed, across the field spellings the API
+    uses (`completed` bool, or a `status`/`completed-on` marker)."""
+    if str(t.get("completed", "")).strip().lower() in ("1", "true", "yes"):
+        return True
+    if str(t.get("status", "")).strip().lower() == "completed":
+        return True
+    return bool(t.get("completed-on") or t.get("completedOn"))
 
 
 def _assignee_ids(t: dict) -> list:
@@ -592,17 +617,19 @@ def _drawer_multi(pairs) -> str:
 
 
 def _task_drawer(tk: dict, with_props=False):
-    """Property drawer for task TK: id + TW_TAGS, and (management only, WITH_PROPS)
-    TW_DUE / TW_PRIORITY / TW_ASSIGNEE lines. Returns None when there is nothing to
-    show (a brand-new task with no properties), so callers can skip it."""
+    """Property drawer for task TK: id + LABELS, and (management only, WITH_PROPS)
+    DONE / DUE / URGENCY / ASSIGNEE lines. Returns None when there is nothing to
+    show (a brand-new task with no properties), so callers can skip it. In
+    management the DONE line is always emitted, so the drawer is never empty."""
     tags = tk.get("tags")
-    pairs = [("TW_TASK_ID", tk.get("id")),
-             ("TW_TAGS", ", ".join(tags) if tags else None)]
+    pairs = [("TASK_ID", tk.get("id")),
+             ("LABELS", ", ".join(tags) if tags else None)]
     if with_props:
         names = tk.get("assignee_names")
-        pairs += [("TW_DUE", tk.get("due") or None),
-                  ("TW_PRIORITY", tk.get("priority") or None),
-                  ("TW_ASSIGNEE", ", ".join(names) if names else None)]
+        pairs += [("DONE", "true" if tk.get("done") else "false"),
+                  ("DUE", tk.get("due") or None),
+                  ("URGENCY", tk.get("priority") or None),
+                  ("ASSIGNEE", ", ".join(names) if names else None)]
     return _drawer_multi(pairs) if any(v not in (None, "") for _, v in pairs) else None
 
 
@@ -613,7 +640,7 @@ def _emit_project_tree(out, projects, tasklists, tasks, logs_by_task=None,
     renderers; LOGS_BY_TASK is a {task_id: [log,…]} map, empty for management.
     WITH_DESC emits each task's description as body text under its drawer (used in
     management, where tasks have no logs to conflict with the free text). WITH_PROPS
-    adds the TW_DUE / TW_PRIORITY / TW_ASSIGNEE property lines (management)."""
+    adds the DUE / URGENCY / ASSIGNEE property lines (management)."""
     logs_by_task = logs_by_task or {}
     tls_by_project: dict[int, list] = {}
     for tl in tasklists:
@@ -641,10 +668,10 @@ def _emit_project_tree(out, projects, tasklists, tasks, logs_by_task=None,
 
     for pr in sorted(projects, key=lambda p: p["name"].lower()):
         out.append(f"* {pr['name']}")
-        out.append(_drawer("TW_PROJECT_ID", pr["id"]))
+        out.append(_drawer("PROJECT_ID", pr["id"]))
         for tl in sorted(tls_by_project.get(pr["id"], []), key=lambda t: t["name"].lower()):
             out.append(f"** {tl['name']}")
-            out.append(_drawer("TW_TASKLIST_ID", tl["id"]))
+            out.append(_drawer("TASKLIST_ID", tl["id"]))
             for tk in sorted(tops_by_tl.get(tl["id"], []), key=lambda t: t["title"].lower()):
                 emit_task(tk, 3)
 
@@ -666,7 +693,7 @@ def _header(frm, to, user, hidden=None, hidden_names=None, account=None) -> list
         "# Remove a log line to delete it. Add a heading with no ID to create a task/list.",
         "# Demote a heading below a task (**** or deeper) to make it a subtask; subtasks",
         "# nest to any depth and take logs/renames/[d] like any task.",
-        "# Rename a task/list by editing its heading text (keep its :TW_*_ID:).",
+        "# Rename a task/list by editing its heading text (keep its :*_ID:).",
         "# Delete a whole project heading to stop fetching it (moves to TEAMWORK_HIDDEN,",
         "# its logs are left untouched). Remove an id from TEAMWORK_HIDDEN to fetch it again.",
     ]
@@ -715,10 +742,17 @@ def _manage_header(user, account=None, hidden=None, hidden_names=None,
     lines += [
         "# No time filter here — this is the whole project structure you can manage.",
         "# Add a heading with no ID to create a task/list; demote below a task (**** or",
-        "# deeper) to create a subtask. Rename by editing heading text (keep :TW_*_ID:).",
-        "# Task properties (in the drawer; empty value clears, missing line leaves as-is):",
-        "#   :TW_TAGS: bug, backend      :TW_DUE: 2026-08-20      :TW_PRIORITY: high",
-        "#   :TW_ASSIGNEE: Jane Doe, John Roe   (names as shown; C-c C-p picks values)",
+        "# deeper) to create a subtask. Rename by editing heading text (keep :*_ID:).",
+        "# Task properties live in the :PROPERTIES: drawer under each task heading.",
+        "# Stating a line is authoritative: an empty value clears the field, a missing",
+        "# line leaves it as-is. C-c C-p picks values for any of them.  Properties:",
+        "#   :TASK_ID: 12345    the Teamwork id — never edit or remove it (identifies the task)",
+        "#   :DONE: true        completion state, true/false; flip it to close/reopen the task",
+        "#   :LABELS: bug, backend          tags, comma-separated",
+        "#   :DUE: 2026-08-20               due date",
+        "#   :URGENCY: high                 priority: low / medium / high",
+        "#   :ASSIGNEE: Jane Doe, John Roe  assignees by name, as shown",
+        "#   (LABELS/URGENCY avoid Org's reserved TAGS/PRIORITY property names.)",
         "# Write a task DESCRIPTION as plain text below its property drawer (before any",
         "# subtask heading); edit it freely — it is submitted with everything else.",
         "#   (don't start a description line with '*' — org would read it as a heading.)",
@@ -753,7 +787,7 @@ def _comments_help() -> list:
     return [
         "# One * heading per comment. Edit the text below a heading to change it;",
         "# add a new * heading with body text to post a comment; delete a heading to",
-        "# remove its comment. Keep each comment's :TW_COMMENT_ID:. The author/date",
+        "# remove its comment. Keep each comment's :COMMENT_ID:. The author/date",
         "# line is informational — only the body text and id matter on submit.",
     ]
 
@@ -773,7 +807,7 @@ def render_comments(task_id, task_title, comments, meta: dict) -> str:
         if c.get("datetime"):
             head = f"{head} — {c['datetime']}"
         out.append(f"* {head}")
-        out.append(_drawer("TW_COMMENT_ID", c["id"]))
+        out.append(_drawer("COMMENT_ID", c["id"]))
         out.extend((c.get("body") or "").split("\n"))
         out.append("")
     return "\n".join(out) + "\n"
@@ -794,7 +828,7 @@ def serialize_comments(parsed: dict) -> str:
     for c in parsed["comments"]:
         out.append(f"* {c.get('author') or 'me'}")
         if c.get("id") is not None:
-            out.append(_drawer("TW_COMMENT_ID", c["id"]))
+            out.append(_drawer("COMMENT_ID", c["id"]))
         out.extend((c.get("body") or "").split("\n"))
         out.append("")
     return "\n".join(out) + "\n"
@@ -829,11 +863,11 @@ def serialize_parsed(parsed: dict) -> str:
     for p in parsed["projects"]:
         out.append(f"* {p['name']}")
         if p["id"] is not None:
-            out.append(_drawer("TW_PROJECT_ID", p["id"]))
+            out.append(_drawer("PROJECT_ID", p["id"]))
         for tl in p["tasklists"]:
             out.append(f"** {tl['name']}")
             if tl["id"] is not None:
-                out.append(_drawer("TW_TASKLIST_ID", tl["id"]))
+                out.append(_drawer("TASKLIST_ID", tl["id"]))
             for tk in tl["tasks"]:
                 emit_task(tk, 3)
     return "\n".join(out) + "\n"
@@ -855,6 +889,7 @@ def build_snapshot(projects, tasklists, tasks, logs, meta: dict) -> dict:
         "task_due": {str(t["id"]): (t.get("due") or "") for t in tasks},
         "task_priority": {str(t["id"]): (t.get("priority") or "") for t in tasks},
         "task_assignees": {str(t["id"]): (t.get("assignee_names") or []) for t in tasks},
+        "task_done": {str(t["id"]): bool(t.get("done")) for t in tasks},
         "task_project": {str(t["id"]): t["project_id"] for t in tasks},
         "task_tasklist": {str(t["id"]): str(t["tasklist_id"]) for t in tasks},
         "task_parent": {str(t["id"]): (str(t["parent_id"]) if t.get("parent_id") else None)
@@ -866,7 +901,7 @@ def build_snapshot(projects, tasklists, tasks, logs, meta: dict) -> dict:
 def build_snapshot_from_parsed(parsed: dict, people=None) -> dict:
     m = parsed["meta"]
     logs, tls, tks, tags = {}, {}, {}, {}
-    desc, due, pri, asg = {}, {}, {}, {}
+    desc, due, pri, asg, done = {}, {}, {}, {}, {}
     t_proj, t_tl, t_parent, tl_proj = {}, {}, {}, {}
 
     def walk(tk, proj_id, tl_id, parent_id):
@@ -883,6 +918,8 @@ def build_snapshot_from_parsed(parsed: dict, people=None) -> dict:
                 pri[sid] = tk.get("priority") or ""
             if "assignee_names" in tk:
                 asg[sid] = tk.get("assignee_names") or []
+            if "done" in tk:
+                done[sid] = bool(tk.get("done"))
             t_proj[sid] = proj_id
             t_tl[sid] = str(tl_id) if tl_id is not None else None
             t_parent[sid] = str(parent_id) if parent_id is not None else None
@@ -902,6 +939,7 @@ def build_snapshot_from_parsed(parsed: dict, people=None) -> dict:
     return {"from": m.get("from"), "to": m.get("to"), "logs": logs,
             "tasklists": tls, "tasks": tks, "task_tags": tags, "task_desc": desc,
             "task_due": due, "task_priority": pri, "task_assignees": asg,
+            "task_done": done,
             "task_project": t_proj, "task_tasklist": t_tl, "task_parent": t_parent,
             "tasklist_project": tl_proj, "people": people or {}}
 
@@ -934,9 +972,15 @@ def _log_snap(lg: dict) -> dict:
 # Pure parsing: org text -> structured buffer
 # --------------------------------------------------------------------------- #
 _HEAD_RE = re.compile(r"^(\*+)\s+(.*)$")
-_PROP_RE = re.compile(r"^\s*:(TW_PROJECT_ID|TW_TASKLIST_ID|TW_TASK_ID):\s*(\d+)\s*$")
-_TAGS_RE = re.compile(r"^\s*:TW_TAGS:\s*(.*)$")
-_TASKPROP_RE = re.compile(r"^\s*:(TW_DUE|TW_PRIORITY|TW_ASSIGNEE):\s*(.*)$")
+_PROP_RE = re.compile(r"^\s*:(PROJECT_ID|TASKLIST_ID|TASK_ID):\s*(\d+)\s*$")
+_TAGS_RE = re.compile(r"^\s*:LABELS:\s*(.*)$")
+_DONE_RE = re.compile(r"^\s*:DONE:\s*(.*)$")
+_TASKPROP_RE = re.compile(r"^\s*:(DUE|URGENCY|ASSIGNEE):\s*(.*)$")
+
+
+def _parse_bool(s) -> bool:
+    """Truthy drawer value: true / yes / done / t / 1 (case-insensitive)."""
+    return str(s or "").strip().lower() in ("true", "yes", "done", "t", "1", "x")
 _DRAWER_LINE_RE = re.compile(r"^\s*:(?:PROPERTIES|END):\s*$")
 _LOG_RE = re.compile(
     r"^\s*-\s+"
@@ -1050,11 +1094,11 @@ def parse_org(text: str) -> dict:
         pm = _PROP_RE.match(raw)
         if pm:
             kind, val = pm.group(1), int(pm.group(2))
-            if kind == "TW_PROJECT_ID" and cur_p is not None:
+            if kind == "PROJECT_ID" and cur_p is not None:
                 cur_p["id"] = val
-            elif kind == "TW_TASKLIST_ID" and cur_tl is not None:
+            elif kind == "TASKLIST_ID" and cur_tl is not None:
                 cur_tl["id"] = val
-            elif kind == "TW_TASK_ID" and cur_tk is not None:
+            elif kind == "TASK_ID" and cur_tk is not None:
                 cur_tk["id"] = val
             continue
 
@@ -1065,14 +1109,21 @@ def parse_org(text: str) -> dict:
             cur_tk["tags"] = [t.strip() for t in tagm.group(1).split(",") if t.strip()]
             continue
 
+        donem = _DONE_RE.match(raw)
+        if donem and cur_tk is not None:
+            # Presence of the line is authoritative: it holds the task's completed
+            # state (true/false); flipping it completes/uncompletes on submit.
+            cur_tk["done"] = _parse_bool(donem.group(1))
+            continue
+
         propm = _TASKPROP_RE.match(raw)
         if propm and cur_tk is not None:
             key, val = propm.group(1), propm.group(2).strip()
-            if key == "TW_DUE":
+            if key == "DUE":
                 cur_tk["due"] = _norm_due(val)
-            elif key == "TW_PRIORITY":
+            elif key == "URGENCY":
                 cur_tk["priority"] = _norm_priority(val)
-            elif key == "TW_ASSIGNEE":
+            elif key == "ASSIGNEE":
                 cur_tk["assignee_names"] = [n.strip() for n in val.split(",") if n.strip()]
             continue
 
@@ -1189,6 +1240,7 @@ def compute_plan(parsed: dict, snapshot: dict, user_id: int) -> dict:
     snap_due = snapshot.get("task_due", {})
     snap_pri = snapshot.get("task_priority", {})
     snap_asg = snapshot.get("task_assignees", {})     # {task_id: [name, …]}
+    snap_done = snapshot.get("task_done", {})         # {task_id: bool}
     people = snapshot.get("people", {})               # {id: name}
     name2id = {v.strip().lower(): k for k, v in people.items()}
     present_pids = {p["id"] for p in parsed["projects"] if p["id"] is not None}
@@ -1225,6 +1277,7 @@ def compute_plan(parsed: dict, snapshot: dict, user_id: int) -> dict:
         # Property values stated in the buffer (manage only). "in tk" == the line
         # was present, so it is authoritative (empty value clears the field).
         has_due, has_pri, has_asg = ("due" in tk), ("priority" in tk), ("assignee_names" in tk)
+        has_done = "done" in tk
         if tk["id"] is None:
             tk_ref = new_ref("task")
             base = {"ref": tk_ref, "title": tk["title"], "description": desc or None, "_obj": tk}
@@ -1272,7 +1325,7 @@ def compute_plan(parsed: dict, snapshot: dict, user_id: int) -> dict:
                     bits.append(f"assignees {shown}")
                 act["summary"] = f"update {kind} {(prev_title or tk['title'])[:40]!r}: " + ", ".join(bits)
                 renames.append(act)
-        # Labels: only when the buffer stated them (the :TW_TAGS: line is present).
+        # Labels: only when the buffer stated them (the :LABELS: line is present).
         # A new task always gets its tags set after creation; an existing one only
         # when they differ from the snapshot (so unchanged tags cost no call).
         if "tags" in tk:
@@ -1296,16 +1349,31 @@ def compute_plan(parsed: dict, snapshot: dict, user_id: int) -> dict:
                 if prev is None or _log_signature(prev) != _log_signature(lg):
                     log_writes.append({"type": "update_timelog", "id": lg["id"], "body": body,
                                        "summary": _summary(lg, tk, "edit"), "_obj": lg})
-        # A [d] marker on any of the task's logs completes that task (any depth).
-        if any(lg.get("done") for lg in tk["logs"]):
+        # Completion. Two independent triggers, mutually exclusive in practice:
+        #  - timesheet: a [d] marker on any of the task's logs completes it;
+        #  - management: the :DONE: property flipping true/false (no logs there).
+        title40 = tk["title"][:40]
+        if has_done:
+            want = bool(tk["done"])
+            # New task created done, or an existing task whose state changed.
+            changed = (want != bool(snap_done.get(str(tk["id"])))
+                       if tk["id"] is not None else want)
+            if changed:
+                if want:
+                    completes.append({"type": "complete_task", "task": tk_target,
+                                      "summary": f"mark task {title40!r} done", "_obj": tk})
+                else:
+                    completes.append({"type": "uncomplete_task", "task": tk_target,
+                                      "summary": f"reopen task {title40!r} (not done)", "_obj": tk})
+        elif any(lg.get("done") for lg in tk["logs"]):
             completes.append({"type": "complete_task", "task": tk_target,
-                              "summary": f"mark task {tk['title'][:40]!r} complete", "_obj": tk})
+                              "summary": f"mark task {title40!r} done", "_obj": tk})
         for sub in tk["subtasks"]:
             process_task(sub, tk_target, tl_target, tl_name)
 
     for p in parsed["projects"]:
         if p["id"] is None:
-            problems.append(f"project '{p['name']}' has no TW_PROJECT_ID (creating projects is not supported)")
+            problems.append(f"project '{p['name']}' has no PROJECT_ID (creating projects is not supported)")
             continue
         for tl in p["tasklists"]:
             if tl["id"] is None:
@@ -1419,6 +1487,8 @@ def _execute(a: dict, client: "Client", created: dict):
         client.set_task_tags(int(_resolve(a["task"], created)), a["tags"])
     elif t == "complete_task":
         client.complete_task(int(_resolve(a["task"], created)))
+    elif t == "uncomplete_task":
+        client.uncomplete_task(int(_resolve(a["task"], created)))
     elif t == "create_timelog":
         a["_new_id"] = client.create_timelog(int(_resolve(a["task"], created)), a["body"])
     elif t == "update_timelog":
@@ -1499,12 +1569,12 @@ def apply_stream(plan: dict, client: "Client", parsed: dict, out_path: str, snap
 # --------------------------------------------------------------------------- #
 # Comments: parse / diff / apply (a flat list of * headings under one task)
 # --------------------------------------------------------------------------- #
-_COMMENT_ID_RE = re.compile(r"^\s*:TW_COMMENT_ID:\s*(\d+)\s*$")  # _DRAWER_LINE_RE: see top
+_COMMENT_ID_RE = re.compile(r"^\s*:COMMENT_ID:\s*(\d+)\s*$")  # _DRAWER_LINE_RE: see top
 
 
 def parse_comments(text: str) -> dict:
     """Parse a comments buffer: one `*` heading per comment, body text below it,
-    optional :TW_COMMENT_ID: (present = existing, absent = a new comment)."""
+    optional :COMMENT_ID: (present = existing, absent = a new comment)."""
     meta = {"task": None, "user": None, "account": None}
     comments: list[dict] = []
     problems: list[str] = []
@@ -1713,14 +1783,15 @@ def _select_projects(c, prefs, args_projects, args_prev):
     return projects, hidden_ids, hidden_names, filt, filt_names, name_by_id
 
 
-def _walk_tree(c, projects):
-    """Fetch every tasklist and its tasks (incl. subtasks/tags) for PROJECTS."""
+def _walk_tree(c, projects, include_completed=False):
+    """Fetch every tasklist and its tasks (incl. subtasks/tags) for PROJECTS.
+    INCLUDE_COMPLETED pulls finished tasks too (management, so DONE round-trips)."""
     tasklists, tasks = [], []
     for i, p in enumerate(projects, 1):
         tls = c.tasklists(p["id"])
         tasklists.extend(tls)
         for tl in tls:
-            tasks.extend(c.tasks(tl["id"], p["id"]))
+            tasks.extend(c.tasks(tl["id"], p["id"], include_completed=include_completed))
         sys.stderr.write(f"\r  walked {i}/{len(projects)} projects")
         sys.stderr.flush()
     sys.stderr.write("\n")
@@ -1787,7 +1858,7 @@ def cmd_manage(args):
     sys.stderr.write(f"projects: {len(projects)} shown, {len(hidden_ids)} hidden, "
                      f"{len(filt)} in filter\n")
 
-    tasklists, tasks = _walk_tree(c, projects)
+    tasklists, tasks = _walk_tree(c, projects, include_completed=True)
 
     # Resolve each task's assignee ids to names for display; keep the id->name map
     # in the snapshot so submit can turn edited names back into ids.

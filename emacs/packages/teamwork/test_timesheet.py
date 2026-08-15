@@ -53,11 +53,11 @@ class RenderLine(unittest.TestCase):
         self.assertEqual(T.render_log_line(log), ["- 7 2026-06-13 =1:30 first", "  second"])
 
 
-def _tree(logs, task_prop=":TW_TASK_ID: 300\n", tl_prop=":TW_TASKLIST_ID: 200\n",
+def _tree(logs, task_prop=":TASK_ID: 300\n", tl_prop=":TASKLIST_ID: 200\n",
           task_title="T", tl_name="L"):
     return (
         "#+TEAMWORK: from=2026-06-01 to=2026-06-30 user=363603\n"
-        "* P\n:PROPERTIES:\n:TW_PROJECT_ID: 100\n:END:\n"
+        "* P\n:PROPERTIES:\n:PROJECT_ID: 100\n:END:\n"
         "** " + tl_name + "\n:PROPERTIES:\n" + tl_prop + ":END:\n"
         "*** " + task_title + "\n:PROPERTIES:\n" + task_prop + ":END:\n" + logs
     )
@@ -142,16 +142,16 @@ class Subtasks(unittest.TestCase):
     def _tree(self, extra=""):
         return (
             "#+TEAMWORK: from=2026-06-01 to=2026-06-30 user=363603\n"
-            "* P\n:PROPERTIES:\n:TW_PROJECT_ID: 100\n:END:\n"
-            "** L\n:PROPERTIES:\n:TW_TASKLIST_ID: 200\n:END:\n"
-            "*** Task\n:PROPERTIES:\n:TW_TASK_ID: 300\n:END:\n" + extra
+            "* P\n:PROPERTIES:\n:PROJECT_ID: 100\n:END:\n"
+            "** L\n:PROPERTIES:\n:TASKLIST_ID: 200\n:END:\n"
+            "*** Task\n:PROPERTIES:\n:TASK_ID: 300\n:END:\n" + extra
         )
 
     def test_parse_nested_subtasks(self):
         text = self._tree(
-            "**** Sub A\n:PROPERTIES:\n:TW_TASK_ID: 400\n:END:\n"
-            "***** Sub A1\n:PROPERTIES:\n:TW_TASK_ID: 410\n:END:\n"
-            "**** Sub B\n:PROPERTIES:\n:TW_TASK_ID: 500\n:END:\n"
+            "**** Sub A\n:PROPERTIES:\n:TASK_ID: 400\n:END:\n"
+            "***** Sub A1\n:PROPERTIES:\n:TASK_ID: 410\n:END:\n"
+            "**** Sub B\n:PROPERTIES:\n:TASK_ID: 500\n:END:\n"
         )
         task = T.parse_org(text)["projects"][0]["tasklists"][0]["tasks"][0]
         self.assertEqual(task["id"], 300)
@@ -163,7 +163,7 @@ class Subtasks(unittest.TestCase):
 
     def test_log_attaches_to_deepest_subtask(self):
         text = self._tree(
-            "**** Sub\n:PROPERTIES:\n:TW_TASK_ID: 400\n:END:\n"
+            "**** Sub\n:PROPERTIES:\n:TASK_ID: 400\n:END:\n"
             "- 2026-06-10 09:00 10:00 on the subtask\n"
         )
         task = T.parse_org(text)["projects"][0]["tasklists"][0]["tasks"][0]
@@ -174,8 +174,8 @@ class Subtasks(unittest.TestCase):
     def test_subtask_without_parent_task_is_a_problem(self):
         text = (
             "#+TEAMWORK: from=2026-06-01 to=2026-06-30 user=363603\n"
-            "* P\n:PROPERTIES:\n:TW_PROJECT_ID: 100\n:END:\n"
-            "** L\n:PROPERTIES:\n:TW_TASKLIST_ID: 200\n:END:\n"
+            "* P\n:PROPERTIES:\n:PROJECT_ID: 100\n:END:\n"
+            "** L\n:PROPERTIES:\n:TASKLIST_ID: 200\n:END:\n"
             "**** Orphan sub\n"          # level 4 with no level-3 task above it
         )
         self.assertTrue(any("no parent task" in p for p in T.parse_org(text)["problems"]))
@@ -202,14 +202,14 @@ class Subtasks(unittest.TestCase):
 
     def test_serialize_reparse_stable_with_subtasks(self):
         p1 = T.parse_org(self._tree(
-            "**** Sub\n:PROPERTIES:\n:TW_TASK_ID: 400\n:END:\n"
+            "**** Sub\n:PROPERTIES:\n:TASK_ID: 400\n:END:\n"
             "- 42 2026-06-10 13:00 14:00 hi\n"))
         p2 = T.parse_org(T.serialize_parsed(p1))
         sub = p2["projects"][0]["tasklists"][0]["tasks"][0]["subtasks"][0]
         self.assertEqual((sub["id"], sub["logs"][0]["id"]), (400, 42))
 
     def test_snapshot_includes_subtasks(self):
-        p = T.parse_org(self._tree("**** Sub\n:PROPERTIES:\n:TW_TASK_ID: 400\n:END:\n"))
+        p = T.parse_org(self._tree("**** Sub\n:PROPERTIES:\n:TASK_ID: 400\n:END:\n"))
         snap = T.build_snapshot_from_parsed(p)
         self.assertEqual(snap["tasks"], {"300": "Task", "400": "Sub"})
 
@@ -223,7 +223,7 @@ class Subtasks(unittest.TestCase):
     def test_plan_rename_subtask(self):
         snap = {"logs": {}, "tasks": {"300": "Task", "400": "Old Sub"}}
         plan = T.compute_plan(
-            T.parse_org(self._tree("**** New Sub\n:PROPERTIES:\n:TW_TASK_ID: 400\n:END:\n")),
+            T.parse_org(self._tree("**** New Sub\n:PROPERTIES:\n:TASK_ID: 400\n:END:\n")),
             snap, 363603)
         self.assertEqual([a["type"] for a in plan["actions"]], ["update_task"])
         act = plan["actions"][0]
@@ -236,8 +236,8 @@ class Subtasks(unittest.TestCase):
         # create_task must precede create_subtask, which must target the task's ref.
         text = (
             "#+TEAMWORK: from=2026-06-01 to=2026-06-30 user=363603\n"
-            "* P\n:PROPERTIES:\n:TW_PROJECT_ID: 100\n:END:\n"
-            "** L\n:PROPERTIES:\n:TW_TASKLIST_ID: 200\n:END:\n"
+            "* P\n:PROPERTIES:\n:PROJECT_ID: 100\n:END:\n"
+            "** L\n:PROPERTIES:\n:TASKLIST_ID: 200\n:END:\n"
             "*** New Task\n"
             "**** New Sub\n"
             "- 2026-06-10 09:00 10:00 deep\n"
@@ -252,7 +252,7 @@ class Subtasks(unittest.TestCase):
     def test_done_marker_completes_subtask(self):
         plan = T.compute_plan(
             T.parse_org(self._tree(
-                "**** Sub\n:PROPERTIES:\n:TW_TASK_ID: 400\n:END:\n"
+                "**** Sub\n:PROPERTIES:\n:TASK_ID: 400\n:END:\n"
                 "- 2026-06-10 09:00 10:00 [d] wrap\n")),
             {"logs": {}}, 363603)
         complete = next(a for a in plan["actions"] if a["type"] == "complete_task")
@@ -289,7 +289,7 @@ class Plan(unittest.TestCase):
         self.assertEqual(plan["actions"][1]["task"], 300)   # existing task id
 
     def test_done_marker_on_new_task_targets_ref(self):
-        # brand-new task (no TW_TASK_ID) + a [d] log: complete must target the new ref
+        # brand-new task (no TASK_ID) + a [d] log: complete must target the new ref
         plan = self._plan(_tree("- 2026-06-10 13:00 15:00 [d] x\n", task_prop=""), {"logs": {}})
         types = [a["type"] for a in plan["actions"]]
         self.assertEqual(types, ["create_task", "create_timelog", "complete_task"])
@@ -323,9 +323,9 @@ class Plan(unittest.TestCase):
         # new list w/ new task w/ log; existing task renamed w/ new log; plus a delete
         text = (
             "#+TEAMWORK: from=2026-06-01 to=2026-06-30 user=363603\n"
-            "* P\n:PROPERTIES:\n:TW_PROJECT_ID: 100\n:END:\n"
-            "** Existing\n:PROPERTIES:\n:TW_TASKLIST_ID: 200\n:END:\n"
-            "*** Renamed Task\n:PROPERTIES:\n:TW_TASK_ID: 300\n:END:\n"
+            "* P\n:PROPERTIES:\n:PROJECT_ID: 100\n:END:\n"
+            "** Existing\n:PROPERTIES:\n:TASKLIST_ID: 200\n:END:\n"
+            "*** Renamed Task\n:PROPERTIES:\n:TASK_ID: 300\n:END:\n"
             "- 2026-06-10 09:00 10:00 log on existing\n"
             "** Brand New List\n"
             "*** Brand New Task\n"
@@ -379,6 +379,19 @@ class HiddenProjects(unittest.TestCase):
         prefs = {"hidden": {"9": "x"}, "shown": [1]}
         self.assertEqual(T.reconcile_hidden(prefs, None, None), {"9"})
 
+    def test_reconcile_empty_prev_does_not_hide_everything(self):
+        # A buffer that rendered NO project headings (all-hidden/placeholder) must
+        # not be read as "the user deleted every project" — that stranded the user
+        # with zero visible projects and no way back.
+        prefs = {"hidden": {}, "shown": [1, 2, 3]}
+        self.assertEqual(T.reconcile_hidden(prefs, set(), set()), set())
+
+    def test_reconcile_empty_prev_still_honours_edited_header(self):
+        # Emptying the #+TEAMWORK_HIDDEN: line un-hides even from the all-hidden
+        # state (header is authoritative; no spurious deletions get added back).
+        prefs = {"hidden": {"1": "a", "2": "b"}, "shown": []}
+        self.assertEqual(T.reconcile_hidden(prefs, set(), set()), set())
+
     def test_header_round_trips_hidden(self):
         text = T.render_org([{"id": 1, "name": "P"}], [], [], [],
                             {"from": "2026-06-01", "to": "2026-06-30", "user_id": 1},
@@ -430,7 +443,7 @@ class Accounts(unittest.TestCase):
     def test_serialize_preserves_account(self):
         p = T.parse_org("#+TEAMWORK: from=2026-06-01 to=2026-06-30 user=1\n"
                         "#+TEAMWORK_ACCOUNT: work\n"
-                        "* P\n:PROPERTIES:\n:TW_PROJECT_ID: 100\n:END:\n")
+                        "* P\n:PROPERTIES:\n:PROJECT_ID: 100\n:END:\n")
         self.assertIn("#+TEAMWORK_ACCOUNT: work", T.serialize_parsed(p))
 
     def test_snapshot_path_keyed_by_account(self):
@@ -618,8 +631,8 @@ class ApplyStream(unittest.TestCase):
         # new task -> new subtask -> log on the subtask; ids fold back into the tree
         text = (
             "#+TEAMWORK: from=2026-06-01 to=2026-06-30 user=363603\n"
-            "* P\n:PROPERTIES:\n:TW_PROJECT_ID: 100\n:END:\n"
-            "** L\n:PROPERTIES:\n:TW_TASKLIST_ID: 200\n:END:\n"
+            "* P\n:PROPERTIES:\n:PROJECT_ID: 100\n:END:\n"
+            "** L\n:PROPERTIES:\n:TASKLIST_ID: 200\n:END:\n"
             "*** New Task\n"
             "**** New Sub\n"
             "- 2026-06-10 09:00 10:00 deep\n"
@@ -644,22 +657,22 @@ class ApplyStream(unittest.TestCase):
 
 
 class Tags(unittest.TestCase):
-    """Task labels via a :TW_TAGS: property line."""
+    """Task labels via a :LABELS: property line."""
 
-    def _tree(self, tag_line="", task_prop=":TW_TASK_ID: 300\n"):
+    def _tree(self, tag_line="", task_prop=":TASK_ID: 300\n"):
         return (
             "#+TEAMWORK: from=2026-06-01 to=2026-06-30 user=363603\n"
-            "* P\n:PROPERTIES:\n:TW_PROJECT_ID: 100\n:END:\n"
-            "** L\n:PROPERTIES:\n:TW_TASKLIST_ID: 200\n:END:\n"
+            "* P\n:PROPERTIES:\n:PROJECT_ID: 100\n:END:\n"
+            "** L\n:PROPERTIES:\n:TASKLIST_ID: 200\n:END:\n"
             "*** Task\n:PROPERTIES:\n" + task_prop + tag_line + ":END:\n"
         )
 
     def test_parse_tags(self):
-        task = T.parse_org(self._tree(":TW_TAGS: bug, Backend\n"))["projects"][0]["tasklists"][0]["tasks"][0]
+        task = T.parse_org(self._tree(":LABELS: bug, Backend\n"))["projects"][0]["tasklists"][0]["tasks"][0]
         self.assertEqual(task["tags"], ["bug", "Backend"])
 
     def test_parse_empty_tags_present(self):
-        task = T.parse_org(self._tree(":TW_TAGS:\n"))["projects"][0]["tasklists"][0]["tasks"][0]
+        task = T.parse_org(self._tree(":LABELS:\n"))["projects"][0]["tasklists"][0]["tasks"][0]
         self.assertEqual(task["tags"], [])              # present but empty -> clear intent
 
     def test_missing_tags_line_absent(self):
@@ -672,7 +685,7 @@ class Tags(unittest.TestCase):
         text = T.render_org([{"id": 100, "name": "P"}],
                             [{"id": 200, "name": "L", "project_id": 100}], tasks, [],
                             {"from": "2026-06-01", "to": "2026-06-30", "user_id": 1})
-        self.assertIn(":TW_TAGS: bug, ui", text)
+        self.assertIn(":LABELS: bug, ui", text)
         # round-trips back to the same tag list
         self.assertEqual(T.parse_org(text)["projects"][0]["tasklists"][0]["tasks"][0]["tags"],
                          ["bug", "ui"])
@@ -682,19 +695,19 @@ class Tags(unittest.TestCase):
         text = T.render_org([{"id": 100, "name": "P"}],
                             [{"id": 200, "name": "L", "project_id": 100}], tasks, [],
                             {"from": "2026-06-01", "to": "2026-06-30", "user_id": 1})
-        self.assertNotIn("TW_TAGS", text)
-        self.assertIn(":PROPERTIES:\n:TW_TASK_ID: 300\n:END:", text)
+        self.assertNotIn("LABELS", text)
+        self.assertIn(":PROPERTIES:\n:TASK_ID: 300\n:END:", text)
 
     def test_plan_sets_tags_when_changed(self):
         snap = {"logs": {}, "tasks": {"300": "Task"}, "task_tags": {"300": ["old"]}}
-        plan = T.compute_plan(T.parse_org(self._tree(":TW_TAGS: new, hot\n")), snap, 363603)
+        plan = T.compute_plan(T.parse_org(self._tree(":LABELS: new, hot\n")), snap, 363603)
         self.assertEqual([a["type"] for a in plan["actions"]], ["set_task_tags"])
         a = plan["actions"][0]
         self.assertEqual((a["task"], a["tags"]), (300, ["new", "hot"]))
 
     def test_plan_no_action_when_tags_equal_modulo_case_order(self):
         snap = {"logs": {}, "tasks": {"300": "Task"}, "task_tags": {"300": ["Bug", "backend"]}}
-        plan = T.compute_plan(T.parse_org(self._tree(":TW_TAGS: backend, bug\n")), snap, 363603)
+        plan = T.compute_plan(T.parse_org(self._tree(":LABELS: backend, bug\n")), snap, 363603)
         self.assertEqual(plan["actions"], [])
 
     def test_plan_no_action_when_tags_line_absent(self):
@@ -703,7 +716,7 @@ class Tags(unittest.TestCase):
         self.assertEqual(plan["actions"], [])            # absent line never clears tags
 
     def test_plan_sets_tags_on_new_task_targets_ref(self):
-        plan = T.compute_plan(T.parse_org(self._tree(":TW_TAGS: fresh\n", task_prop="")),
+        plan = T.compute_plan(T.parse_org(self._tree(":LABELS: fresh\n", task_prop="")),
                               {"logs": {}}, 363603)
         types = [a["type"] for a in plan["actions"]]
         self.assertEqual(types, ["create_task", "set_task_tags"])
@@ -716,7 +729,7 @@ class Manage(unittest.TestCase):
 
     def test_parse_manage_mode(self):
         p = T.parse_org("#+TEAMWORK_MANAGE: user=42\n#+TEAMWORK_ACCOUNT: work\n"
-                        "* P\n:PROPERTIES:\n:TW_PROJECT_ID: 100\n:END:\n")
+                        "* P\n:PROPERTIES:\n:PROJECT_ID: 100\n:END:\n")
         self.assertEqual(p["meta"]["mode"], "manage")
         self.assertEqual(p["meta"]["user"], "42")
         self.assertEqual(p["meta"]["account"], "work")
@@ -734,7 +747,7 @@ class Manage(unittest.TestCase):
         self.assertIn("#+TEAMWORK_MANAGE: user=42", text)
         self.assertNotIn("#+TEAMWORK:", text)
         self.assertIn("*** T", text)
-        self.assertIn(":TW_TAGS: x", text)
+        self.assertIn(":LABELS: x", text)
 
     def test_manage_serialize_round_trips_mode(self):
         text = T.render_manage([{"id": 100, "name": "P"}],
@@ -746,7 +759,7 @@ class Manage(unittest.TestCase):
 
     def test_manage_plan_creates_list_and_task(self):
         text = ("#+TEAMWORK_MANAGE: user=42\n"
-                "* P\n:PROPERTIES:\n:TW_PROJECT_ID: 100\n:END:\n"
+                "* P\n:PROPERTIES:\n:PROJECT_ID: 100\n:END:\n"
                 "** New List\n"
                 "*** New Task\n")
         plan = T.compute_plan(T.parse_org(text), {}, 42)
@@ -759,13 +772,13 @@ class ManageDescriptions(unittest.TestCase):
 
     def _tree(self, body):
         return ("#+TEAMWORK_MANAGE: user=42\n"
-                "* P\n:PROPERTIES:\n:TW_PROJECT_ID: 100\n:END:\n"
-                "** L\n:PROPERTIES:\n:TW_TASKLIST_ID: 200\n:END:\n" + body)
+                "* P\n:PROPERTIES:\n:PROJECT_ID: 100\n:END:\n"
+                "** L\n:PROPERTIES:\n:TASKLIST_ID: 200\n:END:\n" + body)
 
     def test_parse_description_body(self):
-        body = ("*** A\n:PROPERTIES:\n:TW_TASK_ID: 300\n:END:\n"
+        body = ("*** A\n:PROPERTIES:\n:TASK_ID: 300\n:END:\n"
                 "first line\nsecond line\n"
-                "*** B\n:PROPERTIES:\n:TW_TASK_ID: 500\n:END:\n")
+                "*** B\n:PROPERTIES:\n:TASK_ID: 500\n:END:\n")
         tasks = T.parse_org(self._tree(body))["projects"][0]["tasklists"][0]["tasks"]
         self.assertEqual(tasks[0]["description"], "first line\nsecond line")
         self.assertEqual(tasks[1]["description"], "")   # no body -> empty (authoritative)
@@ -774,9 +787,9 @@ class ManageDescriptions(unittest.TestCase):
         # the same free text under a timesheet task must NOT become a description
         p = T.parse_org(
             "#+TEAMWORK: from=2026-06-01 to=2026-06-30 user=1\n"
-            "* P\n:PROPERTIES:\n:TW_PROJECT_ID: 100\n:END:\n"
-            "** L\n:PROPERTIES:\n:TW_TASKLIST_ID: 200\n:END:\n"
-            "*** A\n:PROPERTIES:\n:TW_TASK_ID: 300\n:END:\nsome stray text\n")
+            "* P\n:PROPERTIES:\n:PROJECT_ID: 100\n:END:\n"
+            "** L\n:PROPERTIES:\n:TASKLIST_ID: 200\n:END:\n"
+            "*** A\n:PROPERTIES:\n:TASK_ID: 300\n:END:\nsome stray text\n")
         self.assertNotIn("description", p["projects"][0]["tasklists"][0]["tasks"][0])
 
     def test_render_manage_round_trips_description(self):
@@ -791,7 +804,7 @@ class ManageDescriptions(unittest.TestCase):
 
     def test_plan_updates_changed_description(self):
         snap = {"tasks": {"300": "A"}, "task_desc": {"300": "old"}}
-        body = "*** A\n:PROPERTIES:\n:TW_TASK_ID: 300\n:END:\nbrand new text\n"
+        body = "*** A\n:PROPERTIES:\n:TASK_ID: 300\n:END:\nbrand new text\n"
         plan = T.compute_plan(T.parse_org(self._tree(body)), snap, 42)
         self.assertEqual([a["type"] for a in plan["actions"]], ["update_task"])
         act = plan["actions"][0]
@@ -800,13 +813,13 @@ class ManageDescriptions(unittest.TestCase):
 
     def test_plan_clears_description(self):
         snap = {"tasks": {"300": "A"}, "task_desc": {"300": "had text"}}
-        body = "*** A\n:PROPERTIES:\n:TW_TASK_ID: 300\n:END:\n"   # body emptied
+        body = "*** A\n:PROPERTIES:\n:TASK_ID: 300\n:END:\n"   # body emptied
         plan = T.compute_plan(T.parse_org(self._tree(body)), snap, 42)
         self.assertEqual(plan["actions"][0]["description"], "")   # cleared, not left
 
     def test_plan_unchanged_description_no_action(self):
         snap = {"tasks": {"300": "A"}, "task_desc": {"300": "same"}}
-        body = "*** A\n:PROPERTIES:\n:TW_TASK_ID: 300\n:END:\nsame\n"
+        body = "*** A\n:PROPERTIES:\n:TASK_ID: 300\n:END:\nsame\n"
         self.assertEqual(T.compute_plan(T.parse_org(self._tree(body)), snap, 42)["actions"], [])
 
     def test_plan_new_task_carries_description(self):
@@ -820,9 +833,9 @@ class TaskProperties(unittest.TestCase):
 
     def _tree(self, drawer_extra="", people=None):
         text = ("#+TEAMWORK_MANAGE: user=42\n"
-                "* P\n:PROPERTIES:\n:TW_PROJECT_ID: 100\n:END:\n"
-                "** L\n:PROPERTIES:\n:TW_TASKLIST_ID: 200\n:END:\n"
-                "*** A\n:PROPERTIES:\n:TW_TASK_ID: 300\n" + drawer_extra + ":END:\n")
+                "* P\n:PROPERTIES:\n:PROJECT_ID: 100\n:END:\n"
+                "** L\n:PROPERTIES:\n:TASKLIST_ID: 200\n:END:\n"
+                "*** A\n:PROPERTIES:\n:TASK_ID: 300\n" + drawer_extra + ":END:\n")
         return text
 
     # -- format helpers --
@@ -839,7 +852,7 @@ class TaskProperties(unittest.TestCase):
     # -- parse --
     def test_parse_properties(self):
         tk = T.parse_org(self._tree(
-            ":TW_DUE: 2026-08-20\n:TW_PRIORITY: high\n:TW_ASSIGNEE: Jane Doe, John Roe\n"
+            ":DUE: 2026-08-20\n:URGENCY: high\n:ASSIGNEE: Jane Doe, John Roe\n"
         ))["projects"][0]["tasklists"][0]["tasks"][0]
         self.assertEqual(tk["due"], "2026-08-20")
         self.assertEqual(tk["priority"], "high")
@@ -859,9 +872,9 @@ class TaskProperties(unittest.TestCase):
         text = T.render_manage([{"id": 100, "name": "P"}],
                                [{"id": 200, "name": "L", "project_id": 100}], tasks,
                                {"user_id": 42})
-        self.assertIn(":TW_DUE: 2026-08-20", text)
-        self.assertIn(":TW_PRIORITY: medium", text)
-        self.assertIn(":TW_ASSIGNEE: Jane Doe", text)
+        self.assertIn(":DUE: 2026-08-20", text)
+        self.assertIn(":URGENCY: medium", text)
+        self.assertIn(":ASSIGNEE: Jane Doe", text)
         back = T.parse_org(text)["projects"][0]["tasklists"][0]["tasks"][0]
         self.assertEqual((back["due"], back["priority"], back["assignee_names"]),
                          ("2026-08-20", "medium", ["Jane Doe"]))
@@ -872,8 +885,8 @@ class TaskProperties(unittest.TestCase):
         text = T.render_org([{"id": 100, "name": "P"}],
                             [{"id": 200, "name": "L", "project_id": 100}], tasks, [],
                             {"from": "2026-06-01", "to": "2026-06-30", "user_id": 1})
-        self.assertNotIn("TW_DUE", text)     # timesheet buffers stay lean
-        self.assertNotIn("TW_PRIORITY", text)
+        self.assertNotIn("DUE", text)     # timesheet buffers stay lean
+        self.assertNotIn("URGENCY", text)
 
     # -- diff --
     def _snap(self, **over):
@@ -883,7 +896,7 @@ class TaskProperties(unittest.TestCase):
         return s
 
     def test_plan_sets_due_and_priority(self):
-        plan = T.compute_plan(T.parse_org(self._tree(":TW_DUE: 2026-08-20\n:TW_PRIORITY: high\n")),
+        plan = T.compute_plan(T.parse_org(self._tree(":DUE: 2026-08-20\n:URGENCY: high\n")),
                               self._snap(), 42)
         self.assertEqual([a["type"] for a in plan["actions"]], ["update_task"])
         act = plan["actions"][0]
@@ -891,39 +904,117 @@ class TaskProperties(unittest.TestCase):
         self.assertEqual(T._build_task_item(act)["due-date"], "20260820")
 
     def test_plan_resolves_assignee_names_to_ids(self):
-        plan = T.compute_plan(T.parse_org(self._tree(":TW_ASSIGNEE: Jane Doe\n")), self._snap(), 42)
+        plan = T.compute_plan(T.parse_org(self._tree(":ASSIGNEE: Jane Doe\n")), self._snap(), 42)
         act = plan["actions"][0]
         self.assertEqual(act["assignees"], ["7"])            # name -> id
         self.assertEqual(T._build_task_item(act)["responsible-party-id"], "7")
 
     def test_plan_unknown_assignee_is_a_problem(self):
-        plan = T.compute_plan(T.parse_org(self._tree(":TW_ASSIGNEE: Nobody Here\n")), self._snap(), 42)
+        plan = T.compute_plan(T.parse_org(self._tree(":ASSIGNEE: Nobody Here\n")), self._snap(), 42)
         self.assertTrue(any("unknown assignee" in p for p in plan["problems"]))
 
     def test_plan_unchanged_props_no_action(self):
         snap = self._snap(task_due={"300": "2026-08-20"}, task_priority={"300": "high"},
                           task_assignees={"300": ["Jane Doe"]})
         plan = T.compute_plan(
-            T.parse_org(self._tree(":TW_DUE: 2026-08-20\n:TW_PRIORITY: high\n:TW_ASSIGNEE: Jane Doe\n")),
+            T.parse_org(self._tree(":DUE: 2026-08-20\n:URGENCY: high\n:ASSIGNEE: Jane Doe\n")),
             snap, 42)
         self.assertEqual(plan["actions"], [])
 
     def test_plan_clears_due_with_empty_value(self):
-        plan = T.compute_plan(T.parse_org(self._tree(":TW_DUE:\n")),
+        plan = T.compute_plan(T.parse_org(self._tree(":DUE:\n")),
                               self._snap(task_due={"300": "2026-08-20"}), 42)
         self.assertEqual(plan["actions"][0]["due"], "")
         self.assertEqual(T._build_task_item(plan["actions"][0])["due-date"], "")
 
     def test_new_task_carries_props_in_create(self):
         text = ("#+TEAMWORK_MANAGE: user=42\n"
-                "* P\n:PROPERTIES:\n:TW_PROJECT_ID: 100\n:END:\n"
-                "** L\n:PROPERTIES:\n:TW_TASKLIST_ID: 200\n:END:\n"
-                "*** Fresh\n:PROPERTIES:\n:TW_DUE: 2026-09-01\n:TW_ASSIGNEE: John Roe\n:END:\n")
+                "* P\n:PROPERTIES:\n:PROJECT_ID: 100\n:END:\n"
+                "** L\n:PROPERTIES:\n:TASKLIST_ID: 200\n:END:\n"
+                "*** Fresh\n:PROPERTIES:\n:DUE: 2026-09-01\n:ASSIGNEE: John Roe\n:END:\n")
         plan = T.compute_plan(T.parse_org(text), self._snap(), 42)
         create = next(a for a in plan["actions"] if a["type"] == "create_task")
         item = T._build_task_item(create)
         self.assertEqual(item["due-date"], "20260901")
         self.assertEqual(item["responsible-party-id"], "8")
+
+
+class ManageDone(unittest.TestCase):
+    """The :DONE: property completes/reopens a task in management mode."""
+
+    def _tree(self, done_line):
+        return ("#+TEAMWORK_MANAGE: user=42\n"
+                "* P\n:PROPERTIES:\n:PROJECT_ID: 100\n:END:\n"
+                "** L\n:PROPERTIES:\n:TASKLIST_ID: 200\n:END:\n"
+                "*** A\n:PROPERTIES:\n:TASK_ID: 300\n" + done_line + ":END:\n")
+
+    def _snap(self, done):
+        return {"tasks": {"300": "A"}, "task_done": {"300": done}}
+
+    # -- render --
+    def test_render_emits_done_state(self):
+        tasks = [{"id": 300, "title": "A", "tasklist_id": 200, "project_id": 100,
+                  "parent_id": None, "tags": [], "description": "", "done": True}]
+        text = T.render_manage([{"id": 100, "name": "P"}],
+                               [{"id": 200, "name": "L", "project_id": 100}], tasks,
+                               {"user_id": 42})
+        self.assertIn(":DONE: true", text)
+
+    def test_render_emits_done_false_for_open_task(self):
+        tasks = [{"id": 300, "title": "A", "tasklist_id": 200, "project_id": 100,
+                  "parent_id": None, "tags": [], "description": ""}]  # no "done" -> open
+        text = T.render_manage([{"id": 100, "name": "P"}],
+                               [{"id": 200, "name": "L", "project_id": 100}], tasks,
+                               {"user_id": 42})
+        self.assertIn(":DONE: false", text)
+
+    def test_timesheet_render_omits_done(self):
+        tasks = [{"id": 300, "title": "A", "tasklist_id": 200, "project_id": 100,
+                  "parent_id": None, "tags": [], "done": True}]
+        text = T.render_org([{"id": 100, "name": "P"}],
+                            [{"id": 200, "name": "L", "project_id": 100}], tasks, [],
+                            {"from": "2026-06-01", "to": "2026-06-30", "user_id": 1})
+        self.assertNotIn("DONE", text)
+
+    # -- parse --
+    def test_parse_done_true_false(self):
+        for raw, want in ((":DONE: true\n", True), (":DONE: false\n", False)):
+            tk = T.parse_org(self._tree(raw))["projects"][0]["tasklists"][0]["tasks"][0]
+            self.assertEqual(tk["done"], want)
+
+    def test_missing_done_line_absent(self):
+        tk = T.parse_org(self._tree(""))["projects"][0]["tasklists"][0]["tasks"][0]
+        self.assertNotIn("done", tk)          # no line -> leave completion untouched
+
+    # -- diff --
+    def test_plan_completes_when_flipped_true(self):
+        plan = T.compute_plan(T.parse_org(self._tree(":DONE: true\n")), self._snap(False), 42)
+        self.assertEqual([a["type"] for a in plan["actions"]], ["complete_task"])
+        self.assertEqual(plan["actions"][0]["task"], 300)
+
+    def test_plan_uncompletes_when_flipped_false(self):
+        plan = T.compute_plan(T.parse_org(self._tree(":DONE: false\n")), self._snap(True), 42)
+        self.assertEqual([a["type"] for a in plan["actions"]], ["uncomplete_task"])
+        self.assertEqual(plan["actions"][0]["task"], 300)
+
+    def test_plan_unchanged_done_no_action(self):
+        self.assertEqual(
+            T.compute_plan(T.parse_org(self._tree(":DONE: true\n")), self._snap(True), 42)["actions"], [])
+        self.assertEqual(
+            T.compute_plan(T.parse_org(self._tree(":DONE: false\n")), self._snap(False), 42)["actions"], [])
+
+    def test_plan_new_task_created_done_targets_ref(self):
+        text = ("#+TEAMWORK_MANAGE: user=42\n"
+                "* P\n:PROPERTIES:\n:PROJECT_ID: 100\n:END:\n"
+                "** L\n:PROPERTIES:\n:TASKLIST_ID: 200\n:END:\n"
+                "*** Fresh\n:PROPERTIES:\n:DONE: true\n:END:\n")
+        types = [a["type"] for a in T.compute_plan(T.parse_org(text), {}, 42)["actions"]]
+        self.assertEqual(types, ["create_task", "complete_task"])
+
+    def test_done_state_survives_snapshot_round_trip(self):
+        p = T.parse_org(self._tree(":DONE: true\n"))
+        snap = T.build_snapshot_from_parsed(p)
+        self.assertEqual(snap["task_done"], {"300": True})
 
 
 class ManageDeletions(unittest.TestCase):
@@ -944,13 +1035,13 @@ class ManageDeletions(unittest.TestCase):
 
     def _plan(self, body):
         text = ("#+TEAMWORK_MANAGE: user=42\n"
-                "* P\n:PROPERTIES:\n:TW_PROJECT_ID: 100\n:END:\n" + body)
+                "* P\n:PROPERTIES:\n:PROJECT_ID: 100\n:END:\n" + body)
         return T.compute_plan(T.parse_org(text), self.snap, 42)
 
-    _LIST = "** L\n:PROPERTIES:\n:TW_TASKLIST_ID: 200\n:END:\n"
-    _A = "*** A\n:PROPERTIES:\n:TW_TASK_ID: 300\n:END:\ndesc A\n"
-    _A1 = "**** A1\n:PROPERTIES:\n:TW_TASK_ID: 400\n:END:\n"
-    _B = "*** B\n:PROPERTIES:\n:TW_TASK_ID: 500\n:END:\n"
+    _LIST = "** L\n:PROPERTIES:\n:TASKLIST_ID: 200\n:END:\n"
+    _A = "*** A\n:PROPERTIES:\n:TASK_ID: 300\n:END:\ndesc A\n"
+    _A1 = "**** A1\n:PROPERTIES:\n:TASK_ID: 400\n:END:\n"
+    _B = "*** B\n:PROPERTIES:\n:TASK_ID: 500\n:END:\n"
 
     def test_remove_task_heading_deletes_it(self):
         plan = self._plan(self._LIST + self._A + self._A1)   # B removed
@@ -975,7 +1066,7 @@ class ManageDeletions(unittest.TestCase):
     def test_timesheet_mode_never_deletes_tasks(self):
         # same removal in timesheet mode must NOT delete the task/list
         text = ("#+TEAMWORK: from=2026-06-01 to=2026-06-30 user=42\n"
-                "* P\n:PROPERTIES:\n:TW_PROJECT_ID: 100\n:END:\n")   # everything removed
+                "* P\n:PROPERTIES:\n:PROJECT_ID: 100\n:END:\n")   # everything removed
         plan = T.compute_plan(T.parse_org(text), self.snap, 42)
         kinds = {a["type"] for a in plan["actions"]}
         self.assertNotIn("delete_task", kinds)
@@ -985,7 +1076,7 @@ class ManageDeletions(unittest.TestCase):
         import io, json as _json, tempfile, contextlib
         T.BACKOFF_BASE = 0
         parsed = T.parse_org("#+TEAMWORK_MANAGE: user=42\n"
-                             "* P\n:PROPERTIES:\n:TW_PROJECT_ID: 100\n:END:\n"
+                             "* P\n:PROPERTIES:\n:PROJECT_ID: 100\n:END:\n"
                              + self._LIST + self._A + self._A1)   # B removed -> delete 500
         plan = T.compute_plan(parsed, self.snap, 42)
 
@@ -1026,7 +1117,7 @@ class Comments(unittest.TestCase):
 
     def test_plan_create_edit_delete(self):
         buf = self._buf(
-            "* Ann — 2026-06-10 09:30\n:PROPERTIES:\n:TW_COMMENT_ID: 9\n:END:\nedited body\n\n"
+            "* Ann — 2026-06-10 09:30\n:PROPERTIES:\n:COMMENT_ID: 9\n:END:\nedited body\n\n"
             "* me\nbrand new comment\n")
         snap = {"task": "555", "comments": {"9": "old body", "8": "will be deleted"}}
         plan = T.compute_comment_plan(T.parse_comments(buf), snap)
@@ -1038,7 +1129,7 @@ class Comments(unittest.TestCase):
         self.assertEqual(dele["id"], 8)
 
     def test_plan_unchanged_no_action(self):
-        buf = self._buf("* Ann\n:PROPERTIES:\n:TW_COMMENT_ID: 9\n:END:\nsame body\n")
+        buf = self._buf("* Ann\n:PROPERTIES:\n:COMMENT_ID: 9\n:END:\nsame body\n")
         snap = {"task": "555", "comments": {"9": "same body"}}
         self.assertEqual(T.compute_comment_plan(T.parse_comments(buf), snap)["actions"], [])
 

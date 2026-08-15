@@ -7,19 +7,27 @@ buffer kinds share the same pull → edit → review-diff → streamed-apply flo
   your time logs for a date range; edit logs, then submit.
 - **Management** (`teamwork-management`) — the same tree with *no time filter*,
   for creating / renaming / **deleting** task-lists, tasks and subtasks, and
-  editing task **properties** — `:TW_TAGS:`, `:TW_DUE:` (date), `:TW_PRIORITY:`
-  (low/medium/high) and `:TW_ASSIGNEE:` (by name) — plus a **description** as
-  plain text under the drawer. `C-c C-p` sets a property with completion over the
-  available values (project people, existing tags, the priority list, a calendar
-  for the due date). Removing a heading deletes it in Teamwork on submit (children
-  cascade); the preview lists every deletion. Deletion is management-only —
-  timesheet mode never deletes tasks/lists.
+  editing task **properties** — `:DONE:` (`true`/`false`), `:LABELS:`, `:DUE:`
+  (date), `:URGENCY:` (low/medium/high) and `:ASSIGNEE:` (by name) — plus a
+  **description** as plain text under the drawer. `C-c C-p` sets a property with
+  completion over the available values (project people, existing tags, the
+  priority list, a calendar for the due date, true/false for done). Flip `:DONE:`
+  to close or reopen a task on submit; completed tasks are fetched here (unlike the
+  timesheet) so a done task shows up and can be reopened. Removing a heading deletes
+  it in Teamwork on submit (children cascade); the preview lists every deletion.
+  Deletion is management-only — timesheet mode never deletes tasks/lists.
+
+  Properties carry no prefix: the drawer keys are `TASK_ID` (never edit — it
+  identifies the task), `DONE`, `LABELS`, `DUE`, `URGENCY`, `ASSIGNEE`. `LABELS`
+  and `URGENCY` are deliberately *not* named `TAGS`/`PRIORITY`, which Org reserves
+  as special property names (Org would return the headline's tags / priority cookie
+  instead of the drawer value).
 - **Comments** (`teamwork-comments`) — the comments of the task under point, in a
   new buffer you can edit, add to and delete from.
 
 Tasks nest to any depth: a heading demoted below a task (`****` or deeper) is a
 subtask, and subtasks take logs, renames, labels and `[d]` completion like any
-task. Label a task with a `:TW_TAGS: bug, backend` property line (comma
+task. Label a task with a `:LABELS: bug, backend` property line (comma
 separated; empty clears, a missing line leaves labels untouched).
 
 Which projects appear is a **per-account filter** (`teamwork-filter`), persisted

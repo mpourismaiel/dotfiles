@@ -1,5 +1,7 @@
 ;;; teamwork.el --- Timesheet editing from an org buffer -*- lexical-binding: t; -*-
 ;;
+;;; Commentary:
+;;
 ;; Pull your Teamwork projects/tasklists/tasks + time logs into an editable org
 ;; buffer, edit freely, then submit a reviewed diff. All API work is done by the
 ;; timesheet.py sidecar next to this file; credentials live in the system keyring
@@ -265,14 +267,17 @@ updates the hidden-project prefs."
     (teamwork--fill-buffer buffer ob mode-fn)
     (kill-buffer ob)))
 
-(defun teamwork--run-fresh (buffer)
+(defun teamwork--run-fresh (buffer &optional prev)
   "Fetch BUFFER's data fresh (async) using its buffer-local fetch spec, then swap
-it in on success (state FRESH) or leave it and warn (state ERROR)."
+it in on success (state FRESH) or leave it and warn (state ERROR).  PREV, if
+given, is a pre-captured --prev snapshot path (used when the caller snapshotted
+the buffer BEFORE overwriting it with cache); otherwise the buffer's current
+content is snapshotted here (the refresh path, where edits are still in place)."
   (with-current-buffer buffer
     (let* ((args teamwork--fresh-args)
            (account teamwork--account)
            (mode-fn teamwork--mode-fn)
-           (prev (and teamwork--use-prev (teamwork--snapshot-prev buffer)))
+           (prev (or prev (and teamwork--use-prev (teamwork--snapshot-prev buffer))))
            (tmp-out (make-temp-file "teamwork-fresh" nil ".org"))
            (errbuf (get-buffer-create " *teamwork-fetch-stderr*")))
       (with-current-buffer errbuf (erase-buffer))
@@ -311,22 +316,26 @@ subcommand submit uses; MODE-FN enables the buffer's minor mode; USE-PREV passes
 the old buffer as --prev.  RETURN-TO, if given, is the buffer to switch back to
 when this one is closed (so opening comments over a management buffer returns to
 it on quit)."
-  (with-current-buffer buffer
-    (setq teamwork--kind kind teamwork--key key teamwork--account account
-          teamwork--fresh-args fresh-args teamwork--submit-cmd submit-cmd
-          teamwork--mode-fn mode-fn teamwork--use-prev use-prev
-          teamwork--return-to (and (buffer-live-p return-to) return-to))
-    (let ((cached (teamwork--cached kind key account)))
-      (teamwork--fill-from-string
-       buffer (or cached (format "loading %s ...\n" key)) mode-fn)
-      ;; the fill re-created local bindings via org-mode; re-assert the spec
+  ;; Snapshot any EXISTING buffer content (e.g. hidden-header edits from a prior
+  ;; open) for --prev BEFORE the cache fill overwrites it — otherwise re-running
+  ;; the command silently discards those edits and they never reach the sidecar.
+  (let ((prev (and use-prev (teamwork--snapshot-prev buffer))))
+    (with-current-buffer buffer
       (setq teamwork--kind kind teamwork--key key teamwork--account account
             teamwork--fresh-args fresh-args teamwork--submit-cmd submit-cmd
             teamwork--mode-fn mode-fn teamwork--use-prev use-prev
             teamwork--return-to (and (buffer-live-p return-to) return-to))
-      (teamwork--set-state 'stale)))
-  (switch-to-buffer buffer)
-  (teamwork--run-fresh buffer))
+      (let ((cached (teamwork--cached kind key account)))
+        (teamwork--fill-from-string
+         buffer (or cached (format "loading %s ...\n" key)) mode-fn)
+        ;; the fill re-created local bindings via org-mode; re-assert the spec
+        (setq teamwork--kind kind teamwork--key key teamwork--account account
+              teamwork--fresh-args fresh-args teamwork--submit-cmd submit-cmd
+              teamwork--mode-fn mode-fn teamwork--use-prev use-prev
+              teamwork--return-to (and (buffer-live-p return-to) return-to))
+        (teamwork--set-state 'stale)))
+    (switch-to-buffer buffer)
+    (teamwork--run-fresh buffer prev)))
 
 ;;;###autoload
 (defun teamwork-refresh ()
@@ -875,7 +884,7 @@ Asks which account to use when several are configured."
 (defun teamwork-management ()
   "Open a management buffer: the project/tasklist/task/subtask structure with no
 time filter.  Create tasks/lists/subtasks by adding headings, rename by editing
-heading text, and label tasks with a :TW_TAGS: property.  Which projects appear
+heading text, and label tasks with a :LABELS: property.  Which projects appear
 is the per-account filter (see `teamwork-filter').  C-c C-c submits."
   (interactive)
   (let ((account (or (teamwork--buffer-account (get-buffer teamwork-management-buffer))
@@ -890,14 +899,14 @@ is the per-account filter (see `teamwork-filter').  C-c C-c submits."
 (defun teamwork-comments ()
   "Open the comments of the task under point in a new buffer (edit/add/delete).
 Run from a timesheet or management buffer with point inside a task; the task's
-:TW_TASK_ID: (inherited from ancestors) selects which task.  C-c C-c submits the
+:TASK_ID: (inherited from ancestors) selects which task.  C-c C-c submits the
 comment changes."
   (interactive)
-  (let ((tid (org-entry-get nil "TW_TASK_ID" t))
+  (let ((tid (org-entry-get nil "TASK_ID" t))
         (account (or teamwork--account (teamwork--buffer-account (current-buffer))))
         (origin (current-buffer)))
     (unless tid
-      (user-error "No task under point (no TW_TASK_ID here or above)"))
+      (user-error "No task under point (no TASK_ID here or above)"))
     (teamwork--fetch (get-buffer-create (format "teamwork-comments-%s" tid))
                      "comments" tid account
                      (list "comments-pull" "--task" tid)
@@ -935,7 +944,7 @@ An empty selection means all active projects."
 ;; Property picker — set task properties (tags/due/priority/assignee) w/ values
 ;; --------------------------------------------------------------------------- ;;
 (defvar teamwork-priorities '("" "low" "medium" "high")
-  "Allowed :TW_PRIORITY: values (empty = none).")
+  "Allowed :URGENCY: values (empty = none).")
 
 (defun teamwork--account-args ()
   "(\"--account\" NAME) for this buffer's account, or nil."
@@ -962,36 +971,42 @@ in Teamwork — the line is kept with no value)."
 ;;;###autoload
 (defun teamwork-set-property ()
   "Set a property on the task at point, completing over the available values.
-Priority is a fixed list, due date uses the org calendar, and tags / assignees
-complete against the account's configured tags / project people (you can still
-type a new one).  In a timesheet buffer only Tags applies."
+Done is true/false, priority is a fixed list, due date uses the org calendar, and
+tags / assignees complete against the account's configured tags / project people
+(you can still type a new one).  In a timesheet buffer only Tags applies."
   (interactive)
-  (unless (org-entry-get nil "TW_TASK_ID" t)
-    (user-error "Point is not on a task (no TW_TASK_ID here or above)"))
+  (unless (org-entry-get nil "TASK_ID" t)
+    (user-error "Point is not on a task (no TASK_ID here or above)"))
   (let* ((manage (equal teamwork--kind "manage"))
-         (choices (if manage '("Tags" "Due date" "Priority" "Assignee") '("Tags")))
+         (choices (if manage '("Done" "Tags" "Due date" "Priority" "Assignee") '("Tags")))
          (prop (if (cdr choices) (completing-read "Set property: " choices nil t) "Tags")))
     (pcase prop
+      ("Done"
+       (teamwork--put-property
+        "DONE" (completing-read "Done: " '("true" "false") nil t
+                                nil nil
+                                ;; default to the opposite of the current value
+                                (if (equal (org-entry-get nil "DONE") "true") "false" "true"))))
       ("Due date"
-       (teamwork--put-property "TW_DUE" (org-read-date nil nil nil "Due date: ")))
+       (teamwork--put-property "DUE" (org-read-date nil nil nil "Due date: ")))
       ("Priority"
-       (teamwork--put-property "TW_PRIORITY"
+       (teamwork--put-property "URGENCY"
                                (completing-read "Priority: " teamwork-priorities nil t)))
       ("Tags"
        (let* ((all (teamwork--json-or-nil "tags"))
-              (cur (teamwork--current-prop-list "TW_TAGS"))
+              (cur (teamwork--current-prop-list "LABELS"))
               (chosen (completing-read-multiple
                        "Tags (comma-separated, empty clears): " all nil nil
                        (and cur (mapconcat #'identity cur ",")))))
-         (teamwork--put-property "TW_TAGS" (mapconcat #'identity chosen ", "))))
+         (teamwork--put-property "LABELS" (mapconcat #'identity chosen ", "))))
       ("Assignee"
        (let* ((people (teamwork--json-or-nil "people"))
               (names (delq nil (mapcar (lambda (p) (alist-get 'name p)) people)))
-              (cur (teamwork--current-prop-list "TW_ASSIGNEE"))
+              (cur (teamwork--current-prop-list "ASSIGNEE"))
               (chosen (completing-read-multiple
                        "Assignees (comma-separated, empty clears): " names nil nil
                        (and cur (mapconcat #'identity cur ",")))))
-         (teamwork--put-property "TW_ASSIGNEE" (mapconcat #'identity chosen ", ")))))
+         (teamwork--put-property "ASSIGNEE" (mapconcat #'identity chosen ", ")))))
     (message "Teamwork: %s set — C-c C-l previews, C-c C-c submits." prop)))
 
 ;; --------------------------------------------------------------------------- ;;
