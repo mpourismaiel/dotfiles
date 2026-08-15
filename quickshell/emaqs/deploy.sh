@@ -7,9 +7,20 @@
 #
 # Nothing is copied until every check passes, and only changed files are copied
 # (so the running overlay reloads once, only when something actually changed).
+#
+# Usage: deploy.sh [--close]
+#   --close  close the terminal after a successful deploy (used by the
+#            __ignore__/scripts/ `SPC p S` wrapper; interactive runs omit it).
 set -eu
 cd "$(dirname "$0")"
 DEST="$HOME/.config/quickshell/emaqs"
+
+CLOSE=0
+for arg in "$@"; do
+    case "$arg" in
+        --close) CLOSE=1 ;;
+    esac
+done
 
 ./check.sh
 
@@ -34,4 +45,12 @@ if [ "$copied" -eq 0 ]; then
     echo "done: live config already up to date"
 else
     echo "done: $copied file(s) copied — the running emaqs reloads on its own"
+fi
+
+# Close the terminal only when asked (the SPC p S wrapper passes --close); a
+# failed deploy exits non-zero above, so we never reach this on failure.
+if [ "$CLOSE" -eq 1 ]; then
+    echo "closing terminal…"
+    sleep 1
+    kill -HUP "$PPID" 2>/dev/null || true
 fi

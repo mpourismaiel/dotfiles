@@ -38,13 +38,19 @@ done
 
 echo "==> Syncing to $TARGET ${DRY_RUN:+(dry run)}"
 mkdir -p "$TARGET"
-# Config files are replaced wholesale; runtime state (var/, elpaca/) and
-# machine-private data in the target are preserved.
+# Config files are replaced wholesale; runtime state (var/, elpaca/, the
+# eca/ server binary downloaded by eca-emacs, tree-sitter/, emojis/) and
+# machine-private data in the target are preserved. scripts/ is repo-only
+# tooling (see emacs/scripts/) that must not ship to the live config.
+# NOTE: eca/ MUST stay excluded — without it, --delete wipes the downloaded
+# eca server on every deploy and AI inline completion silently dies.
 rsync -a --delete $DRY_RUN \
   --exclude 'var/' \
   --exclude 'elpaca/' \
+  --exclude 'eca/' \
   --exclude 'tree-sitter/' \
   --exclude 'emojis/' \
+  --exclude 'scripts/' \
   --exclude 'private.el' \
   --exclude 'connections.json' \
   --exclude '__pycache__/' \
