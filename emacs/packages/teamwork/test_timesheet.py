@@ -1201,6 +1201,52 @@ class Prefs(unittest.TestCase):
         self.assertEqual(T.load_prefs("acctA")["filter"], [10])   # switching back keeps A's filter
         self.assertEqual(T.load_prefs("acctB")["filter"], [20])
 
+    def test_view_flags_default_false(self):
+        p = T.load_prefs("fresh")
+        self.assertFalse(p["show_all_tasklists"])
+        self.assertFalse(p["show_all_tasks"])
+
+    def test_config_set_flips_one_flag_leaving_the_other(self):
+        import io, json as _json, contextlib
+
+        def run(**kw):
+            a = type("A", (), {"account": "work", "show_all_tasklists": None,
+                               "show_all_tasks": None})()
+            for k, v in kw.items():
+                setattr(a, k, v)
+            b = io.StringIO()
+            with contextlib.redirect_stdout(b):
+                T.cmd_config_set(a)
+            return _json.loads(b.getvalue())
+
+        self.assertEqual(run(show_all_tasks="true"),
+                         {"show_all_tasklists": False, "show_all_tasks": True})
+        # the untouched flag persists across a second, unrelated set
+        self.assertEqual(run(show_all_tasklists="yes"),
+                         {"show_all_tasklists": True, "show_all_tasks": True})
+        self.assertTrue(T.load_prefs("work")["show_all_tasks"])
+
+
+class ManageView(unittest.TestCase):
+    """Management "show all" view: completed lists/tasks marked, flags in header."""
+
+    def test_view_line_records_flags(self):
+        meta = {"user_id": 42, "mode": "manage",
+                "view": {"all_tasklists": True, "all_tasks": False}}
+        text = T.render_manage([{"id": 1, "name": "P"}], [], [], meta)
+        self.assertIn("#+TEAMWORK_VIEW: all_tasklists=1 all_tasks=0", text)
+        self.assertNotIn("#+TEAMWORK:", text)               # not mistaken for the marker
+
+    def test_completed_tasklist_gets_marker_open_one_does_not(self):
+        meta = {"user_id": 42, "mode": "manage", "view": {}}
+        tls = [{"id": 200, "name": "Done", "project_id": 1, "completed": True},
+               {"id": 201, "name": "Open", "project_id": 1, "completed": False}]
+        text = T.render_manage([{"id": 1, "name": "P"}], tls, [], meta)
+        self.assertIn("** Done\n:PROPERTIES:\n:TASKLIST_ID: 200\n:COMPLETED: t\n:END:", text)
+        self.assertIn("** Open\n:PROPERTIES:\n:TASKLIST_ID: 201\n:END:", text)
+        # the COMPLETED marker parses cleanly (no spurious problems / description)
+        self.assertEqual(T.parse_org(text)["problems"], [])
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

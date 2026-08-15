@@ -79,9 +79,12 @@ def load_prefs(account=None) -> dict:
     try:
         p = json.loads(prefs_path(account).read_text(encoding="utf-8"))
         return {"hidden": p.get("hidden") or {}, "shown": p.get("shown") or [],
-                "filter": p.get("filter") or []}
+                "filter": p.get("filter") or [],
+                "show_all_tasklists": bool(p.get("show_all_tasklists")),
+                "show_all_tasks": bool(p.get("show_all_tasks"))}
     except (OSError, ValueError):
-        return {"hidden": {}, "shown": [], "filter": []}
+        return {"hidden": {}, "shown": [], "filter": [],
+                "show_all_tasklists": False, "show_all_tasks": False}
 
 
 def save_prefs(prefs: dict, account=None):
@@ -274,10 +277,17 @@ class Client:
             for p in self.paged("/projects.json", "projects", status="active")
         ]
 
-    def tasklists(self, project_id: int) -> list[dict]:
+    def tasklists(self, project_id: int, include_completed=False) -> list[dict]:
+        """Task lists of a project. INCLUDE_COMPLETED asks Teamwork for finished
+        lists too (management's "show all task lists"); the default active-only
+        response is why an all-done list otherwise vanishes.  Each list carries a
+        `completed` flag so the buffer can mark it (dim + checkmark)."""
+        params = {"status": "all"} if include_completed else {}
         return [
-            {"id": int(t["id"]), "name": t.get("name", "").strip(), "project_id": project_id}
-            for t in self.paged(f"/projects/{project_id}/tasklists.json", "tasklists")
+            {"id": int(t["id"]), "name": t.get("name", "").strip(),
+             "project_id": project_id, "completed": _tasklist_completed(t)}
+            for t in self.paged(f"/projects/{project_id}/tasklists.json", "tasklists",
+                                **params)
         ]
 
     def tasks(self, tasklist_id: int, project_id: int, include_completed=False) -> list[dict]:
@@ -509,6 +519,13 @@ def _task_completed(t: dict) -> bool:
     return bool(t.get("completed-on") or t.get("completedOn"))
 
 
+def _tasklist_completed(t: dict) -> bool:
+    """Whether a raw v1 task list is completed/archived, across field spellings."""
+    if str(t.get("status", "")).strip().lower() in ("completed", "archived"):
+        return True
+    return str(t.get("complete", "")).strip().lower() in ("1", "true", "yes")
+
+
 def _assignee_ids(t: dict) -> list:
     """Person ids a task is assigned to, from whichever v1 field carries them."""
     raw = (t.get("responsible-party-ids") or t.get("responsible-party-id")
@@ -633,6 +650,15 @@ def _task_drawer(tk: dict, with_props=False):
     return _drawer_multi(pairs) if any(v not in (None, "") for _, v in pairs) else None
 
 
+def _tasklist_drawer(tl: dict) -> str:
+    """Property drawer for task list TL: its id plus, when the list is completed,
+    a `:COMPLETED: t` marker (management "show all task lists").  With no marker
+    this is byte-identical to the old single-key drawer, so open lists are
+    unchanged; the parser ignores the marker (completion doesn't round-trip)."""
+    return _drawer_multi([("TASKLIST_ID", tl["id"]),
+                          ("COMPLETED", "t" if tl.get("completed") else None)])
+
+
 def _emit_project_tree(out, projects, tasklists, tasks, logs_by_task=None,
                        with_desc=False, with_props=False):
     """Append the `* project / ** list / *** task (+subtasks/tags[/logs])` tree to
@@ -671,7 +697,7 @@ def _emit_project_tree(out, projects, tasklists, tasks, logs_by_task=None,
         out.append(_drawer("PROJECT_ID", pr["id"]))
         for tl in sorted(tls_by_project.get(pr["id"], []), key=lambda t: t["name"].lower()):
             out.append(f"** {tl['name']}")
-            out.append(_drawer("TASKLIST_ID", tl["id"]))
+            out.append(_tasklist_drawer(tl))
             for tk in sorted(tops_by_tl.get(tl["id"], []), key=lambda t: t["title"].lower()):
                 emit_task(tk, 3)
 
@@ -729,13 +755,18 @@ def render_org(projects, tasklists, tasks, logs, meta: dict, hidden_names: dict 
 
 
 def _manage_header(user, account=None, hidden=None, hidden_names=None,
-                   filt=None, filt_names=None) -> list:
+                   filt=None, filt_names=None, all_tasklists=False,
+                   all_tasks=False) -> list:
     """Header for a management buffer — like `_header` but with no date range and
-    a `#+TEAMWORK_MANAGE` marker so parse/submit route to management mode."""
+    a `#+TEAMWORK_MANAGE` marker so parse/submit route to management mode.
+    ALL_TASKLISTS/ALL_TASKS record the view toggles (completed lists/tasks) in a
+    `#+TEAMWORK_VIEW` line the buffer's header controls read back."""
     hidden = [str(h) for h in (hidden or [])]
     lines = [
         "#+TITLE: Teamwork management",
         f"#+TEAMWORK_MANAGE: user={user}",
+        f"#+TEAMWORK_VIEW: all_tasklists={1 if all_tasklists else 0} "
+        f"all_tasks={1 if all_tasks else 0}",
     ]
     if account:
         lines.append(f"#+TEAMWORK_ACCOUNT: {account}")
@@ -760,6 +791,8 @@ def _manage_header(user, account=None, hidden=None, hidden_names=None,
         "# on submit (subtasks/tasks under it go too). The preview lists every deletion.",
         "# Which projects appear is the per-account filter — change it with teamwork-filter.",
         "# Delete a whole project heading to stop managing it (moves to TEAMWORK_HIDDEN).",
+        "# Completed tasks/lists are hidden by default; the header's Tasks/Lists buttons",
+        "# (or teamwork-config) reveal them — shown dimmed with a checkmark, DONE flippable.",
     ]
     for h in hidden:
         nm = (hidden_names or {}).get(h)
@@ -776,9 +809,12 @@ def render_manage(projects, tasklists, tasks, meta: dict, hidden_names: dict = N
                   filt=None, filt_names=None) -> str:
     """Render the management tree (structure + labels, no time logs)."""
     hidden_names = hidden_names or {}
+    view = meta.get("view") or {}
     out = _manage_header(meta["user_id"], account=meta.get("account"),
                          hidden=sorted(hidden_names, key=int), hidden_names=hidden_names,
-                         filt=filt, filt_names=filt_names)
+                         filt=filt, filt_names=filt_names,
+                         all_tasklists=bool(view.get("all_tasklists")),
+                         all_tasks=bool(view.get("all_tasks")))
     _emit_project_tree(out, projects, tasklists, tasks, None, with_desc=True, with_props=True)
     return "\n".join(out) + "\n"
 
@@ -1783,12 +1819,14 @@ def _select_projects(c, prefs, args_projects, args_prev):
     return projects, hidden_ids, hidden_names, filt, filt_names, name_by_id
 
 
-def _walk_tree(c, projects, include_completed=False):
+def _walk_tree(c, projects, include_completed=False, all_tasklists=False):
     """Fetch every tasklist and its tasks (incl. subtasks/tags) for PROJECTS.
-    INCLUDE_COMPLETED pulls finished tasks too (management, so DONE round-trips)."""
+    INCLUDE_COMPLETED pulls finished tasks too (management "show all tasks", so
+    DONE round-trips); ALL_TASKLISTS pulls completed/archived task lists too
+    (management "show all task lists")."""
     tasklists, tasks = [], []
     for i, p in enumerate(projects, 1):
-        tls = c.tasklists(p["id"])
+        tls = c.tasklists(p["id"], include_completed=all_tasklists)
         tasklists.extend(tls)
         for tl in tls:
             tasks.extend(c.tasks(tl["id"], p["id"], include_completed=include_completed))
@@ -1850,15 +1888,22 @@ def cmd_manage(args):
     creds = load_creds(getattr(args, "account", None))
     account = creds.get("account")
     c = Client(creds)
-    meta = {"user_id": creds["user_id"], "account": account, "mode": "manage"}
-
     prefs = load_prefs(account)
+    all_tls = bool(prefs.get("show_all_tasklists"))
+    all_tks = bool(prefs.get("show_all_tasks"))
+    meta = {"user_id": creds["user_id"], "account": account, "mode": "manage",
+            "view": {"all_tasklists": all_tls, "all_tasks": all_tks}}
+
     projects, hidden_ids, hidden_names, filt, filt_names, _names = \
         _select_projects(c, prefs, args.projects, args.prev)
     sys.stderr.write(f"projects: {len(projects)} shown, {len(hidden_ids)} hidden, "
                      f"{len(filt)} in filter\n")
 
-    tasklists, tasks = _walk_tree(c, projects, include_completed=True)
+    # show_all_tasks -> fetch completed tasks; show_all_tasklists -> fetch
+    # completed task lists.  Off by default so management is a clean "open work"
+    # view; toggled on, done items round back in (dimmed + checkmarked in Emacs).
+    tasklists, tasks = _walk_tree(c, projects, include_completed=all_tks,
+                                  all_tasklists=all_tls)
 
     # Resolve each task's assignee ids to names for display; keep the id->name map
     # in the snapshot so submit can turn edited names back into ids.
@@ -1934,6 +1979,29 @@ def cmd_filter_set(args):
     ids = [int(x) for x in (args.projects or "").split(",") if x.strip().isdigit()]
     update_prefs(account, filter=ids)
     print(json.dumps({"filter": ids}))
+
+
+def _view_flags(prefs) -> dict:
+    return {"show_all_tasklists": bool(prefs.get("show_all_tasklists")),
+            "show_all_tasks": bool(prefs.get("show_all_tasks"))}
+
+
+def cmd_config_get(args):
+    """Print the account's management view flags (completed lists/tasks) as JSON."""
+    print(json.dumps(_view_flags(load_prefs(getattr(args, "account", None)))))
+
+
+def cmd_config_set(args):
+    """Set one or both management view flags; print the resulting flags as JSON.
+    Each flag is left untouched when its option is omitted."""
+    account = getattr(args, "account", None)
+    changes = {}
+    if args.show_all_tasklists is not None:
+        changes["show_all_tasklists"] = _parse_bool(args.show_all_tasklists)
+    if args.show_all_tasks is not None:
+        changes["show_all_tasks"] = _parse_bool(args.show_all_tasks)
+    prefs = update_prefs(account, **changes) if changes else load_prefs(account)
+    print(json.dumps(_view_flags(prefs)))
 
 
 def cmd_cached(args):
@@ -2090,6 +2158,18 @@ def main(argv=None):
     fs.add_argument("--projects", default="", help="comma-separated project ids (empty clears the filter)")
     fs.add_argument("--account", default=None, help="which stored account to use")
     fs.set_defaults(func=cmd_filter_set)
+
+    cg = sub.add_parser("config-get", help="print the account's management view flags as JSON")
+    cg.add_argument("--account", default=None, help="which stored account to use")
+    cg.set_defaults(func=cmd_config_get)
+
+    cs2 = sub.add_parser("config-set", help="toggle management view (show completed lists/tasks)")
+    cs2.add_argument("--account", default=None, help="which stored account to use")
+    cs2.add_argument("--show-all-tasklists", dest="show_all_tasklists", default=None,
+                     help="true/false: also show completed task lists")
+    cs2.add_argument("--show-all-tasks", dest="show_all_tasks", default=None,
+                     help="true/false: also show completed tasks")
+    cs2.set_defaults(func=cmd_config_set)
 
     ch = sub.add_parser("cached", help="print the last cached org buffer (exit 3 if none)")
     ch.add_argument("--kind", required=True, choices=["timesheet", "manage", "comments"])

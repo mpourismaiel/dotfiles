@@ -12,10 +12,15 @@ buffer kinds share the same pull → edit → review-diff → streamed-apply flo
   **description** as plain text under the drawer. `C-c C-p` sets a property with
   completion over the available values (project people, existing tags, the
   priority list, a calendar for the due date, true/false for done). Flip `:DONE:`
-  to close or reopen a task on submit; completed tasks are fetched here (unlike the
-  timesheet) so a done task shows up and can be reopened. Removing a heading deletes
-  it in Teamwork on submit (children cascade); the preview lists every deletion.
-  Deletion is management-only — timesheet mode never deletes tasks/lists.
+  to close or reopen a task on submit, or toggle it fast with `C-c C-t`. By
+  default management shows only **open** work — completed tasks and completed
+  task lists are hidden (a clean "what's left" view); the header's **Tasks** and
+  **Lists** buttons (persisted per account) reveal them, shown dimmed with a
+  checkmark, so a done task/list can be found and reopened. Removing a heading
+  deletes it in Teamwork on submit (children cascade); the preview lists every
+  deletion. Deletion is management-only — timesheet mode never deletes tasks/lists.
+  (Hidden completed items are kept out of the fetched snapshot too, so they are
+  never mistaken for deletions.)
 
   Properties carry no prefix: the drawer keys are `TASK_ID` (never edit — it
   identifies the task), `DONE`, `LABELS`, `DUE`, `URGENCY`, `ASSIGNEE`. `LABELS`
@@ -32,12 +37,20 @@ separated; empty clears, a missing line leaves labels untouched).
 
 Which projects appear is a **per-account filter** (`teamwork-filter`), persisted
 in prefs — switching accounts no longer resets it. Delete a project heading to
-stop fetching it (a local preference — it is never deleted in Teamwork).
+stop fetching it (a local preference — it is never deleted in Teamwork); it moves
+to `#+TEAMWORK_HIDDEN`. To bring one back, **click its chip in the header** (or
+remove its id from that line) and refetch.
 
 Every buffer shows **cached data instantly** while a fresh copy is fetched in the
-background; a header-line banner marks it stale, the buffer is replaced when
-fresh data arrives (edits discarded), and submit is refused while stale/errored
-so a diff is never computed against out-of-date data. `C-c C-r` forces a refresh.
+background; the buffer is replaced when fresh data arrives (edits discarded), and
+submit is refused while stale/errored so a diff is never computed against
+out-of-date data. `C-c C-r` forces a refresh.
+
+The **header line is an interactive control strip** (a tall SVG when the config's
+`svg-header` package is loaded, otherwise a clickable text row): a freshness pill
+(READY/STALE/ERROR), a help line, a **Refetch** button (applies hidden-list
+changes), clickable **hidden-project chips** (click to restore), and — in
+management — **Lists/Tasks** buttons that toggle the completed-item view.
 
 Credentials live in the system keyring. Previously a literate `teamwork.org`;
 now a plain package.

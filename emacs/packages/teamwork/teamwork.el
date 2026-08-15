@@ -34,11 +34,20 @@
 ;;   C-c C-c   submit     C-c C-k   close       C-c C-r   refresh
 ;;   C-c C-d   set range  C-c C-l   live log + changes preview   C-c C-o   task comments
 ;;   C-c C-p   set a task property (tags/due/priority/assignee) with completion
+;;   C-c C-t   toggle the task's :DONE: state (true/false)
 ;; In the management buffer:
 ;;   C-c C-c submit  C-c C-l changes preview  C-c C-o comments  C-c C-f filter
 ;;   C-c C-p set property (tags/due/priority/assignee w/ value completion)  C-c C-r refresh
+;;   C-c C-t toggle the task's :DONE: state (true/false)
 ;; In a comments buffer:
 ;;   C-c C-c submit  C-c C-l changes preview  C-c C-k close  C-c C-r refresh
+;;
+;; Every editable buffer also shows an interactive header line (rendered as a
+;; tall SVG when the config's `svg-header' package is loaded, else a clickable
+;; text row): a data-freshness pill, help, a Refetch button, and clickable
+;; hidden-project chips (click one to restore it).  The management header adds
+;; Lists/Tasks buttons that toggle showing completed task lists / tasks (a
+;; per-account, persisted view; completed items render dimmed with a checkmark).
 ;;
 ;; NOTE (vanilla port): this package defines no global/leader keybindings — the
 ;; Doom config never bound any SPC-leader keys for it either; entry points are
@@ -50,6 +59,20 @@
 
 (require 'org)
 (require 'json)
+(require 'seq)
+(require 'subr-x)
+(require 'cl-lib)
+
+;; Optional GUI header dependencies (only used when the config's `svg-header'
+;; package is loaded; every call site is guarded by `featurep'/`fboundp').
+(declare-function svg-create "svg")
+(declare-function svg-rectangle "svg")
+(declare-function svg-text "svg")
+(declare-function svg-image "svg")
+(declare-function mp/header-line-background "svg-header")
+(declare-function mp/header-line-buffer-foreground "svg-header")
+(declare-function mp/header-line-position-foreground "svg-header")
+(defvar mp/header-svg-font-size)
 
 (defvar teamwork-dir
   (file-name-directory (or load-file-name buffer-file-name default-directory))
@@ -85,6 +108,9 @@
   "Face for update/edit actions (blue).")
 (defface teamwork-delete-face '((t :inherit error))
   "Face for delete actions (red).")
+
+(defface teamwork-completed-face '((t :inherit shadow))
+  "Face dimming completed tasks / task lists in the management buffer.")
 
 ;; --------------------------------------------------------------------------- ;;
 ;; Accounts — several Teamwork logins, told apart by name (one keyring item each)
@@ -133,6 +159,7 @@ from."
     (define-key m (kbd "C-c C-r") #'teamwork-refresh)
     (define-key m (kbd "C-c C-o") #'teamwork-comments)
     (define-key m (kbd "C-c C-p") #'teamwork-set-property)
+    (define-key m (kbd "C-c C-t") #'teamwork-toggle-done)
     m)
   "Keymap active in the timesheet buffer.")
 
@@ -153,6 +180,7 @@ from."
     (define-key m (kbd "C-c C-o") #'teamwork-comments)
     (define-key m (kbd "C-c C-f") #'teamwork-filter)
     (define-key m (kbd "C-c C-p") #'teamwork-set-property)
+    (define-key m (kbd "C-c C-t") #'teamwork-toggle-done)
     m)
   "Keymap active in the management buffer.")
 
@@ -199,10 +227,11 @@ from."
 (defvar-local teamwork--mode-fn nil "Function enabling this buffer's teamwork minor mode.")
 (defvar-local teamwork--use-prev nil "Whether to pass the old buffer as --prev on refresh.")
 (defvar-local teamwork--data-state nil "One of nil, `stale', `fresh', `error'.")
+(defvar-local teamwork--state-msg nil "Last error message, shown in the header.")
 (defvar-local teamwork--return-to nil "Buffer to switch back to when this one is closed.")
 (dolist (v '(teamwork--kind teamwork--key teamwork--account teamwork--fresh-args
              teamwork--submit-cmd teamwork--mode-fn teamwork--use-prev teamwork--data-state
-             teamwork--return-to))
+             teamwork--state-msg teamwork--return-to))
   (put v 'permanent-local t))
 
 (defun teamwork-quit ()
@@ -219,26 +248,279 @@ Emacs happens to surface."
     (kill-buffer (current-buffer))
     (when back (switch-to-buffer back))))
 
-(defun teamwork--banner (state &optional msg)
-  "Header-line string for data STATE, or nil for none."
-  (pcase state
-    ('stale
-     (propertize
-      " ⟳ Showing existing data — refreshing in the background.  This buffer will be REPLACED when fresh data arrives; edits made now are discarded. "
-      'face '(:background "#3a2f00" :foreground "#ffd479" :weight bold)))
-    ('error
-     (propertize
-      (concat " ⚠ Refresh FAILED — this data is not current, so submit is disabled (edits would not be sent)."
-              (if (and msg (not (string-empty-p msg)))
-                  (format "  [%s] " (car (split-string msg "\n"))) " "))
-      'face '(:background "#3a0000" :foreground "#ff9a9a" :weight bold)))
-    (_ nil)))
+(defvar-local teamwork--header-cache nil
+  "Cons (SIG . RENDERED) memoizing the header for the current inputs.")
 
 (defun teamwork--set-state (state &optional msg)
-  "Set the current buffer's data STATE and update its banner."
-  (setq teamwork--data-state state)
-  (setq header-line-format (teamwork--banner state msg))
+  "Set the current buffer's data STATE (and error MSG) and refresh its header."
+  (setq teamwork--data-state state
+        teamwork--state-msg msg
+        teamwork--header-cache nil)
+  (setq header-line-format '(:eval (teamwork--header-render)))
   (force-mode-line-update))
+
+;; --------------------------------------------------------------------------- ;;
+;; Interactive header line — a clickable control strip (help + refetch + view
+;; toggles + hidden-project chips) that keeps the data-freshness state visible.
+;; Rendered as a tall multi-row SVG when the config's `svg-header' package is
+;; loaded (GUI), else as a single clickable text row (works in a TTY too).  A
+;; `condition-case' guard means a rendering bug degrades to a message, never a
+;; broken redisplay.
+;; --------------------------------------------------------------------------- ;;
+(defun teamwork--state-label ()
+  "Return (TEXT FACE-PLIST HELP) for the data-state pill."
+  (pcase teamwork--data-state
+    ('stale (list "STALE"
+                  '(:background "#3a2f00" :foreground "#ffd479" :weight bold)
+                  "Showing cached data; refreshing in the background — this buffer will be REPLACED, so edits made now are discarded."))
+    ('error (list "ERROR"
+                  '(:background "#3a0000" :foreground "#ff9a9a" :weight bold)
+                  (concat "Refresh FAILED — data is not current, submit is disabled."
+                          (when (and teamwork--state-msg
+                                     (not (string-empty-p teamwork--state-msg)))
+                            (concat "  " (car (split-string teamwork--state-msg "\n")))))))
+    (_ (list "READY"
+             '(:background "#12331a" :foreground "#9affa0" :weight bold)
+             "Data is current — C-c C-c submits."))))
+
+;; -- reading the buffer's header block -------------------------------------- ;;
+(defun teamwork--header-prefix ()
+  "Return the buffer's top block (everything before the first Org heading)."
+  (save-excursion
+    (goto-char (point-min))
+    (buffer-substring-no-properties
+     (point-min)
+     (if (re-search-forward "^\\*+ " nil t) (match-beginning 0) (point-max)))))
+
+(defun teamwork--parse-hidden (prefix)
+  "Return ((ID . NAME) …) for hidden projects parsed from PREFIX text."
+  (let (names ids)
+    (dolist (line (split-string prefix "\n"))
+      (cond
+       ((string-match "^#[ \t]+hidden[ \t]+\\([0-9]+\\)[ \t]*\\(.*\\)$" line)
+        (push (cons (match-string 1 line) (string-trim (match-string 2 line))) names))
+       ((string-match "^#\\+TEAMWORK_HIDDEN:[ \t]*\\(.*\\)$" line)
+        (setq ids (split-string (match-string 1 line))))))
+    (mapcar (lambda (id) (cons id (or (cdr (assoc id names)) ""))) ids)))
+
+(defun teamwork--parse-view (prefix)
+  "Return (:all-tasklists BOOL :all-tasks BOOL) from PREFIX, or nil when absent."
+  (when (string-match "^#\\+TEAMWORK_VIEW:[ \t]*\\(.*\\)$" prefix)
+    (let ((s (match-string 1 prefix)))
+      (list :all-tasklists (and (string-match-p "all_tasklists=1" s) t)
+            :all-tasks (and (string-match-p "all_tasks=1" s) t)))))
+
+(defun teamwork--header-model (prefix)
+  "Return a plist describing the header for PREFIX (this buffer's header block)."
+  (list :kind teamwork--kind
+        :hidden (teamwork--parse-hidden prefix)
+        :view (teamwork--parse-view prefix)))
+
+;; -- header actions --------------------------------------------------------- ;;
+(defun teamwork--unhide-project (id)
+  "Remove project ID from the buffer's #+TEAMWORK_HIDDEN header and refetch.
+The edited buffer is snapshotted as --prev on refresh, so the sidecar's
+hidden-project reconciliation brings the project back."
+  (save-excursion
+    (goto-char (point-min))
+    (when (re-search-forward "^#\\+TEAMWORK_HIDDEN:[ \t]*\\(.*\\)$" nil t)
+      ;; `split-string' clobbers the match data, so capture the id list under
+      ;; `save-match-data' — otherwise `replace-match' would edit the wrong span.
+      (let* ((inhibit-read-only t)
+             (kept (delete id (save-match-data
+                                (split-string (match-string-no-properties 1))))))
+        (replace-match (concat "#+TEAMWORK_HIDDEN: " (string-join kept " ")) t t))))
+  (message "Teamwork: restoring project %s…" id)
+  (teamwork-refresh))
+
+(defun teamwork--toggle-view (flag)
+  "Flip management view FLAG (`:all-tasklists' or `:all-tasks'), persist, refetch."
+  (unless (equal teamwork--kind "manage")
+    (user-error "View toggles apply to the management buffer only"))
+  (let* ((cur (plist-get (teamwork--parse-view (teamwork--header-prefix)) flag))
+         (opt (pcase flag (:all-tasklists "--show-all-tasklists")
+                          (:all-tasks "--show-all-tasks")))
+         (account (or teamwork--account (teamwork--buffer-account (current-buffer)))))
+    (apply #'teamwork--run-json "config-set" opt (if cur "false" "true")
+           (when account (list "--account" account)))
+    (message "Teamwork: completed %s now %s — refreshing…"
+             (if (eq flag :all-tasklists) "task lists" "tasks")
+             (if cur "hidden" "shown"))
+    (teamwork-refresh)))
+
+(defun teamwork--header-buttons (view kind)
+  "Return ((LABEL HELP COMMAND) …) button specs for VIEW/KIND."
+  (let (btns)
+    (push (list "⟳ Refetch" "Re-fetch now, applying hidden-list changes"
+                #'teamwork-refresh)
+          btns)
+    (when (equal kind "manage")
+      (push (list (format "Lists: %s" (if (plist-get view :all-tasklists) "all" "active"))
+                  "Toggle showing completed task lists"
+                  (lambda () (interactive) (teamwork--toggle-view :all-tasklists)))
+            btns)
+      (push (list (format "Tasks: %s" (if (plist-get view :all-tasks) "all" "open"))
+                  "Toggle showing completed tasks"
+                  (lambda () (interactive) (teamwork--toggle-view :all-tasks)))
+            btns))
+    (nreverse btns)))
+
+(defun teamwork--header-hint (kind state-help)
+  "Header help line for KIND, prefixed by STATE-HELP."
+  (concat state-help "   "
+          (pcase kind
+            ("manage" "C-c C-c submit · C-c C-t toggle DONE · C-c C-p props · click a hidden project to restore it")
+            ("timesheet" "C-c C-c submit · C-c C-d range · C-c C-l logs · click a hidden project to restore it")
+            ("comments" "C-c C-c submit · C-c C-r refresh")
+            (_ "C-c C-c submit"))))
+
+;; -- text (TTY / no-svg) renderer ------------------------------------------- ;;
+(defun teamwork--header-chunk (label help command &optional face)
+  "A clickable propertized header chunk running COMMAND on mouse-1."
+  (let ((map (make-sparse-keymap)))
+    (define-key map [header-line mouse-1] command)
+    (define-key map [header-line mouse-2] command)
+    (propertize label 'face (or face 'teamwork-edit-face)
+                'mouse-face 'highlight 'help-echo help
+                'keymap map 'pointer 'hand)))
+
+(defun teamwork--header-text (model)
+  "Render MODEL as a single clickable text header-line string."
+  (let* ((sl (teamwork--state-label))
+         (view (plist-get model :view))
+         (kind (plist-get model :kind))
+         (hidden (plist-get model :hidden))
+         (parts (list (propertize (format " %s " (nth 0 sl))
+                                  'face (nth 1 sl) 'help-echo (nth 2 sl)))))
+    (dolist (b (teamwork--header-buttons view kind))
+      (push (teamwork--header-chunk (format "[%s]" (nth 0 b)) (nth 1 b) (nth 2 b)) parts))
+    (when hidden
+      (push (propertize "hidden:" 'face 'shadow) parts)
+      (dolist (h hidden)
+        (let ((id (car h)))
+          (push (teamwork--header-chunk
+                 (format "%s✕" (if (string-empty-p (cdr h)) id (cdr h)))
+                 (format "Click to restore hidden project %s" id)
+                 (lambda () (interactive) (teamwork--unhide-project id))
+                 'teamwork-delete-face)
+                parts))))
+    (concat " " (mapconcat #'identity (nreverse parts) "  "))))
+
+;; -- SVG renderer (GUI, when svg-header is loaded) --------------------------- ;;
+(defvar-local teamwork--header-svg-boxes nil
+  "Click boxes for the SVG header: list of (X0 Y0 X1 Y1 COMMAND) in pixels.")
+
+(defun teamwork--header-svg-click (event)
+  "Dispatch a click on the teamwork SVG header to its button, by pixel geometry."
+  (interactive "e")
+  (let* ((posn (event-start event))
+         (win (posn-window posn))
+         (xy (posn-object-x-y posn)))
+    (when (and (windowp win) xy)
+      (with-selected-window win
+        (let ((dx (car xy)) (dy (cdr xy)))
+          (when-let ((hit (seq-find (lambda (b)
+                                      (and (>= dx (nth 0 b)) (< dx (nth 2 b))
+                                           (>= dy (nth 1 b)) (< dy (nth 3 b))))
+                                    teamwork--header-svg-boxes)))
+            (call-interactively (nth 4 hit))))))))
+
+(defvar teamwork--header-svg-keymap
+  (let ((m (make-sparse-keymap)))
+    (define-key m [header-line mouse-1] #'teamwork--header-svg-click)
+    m)
+  "Keymap on the teamwork SVG header line.")
+
+(defun teamwork--header-svg (model)
+  "Render MODEL as a tall multi-row SVG header image; record click boxes."
+  (require 'svg)
+  (let* ((width (max 1 (window-pixel-width)))
+         (cw (frame-char-width)) (fh (frame-char-height))
+         (font-size (or (and (boundp 'mp/header-svg-font-size) mp/header-svg-font-size)
+                        (ignore-errors (default-font-height)) (round (* cw 1.7))))
+         (family (or (face-attribute 'default :family nil 'default) "monospace"))
+         (bg (or (mp/header-line-background) "#1a1b26"))
+         (fg (or (mp/header-line-buffer-foreground) "#c0caf5"))
+         (dim (or (mp/header-line-position-foreground) "#7f8496"))
+         (btn-bg (or (face-attribute 'mode-line :background nil t) "#2a2e38"))
+         (pad-x 8) (pad-y 5)
+         (line-h (+ fh 4))
+         (base-off (round (+ (/ (- line-h font-size) 2.0) (* font-size 0.8))))
+         (hp (max 4 (round (* cw 0.6))))
+         (gap (max 6 (round (* cw 0.7))))
+         (rx (round (* fh 0.28)))
+         (nbsp (char-to-string #xA0))
+         (sl (teamwork--state-label))
+         (view (plist-get model :view))
+         (kind (plist-get model :kind))
+         (hidden (plist-get model :hidden))
+         (ops nil) (boxes nil)
+         (x pad-x) (y pad-y))
+    (cl-labels
+        ((tw (s) (* (length s) cw))
+         (emit-text (s cx cy col)
+           (push (list 'text s cx (+ cy base-off) col) ops))
+         (new-row () (setq x pad-x y (+ y line-h)))
+         (emit-btn (s col bcol cmd)
+           (let ((w (+ (tw s) (* 2 hp))))
+             (when (and (> x pad-x) (> (+ x w) (- width pad-x)))
+               (new-row))
+             (when bcol (push (list 'rect x (+ y 2) w (- line-h 4) bcol) ops))
+             (emit-text s (+ x hp) y col)
+             (when cmd (push (list x y (+ x w) (+ y line-h) cmd) boxes))
+             (setq x (+ x w gap)))))
+      ;; row 0: state pill + action buttons
+      (emit-btn (nth 0 sl)
+                (or (plist-get (nth 1 sl) :foreground) bg)
+                (or (plist-get (nth 1 sl) :background) btn-bg) nil)
+      (dolist (b (teamwork--header-buttons view kind))
+        (emit-btn (nth 0 b) fg btn-bg (nth 2 b)))
+      ;; row 1: help / hint line
+      (new-row)
+      (emit-text (teamwork--header-hint kind (nth 2 sl)) x y dim)
+      ;; rows 2+: hidden-project chips (wrap as needed)
+      (when hidden
+        (new-row)
+        (emit-text "hidden:" x y dim)
+        (setq x (+ x (tw "hidden:") gap))
+        (dolist (h hidden)
+          (let ((id (car h)))
+            (emit-btn (format "%s ✕" (if (string-empty-p (cdr h)) id (cdr h)))
+                      "#ff9a9a" btn-bg
+                      (lambda () (interactive) (teamwork--unhide-project id)))))))
+    (let* ((height (+ y line-h pad-y))
+           (svg (svg-create width height)))
+      (svg-rectangle svg 0 0 width height :fill bg)
+      (dolist (op (nreverse ops))
+        (pcase (car op)
+          ('rect (pcase-let ((`(,_ ,rx0 ,ry0 ,rw ,rh ,col) op))
+                   (svg-rectangle svg rx0 ry0 rw rh :fill col :rx rx)))
+          ('text (pcase-let ((`(,_ ,s ,tx ,ty ,col) op))
+                   (svg-text svg (replace-regexp-in-string " " nbsp s)
+                             :x tx :y ty :fill col :font-family family
+                             :font-size font-size :font-weight "normal")))))
+      (setq teamwork--header-svg-boxes (nreverse boxes))
+      (propertize " " 'display (svg-image svg :ascent 'center :scale 1)
+                  'keymap teamwork--header-svg-keymap 'pointer 'hand))))
+
+(defun teamwork--header-render ()
+  "Return the header-line value for a teamwork buffer (SVG when available).
+Memoized on (state, error, header block, width); guarded so a rendering error
+degrades to a short message rather than breaking redisplay."
+  (condition-case err
+      (let* ((prefix (teamwork--header-prefix))
+             (graphic (and (display-graphic-p) (featurep 'svg-header)
+                           (fboundp 'mp/header-line-background)))
+             (w (if graphic (window-pixel-width) (window-width)))
+             (sig (list teamwork--data-state teamwork--state-msg prefix w graphic)))
+        (if (and teamwork--header-cache (equal (car teamwork--header-cache) sig))
+            (cdr teamwork--header-cache)
+          (let* ((model (teamwork--header-model prefix))
+                 (out (if graphic (teamwork--header-svg model)
+                        (teamwork--header-text model))))
+            (setq teamwork--header-cache (cons sig out))
+            out)))
+    (error (format " teamwork header: %s " (error-message-string err)))))
 
 (defun teamwork--cached (kind key account)
   "Return cached org text for KIND/KEY/ACCOUNT from the sidecar, or nil."
@@ -742,6 +1024,23 @@ The same diff C-c C-c would apply, recomputed (debounced) as you edit."
 ;; --------------------------------------------------------------------------- ;;
 ;; Folding: hide property drawers on open, keep the #+TEAMWORK header visible
 ;; --------------------------------------------------------------------------- ;;
+(defun teamwork--restyle-completed ()
+  "Dim + checkmark headings of completed tasks (:DONE: true) and task lists
+\(:COMPLETED: set).  Purely cosmetic overlays over the fetched completion state
+\(shown only when the management \"Tasks/Lists: all\" view is on); re-run on fill
+and after a `teamwork-toggle-done'."
+  (remove-overlays (point-min) (point-max) 'teamwork-completed t)
+  (org-with-wide-buffer
+   (goto-char (point-min))
+   (while (re-search-forward org-heading-regexp nil t)
+     (when (or (equal (org-entry-get (point) "DONE") "true")
+               (org-entry-get (point) "COMPLETED"))
+       (let ((ov (make-overlay (line-beginning-position) (line-end-position))))
+         (overlay-put ov 'teamwork-completed t)
+         (overlay-put ov 'face 'teamwork-completed-face)
+         (overlay-put ov 'after-string
+                      (propertize " ✓" 'face 'teamwork-completed-face)))))))
+
 (defun teamwork--fold-drawers ()
   "Fold every :PROPERTIES: drawer in the current buffer."
   (org-with-wide-buffer
@@ -791,7 +1090,8 @@ marked permanent-local; the caller re-applies the banner via
       (goto-char (point-min))
       (org-mode)
       (funcall (or mode-fn #'teamwork--enable-timesheet-mode))
-      (teamwork--fold-drawers))))
+      (teamwork--fold-drawers)
+      (teamwork--restyle-completed))))
 
 (defvar teamwork--range-file
   (expand-file-name "teamwork-timesheet/last-range"
@@ -1008,6 +1308,25 @@ tags / assignees complete against the account's configured tags / project people
                        (and cur (mapconcat #'identity cur ",")))))
          (teamwork--put-property "ASSIGNEE" (mapconcat #'identity chosen ", ")))))
     (message "Teamwork: %s set — C-c C-l previews, C-c C-c submits." prop)))
+
+;;;###autoload
+(defun teamwork-toggle-done ()
+  "Flip the :DONE: state (true/false) of the task heading at point.
+Point may sit anywhere in the task's subtree; the enclosing task heading is
+used.  Completion round-trips via the :DONE: property, so C-c C-c submits it
+(management completes/reopens; a timesheet task is completed too).  In a
+management buffer, un-checking a completed task needs it to be visible first —
+toggle \"Tasks: all\" in the header when it is hidden."
+  (interactive)
+  (save-excursion
+    (unless (ignore-errors (org-back-to-heading t) t)
+      (user-error "Point is not on a task"))
+    (unless (org-entry-get nil "TASK_ID")   ; non-inherited: THIS heading is a task
+      (user-error "Point is not on a task heading (no :TASK_ID: here)"))
+    (let ((new (if (equal (org-entry-get nil "DONE") "true") "false" "true")))
+      (org-entry-put (point) "DONE" new)
+      (message "Teamwork: DONE=%s — C-c C-l previews, C-c C-c submits." new)))
+  (teamwork--restyle-completed))
 
 ;; --------------------------------------------------------------------------- ;;
 ;; Submit: preview -> confirm -> streamed apply
