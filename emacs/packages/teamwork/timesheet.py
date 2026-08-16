@@ -31,6 +31,8 @@ Subcommands:
     filter-get / filter-set [...]     read / write the per-account project filter
     pull  --from D --to D [...]        emit timesheet org, cache snapshot + buffer
     manage [--projects ids] [...]     emit the project structure (no time filter)
+    manage-state [--account N]        management header state (view + hidden) JSON
+    unhide --id ID [--account N]      restore a hidden project (drop from prefs)
     comments-pull --task ID [...]     emit a task's comments as an editable buffer
     cached --kind K --key K [...]     print the last cached buffer (exit 3 if none)
     submit --file F [--json]          print the diff plan (JSON with --json)
@@ -772,50 +774,22 @@ def render_org(projects, tasklists, tasks, logs, meta: dict, hidden_names: dict 
 def _manage_header(user, account=None, hidden=None, hidden_names=None,
                    filt=None, filt_names=None, all_tasklists=False,
                    all_tasks=False) -> list:
-    """Header for a management buffer — like `_header` but with no date range and
-    a `#+TEAMWORK_MANAGE` marker so parse/submit route to management mode.
-    ALL_TASKLISTS/ALL_TASKS record the view toggles (completed lists/tasks) in a
-    `#+TEAMWORK_VIEW` line the buffer's header controls read back."""
-    hidden = [str(h) for h in (hidden or [])]
+    """Header for a management buffer — a `#+TEAMWORK_MANAGE` marker (so parse /
+    submit route to management mode) plus the account.  The old how-to comment
+    block, the view toggles (`#+TEAMWORK_VIEW`) and the hidden-project list
+    (`#+TEAMWORK_HIDDEN` + `#  hidden …` lines) are gone: that state lives in the
+    account prefs and reaches Emacs through the `manage-state` command, which
+    renders the header's Lists/Tasks toggles and hidden-project chips — so the
+    buffer no longer repeats it.  Hidden reconciliation now runs off prefs (a
+    missing `#+TEAMWORK_HIDDEN` means "use saved prefs"; see `reconcile_hidden`)
+    and un-hiding goes through the `unhide` command.  The HIDDEN/VIEW/filter args
+    are accepted but unused, for call-site compatibility."""
     lines = [
         "#+TITLE: Teamwork management",
         f"#+TEAMWORK_MANAGE: user={user}",
-        f"#+TEAMWORK_VIEW: all_tasklists={1 if all_tasklists else 0} "
-        f"all_tasks={1 if all_tasks else 0}",
     ]
     if account:
         lines.append(f"#+TEAMWORK_ACCOUNT: {account}")
-    lines += [
-        "# No time filter here — this is the whole project structure you can manage.",
-        "# Add a heading with no ID to create a task/list; demote below a task (**** or",
-        "# deeper) to create a subtask. Rename by editing heading text (keep :*_ID:).",
-        "# Task properties live in the :PROPERTIES: drawer under each task heading.",
-        "# Stating a line is authoritative: an empty value clears the field, a missing",
-        "# line leaves it as-is. C-c C-p picks values for any of them.  Properties:",
-        "#   :TASK_ID: 12345    the Teamwork id — never edit or remove it (identifies the task)",
-        "#   :DONE: true        completion state, true/false; flip it to close/reopen the task",
-        "#   :LABELS: bug, backend          tags, comma-separated",
-        "#   :DUE: 2026-08-20               due date",
-        "#   :URGENCY: high                 priority: low / medium / high",
-        "#   :ASSIGNEE: Jane Doe, John Roe  assignees by name, as shown",
-        "#   (LABELS/URGENCY avoid Org's reserved TAGS/PRIORITY property names.)",
-        "# Write a task DESCRIPTION as plain text below its property drawer (before any",
-        "# subtask heading); edit it freely — it is submitted with everything else.",
-        "#   (don't start a description line with '*' — org would read it as a heading.)",
-        "# Delete a task or task-list by removing its heading — it is DELETED in Teamwork",
-        "# on submit (subtasks/tasks under it go too). The preview lists every deletion.",
-        "# Which projects appear is the per-account filter — change it with teamwork-filter.",
-        "# Delete a whole project heading to stop managing it (moves to TEAMWORK_HIDDEN).",
-        "# Completed tasks/lists are hidden by default; the header's Tasks/Lists buttons",
-        "# (or teamwork-config) reveal them — shown dimmed with a checkmark, DONE flippable.",
-    ]
-    for h in hidden:
-        nm = (hidden_names or {}).get(h)
-        lines.append(f"#   hidden {h}  {nm}" if nm else f"#   hidden {h}")
-    lines.append("#+TEAMWORK_HIDDEN: " + " ".join(hidden))
-    for pid in (filt or []):
-        nm = (filt_names or {}).get(str(pid))
-        lines.append(f"#   filter {pid}  {nm}" if nm else f"#   filter {pid}")
     lines.append("")
     return lines
 
@@ -2064,6 +2038,31 @@ def cmd_config_set(args):
     print(json.dumps(_view_flags(prefs)))
 
 
+def cmd_manage_state(args):
+    """Print the management buffer's header state as JSON — the view flags
+    (completed lists/tasks) and the hidden-project map {id: name} — read from the
+    account prefs.  Emacs calls this after each manage fetch to render the header's
+    Lists/Tasks toggles and hidden-project chips, so the buffer no longer carries
+    that state as comments."""
+    prefs = load_prefs(getattr(args, "account", None))
+    print(json.dumps({
+        "view": {"all_tasklists": bool(prefs.get("show_all_tasklists")),
+                 "all_tasks": bool(prefs.get("show_all_tasks"))},
+        "hidden": prefs.get("hidden") or {}}, ensure_ascii=False))
+
+
+def cmd_unhide(args):
+    """Drop project ID from the account's hidden prefs so the next manage pull
+    shows it again; print the remaining hidden map.  Replaces the old flow of
+    editing the buffer's `#+TEAMWORK_HIDDEN` line (which no longer exists)."""
+    account = getattr(args, "account", None)
+    prefs = load_prefs(account)
+    hidden = {str(k): v for k, v in (prefs.get("hidden") or {}).items()}
+    hidden.pop(str(args.id), None)
+    update_prefs(account, hidden=hidden)
+    print(json.dumps({"hidden": hidden}, ensure_ascii=False))
+
+
 def cmd_cached(args):
     """Emit the last cached org buffer for (kind, key, account), if any. Exit 3
     when there is no cache yet (so Emacs falls back to a plain load)."""
@@ -2230,6 +2229,16 @@ def main(argv=None):
     cs2.add_argument("--show-all-tasks", dest="show_all_tasks", default=None,
                      help="true/false: also show completed tasks")
     cs2.set_defaults(func=cmd_config_set)
+
+    ms = sub.add_parser("manage-state",
+                        help="print the management header state (view flags + hidden {id:name})")
+    ms.add_argument("--account", default=None, help="which stored account to use")
+    ms.set_defaults(func=cmd_manage_state)
+
+    uh = sub.add_parser("unhide", help="restore a hidden project (drop it from hidden prefs)")
+    uh.add_argument("--id", required=True, help="project id to un-hide")
+    uh.add_argument("--account", default=None, help="which stored account to use")
+    uh.set_defaults(func=cmd_unhide)
 
     ch = sub.add_parser("cached", help="print the last cached org buffer (exit 3 if none)")
     ch.add_argument("--kind", required=True, choices=["timesheet", "manage", "comments"])

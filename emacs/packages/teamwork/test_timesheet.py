@@ -1320,15 +1320,52 @@ class Prefs(unittest.TestCase):
                          {"show_all_tasklists": True, "show_all_tasks": True})
         self.assertTrue(T.load_prefs("work")["show_all_tasks"])
 
+    def _run(self, fn, **kw):
+        import io, json as _json, contextlib
+        a = type("A", (), kw)()
+        b = io.StringIO()
+        with contextlib.redirect_stdout(b):
+            fn(a)
+        return _json.loads(b.getvalue())
+
+    def test_manage_state_reports_view_and_hidden(self):
+        T.update_prefs("work", hidden={"9": "Hidden P"}, show_all_tasks=True)
+        out = self._run(T.cmd_manage_state, account="work")
+        self.assertEqual(out, {"view": {"all_tasklists": False, "all_tasks": True},
+                               "hidden": {"9": "Hidden P"}})
+
+    def test_manage_state_empty_defaults(self):
+        out = self._run(T.cmd_manage_state, account="fresh")
+        self.assertEqual(out, {"view": {"all_tasklists": False, "all_tasks": False},
+                               "hidden": {}})
+
+    def test_unhide_drops_id_and_keeps_the_rest(self):
+        T.update_prefs("work", hidden={"9": "Hidden P", "10": "Other"})
+        out = self._run(T.cmd_unhide, account="work", id="9")
+        self.assertEqual(out, {"hidden": {"10": "Other"}})
+        self.assertEqual(T.load_prefs("work")["hidden"], {"10": "Other"})
+
+    def test_unhide_unknown_id_is_a_noop(self):
+        T.update_prefs("work", hidden={"9": "Hidden P"})
+        out = self._run(T.cmd_unhide, account="work", id="123")
+        self.assertEqual(out, {"hidden": {"9": "Hidden P"}})
+
 
 class ManageView(unittest.TestCase):
     """Management "show all" view: completed lists/tasks marked, flags in header."""
 
-    def test_view_line_records_flags(self):
+    def test_header_has_no_view_or_hidden_clutter(self):
+        # The view flags and hidden list moved to prefs / `manage-state`; the
+        # buffer keeps only the routing markers, no how-to comment block.
         meta = {"user_id": 42, "mode": "manage",
                 "view": {"all_tasklists": True, "all_tasks": False}}
-        text = T.render_manage([{"id": 1, "name": "P"}], [], [], meta)
-        self.assertIn("#+TEAMWORK_VIEW: all_tasklists=1 all_tasks=0", text)
+        text = T.render_manage([{"id": 1, "name": "P"}], [], [], meta,
+                               hidden_names={"9": "Hidden P"})
+        self.assertIn("#+TEAMWORK_MANAGE: user=42", text)   # routing marker stays
+        self.assertNotIn("#+TEAMWORK_VIEW:", text)
+        self.assertNotIn("#+TEAMWORK_HIDDEN:", text)
+        self.assertNotIn("# No time filter here", text)     # how-to prose is gone
+        self.assertNotIn("hidden 9", text)
         self.assertNotIn("#+TEAMWORK:", text)               # not mistaken for the marker
 
     def test_completed_tasklist_gets_marker_open_one_does_not(self):

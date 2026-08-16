@@ -11,8 +11,14 @@ buffer kinds share the same pull → edit → review-diff → streamed-apply flo
   (date), `:URGENCY:` (low/medium/high) and `:ASSIGNEE:` (by name) — plus a
   **description** as plain text under the drawer. `C-c C-p` sets a property with
   completion over the available values (project people, existing tags, the
-  priority list, a calendar for the due date, true/false for done). Flip `:DONE:`
-  to close or reopen a task on submit, or toggle it fast with `C-c C-t`. By
+  priority list, a calendar for the due date, true/false for done), or jump
+  straight to one with a dedicated combo — `C-c C-b` labels, `C-c C-u` urgency,
+  `C-c C-d` due date, `C-c C-a` assignee (the last three are management-only;
+  `C-c C-b` also works in the timesheet). Completion for labels / urgency /
+  assignee is seeded with the values already used on the loaded tasks (plus the
+  account's tags and the project's people for those two), so common values are
+  one keystroke away, and you can still type a custom one. Flip `:DONE:` to close
+  or reopen a task on submit, or toggle it fast with `C-c C-t`. By
   default management shows only **open** work — completed tasks and completed
   task lists are hidden (a clean "what's left" view); the header's **Tasks** and
   **Lists** buttons (persisted per account) reveal them, shown dimmed with a
@@ -42,9 +48,12 @@ separated; empty clears, a missing line leaves labels untouched).
 
 Which projects appear is a **per-account filter** (`teamwork-filter`), persisted
 in prefs — switching accounts no longer resets it. Delete a project heading to
-stop fetching it (a local preference — it is never deleted in Teamwork); it moves
-to `#+TEAMWORK_HIDDEN`. To bring one back, **click its chip in the header** (or
-remove its id from that line) and refetch.
+stop fetching it (a local preference — it is never deleted in Teamwork); it is
+added to the account's hidden list. To bring one back, **click its chip in the
+header** and refetch. The hidden list and the completed-item view flags live in
+the account prefs (not in the buffer) and reach the header via the sidecar's
+`manage-state` command, so the management buffer keeps only its routing markers
+(`#+TITLE`, `#+TEAMWORK_MANAGE`, `#+TEAMWORK_ACCOUNT`) — no how-to comment block.
 
 Every buffer shows **cached data instantly** while a fresh copy is fetched in the
 background; the buffer is replaced when fresh data arrives (edits discarded), and

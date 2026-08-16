@@ -34,10 +34,11 @@
 ;;   C-c C-c   submit     C-c C-k   close       C-c C-r   refresh
 ;;   C-c C-d   set range  C-c C-l   live log + changes preview   C-c C-o   task comments
 ;;   C-c C-p   set a task property (tags/due/priority/assignee) with completion
-;;   C-c C-t   toggle the task's :DONE: state (true/false)
+;;   C-c C-b   set labels (tags)   C-c C-t   toggle the task's :DONE: state (true/false)
 ;; In the management buffer:
 ;;   C-c C-c submit  C-c C-l changes preview  C-c C-o comments  C-c C-f filter
 ;;   C-c C-p set property (tags/due/priority/assignee w/ value completion)  C-c C-r refresh
+;;   C-c C-b labels · C-c C-u urgency · C-c C-d due date · C-c C-a assignee  (dedicated pickers)
 ;;   C-c C-t toggle the task's :DONE: state (true/false)
 ;; In a comments buffer:
 ;;   C-c C-c submit  C-c C-l changes preview  C-c C-k close  C-c C-r refresh
@@ -48,6 +49,10 @@
 ;; hidden-project chips (click one to restore it).  The management header adds
 ;; Lists/Tasks buttons that toggle showing completed task lists / tasks (a
 ;; per-account, persisted view; completed items render dimmed with a checkmark).
+;; The view flags and hidden-project list are read from the account prefs via the
+;; sidecar's `manage-state' command after each fetch (buffer-local
+;; `teamwork--header-state'), so the management buffer no longer repeats them as a
+;; header comment block — it keeps only the routing markers.
 ;;
 ;; NOTE (vanilla port): this package defines no global/leader keybindings — the
 ;; Doom config never bound any SPC-leader keys for it either; entry points are
@@ -159,6 +164,7 @@ from."
     (define-key m (kbd "C-c C-r") #'teamwork-refresh)
     (define-key m (kbd "C-c C-o") #'teamwork-comments)
     (define-key m (kbd "C-c C-p") #'teamwork-set-property)
+    (define-key m (kbd "C-c C-b") #'teamwork-set-labels)
     (define-key m (kbd "C-c C-t") #'teamwork-toggle-done)
     m)
   "Keymap active in the timesheet buffer.")
@@ -180,6 +186,10 @@ from."
     (define-key m (kbd "C-c C-o") #'teamwork-comments)
     (define-key m (kbd "C-c C-f") #'teamwork-filter)
     (define-key m (kbd "C-c C-p") #'teamwork-set-property)
+    (define-key m (kbd "C-c C-b") #'teamwork-set-labels)
+    (define-key m (kbd "C-c C-u") #'teamwork-set-urgency)
+    (define-key m (kbd "C-c C-d") #'teamwork-set-due)
+    (define-key m (kbd "C-c C-a") #'teamwork-set-assignee)
     (define-key m (kbd "C-c C-t") #'teamwork-toggle-done)
     m)
   "Keymap active in the management buffer.")
@@ -230,13 +240,19 @@ from."
 (defvar-local teamwork--state-msg nil "Last error message, shown in the header.")
 (defvar-local teamwork--return-to nil "Buffer to switch back to when this one is closed.")
 (defvar-local teamwork--view-override nil
-  "Optimistic (:all-tasklists BOOL :all-tasks BOOL) shown until the refetch lands.
+  "Optimistic (:all-tasklists BOOL :all-tasks BOOL) shown until the refetch.
 Set the instant a view toggle is clicked so the button flips at once.  It is not
-`permanent-local', so `teamwork--fill-buffer' wipes it once fresh data (whose
-header carries the real view) arrives.")
+`permanent-local', so `teamwork--fill-buffer' wipes it once fresh data (and a
+fresh `teamwork--header-state') lands.")
+(defvar-local teamwork--header-state nil
+  "Management header state (view + hidden projects), sourced from account prefs.
+A plist (:view (:all-tasklists BOOL :all-tasks BOOL) :hidden ((ID . NAME) …)),
+fetched by `teamwork--load-header-state' after each manage fill — the buffer no
+longer carries it.  `permanent-local' so it survives the `org-mode' call in
+`teamwork--fill-buffer' and keeps the header painted until fresh state lands.")
 (dolist (v '(teamwork--kind teamwork--key teamwork--account teamwork--fresh-args
              teamwork--submit-cmd teamwork--mode-fn teamwork--use-prev teamwork--data-state
-             teamwork--state-msg teamwork--return-to))
+             teamwork--state-msg teamwork--return-to teamwork--header-state))
   (put v 'permanent-local t))
 
 (defun teamwork-quit ()
@@ -288,7 +304,10 @@ Emacs happens to surface."
              '(:background "#12331a" :foreground "#9affa0" :weight bold)
              "Data is current — C-c C-c submits."))))
 
-;; -- reading the buffer's header block -------------------------------------- ;;
+;; -- reading a timesheet buffer's header block ------------------------------ ;;
+;; The timesheet buffer still carries its hidden-project list in the header text
+;; (only the MANAGEMENT header was decluttered), so its chips are parsed from the
+;; buffer; management gets the same state from prefs (see below).
 (defun teamwork--header-prefix ()
   "Return the buffer's top block (everything before the first Org heading)."
   (save-excursion
@@ -308,33 +327,86 @@ Emacs happens to surface."
         (setq ids (split-string (match-string 1 line))))))
     (mapcar (lambda (id) (cons id (or (cdr (assoc id names)) ""))) ids)))
 
-(defun teamwork--parse-view (prefix)
-  "Return (:all-tasklists BOOL :all-tasks BOOL) from PREFIX, or nil when absent."
-  (when (string-match "^#\\+TEAMWORK_VIEW:[ \t]*\\(.*\\)$" prefix)
-    (let ((s (match-string 1 prefix)))
-      (list :all-tasklists (and (string-match-p "all_tasklists=1" s) t)
-            :all-tasks (and (string-match-p "all_tasks=1" s) t)))))
+;; -- management header state (view + hidden), sourced from account prefs ---- ;;
+;; The management buffer no longer carries the view flags / hidden-project list
+;; as comments; `manage-state' reports them from the account prefs and we cache
+;; the result in `teamwork--header-state', refreshed after each manage fill.
+(defun teamwork--state-from-json (json)
+  "Convert a `manage-state' JSON alist to a header-state plist."
+  (let ((view (alist-get 'view json))
+        (hidden (alist-get 'hidden json)))
+    (list :view (list :all-tasklists (eq (alist-get 'all_tasklists view) t)
+                      :all-tasks (eq (alist-get 'all_tasks view) t))
+          ;; `hidden' is an alist of (ID-SYMBOL . NAME); normalise to strings.
+          :hidden (mapcar (lambda (kv) (cons (format "%s" (car kv))
+                                             (format "%s" (cdr kv))))
+                          hidden))))
+
+(defun teamwork--load-header-state (buffer)
+  "Async-fetch BUFFER's management header state (view + hidden) from prefs and
+repaint its header.  A no-op for non-management buffers."
+  (when (buffer-live-p buffer)
+    (with-current-buffer buffer
+      (when (equal teamwork--kind "manage")
+        (let ((account teamwork--account)
+              (obuf (generate-new-buffer " *teamwork-state*")))
+          (make-process
+           :name "teamwork-state" :buffer obuf :noquery t
+           :command (append (list teamwork-python teamwork-script "manage-state")
+                            (when account (list "--account" account)))
+           :sentinel
+           (lambda (proc _event)
+             (when (memq (process-status proc) '(exit signal))
+               (when (and (eq (process-status proc) 'exit)
+                          (zerop (process-exit-status proc))
+                          (buffer-live-p buffer))
+                 (when-let ((json (ignore-errors
+                                    (with-current-buffer obuf
+                                      (goto-char (point-min))
+                                      (json-parse-buffer :object-type 'alist
+                                                         :array-type 'list
+                                                         :null-object nil)))))
+                   (with-current-buffer buffer
+                     (setq teamwork--header-state (teamwork--state-from-json json)
+                           teamwork--header-cache nil)
+                     (force-mode-line-update))))
+               (kill-buffer obuf)))))))))
 
 (defun teamwork--header-model (prefix)
-  "Return a plist describing the header for PREFIX (this buffer's header block)."
-  (list :kind teamwork--kind
-        :hidden (teamwork--parse-hidden prefix)
-        :view (or teamwork--view-override (teamwork--parse-view prefix))))
+  "Return a plist describing this buffer's header.
+Management reads view + hidden from `teamwork--header-state' (account prefs);
+the timesheet still parses its hidden list from PREFIX (its buffer text).  The
+optimistic `teamwork--view-override' wins for the view either way."
+  (if (equal teamwork--kind "manage")
+      (list :kind teamwork--kind
+            :hidden (plist-get teamwork--header-state :hidden)
+            :view (or teamwork--view-override
+                      (plist-get teamwork--header-state :view)))
+    (list :kind teamwork--kind
+          :hidden (teamwork--parse-hidden prefix)
+          :view teamwork--view-override)))
 
 ;; -- header actions --------------------------------------------------------- ;;
 (defun teamwork--unhide-project (id)
-  "Remove project ID from the buffer's #+TEAMWORK_HIDDEN header and refetch.
-The edited buffer is snapshotted as --prev on refresh, so the sidecar's
-hidden-project reconciliation brings the project back."
-  (save-excursion
-    (goto-char (point-min))
-    (when (re-search-forward "^#\\+TEAMWORK_HIDDEN:[ \t]*\\(.*\\)$" nil t)
-      ;; `split-string' clobbers the match data, so capture the id list under
-      ;; `save-match-data' — otherwise `replace-match' would edit the wrong span.
-      (let* ((inhibit-read-only t)
-             (kept (delete id (save-match-data
-                                (split-string (match-string-no-properties 1))))))
-        (replace-match (concat "#+TEAMWORK_HIDDEN: " (string-join kept " ")) t t))))
+  "Restore hidden project ID and refetch.
+In a management buffer this drops ID from the account's hidden prefs (the buffer
+no longer carries a `#+TEAMWORK_HIDDEN' line to edit); in a timesheet buffer it
+removes ID from that line, whose --prev snapshot the sidecar reconciles."
+  (if (equal teamwork--kind "manage")
+      (let ((account (or teamwork--account (teamwork--buffer-account (current-buffer)))))
+        (condition-case err
+            (apply #'teamwork--run-json "unhide" "--id" id
+                   (when account (list "--account" account)))
+          (error (message "Teamwork: %s" (error-message-string err)))))
+    (save-excursion
+      (goto-char (point-min))
+      (when (re-search-forward "^#\\+TEAMWORK_HIDDEN:[ \t]*\\(.*\\)$" nil t)
+        ;; `split-string' clobbers the match data, so capture the id list under
+        ;; `save-match-data' — otherwise `replace-match' would edit the wrong span.
+        (let* ((inhibit-read-only t)
+               (kept (delete id (save-match-data
+                                  (split-string (match-string-no-properties 1))))))
+          (replace-match (concat "#+TEAMWORK_HIDDEN: " (string-join kept " ")) t t)))))
   (message "Teamwork: restoring project %s…" id)
   (teamwork-refresh))
 
@@ -343,7 +415,7 @@ hidden-project reconciliation brings the project back."
   (unless (equal teamwork--kind "manage")
     (user-error "View toggles apply to the management buffer only"))
   (let* ((view (or teamwork--view-override
-                   (teamwork--parse-view (teamwork--header-prefix))))
+                   (plist-get teamwork--header-state :view)))
          (cur (plist-get view flag))
          (opt (pcase flag (:all-tasklists "--show-all-tasklists")
                           (:all-tasks "--show-all-tasks")))
@@ -389,8 +461,8 @@ toggle carries `:on' (whether completed items are currently shown)."
   "Header help line for KIND, prefixed by STATE-HELP."
   (concat state-help "   "
           (pcase kind
-            ("manage" "C-c C-c submit · C-c C-t toggle DONE · C-c C-p props · click a hidden project to restore it")
-            ("timesheet" "C-c C-c submit · C-c C-d range · C-c C-l logs · click a hidden project to restore it")
+            ("manage" "C-c C-c submit · C-c C-t DONE · C-c C-b/u/d/a labels/urgency/due/assignee · C-c C-p props · click a hidden project to restore it")
+            ("timesheet" "C-c C-c submit · C-c C-d range · C-c C-b labels · C-c C-l logs · click a hidden project to restore it")
             ("comments" "C-c C-c submit · C-c C-r refresh")
             (_ "C-c C-c submit"))))
 
@@ -552,8 +624,8 @@ degrades to a short message rather than breaking redisplay."
              (graphic (and (display-graphic-p) (featurep 'svg-header)
                            (fboundp 'mp/header-line-background)))
              (w (if graphic (window-pixel-width) (window-width)))
-             (sig (list teamwork--data-state teamwork--state-msg prefix w graphic
-                        teamwork--view-override)))
+             (sig (list teamwork--data-state teamwork--state-msg teamwork--kind
+                        teamwork--header-state prefix w graphic teamwork--view-override)))
         (if (and teamwork--header-cache (equal (car teamwork--header-cache) sig))
             (cdr teamwork--header-cache)
           (let* ((model (teamwork--header-model prefix))
@@ -622,6 +694,7 @@ content is snapshotted here (the refresh path, where edits are still in place)."
                   buffer (with-temp-buffer (insert-file-contents tmp-out) (buffer-string))
                   mode-fn)
                  (with-current-buffer buffer (teamwork--set-state 'fresh))
+                 (teamwork--load-header-state buffer)
                  (message "Teamwork: refreshed — buffer is now current."))
              (when (buffer-live-p buffer)
                (with-current-buffer buffer
@@ -656,7 +729,8 @@ it on quit)."
               teamwork--fresh-args fresh-args teamwork--submit-cmd submit-cmd
               teamwork--mode-fn mode-fn teamwork--use-prev use-prev
               teamwork--return-to (and (buffer-live-p return-to) return-to))
-        (teamwork--set-state 'stale)))
+        (teamwork--set-state 'stale)
+        (teamwork--load-header-state buffer)))
     (switch-to-buffer buffer)
     (teamwork--run-fresh buffer prev)))
 
@@ -1185,8 +1259,8 @@ it.
 
 Cached data (if any) is shown instantly while a fresh copy is fetched in the
 background; the buffer being replaced is passed to the sidecar as --prev, so a
-deleted project heading or edited #+TEAMWORK_HIDDEN updates the hidden-project
-prefs."
+deleted project heading updates the hidden-project prefs (restoring one goes
+through the `unhide' command instead)."
   (teamwork--save-range from to)   ; remember before requesting, so failures survive
   (teamwork--fetch (get-buffer-create teamwork-buffer) "timesheet"
                    (format "%s_%s" from to) account
@@ -1328,12 +1402,84 @@ An empty selection means all active projects."
 in Teamwork — the line is kept with no value)."
   (org-entry-put (point) key (or value "")))
 
+(defun teamwork--buffer-prop-values (key)
+  "Distinct, non-empty values of drawer property KEY across every heading in the
+current buffer.  Comma-separated cells are split, so a task labelled \"a, b\"
+contributes both \"a\" and \"b\".  Used to seed a picker with the values other
+already-loaded tasks use, so common labels / assignees / urgencies are one
+keystroke away without a round-trip."
+  (let (vals)
+    (save-excursion
+      (org-map-entries
+       (lambda ()
+         (let ((v (org-entry-get nil key)))
+           (when (and v (not (string-empty-p (string-trim v))))
+             (dolist (item (split-string v "[,]+" t "[ \t]+"))
+               (push item vals)))))))
+    (delete-dups (nreverse vals))))
+
+(defmacro teamwork--with-task-heading (&rest body)
+  "Move point to the enclosing task heading, then eval BODY there.
+Signals a `user-error' when point is not inside a task subtree.  Wrapped in
+`save-excursion', so point is restored afterwards."
+  (declare (indent 0) (debug t))
+  `(save-excursion
+     (unless (ignore-errors (org-back-to-heading t) t)
+       (user-error "Point is not on a task"))
+     (unless (org-entry-get nil "TASK_ID")   ; non-inherited: THIS heading is a task
+       (user-error "Point is not on a task heading (no :TASK_ID: here)"))
+     ,@body))
+
+;; Each picker prompts for and sets one property on the task at point.  They are
+;; shared by the dispatcher (`teamwork-set-property') and the dedicated commands.
+(defun teamwork--pick-labels ()
+  "Prompt for and set the task's :LABELS: (tags), completing over the labels
+already used in this buffer plus the account's configured tags; custom values
+allowed, empty clears."
+  (let* ((all (delete-dups (append (teamwork--buffer-prop-values "LABELS")
+                                   (teamwork--json-or-nil "tags"))))
+         (cur (teamwork--current-prop-list "LABELS"))
+         (chosen (completing-read-multiple
+                  "Tags (comma-separated, empty clears): " all nil nil
+                  (and cur (mapconcat #'identity cur ",")))))
+    (teamwork--put-property "LABELS" (mapconcat #'identity chosen ", "))))
+
+(defun teamwork--pick-urgency ()
+  "Prompt for and set the task's :URGENCY: (priority) from the fixed set, seeded
+with any values already used in the buffer (Teamwork only accepts these, so the
+match is required)."
+  (let ((all (delete-dups (append teamwork-priorities
+                                  (teamwork--buffer-prop-values "URGENCY")))))
+    (teamwork--put-property "URGENCY" (completing-read "Priority: " all nil t))))
+
+(defun teamwork--pick-due ()
+  "Prompt for and set the task's :DUE: date via the org date picker (an empty
+answer clears it)."
+  (teamwork--put-property "DUE" (org-read-date nil nil nil "Due date: ")))
+
+(defun teamwork--pick-assignee ()
+  "Prompt for and set the task's :ASSIGNEE:, completing over the project's people
+\(the `people' endpoint) plus assignees already used in this buffer; a name that
+matches neither is still accepted but rejected at submit.  Empty clears."
+  (let* ((people (teamwork--json-or-nil "people"))
+         (names (delete-dups
+                 (append (delq nil (mapcar (lambda (p) (alist-get 'name p)) people))
+                         (teamwork--buffer-prop-values "ASSIGNEE"))))
+         (cur (teamwork--current-prop-list "ASSIGNEE"))
+         (chosen (completing-read-multiple
+                  "Assignees (comma-separated, empty clears): " names nil nil
+                  (and cur (mapconcat #'identity cur ",")))))
+    (teamwork--put-property "ASSIGNEE" (mapconcat #'identity chosen ", "))))
+
 ;;;###autoload
 (defun teamwork-set-property ()
   "Set a property on the task at point, completing over the available values.
-Done is true/false, priority is a fixed list, due date uses the org calendar, and
-tags / assignees complete against the account's configured tags / project people
-(you can still type a new one).  In a timesheet buffer only Tags applies."
+A one-stop dispatcher over the same pickers as the dedicated commands
+\(`teamwork-set-labels', `teamwork-set-due', `teamwork-set-urgency',
+`teamwork-set-assignee').  Done is true/false, priority is a fixed list, the due
+date uses the org calendar, and tags / assignees complete against values already
+in the buffer plus the account's tags / project people (you can still type a new
+one).  In a timesheet buffer only Tags applies."
   (interactive)
   (unless (org-entry-get nil "TASK_ID" t)
     (user-error "Point is not on a task (no TASK_ID here or above)"))
@@ -1347,27 +1493,51 @@ tags / assignees complete against the account's configured tags / project people
                                 nil nil
                                 ;; default to the opposite of the current value
                                 (if (equal (org-entry-get nil "DONE") "true") "false" "true"))))
-      ("Due date"
-       (teamwork--put-property "DUE" (org-read-date nil nil nil "Due date: ")))
-      ("Priority"
-       (teamwork--put-property "URGENCY"
-                               (completing-read "Priority: " teamwork-priorities nil t)))
-      ("Tags"
-       (let* ((all (teamwork--json-or-nil "tags"))
-              (cur (teamwork--current-prop-list "LABELS"))
-              (chosen (completing-read-multiple
-                       "Tags (comma-separated, empty clears): " all nil nil
-                       (and cur (mapconcat #'identity cur ",")))))
-         (teamwork--put-property "LABELS" (mapconcat #'identity chosen ", "))))
-      ("Assignee"
-       (let* ((people (teamwork--json-or-nil "people"))
-              (names (delq nil (mapcar (lambda (p) (alist-get 'name p)) people)))
-              (cur (teamwork--current-prop-list "ASSIGNEE"))
-              (chosen (completing-read-multiple
-                       "Assignees (comma-separated, empty clears): " names nil nil
-                       (and cur (mapconcat #'identity cur ",")))))
-         (teamwork--put-property "ASSIGNEE" (mapconcat #'identity chosen ", ")))))
+      ("Due date" (teamwork--pick-due))
+      ("Priority" (teamwork--pick-urgency))
+      ("Tags"     (teamwork--pick-labels))
+      ("Assignee" (teamwork--pick-assignee)))
     (message "Teamwork: %s set — C-c C-l previews, C-c C-c submits." prop)))
+
+;; --- Dedicated per-property commands ---------------------------------------- ;;
+;; C-c C-b/C-d/C-u/C-a jump straight to one property, skipping the dispatcher
+;; menu.  Labels apply everywhere; due/urgency/assignee are management-only (a
+;; timesheet submit ignores them).
+(defun teamwork--set-one-property (picker label &optional manage-only)
+  "Run PICKER on the enclosing task heading, then echo LABEL.
+When MANAGE-ONLY, refuse outside a management buffer, where the property would
+be dropped by the submit."
+  (when (and manage-only (not (equal teamwork--kind "manage")))
+    (user-error "%s can only be set in a management buffer" label))
+  (teamwork--with-task-heading (funcall picker))
+  (message "Teamwork: %s set — C-c C-l previews, C-c C-c submits." label))
+
+;;;###autoload
+(defun teamwork-set-labels ()
+  "Set the task's :LABELS: (tags), completing over buffer + account values.
+Point may sit anywhere in the task's subtree.  Custom values are allowed and an
+empty answer clears the labels."
+  (interactive)
+  (teamwork--set-one-property #'teamwork--pick-labels "Labels"))
+
+;;;###autoload
+(defun teamwork-set-urgency ()
+  "Set the task's :URGENCY: (priority) from the fixed set (management only)."
+  (interactive)
+  (teamwork--set-one-property #'teamwork--pick-urgency "Priority" t))
+
+;;;###autoload
+(defun teamwork-set-due ()
+  "Set the task's :DUE: date via the org date picker (management only)."
+  (interactive)
+  (teamwork--set-one-property #'teamwork--pick-due "Due date" t))
+
+;;;###autoload
+(defun teamwork-set-assignee ()
+  "Set the task's :ASSIGNEE:, completing over project people + buffer values
+\(management only)."
+  (interactive)
+  (teamwork--set-one-property #'teamwork--pick-assignee "Assignee" t))
 
 ;;;###autoload
 (defun teamwork-toggle-done ()
@@ -1539,7 +1709,8 @@ account (else the sidecar reads the buffer header)."
              (with-current-buffer ob (insert-file-contents out))
              (teamwork--fill-buffer target ob mode-fn)
              (kill-buffer ob))
-           (with-current-buffer target (teamwork--set-state 'fresh)))
+           (with-current-buffer target (teamwork--set-state 'fresh))
+           (teamwork--load-header-state target))
          (ignore-errors (delete-file tmp))
          (ignore-errors (delete-file out)))))))
 
