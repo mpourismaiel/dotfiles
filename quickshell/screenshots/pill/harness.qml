@@ -24,6 +24,13 @@ FloatingWindow {
     MockFinance   { id: fin }
     MockCal       { id: cal }
     MockBrightness { id: brightness }
+    // stand-in for the theme-overrides JsonAdapter (Settings → Appearance).
+    // A couple of overrides so the Appearance page shows reset dots + a non-default
+    // preset state; the rest fall back to Theme defaults.
+    QtObject {
+        id: mockThemeSettings
+        property var colors: ({ "accent": "#e0662a", "money": "rgba(217, 164, 65, 0.9)" })
+    }
     // stand-in for the launcher settings JsonAdapter (feature flags + dirs)
     QtObject {
         id: mockSettings
@@ -380,7 +387,7 @@ FloatingWindow {
         Timer { running: true; interval: 60; onTriggered: { bsh.shotName = "blockblast-20260807-101500.png"; bsh.shareMode = true; } }
     } }
     // the launcher's Settings page (Org Agenda page shown: toggle + directory field)
-    Component { id: cSettings; MenuHost { pillW: 760; SettingsMenu { anchors.fill: parent; theme: theme; acc: null; settings: mockSettings; page: 1 } } }
+    Component { id: cSettings; MenuHost { pillW: 860; pillH: 580; SettingsMenu { anchors.fill: parent; theme: theme; acc: null; settings: mockSettings; themeSettings: mockThemeSettings; page: 0 } } }
     Component {
         id: cFinAdd
         MenuHost {

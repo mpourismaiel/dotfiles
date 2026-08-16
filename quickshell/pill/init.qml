@@ -150,7 +150,7 @@ ShellRoot {
         root.startLevelBurst("brightness_high", "Brightness", from, to);
     }
     
-    Theme { id: theme }
+    Theme { id: theme; overrides: themeAdapter.colors }
     // keep the default sink bound so the dashboard volume icon reflects mute live
     PwObjectTracker { objects: Pipewire.defaultAudioSink ? [Pipewire.defaultAudioSink] : [] }
     
@@ -954,6 +954,29 @@ ShellRoot {
             property string localModel: "qwen2.5:3b"  // ollama model used when claudeModel === "local"
         }
     }
+
+    // ---- persisted theme overrides (Settings → Appearance) -------------------
+    // Lives in the LIVE pill config dir (~/.config/quickshell/pill/theme.json), NOT
+    // in the repo — so `deploy.sh` (which only copies repo files) never clobbers it.
+    // The path is resolved from XDG_CONFIG_HOME directly rather than shellPath() so
+    // it always points at the installed pill dir, even when the config is loaded by
+    // path during check.sh. No auto-create on FileNotFound: the file only appears
+    // once the user actually customises a colour, so a headless check writes nothing.
+    // `colors` is a { "<paletteKey>": "<css colour>" } map; Theme binds it as its
+    // `overrides`, and the Appearance page rewrites it whole (reassign, not mutate,
+    // so the JsonAdapter flushes and every Theme binding re-evaluates).
+    FileView {
+        id: themeFile
+        path: (Quickshell.env("XDG_CONFIG_HOME") || (Quickshell.env("HOME") + "/.config"))
+              + "/quickshell/pill/theme.json"
+        watchChanges: true
+        onFileChanged: reload()
+        onAdapterUpdated: writeAdapter()
+        JsonAdapter {
+            id: themeAdapter
+            property var colors: ({})   // paletteKey → css colour string (blank = default)
+        }
+    }
     // ---- one full-screen overlay window per monitor ----
     Variants {
         model: Quickshell.screens
@@ -1025,6 +1048,10 @@ ShellRoot {
             // the calendar menu is wider than the other panes — it puts the month grid
             // next to a selected-day / Org-agenda detail column.
             readonly property int calWidth: 760
+            // the Settings pane (menu 13) runs wide + tall: the Appearance page shows
+            // a preset grid + a scrolling wall of per-colour rows next to a sidebar.
+            readonly property int settingsWidth: 860
+            readonly property int settingsHeight: 580
             // the game panes (menu 9 Tetris, 10 Block Blast, 12 Brick Breaker) run
             // wider + taller than a normal menu so the board and its side column both
             // get room to breathe (Tetris' 10×24px well is 240px; the others fit too).
@@ -1043,7 +1070,7 @@ ShellRoot {
             // open + launcher pill height
             // the clipboard-history menu runs 200px taller than the other panes so more
             // history is visible; every other open menu (and the launcher) uses openHeight.
-            readonly property int openPaneHeight: (open && menu === 5) ? openHeight + 200 : (open && menu === 7) ? 440 : (open && menu === 12) ? brickHeight : (open && (menu === 9 || menu === 10)) ? tetrisHeight : openHeight
+            readonly property int openPaneHeight: (open && menu === 5) ? openHeight + 200 : (open && menu === 7) ? 440 : (open && menu === 13) ? settingsHeight : (open && menu === 12) ? brickHeight : (open && (menu === 9 || menu === 10)) ? tetrisHeight : openHeight
             // hovered dashboard geometry (its own generous, HTML-scale size — distinct
             // from the open menu's 520 so the two rows can breathe).
             readonly property int hoverWidth: 640
@@ -1484,6 +1511,29 @@ ShellRoot {
                 }
             }
 
+            // open (or toggle shut) the Settings pane (menu 13) — the gear right of
+            // the games button on the expanded dashboard. Default page is Appearance
+            // (theme editor); also hosts Online Accounts / Org Agenda / Finance.
+            // Refresh the calendar accounts on open (the Online Accounts page needs
+            // them), mirroring the old launcher-overlay behaviour.
+            function openSettings() {
+                if (win.open && win.menu === 13) {
+                    const wasGrabbing = win.grabsKeyboard;
+                    win.open = false;
+                    if (wasGrabbing)
+                        root.restoreFocus();
+
+                } else {
+                    win.launcher = false;
+                    win.ctxGroup = null;
+                    win.trayItem = null;
+                    win.menu = 13;
+                    win.open = true;
+                    if (accounts)
+                        accounts.load();
+                }
+            }
+
             // open (or toggle shut) the Brick Breaker pane (menu 12) — routed from the
             // games list (see the menuLoader Connections). Mirrors openBlockBlast.
             function openBrickBreaker() {
@@ -1861,7 +1911,7 @@ ShellRoot {
                 // exactly as the old body handler did.
                 // the voice recorder leads the chains: a larger resting pill (220x36,
                 // iPhone-memo style) — voiceMorph already yields to open/launcher/ctx.
-                width: win.capShow ? (captureLoader.item ? captureLoader.item.implicitWidth + theme.pad * 2 : 520) : win.voiceMorph ? 220 : win.showBurst ? (burstLoader.item ? burstLoader.item.implicitWidth : 96) : win.launcher ? win.launcherWidth : win.ctxMode ? 520 : (win.notifMorph ? (morphStack.item ? morphStack.item.implicitWidth : 420) : (win.open ? (win.menu === 6 || win.menu === 8 ? win.calWidth : win.menu === 12 ? win.brickWidth : (win.menu === 9 || win.menu === 10) ? win.tetrisWidth : 520) : (win.dash ? win.hoverWidth : Math.max(56 + root.privacyCount * 20 + root.notifRestWidth, win.restUnderline ? collapsedPill.implicitWidth + 28 : 0))))
+                width: win.capShow ? (captureLoader.item ? captureLoader.item.implicitWidth + theme.pad * 2 : 520) : win.voiceMorph ? 220 : win.showBurst ? (burstLoader.item ? burstLoader.item.implicitWidth : 96) : win.launcher ? win.launcherWidth : win.ctxMode ? 520 : (win.notifMorph ? (morphStack.item ? morphStack.item.implicitWidth : 420) : (win.open ? (win.menu === 13 ? win.settingsWidth : win.menu === 6 || win.menu === 8 ? win.calWidth : win.menu === 12 ? win.brickWidth : (win.menu === 9 || win.menu === 10) ? win.tetrisWidth : 520) : (win.dash ? win.hoverWidth : Math.max(56 + root.privacyCount * 20 + root.notifRestWidth, win.restUnderline ? collapsedPill.implicitWidth + 28 : 0))))
                 // in ctx mode the pill sizes to whichever menu loader is active (app
                 // context menu or tray menu).
                 height: win.capShow ? (captureLoader.item ? captureLoader.item.implicitHeight + theme.pad * 2 : 120) : win.voiceMorph ? 36 : win.showBurst ? (burstLoader.item ? burstLoader.item.implicitHeight : 28) : (win.open || win.launcher) ? win.openPaneHeight : win.ctxMode ? Math.min(win.openHeight, ((ctxLoader.item || trayLoader.item) ? (ctxLoader.item || trayLoader.item).implicitHeight + theme.pad * 2 : 300)) : (win.notifMorph ? morphStack.implicitHeight : (win.dash ? win.hoverHeight : (win.restUnderline ? 48 : 28)))
@@ -2422,7 +2472,7 @@ ShellRoot {
                         // their original baseline.
                         Item {
                             id: deskRow
-                            implicitWidth: gameMenuBtn.x + gameMenuBtn.width
+                            implicitWidth: settingsMenuBtn.x + settingsMenuBtn.width
                             implicitHeight: deskDots.implicitHeight
                             width: implicitWidth
                             height: implicitHeight
@@ -2485,10 +2535,50 @@ ShellRoot {
 
                             }
 
+                            // settings button — a gear glyph that opens the Settings
+                            // pane (menu 13: Appearance / Online Accounts / Org Agenda /
+                            // Finance). Sits right of the games button; the Settings page
+                            // used to open from the launcher's gear (now moved here).
+                            Rectangle {
+                                id: settingsMenuBtn
+
+                                anchors.left: gameMenuBtn.right
+                                anchors.leftMargin: 8
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: 22
+                                height: 22
+                                radius: theme.radiusSmall
+                                color: (setMa.containsMouse || (win.open && win.menu === 13)) ? theme.accentSoft : "transparent"
+
+                                MSym {
+                                    anchors.centerIn: parent
+                                    icon: "settings"
+                                    size: 16
+                                    fill: (win.open && win.menu === 13) ? 1 : 0
+                                    color: (setMa.containsMouse || (win.open && win.menu === 13)) ? theme.text : theme.accent
+                                }
+
+                                MouseArea {
+                                    id: setMa
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: win.openSettings()
+                                }
+
+                                Behavior on color {
+                                    ColorAnimation {
+                                        duration: theme.animFast
+                                    }
+
+                                }
+
+                            }
+
                         }
 
                     }
-    
+
                     // grouped app icons (taskbar)
                     Taskbar {
                         id: taskbar
@@ -2762,7 +2852,7 @@ ShellRoot {
     
                         anchors.fill: parent
                         active: win.open
-                        sourceComponent: win.menu === 0 ? cNet : win.menu === 1 ? cVol : win.menu === 2 ? cBt : win.menu === 3 ? cBatt : win.menu === 5 ? cClip : win.menu === 6 ? cCal : win.menu === 7 ? cVoice : win.menu === 8 ? cFin : win.menu === 9 ? cTetris : win.menu === 10 ? cBlockBlast : win.menu === 11 ? cGames : win.menu === 12 ? cBrickBreaker : cNotif
+                        sourceComponent: win.menu === 0 ? cNet : win.menu === 1 ? cVol : win.menu === 2 ? cBt : win.menu === 3 ? cBatt : win.menu === 5 ? cClip : win.menu === 6 ? cCal : win.menu === 7 ? cVoice : win.menu === 8 ? cFin : win.menu === 9 ? cTetris : win.menu === 10 ? cBlockBlast : win.menu === 11 ? cGames : win.menu === 12 ? cBrickBreaker : win.menu === 13 ? cSettings : cNotif
                     }
                     // chevron back -> collapse panel
     
@@ -2837,7 +2927,7 @@ ShellRoot {
                         z: -1
                         theme: theme
                         target: menuLoader.item
-                        active: win.kbNav && win.open && win.menu !== 4 && win.menu !== 5 && win.menu !== 9 && win.menu !== 10 && win.menu !== 12
+                        active: win.kbNav && win.open && win.menu !== 4 && win.menu !== 5 && win.menu !== 9 && win.menu !== 10 && win.menu !== 12 && win.menu !== 13
                         shortcuts: win.menu === 6
                         onEscaped: win.open = false // back to the expanded dashboard
                         onShortcutRequested: (m) => {
@@ -2886,7 +2976,6 @@ ShellRoot {
                         settings: settings
                         notifs: notifs
                         fin: finance
-                        acc: accounts
                         onLaunched: {
                             win.launcher = false;
                             // keyboard-nav mode holds an Exclusive grab — drop the
@@ -2897,7 +2986,6 @@ ShellRoot {
                         }
                         onCloseRequested: {
                             win.launcher = false;
-                            settingsOpen = false;
                             // keyboard-nav mode: Escape returns to the expanded
                             // dashboard instead of dismissing the pill (the Meta+D /
                             // mouse-opened launcher still closes outright).
@@ -3299,6 +3387,7 @@ ShellRoot {
     Component { id: cBlockBlast; BlockBlastMenu { theme: theme; settings: settings } }
     Component { id: cGames; GamesMenu { theme: theme; settings: settings } }
     Component { id: cBrickBreaker; BrickBreakerMenu { theme: theme; settings: settings } }
+    Component { id: cSettings; SettingsMenu { theme: theme; acc: accounts; settings: settings; themeSettings: themeAdapter } }
     Component { id: cVoice; VoiceMemoMenu { theme: theme; settings: settings; setup: voiceSetup } }
     Component { id: cNotif; NotificationHistory { theme: theme; notifs: notifs } }
     // the active-notification deck, reused for the pill morph and the floating stack

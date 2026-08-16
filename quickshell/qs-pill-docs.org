@@ -87,6 +87,20 @@ by a notification. This is alpha translucency only — true backdrop *blur* woul
 need the KWin blur protocol, which Quickshell does not expose. Icons resolve
 through Qt's icon theme; =iconTheme= forces a specific one (e.g. ="Papirus"=), =""=
 follows KDE — =run-pill.sh= reads this and applies it (see [[*run-pill.sh][§ run-pill.sh]]).
+
+*Colours are user-customisable at runtime* (Settings → Appearance). Every colour
+property now resolves through an =overrides= map (=theme.overrides=, bound in
+=init.qml= to the persisted =theme.json= adapter): a present, non-blank entry for
+that key wins, otherwise the shipped value in =defaults= (a =key → css-string=
+map) is used. So the built-in palette lives in =defaults=, the user's edits live
+in =theme.json=, and every widget still just reads =theme.<key>=. Supporting
+machinery: =palette= (ordered =[{group,key,label}]= list the Appearance page
+renders), =presets= (one-click starting points; =Default= is the empty override
+map), and two colour helpers used across the theme editor — =parseColor(str)=
+(any css colour → Qt colour: =#rgb/#rgba/#rrggbb/#rrggbbaa=, =rgb()/rgba()=,
+=hsl()/hsla()= with comma/space/slash separators + optional =%=, or a named
+colour) and =formatColor(col, unit)= (Qt colour → css string in =hex= / =rgb= /
+=hsl=, alpha only when < 1). See [[*AppearanceSettings.qml][=AppearanceSettings=]].
 *** Code
 Code: [[file:pill/Theme.qml][=pill/Theme.qml=]]
 
@@ -456,7 +470,7 @@ Code: [[file:pill/AccountsState.qml][=pill/AccountsState.qml=]]
 ** AccountsMenu.qml
 *** Description
 The calendar-account manager, now the *Online Accounts* page inside
-[[*SettingsMenu.qml][=SettingsMenu=]] (opened by the launcher's *settings gear*).
+[[*SettingsMenu.qml][=SettingsMenu=]] (opened by the dashboard's *settings gear*).
 With =embedded: true= it drops its own backdrop + "Calendar accounts" header and
 fills the settings content pane from the top (=SettingsMenu= paints the chrome and
 the "Settings" title); standalone it still renders its own header. Lists every
@@ -473,8 +487,13 @@ Code: [[file:pill/AccountsMenu.qml][=pill/AccountsMenu.qml=]]
 
 ** SettingsMenu.qml + FeaturePage.qml
 *** Description
-The launcher's *Settings* page, opened from the gear in the bottom-left toggle row.
-A "Settings" title, a left *sidebar* of page links, and a content pane on the right:
+The pill's *Settings* page. It used to open from a gear in the *launcher's*
+bottom-left toggle row; it now opens from the *settings gear on the expanded
+dashboard* (immediately right of the games button — virtual desktops · games ·
+settings), as its own pane (=menu 13= in =init.qml=, component =cSettings=). A
+"Settings" title, a left *sidebar* of page links, and a content pane on the right:
+- *Appearance* — the *default* page: the [[*AppearanceSettings.qml][=AppearanceSettings=]]
+  theme editor (preset grid + per-colour rows + import/export).
 - *Online Accounts* — the embedded [[*AccountsMenu.qml][=AccountsMenu=]]
   (=embedded: true=).
 - *Org Agenda* / *Finance* — each a =FeaturePage= (title + blurb, an enable toggle,
@@ -498,6 +517,43 @@ directory reaches the Python bridges as a leading =--dir=: =orgbridge= rebinds
 *** Code
 Code: [[file:pill/SettingsMenu.qml][=pill/SettingsMenu.qml=]] ·
 [[file:pill/FeaturePage.qml][=pill/FeaturePage.qml=]]
+
+** AppearanceSettings.qml + ColorField.qml + ColorPicker.qml
+*** Description
+The *Appearance* page of [[*SettingsMenu.qml + FeaturePage.qml][=SettingsMenu=]] — a
+live theme editor. The Settings pane runs wide + tall for it (=settingsWidth= 860 ×
+=settingsHeight= 580 in =init.qml=). Only the *"Appearance" title* (top) and the
+*footer* (bottom) are pinned; *everything between scrolls in one Flickable* — the
+blurb, the *grid of pre-configured themes* (=theme.presets=: *Default* = clear all
+overrides, plus bundled *Catppuccin Mocha / Nord / Dracula / Everforest Dark /
+Kanagawa Wave*, each a card with a three-swatch bg/accent/text preview), and the
+*wall of colours* — one =ColorField= per =theme.palette= entry, grouped under
+=SURFACES / LINES / TEXT / ACCENT / STATUS / RESTING PILL= headers. The *sticky
+footer* carries the colour-unit switch (*HEX / RGB / HSL*) and *Import / Export*.
+A bundled preset overrides *every* palette key, so selecting one turns the whole
+pill; *Default* (or a row's reset dot) clears back to the shipped values.
+
+*Persistence.* All edits go to the shared =themeSettings= =JsonAdapter= (=theme.json=,
+wired in =init.qml=). Writes always *reassign =themeSettings.colors= whole* (never
+mutate in place) so the adapter flushes to disk and every =Theme= binding
+re-evaluates — recolouring the pill instantly. =setColor= / =clearColor= /
+=applyPreset= build a fresh map; =Default= / the reset dot clear a key back to the
+shipped default. *Import/Export* move the whole (fully-resolved) palette through
+the system clipboard as pretty JSON via =wl-copy= / =wl-paste= (=Process=), keeping
+only known palette keys on import.
+
+=ColorField= is one row: a checker-backed *swatch* (click to expand), the label, a
+*text input* in the current unit (any css format accepted; re-normalised to the
+unit on commit) and a *reset dot* shown only when the colour is a user override.
+Expanding drops an inline =ColorPicker= — an *SV square* + *hue* + *alpha* slider
+keeping its own H/S/V/A state; it is seeded from the field's colour on expand and
+emits =picked()= *only from real drags* (never from its initial/seed state, so
+opening the page can't clobber the stored colour). =theme.parseColor= /
+=theme.formatColor= do all string ⇄ colour conversion.
+*** Code
+Code: [[file:pill/AppearanceSettings.qml][=pill/AppearanceSettings.qml=]] ·
+[[file:pill/ColorField.qml][=pill/ColorField.qml=]] ·
+[[file:pill/ColorPicker.qml][=pill/ColorPicker.qml=]]
 
 ** FinanceState.qml
 *** Description
@@ -833,8 +889,10 @@ navigation above) and the grid/list toggle.
 Code: part of [[file:pill/Launcher.qml][=pill/Launcher.qml=]] (was noweb chunk =launcher-search=).
 
 **** Launcher.qml — toggle buttons
-The bottom-left toggle row, mirroring the power row opposite it. *Do-Not-Disturb*
-is a bell that strikes through while on, driving =notifs.dnd= so arriving
+The bottom-left toggle row, mirroring the power row opposite it. It holds just
+*Do-Not-Disturb* and *Finance privacy* now — the old *settings gear* moved out to
+the expanded dashboard (see [[*SettingsMenu.qml + FeaturePage.qml][=SettingsMenu=]]).
+*Do-Not-Disturb* is a bell that strikes through while on, driving =notifs.dnd= so arriving
 notifications go straight to history without popping. *Finance privacy* is an eye
 that closes while on, driving =fin.togglePrivacy()= — amounts mask as =•••= and
 the calendar's finance signals hide (see [[*FinanceState.qml][=FinanceState=]]).
@@ -859,13 +917,10 @@ the KRunner results =ListView= (=searching=, bound to the Milou model and groupe
 category) — plus the empty state.
 Code: part of [[file:pill/Launcher.qml][=pill/Launcher.qml=]] (was noweb chunk =launcher-body=).
 
-**** Launcher.qml — accounts overlay
-The calendar-account manager ([[*AccountsMenu.qml][=AccountsMenu=]]) shown over the
-whole launcher when the settings gear is on. An opaque backdrop + a catch =MouseArea=
-cover the body; opening it drops the search field's keyboard focus (so stray keys
-don't land in the now-hidden search) and reloads the account list, and closing it
-restores focus.
-Code: part of [[file:pill/Launcher.qml][=pill/Launcher.qml=]] (was noweb chunk =launcher-accounts=).
+# NOTE: the launcher's in-body *accounts / settings overlay* was removed — Settings
+# (Appearance / Online Accounts / Org Agenda / Finance) now opens as its own pane
+# from the expanded-dashboard gear (=menu 13=), not over the launcher. See
+# [[*SettingsMenu.qml + FeaturePage.qml][=SettingsMenu=]].
 
 ** AppMenu.qml
 *** Description
@@ -2029,6 +2084,16 @@ The shared launcher app list (=DesktopEntries=, =noDisplay=-filtered, name-sorte
 built once here, plus the persisted launcher settings (grid mode + favourite ids) in
 =launcher.json= via =FileView= + =JsonAdapter=. Both are handed to every monitor's
 [[*Launcher.qml][=Launcher=]].
+
+A *second* =FileView= + =JsonAdapter= (=themeAdapter=) persists the user's theme
+colour overrides and is bound into =Theme.overrides=. Unlike =launcher.json= (in
+=stateDir=), this one lives in the *live pill config dir*
+(=$XDG_CONFIG_HOME/quickshell/pill/theme.json=, resolved from the env directly, not
+=shellPath()=) so it sits with the installed pill and =deploy.sh= — which only
+copies repo files — never clobbers it. It deliberately *doesn't* auto-create on
+=FileNotFound=: the file appears only once the user edits a colour, so a headless
+=check.sh= writes nothing. See the Appearance editor
+([[*AppearanceSettings.qml + ColorField.qml + ColorPicker.qml][=AppearanceSettings=]]).
 Code: part of [[file:pill/init.qml][=pill/init.qml=]] (was noweb chunk =init-launcher-data=).
 
 **** init.qml — per-monitor overlay window

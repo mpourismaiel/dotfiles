@@ -32,9 +32,9 @@ Item {
     required property var settings    // JsonAdapter { bool grid; var favorites }
     required property var notifs      // notification state (the DND toggle drives it)
     property var fin                  // FinanceState (the privacy toggle drives it)
-    property var acc                  // AccountsState (the settings page manages calendar accounts)
-    // the settings gear (toggle row) opens the calendar-account manager over the body
-    property bool settingsOpen: false
+    // NOTE: Settings (accounts + appearance + feature toggles) moved out of the
+    // launcher; it now opens from the gear on the expanded dashboard (init.qml,
+    // menu 13). The launcher's bottom-left toggle row keeps only DND + privacy.
     signal launched()
     signal closeRequested()
     // right-click on an app row/tile/result: ask the parent to show the app
@@ -356,26 +356,7 @@ Item {
             }
     
         }
-    
-        // settings gear — opens the calendar-account manager (KDE + pill accounts)
-        MSym {
-            icon: "settings"
-            size: 18
-            fill: root.settingsOpen ? 1 : 0
-            color: root.settingsOpen ? root.theme.accent : (setMa.containsMouse ? root.theme.text : root.theme.faint)
-    
-            MouseArea {
-                id: setMa
-    
-                anchors.fill: parent
-                anchors.margins: -4
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                onClicked: root.settingsOpen = !root.settingsOpen
-            }
-    
-        }
-    
+
     }
     // ================= power buttons (bottom-right) =================
     Row {
@@ -844,41 +825,6 @@ Item {
             }
     
         }
-    
-    }
-    // ================= settings overlay (accounts + feature toggles) =================
-    Item {
-        id: accountsOverlay
-    
-        anchors.fill: parent
-        visible: root.settingsOpen
-        z: 100
-    
-        // swallow clicks/hover so nothing in the launcher body underneath reacts
-        MouseArea {
-            anchors.fill: parent
-            hoverEnabled: true
-        }
-    
-        SettingsMenu {
-            anchors.fill: parent
-            theme: root.theme
-            acc: root.acc
-            settings: root.settings
-            onCloseRequested: root.settingsOpen = false
-        }
-    }
-    // manage keyboard focus + refresh as the overlay toggles
-    Connections {
-        target: root
-        function onSettingsOpenChanged() {
-            if (root.settingsOpen) {
-                search.focus = false;
-                if (root.acc)
-                    root.acc.load();
-            } else {
-                search.forceActiveFocus();
-            }
-        }
+
     }
 }

@@ -1,0 +1,410 @@
+pragma ComponentBehavior: Bound
+// AppearanceSettings.qml — the Settings → Appearance page. Lets the user retheme
+// the whole pill live: a grid of pre-configured themes at the top, then a wall of
+// per-colour rows (swatch + text input + inline picker), with a small sticky
+// footer carrying the colour-unit switch (HEX / RGB / HSL) and Import/Export.
+//
+// Everything persists to theme.json via the shared themeSettings JsonAdapter
+// (bound in init.qml). Writes reassign `themeSettings.colors` whole so the adapter
+// flushes and every Theme binding re-evaluates — recolouring the pill instantly.
+// Import/Export move the theme through the system clipboard (wl-copy / wl-paste).
+import QtQuick
+import Quickshell
+import Quickshell.Io
+
+Item {
+    id: root
+    required property var theme
+    required property var themeSettings     // JsonAdapter { var colors }  (from init.qml)
+
+    property string unit: "hex"             // hex | rgb | hsl (colour-input format)
+    property string status: ""              // transient footer toast
+
+    // ---- persistence helpers (always reassign the whole map, never mutate) ----
+    function _clone() {
+        var src = root.themeSettings.colors || ({});
+        var out = ({});
+        for (var k in src) out[k] = src[k];
+        return out;
+    }
+    function setColor(key, css) { var m = root._clone(); m[key] = css; root.themeSettings.colors = m; }
+    function clearColor(key)    { var m = root._clone(); delete m[key]; root.themeSettings.colors = m; }
+    function applyPreset(p) {
+        var m = ({}); var src = p.colors || ({});
+        for (var k in src) m[k] = src[k];
+        root.themeSettings.colors = m;
+    }
+    function isOverridden(key) {
+        var src = root.themeSettings.colors;
+        return !!src && src[key] !== undefined && src[key] !== "";
+    }
+    function overrideCount() {
+        var src = root.themeSettings.colors; if (!src) return 0;
+        var n = 0; for (var k in src) if (src[k] !== undefined && src[k] !== "") n++;
+        return n;
+    }
+
+    // effective colour for a preset key (preset override → shipped default)
+    function presetColor(p, key) {
+        var src = p.colors || ({});
+        var v = (src[key] !== undefined && src[key] !== "") ? src[key] : root.theme.defaults[key];
+        return root.theme.parseColor(v);
+    }
+    function presetActive(p) {
+        // Default (empty map) is active whenever the user has no overrides.
+        var keys = 0; var src = p.colors || ({}); for (var k in src) keys++;
+        if (keys === 0) return root.overrideCount() === 0;
+        // otherwise: every preset colour must currently be in effect
+        for (var kk in src) if (root.theme.colorString(kk) !== src[kk]) return false;
+        return root.overrideCount() === keys;
+    }
+
+    function flash(msg) { root.status = msg; statusTimer.restart(); }
+    Timer { id: statusTimer; interval: 2200; onTriggered: root.status = ""; }
+
+    // ---- Export / Import via the clipboard ----
+    // Export the FULL palette (every key resolved) so the theme is portable.
+    function exportTheme() {
+        var out = ({});
+        for (var i = 0; i < root.theme.palette.length; i++) {
+            var key = root.theme.palette[i].key;
+            out[key] = root.theme.colorString(key);
+        }
+        copyProc.command = ["wl-copy", JSON.stringify(out, null, 2)];
+        copyProc.running = true;
+        root.flash("Theme copied to clipboard");
+    }
+    function importTheme() { pasteProc.running = true; }
+    Process { id: copyProc }
+    Process {
+        id: pasteProc
+        command: ["wl-paste", "--no-newline"]
+        stdout: StdioCollector {
+            onStreamFinished: {
+                var m = ({});
+                try { m = JSON.parse(this.text); }
+                catch (e) { root.flash("Clipboard isn't a valid theme"); return; }
+                if (!m || typeof m !== "object") { root.flash("Clipboard isn't a valid theme"); return; }
+                // keep only known palette keys
+                var out = ({}); var n = 0;
+                for (var i = 0; i < root.theme.palette.length; i++) {
+                    var key = root.theme.palette[i].key;
+                    if (m[key] !== undefined && m[key] !== "") { out[key] = "" + m[key]; n++; }
+                }
+                root.themeSettings.colors = out;
+                root.flash(n > 0 ? ("Imported theme (" + n + " colours)") : "No colours found");
+            }
+        }
+    }
+
+    // ======================= fixed title =======================
+    Text {
+        id: titleText
+        anchors.top: parent.top
+        anchors.left: parent.left
+        text: "Appearance"
+        color: root.theme.text
+        font.family: root.theme.serif
+        font.pixelSize: root.theme.fsLarge + 4
+    }
+    Rectangle {
+        id: titleRule
+        anchors.top: titleText.bottom
+        anchors.topMargin: 8
+        anchors.left: parent.left
+        anchors.right: parent.right
+        height: 1
+        color: root.theme.divider
+    }
+
+    // ======================= scrolling body (everything but title + footer) ==
+    Flickable {
+        id: scroll
+        anchors.top: titleRule.bottom
+        anchors.topMargin: 10
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: footer.top
+        anchors.bottomMargin: 8
+        contentHeight: body.height
+        clip: true
+        boundsBehavior: Flickable.StopAtBounds
+
+        Column {
+            id: body
+            width: scroll.width
+            spacing: 10
+
+            Text {
+                width: body.width
+                wrapMode: Text.WordWrap
+                text: "Recolour the pill. Pick a starting theme, then fine-tune any colour "
+                    + "below — changes apply live and save to your pill's theme.json."
+                color: root.theme.textDim
+                font.family: root.theme.family
+                font.pixelSize: root.theme.fsSmall
+            }
+
+            // ---- theme presets grid ----
+            Text {
+                text: "THEMES"
+                color: root.theme.faint
+                font.family: root.theme.mono
+                font.pixelSize: root.theme.fsSmall
+                font.letterSpacing: root.theme.labelSpacing
+                font.capitalization: Font.AllUppercase
+            }
+            Flow {
+                width: body.width
+                spacing: 8
+                Repeater {
+                    model: root.theme.presets
+                    delegate: Rectangle {
+                        id: presetCard
+                        required property var modelData
+                        readonly property bool active: root.presetActive(presetCard.modelData)
+                        width: 150
+                        height: 64
+                        radius: root.theme.radiusBtn
+                        color: presetMa.containsMouse ? root.theme.rowHi : root.theme.row
+                        border.width: presetCard.active ? 1 : 0
+                        border.color: root.theme.accent
+
+                        // three-swatch preview (bg / accent / text), top-left
+                        Row {
+                            id: swatches
+                            anchors.top: parent.top
+                            anchors.topMargin: 12
+                            anchors.left: parent.left
+                            anchors.leftMargin: 12
+                            spacing: -6
+                            Repeater {
+                                model: ["bg", "accent", "text"]
+                                delegate: Rectangle {
+                                    required property var modelData
+                                    width: 18
+                                    height: 18
+                                    radius: 9
+                                    border.width: 1
+                                    border.color: root.theme.bg
+                                    color: root.presetColor(presetCard.modelData, modelData)
+                                }
+                            }
+                        }
+                        // full-width name below, so long theme names don't elide
+                        Text {
+                            anchors.left: parent.left
+                            anchors.leftMargin: 12
+                            anchors.right: parent.right
+                            anchors.rightMargin: 10
+                            anchors.bottom: parent.bottom
+                            anchors.bottomMargin: 10
+                            elide: Text.ElideRight
+                            text: presetCard.modelData.name
+                            color: presetCard.active ? root.theme.accent : root.theme.text
+                            font.family: root.theme.family
+                            font.pixelSize: root.theme.fsNormal
+                        }
+                        MouseArea {
+                            id: presetMa
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.applyPreset(presetCard.modelData)
+                        }
+                        Behavior on color { ColorAnimation { duration: root.theme.animFast } }
+                    }
+                }
+            }
+
+            // ---- colours ----
+            Text {
+                text: "COLORS"
+                color: root.theme.faint
+                font.family: root.theme.mono
+                font.pixelSize: root.theme.fsSmall
+                font.letterSpacing: root.theme.labelSpacing
+                font.capitalization: Font.AllUppercase
+            }
+            Rectangle { width: body.width; height: 1; color: root.theme.divider }
+
+            Column {
+                id: wallCol
+                width: body.width
+                spacing: 2
+
+                Repeater {
+                    model: root.theme.palette
+                    delegate: Column {
+                        id: paletteRow
+                        required property int index
+                        required property var modelData
+                        width: wallCol.width
+                        spacing: 2
+
+                        // group header (only when the group changes)
+                        Item {
+                            width: parent.width
+                            height: 22
+                            visible: paletteRow.index === 0
+                                 || root.theme.palette[paletteRow.index - 1].group !== paletteRow.modelData.group
+                            Text {
+                                anchors.left: parent.left
+                                anchors.bottom: parent.bottom
+                                anchors.bottomMargin: 3
+                                text: paletteRow.modelData.group
+                                color: root.theme.textDim
+                                font.family: root.theme.mono
+                                font.pixelSize: root.theme.fsSmall - 1
+                                font.letterSpacing: root.theme.labelSpacing
+                                font.capitalization: Font.AllUppercase
+                            }
+                        }
+
+                        ColorField {
+                            width: parent.width
+                            theme: root.theme
+                            label: paletteRow.modelData.label
+                            unit: root.unit
+                            valueStr: root.theme.colorString(paletteRow.modelData.key)
+                            overridden: root.isOverridden(paletteRow.modelData.key)
+                            onEdited: (value) => root.setColor(paletteRow.modelData.key, value)
+                            onCleared: root.clearColor(paletteRow.modelData.key)
+                        }
+                    }
+                }
+            }
+            // breathing room so the last picker clears the footer when expanded
+            Item { width: 1; height: 6 }
+        }
+    }
+
+    // ======================= sticky footer =======================
+    Rectangle {
+        id: footer
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        height: 40
+        color: root.theme.bg
+
+        Rectangle {
+            anchors.top: parent.top
+            anchors.left: parent.left
+            anchors.right: parent.right
+            height: 1
+            color: root.theme.divider
+        }
+
+        // ---- unit switch (segmented) ----
+        Row {
+            id: unitSwitch
+            anchors.left: parent.left
+            anchors.verticalCenter: parent.verticalCenter
+            anchors.verticalCenterOffset: 2
+            spacing: 4
+            Repeater {
+                model: [
+                    { "u": "hex", "label": "HEX" },
+                    { "u": "rgb", "label": "RGB" },
+                    { "u": "hsl", "label": "HSL" }
+                ]
+                delegate: Rectangle {
+                    id: seg
+                    required property int index
+                    required property var modelData
+                    readonly property bool on: root.unit === seg.modelData.u
+                    width: 44
+                    height: 24
+                    color: seg.on ? root.theme.accentSoft
+                         : (segMa.containsMouse ? root.theme.rowHi : root.theme.bgElevated)
+                    border.width: seg.on ? 1 : 0
+                    border.color: root.theme.accent
+                    radius: root.theme.radiusBtn
+                    Text {
+                        anchors.centerIn: parent
+                        text: seg.modelData.label
+                        color: seg.on ? root.theme.accent : root.theme.textDim
+                        font.family: root.theme.mono
+                        font.pixelSize: root.theme.fsSmall
+                        font.letterSpacing: root.theme.labelSpacing
+                    }
+                    MouseArea {
+                        id: segMa
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: root.unit = seg.modelData.u
+                    }
+                    Behavior on color { ColorAnimation { duration: root.theme.animFast } }
+                }
+            }
+        }
+
+        // ---- transient status toast (centre) ----
+        Text {
+            anchors.centerIn: parent
+            anchors.verticalCenterOffset: 2
+            text: root.status
+            visible: root.status !== ""
+            color: root.theme.faint
+            font.family: root.theme.family
+            font.italic: true
+            font.pixelSize: root.theme.fsSmall
+            elide: Text.ElideRight
+        }
+
+        // ---- import / export ----
+        Row {
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
+            anchors.verticalCenterOffset: 2
+            spacing: 6
+            Repeater {
+                model: [
+                    { "act": "import", "icon": "content_paste", "label": "Import" },
+                    { "act": "export", "icon": "content_copy",  "label": "Export" }
+                ]
+                delegate: Rectangle {
+                    id: ieBtn
+                    required property var modelData
+                    width: ieRow.width + 18
+                    height: 26
+                    radius: root.theme.radiusBtn
+                    color: ieMa.containsMouse ? root.theme.rowHi : root.theme.bgElevated
+                    border.width: 1
+                    border.color: root.theme.border
+                    Row {
+                        id: ieRow
+                        anchors.centerIn: parent
+                        spacing: 5
+                        MSym {
+                            anchors.verticalCenter: parent.verticalCenter
+                            icon: ieBtn.modelData.icon
+                            size: 14
+                            color: ieMa.containsMouse ? root.theme.text : root.theme.textDim
+                        }
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: ieBtn.modelData.label
+                            color: ieMa.containsMouse ? root.theme.text : root.theme.textDim
+                            font.family: root.theme.family
+                            font.pixelSize: root.theme.fsSmall
+                        }
+                    }
+                    MouseArea {
+                        id: ieMa
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            if (ieBtn.modelData.act === "export") root.exportTheme();
+                            else root.importTheme();
+                        }
+                    }
+                    Behavior on color { ColorAnimation { duration: root.theme.animFast } }
+                }
+            }
+        }
+    }
+}

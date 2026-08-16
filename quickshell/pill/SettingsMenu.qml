@@ -1,14 +1,17 @@
 pragma ComponentBehavior: Bound
-// SettingsMenu.qml — the launcher's Settings page (opened from the gear at the
-// launcher's bottom-left). A "Settings" title, a left sidebar of page links, and
-// a content pane on the right. Pages:
+// SettingsMenu.qml — the pill's Settings page (opened from the gear right of the
+// games button on the expanded dashboard; menu 13 in init.qml). A "Settings"
+// title, a left sidebar of page links, and a content pane on the right. Pages:
+//   • Appearance       — retheme the pill: preset grid + per-colour editor with
+//                        import/export (embedded AppearanceSettings). Default page.
 //   • Online Accounts — the calendar account manager (embedded AccountsMenu).
 //   • Org Agenda       — enable + pick the .org directory; off by default. When on,
 //                        the calendar + agenda popup show org items (see OrgAgenda).
 //   • Finance          — enable + pick the hledger repo; off by default. When on,
 //                        the finance menu / nag / calendar finance signals turn on.
-// Enablement + paths persist in the launcher settings JSON (see init.qml), so a
-// fresh checkout works with both features off and nothing is hard-coded.
+// Feature enablement + paths persist in the launcher settings JSON, and theme
+// edits persist in theme.json (both wired in init.qml), so a fresh checkout works
+// with both features off and nothing is hard-coded.
 import QtQuick
 
 Item {
@@ -16,13 +19,15 @@ Item {
     required property var theme
     property var acc                       // AccountsState (Online Accounts page)
     property var settings                  // JsonAdapter (feature flags + dirs)
+    property var themeSettings             // JsonAdapter (theme colour overrides)
     signal closeRequested()
 
-    property int page: 0                   // 0 accounts · 1 org agenda · 2 finance
+    property int page: 0                   // 0 appearance · 1 accounts · 2 org agenda · 3 finance
     readonly property var pages: [
-        { key: "accounts", label: "Online Accounts", icon: "account_circle" },
-        { key: "org",      label: "Org Agenda",      icon: "event_note" },
-        { key: "finance",  label: "Finance",         icon: "account_balance_wallet" }
+        { key: "appearance", label: "Appearance",      icon: "palette" },
+        { key: "accounts",   label: "Online Accounts", icon: "account_circle" },
+        { key: "org",        label: "Org Agenda",      icon: "event_note" },
+        { key: "finance",    label: "Finance",         icon: "account_balance_wallet" }
     ]
 
     // opaque backdrop so the launcher body doesn't bleed through
@@ -161,10 +166,18 @@ Item {
             anchors.top: parent.top
             anchors.bottom: parent.bottom
 
+            // Appearance — theme editor (preset grid + per-colour rows)
+            AppearanceSettings {
+                anchors.fill: parent
+                visible: root.page === 0
+                theme: root.theme
+                themeSettings: root.themeSettings
+            }
+
             // Online Accounts — the existing account manager, embedded
             AccountsMenu {
                 anchors.fill: parent
-                visible: root.page === 0
+                visible: root.page === 1
                 theme: root.theme
                 acc: root.acc
                 embedded: true
@@ -173,7 +186,7 @@ Item {
             // Org Agenda config
             FeaturePage {
                 anchors.fill: parent
-                visible: root.page === 1
+                visible: root.page === 2
                 theme: root.theme
                 title: "Org Agenda"
                 blurb: "Show your Org agenda — scheduled items and deadlines — in the "
@@ -190,7 +203,7 @@ Item {
             // Finance config
             FeaturePage {
                 anchors.fill: parent
-                visible: root.page === 2
+                visible: root.page === 3
                 theme: root.theme
                 title: "Finance"
                 blurb: "Track spending with hledger: the finance menu, calendar money "
