@@ -101,26 +101,29 @@ QtObject {
     // Ordered, grouped list of the editable colours above. The Appearance page
     // renders one ColorField per entry (a group header starts a new section).
     readonly property var palette: [
-        { "group": "Surfaces",     "key": "desk",          "label": "Desktop wash" },
+        // Ordered as you'd build a theme top-down: the backgrounds first, then the
+        // text on them, then the accent, then the hairline details, the semantic
+        // status colours, and finally the niche resting-pill (collapsed) colours.
         { "group": "Surfaces",     "key": "bg",            "label": "Pill / panel base" },
         { "group": "Surfaces",     "key": "bgElevated",    "label": "Menus / popups" },
         { "group": "Surfaces",     "key": "card",          "label": "Notification cards" },
         { "group": "Surfaces",     "key": "row",           "label": "List rows / tiles" },
         { "group": "Surfaces",     "key": "rowHi",         "label": "Active / hover row" },
         { "group": "Surfaces",     "key": "bgHover",       "label": "Hover square" },
-        { "group": "Lines",        "key": "border",        "label": "Hairline border" },
-        { "group": "Lines",        "key": "borderStrong",  "label": "Strong border" },
-        { "group": "Lines",        "key": "divider",       "label": "Divider" },
-        { "group": "Lines",        "key": "track",         "label": "Toggle / slider track" },
+        { "group": "Surfaces",     "key": "desk",          "label": "Desktop wash" },
         { "group": "Text",         "key": "text",          "label": "Primary text" },
         { "group": "Text",         "key": "textDim",       "label": "Secondary text" },
         { "group": "Text",         "key": "faint",         "label": "Faint / idle glyphs" },
         { "group": "Accent",       "key": "accent",        "label": "Accent" },
         { "group": "Accent",       "key": "accentSoft",    "label": "Accent tint" },
         { "group": "Accent",       "key": "accentDim",     "label": "Accent selected bg" },
-        { "group": "Status",       "key": "danger",        "label": "Danger / destructive" },
+        { "group": "Lines",        "key": "border",        "label": "Hairline border" },
+        { "group": "Lines",        "key": "borderStrong",  "label": "Strong border" },
+        { "group": "Lines",        "key": "divider",       "label": "Divider" },
+        { "group": "Lines",        "key": "track",         "label": "Toggle / slider track" },
         { "group": "Status",       "key": "good",          "label": "Good / live cue" },
         { "group": "Status",       "key": "success",       "label": "Success / completed" },
+        { "group": "Status",       "key": "danger",        "label": "Danger / destructive" },
         { "group": "Status",       "key": "money",         "label": "Money / finance" },
         { "group": "Status",       "key": "event",         "label": "Calendar event" },
         { "group": "Resting pill", "key": "bgTranslucent", "label": "Resting fill" },
@@ -142,6 +145,16 @@ QtObject {
             "accent": "#cba6f7", "accentSoft": "rgba(203, 166, 247, 0.15)", "accentDim": "#3d3355",
             "danger": "#f38ba8", "good": "#a6e3a1", "success": "#94e2d5", "money": "#f9e2af", "event": "#89b4fa",
             "bgTranslucent": "rgba(30, 30, 46, 0.72)", "bgGradTop": "rgba(45, 45, 61, 0.82)", "bgGradBottom": "rgba(11, 11, 21, 0.66)"
+        }) },
+        { "name": "Catppuccin Latte", "colors": ({
+            "desk": "#dce0e8", "bg": "#eff1f5", "bgElevated": "#e6e9ef", "card": "#e6e9ef",
+            "row": "#dce0e8", "rowHi": "#e5dcf7", "bgHover": "#e5dcf7",
+            "border": "rgba(76, 79, 105, 0.12)", "borderStrong": "rgba(76, 79, 105, 0.22)",
+            "divider": "rgba(76, 79, 105, 0.12)", "track": "rgba(76, 79, 105, 0.14)",
+            "text": "#4c4f69", "textDim": "#6c6f85", "faint": "#8c8fa1",
+            "accent": "#8839ef", "accentSoft": "rgba(136, 57, 239, 0.15)", "accentDim": "#e5dcf7",
+            "danger": "#d20f39", "good": "#179299", "success": "#40a02b", "money": "#df8e1d", "event": "#1e66f5",
+            "bgTranslucent": "rgba(239, 241, 245, 0.72)", "bgGradTop": "rgba(249, 251, 255, 0.82)", "bgGradBottom": "rgba(214, 218, 226, 0.66)"
         }) },
         { "name": "Nord", "colors": ({
             "desk": "#242933", "bg": "#2e3440", "bgElevated": "#3b4252", "card": "#3b4252",

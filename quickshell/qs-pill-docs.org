@@ -525,10 +525,11 @@ live theme editor. The Settings pane runs wide + tall for it (=settingsWidth= 86
 =settingsHeight= 580 in =init.qml=). Only the *"Appearance" title* (top) and the
 *footer* (bottom) are pinned; *everything between scrolls in one Flickable* — the
 blurb, the *grid of pre-configured themes* (=theme.presets=: *Default* = clear all
-overrides, plus bundled *Catppuccin Mocha / Nord / Dracula / Everforest Dark /
-Kanagawa Wave*, each a card with a three-swatch bg/accent/text preview), and the
-*wall of colours* — one =ColorField= per =theme.palette= entry, grouped under
-=SURFACES / LINES / TEXT / ACCENT / STATUS / RESTING PILL= headers. The *sticky
+overrides, plus bundled *Catppuccin Mocha / Catppuccin Latte / Nord / Dracula /
+Everforest Dark / Kanagawa Wave*, each a card with a three-swatch bg/accent/text
+preview), and the *wall of colours* — one =ColorField= per =theme.palette= entry
+(ordered as you'd build a theme top-down), grouped under =SURFACES / TEXT / ACCENT
+/ LINES / STATUS / RESTING PILL= headers. The *sticky
 footer* carries the colour-unit switch (*HEX / RGB / HSL*) and *Import / Export*.
 A bundled preset overrides *every* palette key, so selecting one turns the whole
 pill; *Default* (or a row's reset dot) clears back to the shipped values.
