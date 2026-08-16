@@ -76,6 +76,19 @@ FloatingWindow {
             ],
             "score": 860, "best": 2140, "combo": 3, "over": false
         })
+        // seed a mid-game Snake with a bulge (eaten apple) partway down the body. Head
+        // points right into a long runway so it survives the ~800ms grab window when
+        // the harness unpauses it (see cSnake).
+        property var snake: ({
+            "body": [
+                { "x": 7, "y": 7 }, { "x": 6, "y": 7 }, { "x": 5, "y": 7 },
+                { "x": 4, "y": 7 }, { "x": 3, "y": 7 }, { "x": 2, "y": 7 }
+            ],
+            "bulges": [ { "x": 4, "y": 7 } ],
+            "dir": { "x": 1, "y": 0 },
+            "apple": { "x": 11, "y": 3 },
+            "score": 14, "best": 22, "over": false
+        })
     }
 
     // mock clock strings so the dashboard is deterministic
@@ -131,6 +144,7 @@ FloatingWindow {
         { name: "menu-blockblast", comp: cBlockBlast },
         { name: "menu-blockblast-combo", comp: cBlockBlastCombo },
         { name: "menu-blockblast-share", comp: cBlockBlastShare },
+        { name: "menu-snake",    comp: cSnake },
         { name: "settings",      comp: cSettings },
         { name: "menu-notifhistory", comp: cNotifHist },
         { name: "notif-stack",   comp: cNotifStack },
@@ -385,6 +399,12 @@ FloatingWindow {
     Component { id: cBlockBlastShare; MenuHost { pillW: 480; pillH: 556;
         BlockBlastMenu { id: bsh; anchors.fill: parent; theme: theme; settings: mockSettings }
         Timer { running: true; interval: 60; onTriggered: { bsh.shotName = "blockblast-20260807-101500.png"; bsh.shareMode = true; } }
+    } }
+    // Snake — unpaused after load so the field (snake + digesting lump + apple) is
+    // visible rather than under the PAUSED veil. Preview only.
+    Component { id: cSnake; MenuHost { pillW: 560; pillH: 400;
+        SnakeMenu { id: snk; anchors.fill: parent; theme: theme; settings: mockSettings }
+        Timer { running: true; interval: 60; onTriggered: snk.paused = false }
     } }
     // the launcher's Settings page (Org Agenda page shown: toggle + directory field)
     Component { id: cSettings; MenuHost { pillW: 860; pillH: 580; SettingsMenu { anchors.fill: parent; theme: theme; acc: null; settings: mockSettings; themeSettings: mockThemeSettings; page: 0 } } }

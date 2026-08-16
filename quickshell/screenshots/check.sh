@@ -12,7 +12,7 @@ fail=0
 EMAQS_STATES=(collapsed working finished permission bar menu confirm)
 PILL_STATES=(resting resting-rec resting-due deadlines dashboard menu-network menu-volume menu-bluetooth \
              menu-battery menu-clipboard menu-calendar menu-finance menu-finance-add \
-             menu-finance-wishlist menu-finance-forecast menu-finance-plan menu-tetris menu-blockblast menu-blockblast-combo settings menu-notifhistory notif-stack \
+             menu-finance-wishlist menu-finance-forecast menu-finance-plan menu-tetris menu-blockblast menu-blockblast-combo menu-snake settings menu-notifhistory notif-stack \
              power-hush power-blaze power-ledger power-split)
 
 echo "==> running shoot.sh"

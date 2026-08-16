@@ -845,6 +845,59 @@ best — flight is transient, resumed idle), saved on every round and on destruc
 *** Code
 Code: [[file:pill/BrickBreakerMenu.qml][=pill/BrickBreakerMenu.qml=]]
 
+** SnakeMenu.qml
+*** Description
+The classic *Snake* (=win.menu === 14=), routed from the Games list
+(=onPlayRequested(14) → win.openSnake()=). It *reuses Brick Breaker's pane config*:
+a square field on the left, a stats/rules/controls column on the right, the same
+*park grip*, and its own size (=snakeWidth= 560 × =snakeHeight= 400 — the side
+column is shorter than Brick Breaker's, so the 300×300 field is the tall element).
+It *grabs the keyboard* (present in =grabsKeyboard=) and opens *paused*, like the
+other games.
+
+*Field.* A =15×15= grid of =cell= 20px cells → a square 300×300 well. There are *no
+walls* — the field *wraps*: =step()= takes the head to =(x + dir + cols) % cols= (and
+likewise for =y=), so the head that runs off one edge reappears on the opposite one.
+Only *self-collision* ends the game.
+
+*Smooth, wrap-aware motion.* The model is grid-stepped (a =sim= timer fires every
+=moveInterval= ms) but rendered *continuously* by a shared =prog= 0→1 =NumberAnimation=
+restarted each step (=progAnim=, duration = the tick; runs to completion independent of
+pause, so pausing settles the snake on its cells). The body is a *fixed index-based*
+=Repeater=; each delegate tracks its =from→to= grid cells (a =sync()= on every
+=snakeRev=) and renders at =from + dx·prog= along the *shortest toroidal path* (=dx/dy=
+are the ±1 wrapped deltas). Because each step does =unshift(head)= + =pop(tail)=, a
+segment's =to= is the cell the segment ahead just left, so the whole snake slides one
+cell forward. At an edge the primary block slides *off* while a *wrap ghost* (a second
+=SnakeBlock= offset by ∓=cols/rows=) slides *in* on the opposite side — the well's
+=clip= hides the overhang — so the body crosses a seam one cell at a time. A =snap=
+flag lands segments directly on their cells (no glide) on load / new game.
+
+*Immediate growth + travelling bulge.* Eating grows the snake *at once*: the head lands
+on the apple and =step()= simply *does not pop the tail* that tick (length +1). The
+apple's tile is pushed onto =bulges=; the body segment sitting on a bulge tile renders
+*fatter* (the =SnakeBlock= swells, eased by a size =Behavior=), and since the tile is a
+fixed world position the lump *stays parked* there while the body slides through it —
+until the *tail passes* the tile (=bulges= is filtered to tiles still in the body each
+step), when the bulge clears. So an eaten apple visibly *rides down the body as a lump*.
+The freshly added tail segment *sprouts* (a =growth= 0→1 =OutBack= scale, gated on
+=ready= so load-time segments don't animate), so growth reads as the tail extending, not
+a cell popping in.
+
+*Apples.* One at a time, on a random free cell (=spawnApple()=). Each (re)spawn bumps
+=appleRev=, driving a *scale-pop* appear animation (=Easing.OutBack=); on eat the old
+apple simply *vanishes* and a fresh one pops in elsewhere.
+
+*Controls.* Arrows or *H/J/K/L* steer (=steer()= rejects a reversal into the neck), *P*
+pauses, *N* new game, *Esc* closes. On game over, *Enter/Space* restarts. Speed is
+*gentle* and rises a little as the snake grows (=moveInterval= = =max(150, 300 −
+score·3)=), shown live in the stats.
+
+*Progress persists* to =settings.snake= (body, bulges, dir, apple, score, over, best),
+saved on every step and on destruction; =best= is shown in the Games list.
+*** Code
+Code: [[file:pill/SnakeMenu.qml][=pill/SnakeMenu.qml=]]
+
 ** Launcher.qml
 *** Description
 KDE-style app launcher, opened by clicking the hovered pill body, the Row-2 grid
