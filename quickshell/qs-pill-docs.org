@@ -542,14 +542,21 @@ shipped default. *Import/Export* move the whole (fully-resolved) palette through
 the system clipboard as pretty JSON via =wl-copy= / =wl-paste= (=Process=), keeping
 only known palette keys on import.
 
-=ColorField= is one row: a checker-backed *swatch* (click to expand), the label, a
-*text input* in the current unit (any css format accepted; re-normalised to the
-unit on commit) and a *reset dot* shown only when the colour is a user override.
-Expanding drops an inline =ColorPicker= — an *SV square* + *hue* + *alpha* slider
-keeping its own H/S/V/A state; it is seeded from the field's colour on expand and
-emits =picked()= *only from real drags* (never from its initial/seed state, so
-opening the page can't clobber the stored colour). =theme.parseColor= /
-=theme.formatColor= do all string ⇄ colour conversion.
+=ColorField= is one row: a checker-backed *swatch* (a =ClippingRectangle= so the
+checker is clipped to the rounded corners — a plain =Rectangle= with =clip: true=
+clips only to the bounding box, leaving square corners), the label, a *text input*
+in the current unit (any css format accepted; re-normalised to the unit on commit)
+and a *reset dot* shown only when the colour is a user override.
+
+The =ColorPicker= (an *SV square* + *hue* + *alpha* slider keeping its own H/S/V/A
+state) is *not* drawn inside the row — like RecordControls' device dropdowns, a
+nested popup can't paint above the rows below it. Instead the swatch emits
+=swatchClicked()= and the host renders *one shared picker dropdown* (=pickerLayer=,
+the last child of AppearanceSettings, =z: 1000=) at the open field's swatch,
+dropping down (or flipping up near the footer); scrolling dismisses it. The picker
+is *seeded on open* and emits =picked()= *only from real drags* (never from its
+initial/seed state, so opening it can't clobber the stored colour).
+=theme.parseColor= / =theme.formatColor= do all string ⇄ colour conversion.
 *** Code
 Code: [[file:pill/AppearanceSettings.qml][=pill/AppearanceSettings.qml=]] ·
 [[file:pill/ColorField.qml][=pill/ColorField.qml=]] ·

@@ -1,8 +1,10 @@
 pragma ComponentBehavior: Bound
 // AppearanceSettings.qml — the Settings → Appearance page. Lets the user retheme
 // the whole pill live: a grid of pre-configured themes at the top, then a wall of
-// per-colour rows (swatch + text input + inline picker), with a small sticky
-// footer carrying the colour-unit switch (HEX / RGB / HSL) and Import/Export.
+// per-colour rows (swatch + text input). Only the title + footer are pinned;
+// everything between scrolls in one Flickable. The colour picker opens as a shared
+// dropdown (pickerLayer) over the rows — clicking a row's swatch anchors it there.
+// The footer carries the colour-unit switch (HEX / RGB / HSL) and Import/Export.
 //
 // Everything persists to theme.json via the shared themeSettings JsonAdapter
 // (bound in init.qml). Writes reassign `themeSettings.colors` whole so the adapter
@@ -19,6 +21,17 @@ Item {
 
     property string unit: "hex"             // hex | rgb | hsl (colour-input format)
     property string status: ""              // transient footer toast
+
+    // ---- colour-picker dropdown (rendered once by pickerLayer, over the rows) ----
+    property string openKey: ""             // palette key whose picker is open ("" = none)
+    property var openField: null            // the ColorField the dropdown anchors to
+    function togglePicker(key, field) {
+        if (root.openKey === key) { root.closePicker(); return; }
+        root.openKey = key;
+        root.openField = field;
+        dropPicker.seedFrom(root.theme.parseColor(root.theme.colorString(key)));
+    }
+    function closePicker() { root.openKey = ""; root.openField = null; }
 
     // ---- persistence helpers (always reassign the whole map, never mutate) ----
     function _clone() {
@@ -262,14 +275,17 @@ Item {
                         }
 
                         ColorField {
+                            id: colorField
                             width: parent.width
                             theme: root.theme
                             label: paletteRow.modelData.label
                             unit: root.unit
                             valueStr: root.theme.colorString(paletteRow.modelData.key)
                             overridden: root.isOverridden(paletteRow.modelData.key)
+                            active: root.openKey === paletteRow.modelData.key
                             onEdited: (value) => root.setColor(paletteRow.modelData.key, value)
                             onCleared: root.clearColor(paletteRow.modelData.key)
+                            onSwatchClicked: root.togglePicker(paletteRow.modelData.key, colorField)
                         }
                     }
                 }
@@ -403,6 +419,62 @@ Item {
                         }
                     }
                     Behavior on color { ColorAnimation { duration: root.theme.animFast } }
+                }
+            }
+        }
+    }
+
+    // scrolling dismisses the open picker (the dropdown is anchored to a fixed
+    // scene point, so it would otherwise drift away from its row)
+    Connections {
+        target: scroll
+        function onContentYChanged() { root.closePicker(); }
+    }
+
+    // ======================= shared colour-picker dropdown =======================
+    // Last child → paints ABOVE every row (z only orders within a parent, so an
+    // inline picker would sit behind the rows below it). Renders the open field's
+    // ColorPicker at the field's swatch, dropping down (or up, near the footer).
+    Item {
+        id: pickerLayer
+        anchors.fill: parent
+        z: 1000
+        visible: root.openKey !== ""
+
+        // click-away closes
+        MouseArea { anchors.fill: parent; onClicked: root.closePicker() }
+
+        Rectangle {
+            id: dropBox
+            // swatch top-left, mapped into this layer's coordinates
+            readonly property point ap: (root.openField && pickerLayer.visible)
+                ? root.openField.anchorItem.mapToItem(pickerLayer, 0, 0) : Qt.point(0, 0)
+            readonly property real swH: root.openField ? root.openField.anchorItem.height : 26
+            readonly property real belowY: ap.y + swH + 6
+            readonly property real aboveY: ap.y - dropBox.height - 6
+
+            width: 312
+            height: dropPicker.implicitHeight + 24
+            radius: root.theme.radiusPanel
+            color: root.theme.bgElevated
+            border.width: 1
+            border.color: root.theme.borderStrong
+            x: Math.max(6, Math.min(dropBox.ap.x, pickerLayer.width - dropBox.width - 6))
+            // drop down if it fits above the footer, else flip up above the swatch
+            y: (dropBox.belowY + dropBox.height <= footer.y) ? dropBox.belowY
+             : Math.max(6, dropBox.aboveY)
+
+            // swallow clicks on the box so they don't reach the click-away layer
+            MouseArea { anchors.fill: parent }
+
+            ColorPicker {
+                id: dropPicker
+                anchors.fill: parent
+                anchors.margins: 12
+                theme: root.theme
+                onPicked: (value) => {
+                    if (root.openKey !== "")
+                        root.setColor(root.openKey, root.theme.formatColor(value, root.unit));
                 }
             }
         }
