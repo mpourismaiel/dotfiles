@@ -814,9 +814,11 @@ and descend, so the field doubles as the bounce space — no separate gutter.
 from the floor: a *fading dotted line* (=aimDots=) previews 300px of the shot path
 including its first wall reflection, stopping at a brick. The aim is clamped to ≥15°
 off horizontal. *Release* to fire — the =balls= launch *one-by-one, 0.03s apart*
-(=fireT=), from =launchX=, each with the aimed velocity. Balls bounce off walls and
-bricks (−1 health/hit) and fall back; the *first* to touch the floor sets =launchX=
-for the *next* round. Once every launched ball is home the round advances
+(=fireT=), each with the aimed velocity, all from the *same frozen origin* =fireX=
+(captured from =launchX= at launch, so a ball landing mid-launch can't drag the still-
+firing balls to a new spot). Balls bounce off walls and bricks (−1 health/hit) and
+fall back; the *first* to touch the floor sets =launchX= — the origin for the *next*
+round only, not this one. Once every launched ball is home the round advances
 (=advanceRound()=): the whole grid *shifts down one row*, a fresh row spawns at the
 top and =balls= increments. *Game over* the moment a shift would push a brick past
 the bottom row.

@@ -73,6 +73,9 @@ Item {
     property int activeCount: 0                       // flyBalls.length, mirrored for the sim's `running`
     property bool launching: false                   // still firing this round's balls one-by-one
     property int toFire: 0                           // balls left to spit out this round
+    property real fireX: fieldW / 2                  // THIS round's frozen firing origin — every ball this
+                                                     // round launches from here, even after the first ball
+                                                     // lands and moves launchX (which only sets NEXT round)
     property int firedThisRound: 0
     property int landedThisRound: 0
     property bool firstLandedDone: false             // has the first ball set next round's origin yet?
@@ -249,6 +252,7 @@ Item {
         if (!root.canAim) return;
         root.launching = true;
         root.toFire = root.balls;
+        root.fireX = root.launchX;                    // freeze this round's origin BEFORE any ball can land
         root.flightMs = 0;
         root.firedThisRound = 0; root.landedThisRound = 0; root.firstLandedDone = false;
         fireT.start();
@@ -256,7 +260,7 @@ Item {
     function fireOne() {
         if (root.toFire <= 0) { root.launching = false; fireT.stop(); return; }
         root.flyBalls.push({
-            "x": root.launchX,
+            "x": root.fireX,
             "y": root.fieldH - root.ballR - 1,
             "vx": root.aimDir.x * root.baseSpeed,
             "vy": root.aimDir.y * root.baseSpeed
