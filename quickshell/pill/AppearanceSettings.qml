@@ -75,6 +75,16 @@ Item {
     function flash(msg) { root.status = msg; statusTimer.restart(); }
     Timer { id: statusTimer; interval: 2200; onTriggered: root.status = ""; }
 
+    // ---- clock / agenda design selection (persisted in theme.json) ----
+    function clockStyleId() {
+        return (root.themeSettings && root.themeSettings.clockStyle) ? root.themeSettings.clockStyle : "1a";
+    }
+    function clockStyleActive(id) { return root.clockStyleId() === id; }
+    function setClockStyle(id) {
+        if (root.theme.fontAvailable(root.theme.clockStyleDef(id).font) && root.themeSettings)
+            root.themeSettings.clockStyle = id;
+    }
+
     // ---- Export / Import via the clipboard ----
     // Export the FULL palette (every key resolved) so the theme is portable.
     function exportTheme() {
@@ -157,6 +167,151 @@ Item {
                 font.family: root.theme.family
                 font.pixelSize: root.theme.fsSmall
             }
+
+            // ---- clock and agenda design ----
+            // Re-skin the resting pill's clock + agenda (deadline / meeting) line.
+            // Each option shows a live preview; a style whose font isn't installed
+            // is greyed out with the font it needs, and can't be selected.
+            Text {
+                text: "CLOCK AND AGENDA"
+                color: root.theme.faint
+                font.family: root.theme.mono
+                font.pixelSize: root.theme.fsSmall
+                font.letterSpacing: root.theme.labelSpacing
+                font.capitalization: Font.AllUppercase
+            }
+            Text {
+                width: body.width
+                wrapMode: Text.WordWrap
+                text: "Choose how the collapsed pill tells the time and shows what's due."
+                color: root.theme.textDim
+                font.family: root.theme.family
+                font.pixelSize: root.theme.fsSmall
+            }
+            Flow {
+                width: body.width
+                spacing: 10
+                Repeater {
+                    model: root.theme.clockStyles
+                    delegate: Rectangle {
+                        id: styleCard
+                        required property var modelData
+                        readonly property bool avail: root.theme.fontAvailable(styleCard.modelData.font)
+                        readonly property bool active: root.clockStyleActive(styleCard.modelData.id)
+                        // exactly two per row: fill the body width (minus the gap)
+                        width: (body.width - 10) / 2
+                        height: 150
+                        radius: root.theme.radiusCard
+                        color: styleCard.active ? root.theme.accentSoft
+                             : (styleMa.containsMouse && styleCard.avail ? root.theme.rowHi : root.theme.row)
+                        border.width: styleCard.active ? 1 : 0
+                        border.color: root.theme.accent
+                        opacity: styleCard.avail ? 1 : 0.6
+
+                        Column {
+                            anchors.fill: parent
+                            anchors.margins: 12
+                            spacing: 8
+
+                            // live preview: a real resting pill (scaled to fit) on a
+                            // desk-tone backdrop, so the translucent surface reads right.
+                            Rectangle {
+                                id: previewStrip
+                                width: parent.width
+                                height: 58
+                                radius: root.theme.radiusBtn
+                                color: root.theme.desk
+                                border.width: 1
+                                border.color: root.theme.border
+                                clip: true
+                                Item {
+                                    id: previewHost
+                                    anchors.centerIn: parent
+                                    // the resting pill sized by init's own rule …
+                                    width: Math.max(56, cp.implicitWidth + 23)
+                                    height: Math.max(cp.hasUnderline ? 48 : 28, cp.implicitHeight + 7)
+                                    // … then shrunk to fit if the agenda line runs wide
+                                    scale: Math.min(1, (previewStrip.width - 26) / width)
+                                    PillSurface {
+                                        anchors.fill: parent
+                                        theme: root.theme
+                                        radius: Math.min(root.theme.radiusPanel, height / 2)
+                                        wing: 12
+                                        fillColor: root.theme.bgTranslucent
+                                    }
+                                    CollapsedPill {
+                                        id: cp
+                                        anchors.centerIn: parent
+                                        theme: root.theme
+                                        styleOverride: styleCard.modelData.id
+                                        clock: "09:41"
+                                        // a compact sample agenda: one due today + a soon meeting
+                                        todayCount: 1
+                                        meetingMins: 8
+                                    }
+                                }
+                            }
+                            // name + active tick
+                            Row {
+                                width: parent.width
+                                spacing: 6
+                                Text {
+                                    width: parent.width - (styleCard.active ? 22 : 0)
+                                    elide: Text.ElideRight
+                                    text: styleCard.modelData.name
+                                    color: styleCard.active ? root.theme.accent : root.theme.text
+                                    font.family: root.theme.family
+                                    font.pixelSize: root.theme.fsNormal
+                                }
+                                MSym {
+                                    visible: styleCard.active
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    icon: "check_circle"
+                                    fill: 1
+                                    size: 16
+                                    color: root.theme.accent
+                                }
+                            }
+                            // description, or the missing-font warning (icon + text)
+                            Row {
+                                width: parent.width
+                                spacing: 5
+                                MSym {
+                                    visible: !styleCard.avail
+                                    anchors.top: parent.top
+                                    anchors.topMargin: 1
+                                    icon: "warning"
+                                    fill: 1
+                                    size: 13
+                                    color: root.theme.danger
+                                }
+                                Text {
+                                    width: parent.width - (styleCard.avail ? 0 : 18)
+                                    wrapMode: Text.WordWrap
+                                    maximumLineCount: 2
+                                    elide: Text.ElideRight
+                                    text: styleCard.avail ? styleCard.modelData.desc
+                                        : ("Requires the " + styleCard.modelData.font + " font — install it to enable.")
+                                    color: styleCard.avail ? root.theme.faint : root.theme.danger
+                                    font.family: root.theme.family
+                                    font.pixelSize: root.theme.fsSmall
+                                }
+                            }
+                        }
+                        // top-most so the preview's own mouse areas never intercept
+                        MouseArea {
+                            id: styleMa
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            enabled: styleCard.avail
+                            cursorShape: styleCard.avail ? Qt.PointingHandCursor : Qt.ArrowCursor
+                            onClicked: root.setClockStyle(styleCard.modelData.id)
+                        }
+                        Behavior on color { ColorAnimation { duration: root.theme.animFast } }
+                    }
+                }
+            }
+            Rectangle { width: body.width; height: 1; color: root.theme.divider }
 
             // ---- theme presets grid ----
             Text {

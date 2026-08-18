@@ -30,6 +30,7 @@ FloatingWindow {
     QtObject {
         id: mockThemeSettings
         property var colors: ({ "accent": "#e0662a", "money": "rgba(217, 164, 65, 0.9)" })
+        property string clockStyle: "1e"   // a non-default pick so the card shows active
     }
     // stand-in for the launcher settings JsonAdapter (feature flags + dirs)
     QtObject {
@@ -126,6 +127,7 @@ FloatingWindow {
         { name: "resting-rec",   comp: cRestingRec },
         { name: "resting-due",   comp: cRestingDue },
         { name: "resting-meeting", comp: cRestingMeeting },
+        { name: "clock-styles",  comp: cClockStyles },
         { name: "deadlines",     comp: cDeadlines },
         { name: "dashboard",     comp: cDashboard },
         { name: "menu-network",  comp: cNet },
@@ -253,6 +255,81 @@ FloatingWindow {
             }
         }
     }
+    // every collapsed-clock design (Settings → Appearance → Clock and Agenda),
+    // each shown resting (clock only) and with a sample agenda under-line. Each pill
+    // is sized by the SAME dynamic rule init.qml uses for the real resting pill —
+    // width = max(56, content + 23), height = max(28|48, content + 7) — so the
+    // screenshot shows whether every style actually fits (no overflow, no cramping).
+    // A dashed keyline traces each pill so any clipping is obvious.
+    Component {
+        id: cClockStyles
+        // one sized pill hosting a CollapsedPill, mirroring init's resting bindings
+        component StylePill: Item {
+            id: sp
+            property string styleId: "1a"
+            property bool due: false
+            width: Math.max(56, cp.implicitWidth + 23)
+            height: Math.max(sp.due ? 48 : 28, cp.implicitHeight + 7)
+            PillSurface {
+                anchors.fill: parent; theme: theme
+                radius: Math.min(theme.radiusPanel, height / 2); wing: 12
+                fillColor: theme.bgTranslucent
+            }
+            // keyline exactly on the pill bounds — content spilling past it = overflow
+            Rectangle {
+                anchors.fill: parent
+                color: "transparent"
+                radius: Math.min(theme.radiusPanel, height / 2)
+                border.width: 1
+                border.color: Qt.rgba(1, 1, 1, 0.14)
+            }
+            CollapsedPill {
+                id: cp
+                anchors.centerIn: parent; theme: theme
+                styleOverride: sp.styleId
+                clock: "09:41"
+                lateCount: sp.due ? 1 : 0
+                todayCount: sp.due ? 1 : 0
+                meetingMins: sp.due ? 10 : -1
+            }
+        }
+        Rectangle {
+            width: 720
+            color: theme.desk
+            implicitHeight: stylesCol.height + 32
+            Column {
+                id: stylesCol
+                x: 16; y: 16
+                width: parent.width - 32
+                spacing: 14
+                Repeater {
+                    model: theme.clockStyles
+                    delegate: Row {
+                        required property var modelData
+                        spacing: 20
+                        Text {
+                            width: 168
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: modelData.id + " · " + modelData.name
+                            color: theme.textDim
+                            font.family: theme.family
+                            font.pixelSize: 13
+                        }
+                        StylePill {
+                            anchors.verticalCenter: parent.verticalCenter
+                            styleId: modelData.id
+                        }
+                        StylePill {
+                            anchors.verticalCenter: parent.verticalCenter
+                            styleId: modelData.id
+                            due: true
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // the floating agenda list (right-click / under-line target): org deadlines + events
     Component {
         id: cDeadlines

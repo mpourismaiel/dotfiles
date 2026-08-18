@@ -336,6 +336,75 @@ QtObject {
     // letter-spacing (px) for the uppercase mono labels
     readonly property real   labelSpacing: 1.4
 
+    // ---- collapsed-clock designs (Settings → Appearance → Clock and Agenda) ----
+    // The resting pill's clock + agenda (deadline / meeting) status line can be
+    // re-skinned. `clockStyle` is the user's pick (persisted in theme.json,
+    // bound in init.qml). Each entry in `clockStyles` fully describes one look:
+    //   font   — the extra font family the look NEEDS (beyond the theme's own
+    //            serif/mono). "" means it only uses fonts we already ship, so it
+    //            is always available. The Appearance page greys out (and refuses)
+    //            any style whose font is missing; effectiveClockStyle falls the
+    //            live pill back to "1a" if a persisted pick's font disappears.
+    //   clock  — { family, px, weight, italic, spacing, mode } for the numerals.
+    //            mode: "plain" | "segment" (ghosted 88:88 LCD) | "colon"
+    //            (blinking colon + block cursor) | "words" (spelled out).
+    //   status — { family, weight, spacing, caps, muted, prefix } for the agenda
+    //            line beneath the clock (caps=false renders sentence case; muted
+    //            keeps the whole line unlit-grey; prefix prepends an accent glyph).
+    // These are the seven Claude-designed variants 1a–1g (1h/"Hour LED" was left
+    // out). 1a is the shipped default and needs no extra font.
+    property string clockStyle: "1a"
+    readonly property var clockStyles: [
+        { "id": "1a", "name": "Serif Editorial", "font": "",
+          "desc": "Quiet serif numerals over a mono caps status line — the pill's original look.",
+          "clock":  { "family": serif, "px": fsLarge, "weight": 400, "italic": false, "spacing": 0, "mode": "plain" },
+          "status": { "family": mono, "weight": 400, "spacing": labelSpacing, "caps": true, "muted": false, "prefix": "" } },
+        { "id": "1b", "name": "Bold Grotesk Slab", "font": "Archivo",
+          "desc": "Heavy, tight numerals with the status line flush beneath in one hard column.",
+          "clock":  { "family": "Archivo", "px": fsLarge + 2, "weight": 800, "italic": false, "spacing": -0.7, "mode": "plain" },
+          "status": { "family": mono, "weight": 700, "spacing": 1.2, "caps": true, "muted": false, "prefix": "" } },
+        { "id": "1c", "name": "Seven Segment LCD", "font": "Share Tech Mono",
+          "desc": "Skewed digits with a ghosted 88:88 behind them; the status line stays unlit-grey.",
+          "clock":  { "family": "Share Tech Mono", "px": fsLarge + 1, "weight": 400, "italic": false, "spacing": 0, "mode": "segment" },
+          "status": { "family": "Share Tech Mono", "weight": 400, "spacing": 1.2, "caps": true, "muted": true, "prefix": "" } },
+        { "id": "1d", "name": "Casual Ubuntu", "font": "Ubuntu",
+          "desc": "Distro-native voice with a sentence-case status line — the only look that isn't all-caps.",
+          "clock":  { "family": "Ubuntu", "px": fsLarge, "weight": 500, "italic": false, "spacing": 0, "mode": "plain" },
+          "status": { "family": "Ubuntu", "weight": 400, "spacing": 0, "caps": false, "muted": false, "prefix": "" } },
+        { "id": "1e", "name": "Terminal", "font": "JetBrains Mono",
+          "desc": "Live blinking colon and a block cursor; the status line reads like shell output.",
+          "clock":  { "family": "JetBrains Mono", "px": fsLarge, "weight": 700, "italic": false, "spacing": 0, "mode": "colon" },
+          "status": { "family": mono, "weight": 400, "spacing": 1.2, "caps": true, "muted": false, "prefix": ">" } },
+        { "id": "1f", "name": "Dot Matrix Board", "font": "Doto",
+          "desc": "Station-board digits so pending items feel scheduled. Needs the Doto font.",
+          "clock":  { "family": "Doto", "px": fsLarge + 1, "weight": 900, "italic": false, "spacing": 0.6, "mode": "plain" },
+          "status": { "family": "Doto", "weight": 700, "spacing": 1.6, "caps": true, "muted": false, "prefix": "" } },
+        { "id": "1g", "name": "Spelled Out", "font": "Instrument Serif",
+          "desc": "No numerals at rest — the time is spelled out in italic serif, so the agenda reads first.",
+          "clock":  { "family": "Instrument Serif", "px": fsLarge + 1, "weight": 400, "italic": true, "spacing": 0, "mode": "words" },
+          "status": { "family": mono, "weight": 400, "spacing": labelSpacing, "caps": true, "muted": false, "prefix": "" } }
+    ]
+    // installed font families, lower-cased once for cheap membership tests.
+    readonly property var _fontList: {
+        var l = Qt.fontFamilies(); var out = [];
+        for (var i = 0; i < l.length; i++) out.push(("" + l[i]).toLowerCase());
+        return out;
+    }
+    // is a required font family installed? ("" — no extra font needed — is always ok)
+    function fontAvailable(fam) {
+        if (!fam || fam === "") return true;
+        return _fontList.indexOf(("" + fam).toLowerCase()) >= 0;
+    }
+    // the clock-style definition for an id (falls back to the first / 1a).
+    function clockStyleDef(id) {
+        for (var i = 0; i < clockStyles.length; i++)
+            if (clockStyles[i].id === id) return clockStyles[i];
+        return clockStyles[0];
+    }
+    // the pick actually in effect: the user's choice, or 1a when its font is gone.
+    readonly property string effectiveClockStyle:
+        fontAvailable(clockStyleDef(clockStyle).font) ? clockStyle : "1a"
+
     // ---- icons ----
     // Icons resolve through Qt's icon theme. run-pill.sh makes that follow KDE's
     // configured theme by default (QT_QPA_PLATFORMTHEME=kde). Set a name here to

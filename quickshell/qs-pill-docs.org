@@ -534,6 +534,19 @@ footer* carries the colour-unit switch (*HEX / RGB / HSL*) and *Import / Export*
 A bundled preset overrides *every* palette key, so selecting one turns the whole
 pill; *Default* (or a row's reset dot) clears back to the shipped values.
 
+Above the themes/colours sits a *Clock and Agenda* section — a =Flow= of cards, one
+per =theme.clockStyles= entry, that picks the resting pill's clock + agenda design
+(=1a=–=1g=; see [[*CollapsedPill.qml][=CollapsedPill=]]). The cards are *two-up*
+(=width = (body.width − gap) / 2=) so they fill the pane. Each shows a *live preview*
+— a real =CollapsedPill= at =styleOverride= = that id, sitting on a =PillSurface= over
+a desk-tone strip, sized by init's own resting rule and then =scale=-shrunk to fit the
+strip so a wide agenda line never clips — plus the style name (accent + tick when
+active) and a one-line description. A style whose required font isn't installed
+(=theme.fontAvailable(def.font)=, tested against =Qt.fontFamilies()=, which excludes
+substitute-only families) is *greyed out*, shows a warning glyph + =Requires the
+<font> font …= in the danger colour, and can't be selected (=setClockStyle= re-checks
+availability before writing). The selection persists as =themeSettings.clockStyle=.
+
 *Persistence.* All edits go to the shared =themeSettings= =JsonAdapter= (=theme.json=,
 wired in =init.qml=). Writes always *reassign =themeSettings.colors= whole* (never
 mutate in place) so the adapter flushes to disk and every =Theme= binding
@@ -1558,6 +1571,40 @@ and fall through to the focus click. Both are gated by =win.orgHidden= (the fina
 privacy toggle): while privacy is on =init= feeds =lateCount=/=todayCount= as 0 (so the
 under-line vanishes and the pill shrinks back) and swallows the right-click, so no org
 signal shows on the resting pill.
+
+*** Clock + agenda designs (Clock and Agenda)
+The clock and the agenda under-line are *re-skinnable*. The selected design comes
+from [[*Theme.qml][=Theme=]]: =clockStyles= is the ordered list of the seven
+Claude-designed variants =1a=–=1g= (1h/"Hour LED" was dropped), each fully
+describing its numerals (=clock=: =family/px/weight/italic/spacing/mode=) and its
+agenda line (=status=: =family/weight/spacing/caps/muted/prefix=). =clockStyle= is
+the user's pick (persisted to =theme.json= via the =themeAdapter=, bound in init);
+=effectiveClockStyle= falls the live pill back to =1a= if a persisted pick's font
+has since disappeared. Each style declares the *extra* font it needs (=font=,
+beyond the theme's own serif/mono; ="" = none, always available); =fontAvailable()=
+tests it against =Qt.fontFamilies()=.
+
+CollapsedPill reads the definition through =theme.clockStyleDef(styleId)= and renders
+the numerals via a =Loader= that switches on =clock.mode=: =plain= (a single styled
+line — 1a/1b/1d/1f), =segment= (1c: a ghosted =88:88= behind skewed live digits),
+=colon= (1e: hours + a hard-blinking colon + minutes trailed by an accent block
+cursor), and =words= (1g: the time spelled out in italic serif via =spellTime()=).
+The agenda line reuses the existing deadline/meeting layout but pulls its font,
+weight, spacing, case (caps vs sentence for 1d), muted colour (1c) and accent prefix
+(=>= for 1e) from the =status= spec. =styleOverride= forces a specific id regardless
+of font availability — the Appearance page uses it to render a live preview of every
+option (see [[*AppearanceSettings.qml + ColorField.qml + ColorPicker.qml][=AppearanceSettings=]]).
+
+Because the designs vary a lot in width (a spelled-out =nine forty-one= is ~2.4× the
+=09:41= of 1a) the resting pill *sizes to the collapsed content* rather than a fixed
+base: init's resting width is =max(56, collapsedPill.implicitWidth + 23)= and height
+=max(28|48, collapsedPill.implicitHeight + 7)=. Since the clock, the notification
+app-icon strip and the privacy glyphs all live inside =CollapsedPill=, its
+=implicitWidth= already covers them — so the old =notifRestWidth= / =privacyCount=
+width terms are gone, and the pill now also grows/shrinks *smoothly* as those icons
+animate in/out. The floors (56 wide; 28/48 tall) keep 1a pixel-identical to before.
+The screenshot harness's =clock-styles= stage renders every design in a pill sized by
+this exact rule, with a keyline, to confirm each one fits.
 *** Code
 Code: [[file:pill/CollapsedPill.qml][=pill/CollapsedPill.qml=]]
 

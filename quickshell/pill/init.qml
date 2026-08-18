@@ -150,7 +150,7 @@ ShellRoot {
         root.startLevelBurst("brightness_high", "Brightness", from, to);
     }
     
-    Theme { id: theme; overrides: themeAdapter.colors }
+    Theme { id: theme; overrides: themeAdapter.colors; clockStyle: themeAdapter.clockStyle }
     // keep the default sink bound so the dashboard volume icon reflects mute live
     PwObjectTracker { objects: Pipewire.defaultAudioSink ? [Pipewire.defaultAudioSink] : [] }
     
@@ -182,8 +182,7 @@ ShellRoot {
     // solid resting surface (privacyRest), and staying visible over a fullscreen
     // window (fsHide).
     readonly property bool privacyActive: cameraInUse || screenRecording
-    readonly property int  privacyCount: (cameraInUse ? 1 : 0) + (screenRecording ? 1 : 0)
-    
+
     // ---- resting-pill notification indicator footprint ----
     // At rest the collapsed pill shows one app icon per app that has un-cleared
     // notifications (deduped via notifs.grouped), so a glance reveals *which* apps
@@ -191,17 +190,12 @@ ShellRoot {
     // do-not-disturb (which a live screencast auto-enters) the app icons are hidden
     // and a single generic unread dot stands in — so during a sensitive share the
     // pill doesn't reveal notification sources, while dropping DND brings the icons
-    // back for showcasing. `notifRestWidth` is the extra pill width that footprint
-    // needs (used in the resting width below).
+    // back for showcasing. The width this footprint (and the clock, and the privacy
+    // glyphs) needs is no longer computed here: the collapsed pill sizes to its own
+    // `implicitWidth`/`implicitHeight` (see the resting width/height bindings below),
+    // so every clock design — and any icon/notif combination — fits automatically.
     readonly property int notifAppIconsMax: 4
-    readonly property int notifRestWidth: {
-        if (!notifs || notifs.grouped.length === 0) return 0;
-        if (notifs.dnd) return 14;                           // generic unread dot only
-        const overflow = notifs.grouped.length > root.notifAppIconsMax ? 1 : 0;
-        const n = Math.min(notifs.grouped.length, root.notifAppIconsMax) + overflow;
-        return n * 20;                                        // ~14px icon + spacing each
-    }
-    
+
     // ---- microphone state for the "on-air" equalizer (OnAirWave) ----
     // Only meaningful while a camera or screencast is live. `micUnmuted` decides the
     // wavy-vs-flat line; `micPeak.peak` is the live input level driving the amplitude.
@@ -976,6 +970,7 @@ ShellRoot {
         JsonAdapter {
             id: themeAdapter
             property var colors: ({})   // paletteKey → css colour string (blank = default)
+            property string clockStyle: "1a"  // collapsed-clock design (see Theme.clockStyles)
         }
     }
     // ---- one full-screen overlay window per monitor ----
@@ -1935,10 +1930,10 @@ ShellRoot {
                 // exactly as the old body handler did.
                 // the voice recorder leads the chains: a larger resting pill (220x36,
                 // iPhone-memo style) — voiceMorph already yields to open/launcher/ctx.
-                width: win.capShow ? (captureLoader.item ? captureLoader.item.implicitWidth + theme.pad * 2 : 520) : win.voiceMorph ? 220 : win.showBurst ? (burstLoader.item ? burstLoader.item.implicitWidth : 96) : win.launcher ? win.launcherWidth : win.ctxMode ? 520 : (win.notifMorph ? (morphStack.item ? morphStack.item.implicitWidth : 420) : (win.open ? (win.menu === 13 ? win.settingsWidth : win.menu === 6 || win.menu === 8 ? win.calWidth : win.menu === 12 ? win.brickWidth : win.menu === 14 ? win.snakeWidth : (win.menu === 9 || win.menu === 10) ? win.tetrisWidth : 520) : (win.dash ? win.hoverWidth : Math.max(56 + root.privacyCount * 20 + root.notifRestWidth, win.restUnderline ? collapsedPill.implicitWidth + 28 : 0))))
+                width: win.capShow ? (captureLoader.item ? captureLoader.item.implicitWidth + theme.pad * 2 : 520) : win.voiceMorph ? 220 : win.showBurst ? (burstLoader.item ? burstLoader.item.implicitWidth : 96) : win.launcher ? win.launcherWidth : win.ctxMode ? 520 : (win.notifMorph ? (morphStack.item ? morphStack.item.implicitWidth : 420) : (win.open ? (win.menu === 13 ? win.settingsWidth : win.menu === 6 || win.menu === 8 ? win.calWidth : win.menu === 12 ? win.brickWidth : win.menu === 14 ? win.snakeWidth : (win.menu === 9 || win.menu === 10) ? win.tetrisWidth : 520) : (win.dash ? win.hoverWidth : Math.max(56, collapsedPill.implicitWidth + 23))))
                 // in ctx mode the pill sizes to whichever menu loader is active (app
                 // context menu or tray menu).
-                height: win.capShow ? (captureLoader.item ? captureLoader.item.implicitHeight + theme.pad * 2 : 120) : win.voiceMorph ? 36 : win.showBurst ? (burstLoader.item ? burstLoader.item.implicitHeight : 28) : (win.open || win.launcher) ? win.openPaneHeight : win.ctxMode ? Math.min(win.openHeight, ((ctxLoader.item || trayLoader.item) ? (ctxLoader.item || trayLoader.item).implicitHeight + theme.pad * 2 : 300)) : (win.notifMorph ? morphStack.implicitHeight : (win.dash ? win.hoverHeight : (win.restUnderline ? 48 : 28)))
+                height: win.capShow ? (captureLoader.item ? captureLoader.item.implicitHeight + theme.pad * 2 : 120) : win.voiceMorph ? 36 : win.showBurst ? (burstLoader.item ? burstLoader.item.implicitHeight : 28) : (win.open || win.launcher) ? win.openPaneHeight : win.ctxMode ? Math.min(win.openHeight, ((ctxLoader.item || trayLoader.item) ? (ctxLoader.item || trayLoader.item).implicitHeight + theme.pad * 2 : 300)) : (win.notifMorph ? morphStack.implicitHeight : (win.dash ? win.hoverHeight : Math.max(win.restUnderline ? 48 : 28, collapsedPill.implicitHeight + 7)))
                 // resting (collapsed, un-hovered) pill is dimmed; full opacity once
                 // hovered / open / a notification is morphing it (or a camera/recording
                 // is live, or a voice take is recording, or the agenda popup is up);

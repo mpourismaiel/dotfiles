@@ -42,6 +42,51 @@ Column {
     // the under-line was clicked (open the full deadlines list).
     signal deadlinesActivated()
 
+    // ---- clock / agenda design (Settings → Appearance → Clock and Agenda) ----
+    // Normally the live pill follows the user's persisted pick (validated against
+    // installed fonts). `styleOverride` forces a specific style id regardless of
+    // font availability — used by the Appearance page to preview each option.
+    property string styleOverride: ""
+    readonly property string styleId: styleOverride !== "" ? styleOverride : root.theme.effectiveClockStyle
+    readonly property var cs: root.theme.clockStyleDef(root.styleId)
+    // clock colour: full opacity while a camera/recording is live (solid), else a
+    // hint of translucency so the floating pill reveals the backdrop.
+    readonly property color clockColor: root.solid ? root.theme.text
+        : Qt.rgba(root.theme.text.r, root.theme.text.g, root.theme.text.b, 0.78)
+    // clock px, shrunk 2px while the agenda under-line shows (so both lines fit).
+    readonly property real clockPx: root.cs.clock.px - (root.hasUnderline ? 2 : 0)
+
+    // ---- agenda (status) line styling, derived from the picked design ----
+    readonly property string stFamily: root.cs.status.family
+    readonly property int    stWeight: root.cs.status.weight
+    readonly property real   stSpacing: root.cs.status.spacing
+    readonly property int    stCaps: root.cs.status.caps ? Font.AllUppercase : Font.MixedCase
+    readonly property bool   stMuted: root.cs.status.muted
+    readonly property string stPrefix: root.cs.status.prefix
+    // the accent used for the "late"/meeting clauses — muted styles keep it grey.
+    readonly property color  stAccent: root.stMuted ? root.theme.textDim : root.theme.accent
+
+    // spell a "hh:mm" (24h) clock into words, 12-hour, e.g. "09:41" → "nine forty-one".
+    function spellTime(s) {
+        var p = ("" + s).split(":");
+        var h = parseInt(p[0], 10); var m = parseInt(p[1], 10);
+        if (isNaN(h) || isNaN(m)) return s;
+        var h12 = h % 12; if (h12 === 0) h12 = 12;
+        var ones = ["zero", "one", "two", "three", "four", "five", "six", "seven",
+                    "eight", "nine", "ten", "eleven", "twelve", "thirteen", "fourteen",
+                    "fifteen", "sixteen", "seventeen", "eighteen", "nineteen"];
+        var tens = ["", "", "twenty", "thirty", "forty", "fifty"];
+        function words(n) {
+            if (n < 20) return ones[n];
+            var t = Math.floor(n / 10), o = n % 10;
+            return o ? tens[t] + "-" + ones[o] : tens[t];
+        }
+        var hw = words(h12);
+        if (m === 0) return hw + " o'clock";
+        if (m < 10) return hw + " oh-" + ones[m];
+        return hw + " " + words(m);
+    }
+
     spacing: 2
 
     // ---- clock row: hh:mm clock + notification / privacy glyphs (the original
@@ -77,18 +122,24 @@ Column {
             Behavior on scale  { NumberAnimation { duration: root.theme.anim; easing.type: Easing.OutBack } }
         }
     }
-    Text {
+    // ---- the clock: rendered per the picked design (plain / LCD segment /
+    // blinking colon / spelled-out words). The chosen sub-component fills this
+    // slot; the slot sizes to it so the surrounding glyphs still lay out cleanly.
+    Item {
+        id: clockBox
         anchors.verticalCenter: parent.verticalCenter
-        text: root.clock
-        // full opacity while a camera/recording is live (the pill is solid then);
-        // otherwise slightly translucent so the floating pill reveals a hint of
-        // what's behind it (readable on any backdrop)
-        color: root.solid ? root.theme.text
-             : Qt.rgba(root.theme.text.r, root.theme.text.g, root.theme.text.b, 0.78)
-        font.family: root.theme.serif
-        // shrink 2px while the under-line shows, so the two lines fit the
-        // resting pill without it feeling cramped.
-        font.pixelSize: root.theme.fsLarge - (root.hasUnderline ? 2 : 0)
+        implicitWidth: clockLoader.item ? clockLoader.item.implicitWidth : 0
+        implicitHeight: clockLoader.item ? clockLoader.item.implicitHeight : root.clockPx
+        width: implicitWidth
+        height: implicitHeight
+        Loader {
+            id: clockLoader
+            anchors.centerIn: parent
+            sourceComponent: root.cs.clock.mode === "segment" ? cSegment
+                           : root.cs.clock.mode === "colon"   ? cColon
+                           : root.cs.clock.mode === "words"   ? cWords
+                           : cPlain
+        }
     }
     // ---- notification app-icon strip: one icon per app that has un-cleared
     // notifications (deduped via notifGroups, newest app first), so a glance shows
@@ -251,6 +302,16 @@ Column {
             anchors.centerIn: parent
             spacing: 5
 
+            // accent shell-prompt prefix (Terminal style only)
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                visible: root.stPrefix !== ""
+                text: root.stPrefix
+                color: root.stAccent
+                font.family: root.stFamily
+                font.pixelSize: root.theme.fsSmall
+                font.weight: root.stWeight
+            }
             MSym {
                 anchors.verticalCenter: parent.verticalCenter
                 visible: root.hasDue
@@ -259,37 +320,40 @@ Column {
                 fill: 1
                 weight: 600
                 // accent (alarm) while overdue, muted when only due-today items remain
-                color: root.lateCount > 0 ? root.theme.accent : root.theme.textDim
+                color: root.lateCount > 0 ? root.stAccent : root.theme.textDim
             }
             Text {
                 anchors.verticalCenter: parent.verticalCenter
                 visible: root.lateCount > 0
-                text: root.lateCount + " LATE"
-                color: root.theme.accent
-                font.family: root.theme.mono
+                // authored lower-case; caps styles uppercase it, sentence-case (1d)
+                // leaves it be.
+                text: root.lateCount + " late"
+                color: root.stAccent
+                font.family: root.stFamily
                 font.pixelSize: root.theme.fsSmall
-                font.letterSpacing: root.theme.labelSpacing
-                font.capitalization: Font.AllUppercase
+                font.weight: root.stWeight
+                font.letterSpacing: root.stSpacing
+                font.capitalization: root.stCaps
             }
             Text {
                 anchors.verticalCenter: parent.verticalCenter
                 visible: root.lateCount > 0 && root.todayCount > 0
                 text: "·"
                 color: root.theme.faint
-                font.family: root.theme.mono
+                font.family: root.stFamily
                 font.pixelSize: root.theme.fsSmall
             }
             Text {
                 anchors.verticalCenter: parent.verticalCenter
                 visible: root.todayCount > 0
-                // "N DUE TODAY" on its own, but just "N TODAY" once "N LATE"
+                // "N due today" on its own, but just "N today" once "N late"
                 // already carries the "due" sense to its left (matches the spec).
-                text: root.todayCount + (root.lateCount > 0 ? " TODAY" : " DUE TODAY")
+                text: root.todayCount + (root.lateCount > 0 ? " today" : " due today")
                 color: root.theme.textDim
-                font.family: root.theme.mono
+                font.family: root.stFamily
                 font.pixelSize: root.theme.fsSmall
-                font.letterSpacing: root.theme.labelSpacing
-                font.capitalization: Font.AllUppercase
+                font.letterSpacing: root.stSpacing
+                font.capitalization: root.stCaps
             }
             // separator before the meeting notice, only when a deadline count sits
             // to its left.
@@ -298,11 +362,11 @@ Column {
                 visible: root.hasMeeting && root.hasDue
                 text: "·"
                 color: root.theme.faint
-                font.family: root.theme.mono
+                font.family: root.stFamily
                 font.pixelSize: root.theme.fsSmall
             }
-            // ---- imminent-meeting notice (urgent style): a calendar icon + "K MIN
-            // TO MEETING" (or "MEETING NOW" at zero). Shown whenever a meeting starts
+            // ---- imminent-meeting notice (urgent style): a calendar icon + "K min
+            // to meeting" (or "meeting now" at zero). Shown whenever a meeting starts
             // within the next 10 minutes.
             MSym {
                 anchors.verticalCenter: parent.verticalCenter
@@ -311,18 +375,19 @@ Column {
                 size: 12
                 fill: 1
                 weight: 600
-                color: root.theme.accent
+                color: root.stAccent
             }
             Text {
                 anchors.verticalCenter: parent.verticalCenter
                 visible: root.hasMeeting
-                text: root.meetingMins === 0 ? "MEETING NOW"
-                    : root.meetingMins + " MIN TO MEETING"
-                color: root.theme.accent
-                font.family: root.theme.mono
+                text: root.meetingMins === 0 ? "meeting now"
+                    : root.meetingMins + " min to meeting"
+                color: root.stAccent
+                font.family: root.stFamily
                 font.pixelSize: root.theme.fsSmall
-                font.letterSpacing: root.theme.labelSpacing
-                font.capitalization: Font.AllUppercase
+                font.weight: root.stWeight
+                font.letterSpacing: root.stSpacing
+                font.capitalization: root.stCaps
             }
         }
         // click the message to open the full deadlines list. z lifts it above the
@@ -335,6 +400,116 @@ Column {
             cursorShape: Qt.PointingHandCursor
             acceptedButtons: Qt.LeftButton | Qt.RightButton
             onClicked: root.deadlinesActivated()
+        }
+    }
+
+    // ======================= clock renderers (one per mode) =======================
+    // "plain" — a single line of numerals in the design's font (1a/1b/1d/1f).
+    Component {
+        id: cPlain
+        Text {
+            text: root.clock
+            color: root.clockColor
+            font.family: root.cs.clock.family
+            font.pixelSize: root.clockPx
+            font.weight: root.cs.clock.weight
+            font.italic: root.cs.clock.italic
+            font.letterSpacing: root.cs.clock.spacing
+        }
+    }
+
+    // "segment" — seven-segment LCD (1c): a ghosted 88:88 sits behind the live
+    // digits, both skewed −5°, so the lit time reads as glowing over dead cells.
+    Component {
+        id: cSegment
+        Item {
+            implicitWidth: liveT.implicitWidth
+            implicitHeight: liveT.implicitHeight
+            transform: Matrix4x4 {
+                matrix: Qt.matrix4x4(1, Math.tan(-5 * Math.PI / 180), 0, 0,
+                                     0, 1, 0, 0,
+                                     0, 0, 1, 0,
+                                     0, 0, 0, 1)
+            }
+            Text {
+                id: ghostT
+                anchors.centerIn: parent
+                text: "88:88"
+                color: Qt.rgba(root.theme.accent.r, root.theme.accent.g, root.theme.accent.b, 0.22)
+                font.family: root.cs.clock.family
+                font.pixelSize: root.clockPx
+                font.weight: root.cs.clock.weight
+            }
+            Text {
+                id: liveT
+                anchors.centerIn: parent
+                text: root.clock
+                color: root.clockColor
+                font.family: root.cs.clock.family
+                font.pixelSize: root.clockPx
+                font.weight: root.cs.clock.weight
+            }
+        }
+    }
+
+    // "colon" — terminal clock (1e): hours + a hard-blinking colon + minutes,
+    // trailed by a solid accent block cursor.
+    Component {
+        id: cColon
+        Row {
+            spacing: 3
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                text: ("" + root.clock).split(":")[0]
+                color: root.clockColor
+                font.family: root.cs.clock.family
+                font.pixelSize: root.clockPx
+                font.weight: root.cs.clock.weight
+            }
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                text: ":"
+                color: root.clockColor
+                font.family: root.cs.clock.family
+                font.pixelSize: root.clockPx
+                font.weight: root.cs.clock.weight
+                // steps(1,end)-style hard blink: 550ms lit, 550ms dim, forever.
+                SequentialAnimation on opacity {
+                    loops: Animation.Infinite
+                    running: true
+                    PropertyAction { value: 1 }
+                    PauseAnimation { duration: 550 }
+                    PropertyAction { value: 0.15 }
+                    PauseAnimation { duration: 550 }
+                }
+            }
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                text: ("" + root.clock).split(":")[1]
+                color: root.clockColor
+                font.family: root.cs.clock.family
+                font.pixelSize: root.clockPx
+                font.weight: root.cs.clock.weight
+            }
+            Rectangle {
+                anchors.verticalCenter: parent.verticalCenter
+                width: Math.round(root.clockPx * 0.42)
+                height: Math.round(root.clockPx * 0.9)
+                color: root.theme.accent
+            }
+        }
+    }
+
+    // "words" — spelled-out italic serif (1g): no numerals at rest.
+    Component {
+        id: cWords
+        Text {
+            text: root.spellTime(root.clock)
+            color: root.clockColor
+            font.family: root.cs.clock.family
+            font.pixelSize: root.clockPx
+            font.weight: root.cs.clock.weight
+            font.italic: true
         }
     }
 }
