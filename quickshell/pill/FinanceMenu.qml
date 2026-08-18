@@ -23,6 +23,7 @@ Item {
     function openMode(m) {
         root.mode = m;
         root.addError = "";
+        root.openSelect = null;
         if (m === "forecast") root.forecastHorizon = 12;   // reset the lazy horizon
         loadModeData(m);
     }
@@ -65,6 +66,12 @@ Item {
     property string addAccount: ""            // picked category (expenses:… / income:…)
     property int addAssetIdx: 0               // index into fin.accounts.assets
     property string addError: ""
+
+    // ---- searchable-dropdown state (shared by every SearchSelect below) ----
+    // openSelect points at the SearchSelect whose list is currently down; the
+    // shared overlay (last child of root) renders that one's filtered options.
+    property var openSelect: null
+    property string selectQuery: ""
     function parsedAmount() {
         var v = parseFloat(amountInput.text.replace(/,/g, "").trim());
         return (isFinite(v) && v > 0) ? v : NaN;
@@ -419,7 +426,60 @@ Item {
             descInput.text = "";
             amountInput.text = "";
             root.addError = "";
+            root.openSelect = null;
             root.mode = "cal";
+        }
+    }
+
+    // A searchable dropdown, styled after RecordControls' Select. The button
+    // shows the current pick; clicking it (or the field) toggles the shared
+    // overlay below, which auto-focuses a search box. Options are sorted and
+    // filtered as you type. `current` is the display string; `picked(token)`
+    // fires the chosen option — the caller maps it back to its own state.
+    component SearchSelect: Item {
+        id: ssel
+        property var options: []
+        property string current: ""
+        property string placeholder: "—"
+        signal picked(string token)
+        readonly property bool openList: root.openSelect === ssel
+        function pick(t) { ssel.picked(t); root.openSelect = null; }
+        height: 30
+        Rectangle {
+            anchors.fill: parent
+            radius: root.theme.radiusRow
+            color: (ssel.openList || sselMa.containsMouse) ? root.theme.rowHi : root.theme.row
+            border.color: ssel.openList ? root.theme.accent : root.theme.border
+            border.width: 1
+            Text {
+                anchors.left: parent.left
+                anchors.leftMargin: 10
+                anchors.right: sselChev.left
+                anchors.rightMargin: 4
+                anchors.verticalCenter: parent.verticalCenter
+                elide: Text.ElideLeft
+                text: ssel.current.length ? ssel.current : ssel.placeholder
+                color: ssel.current.length ? root.theme.text : root.theme.faint
+                font.family: root.theme.mono
+                font.pixelSize: root.theme.fsSmall
+            }
+            MSym {
+                id: sselChev
+                anchors.right: parent.right
+                anchors.rightMargin: 6
+                anchors.verticalCenter: parent.verticalCenter
+                icon: ssel.openList ? "expand_less" : "expand_more"
+                size: 18
+                color: root.theme.textDim
+            }
+            MouseArea {
+                id: sselMa
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.openSelect = (root.openSelect === ssel ? null : ssel)
+            }
+            Behavior on color { ColorAnimation { duration: root.theme.animFast } }
         }
     }
 
@@ -1244,7 +1304,7 @@ Item {
                         anchors.fill: parent
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: { root.addKind = "expense"; root.addAccount = ""; }
+                        onClicked: { root.addKind = "expense"; root.addAccount = ""; root.openSelect = null; }
                     }
                 }
                 Item { width: 6; height: 1 }
@@ -1268,7 +1328,7 @@ Item {
                         anchors.fill: parent
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: { root.addKind = "income"; root.addAccount = ""; }
+                        onClicked: { root.addKind = "income"; root.addAccount = ""; root.openSelect = null; }
                     }
                 }
             }
@@ -1365,7 +1425,9 @@ Item {
                 }
             }
 
-            // category picker (expenses:… or income:… by kind)
+            // category picker (expenses:… or income:… by kind) — searchable dropdown.
+            // The chosen category lives in root.addAccount, which persists across
+            // adds (only a kind switch clears it), so it "remembers" the last pick.
             Text {
                 text: "Category"
                 color: root.theme.faint
@@ -1374,99 +1436,39 @@ Item {
                 font.letterSpacing: root.theme.labelSpacing
                 font.capitalization: Font.AllUppercase
             }
-            Flickable {
+            SearchSelect {
                 width: parent.width
-                height: 110
-                contentHeight: catCol.height
-                clip: true
-                Column {
-                    id: catCol
-                    width: parent.width
-                    spacing: 2
-                    Repeater {
-                        model: root.fin
-                            ? (root.addKind === "expense" ? root.fin.accounts.expenses : root.fin.accounts.income)
-                            : []
-                        delegate: Rectangle {
-                            id: catRow
-                            required property var modelData
-                            width: catCol.width
-                            height: 24
-                            radius: root.theme.radiusBtn
-                            color: root.addAccount === catRow.modelData ? root.theme.accentSoft
-                                 : (catMa.containsMouse ? root.theme.rowHi : "transparent")
-                            Text {
-                                anchors.left: parent.left
-                                anchors.leftMargin: 8
-                                anchors.verticalCenter: parent.verticalCenter
-                                width: parent.width - 16
-                                elide: Text.ElideLeft
-                                text: catRow.modelData
-                                color: root.addAccount === catRow.modelData ? root.theme.accent : root.theme.textDim
-                                font.family: root.theme.mono
-                                font.pixelSize: root.theme.fsSmall
-                            }
-                            MouseArea {
-                                id: catMa
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: root.addAccount = catRow.modelData
-                            }
-                        }
-                    }
-                    Text {
-                        visible: !root.fin
-                            || (root.addKind === "expense" ? root.fin.accounts.expenses : root.fin.accounts.income).length === 0
-                        text: "No accounts found."
-                        color: root.theme.faint
-                        font.family: root.theme.family
-                        font.italic: true
-                        font.pixelSize: root.theme.fsSmall
-                    }
-                }
+                options: root.fin
+                    ? (root.addKind === "expense" ? root.fin.accounts.expenses : root.fin.accounts.income)
+                    : []
+                current: root.addAccount
+                placeholder: "Choose category"
+                onPicked: (t) => root.addAccount = t
             }
 
-            // asset account (click to cycle)
-            Item {
+            // asset account — searchable dropdown (From for expense, To for income).
+            // Selection is kept as an index into fin.accounts.assets (addAssetIdx),
+            // so the forecast prefill's resolvePendingAsset still works unchanged.
+            Text {
+                text: root.addKind === "expense" ? "From" : "To"
+                color: root.theme.faint
+                font.family: root.theme.mono
+                font.pixelSize: root.theme.fsSmall
+                font.letterSpacing: root.theme.labelSpacing
+                font.capitalization: Font.AllUppercase
+            }
+            SearchSelect {
                 width: parent.width
-                height: 24
-                Text {
-                    anchors.left: parent.left
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: root.addKind === "expense" ? "From" : "To"
-                    color: root.theme.faint
-                    font.family: root.theme.mono
-                    font.pixelSize: root.theme.fsSmall
-                    font.letterSpacing: root.theme.labelSpacing
-                    font.capitalization: Font.AllUppercase
+                options: root.fin ? (root.fin.accounts.assets || []) : []
+                current: {
+                    var a = root.fin ? (root.fin.accounts.assets || []) : [];
+                    return a.length ? a[root.addAssetIdx % a.length] : "assets:cash";
                 }
-                Rectangle {
-                    anchors.right: parent.right
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: assetTxt.implicitWidth + 16
-                    height: 24
-                    radius: root.theme.radiusBtn
-                    color: assetMa.containsMouse ? root.theme.rowHi : root.theme.row
-                    Text {
-                        id: assetTxt
-                        anchors.centerIn: parent
-                        text: {
-                            var a = root.fin ? (root.fin.accounts.assets || []) : [];
-                            return a.length ? a[root.addAssetIdx % a.length] : "assets:cash";
-                        }
-                        color: root.theme.textDim
-                        font.family: root.theme.mono
-                        font.pixelSize: root.theme.fsSmall
-                    }
-                    MouseArea {
-                        id: assetMa
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: root.addAssetIdx += 1
-                    }
-                    Behavior on color { ColorAnimation { duration: root.theme.animFast } }
+                placeholder: "Choose account"
+                onPicked: (t) => {
+                    var a = root.fin ? (root.fin.accounts.assets || []) : [];
+                    var i = a.indexOf(t);
+                    if (i >= 0) root.addAssetIdx = i;
                 }
             }
 
@@ -1533,7 +1535,7 @@ Item {
                         anchors.fill: parent
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: { root.addError = ""; root.mode = "cal"; }
+                        onClicked: { root.addError = ""; root.openSelect = null; root.mode = "cal"; }
                     }
                     Behavior on color { ColorAnimation { duration: root.theme.animFast } }
                 }
@@ -2162,6 +2164,154 @@ Item {
                     font.family: root.theme.family
                     font.italic: true
                     font.pixelSize: root.theme.fsNormal
+                }
+            }
+        }
+    }
+
+    // ---- shared searchable-dropdown overlay (last child → paints ABOVE all) ----
+    // Renders the open SearchSelect's filtered list at its mapped position, with
+    // a search box on top that auto-focuses on open. Click-away or Esc closes it.
+    Item {
+        id: selectLayer
+        anchors.fill: parent
+        z: 1000
+        visible: root.openSelect !== null
+        MouseArea { anchors.fill: parent; onClicked: root.openSelect = null }
+        Rectangle {
+            id: selBox
+            readonly property var sel: root.openSelect
+            readonly property point p: sel ? sel.mapToItem(selectLayer, 0, 0) : Qt.point(0, 0)
+            // sorted, then filtered by the search query
+            readonly property var filtered: {
+                var src = sel ? (sel.options || []) : [];
+                var arr = src.slice().sort(function (a, b) { return ("" + a).localeCompare("" + b); });
+                var q = root.selectQuery.trim().toLowerCase();
+                if (!q) return arr;
+                return arr.filter(function (o) { return ("" + o).toLowerCase().indexOf(q) >= 0; });
+            }
+            readonly property int listH: Math.min(Math.max(selBox.filtered.length, 1) * 26, 156)
+            readonly property int boxH: 38 + selBox.listH + 8
+            // flip upward if the list would spill past the pane's bottom edge
+            readonly property bool up: sel ? (p.y + sel.height + 4 + boxH > selectLayer.height) : false
+            visible: sel !== null
+            width: sel ? sel.width : 0
+            x: p.x
+            y: selBox.up ? (p.y - 4 - boxH) : (p.y + (sel ? sel.height : 0) + 4)
+            height: selBox.boxH
+            radius: root.theme.radiusRow
+            color: root.theme.bgElevated
+            border.color: root.theme.border
+            border.width: 1
+            clip: true
+            // opening: clear the query and focus the search box (click opens + focuses)
+            onVisibleChanged: if (visible) { root.selectQuery = ""; selSearch.text = ""; selSearch.forceActiveFocus(); }
+
+            // search field
+            Rectangle {
+                id: selSearchBox
+                x: 5; y: 5
+                width: parent.width - 10
+                height: 28
+                radius: root.theme.radiusBtn
+                color: root.theme.row
+                border.color: selSearch.activeFocus ? root.theme.accent : root.theme.border
+                border.width: 1
+                MSym {
+                    id: selSearchIc
+                    anchors.left: parent.left
+                    anchors.leftMargin: 8
+                    anchors.verticalCenter: parent.verticalCenter
+                    icon: "search"
+                    size: 14
+                    color: root.theme.faint
+                }
+                TextInput {
+                    id: selSearch
+                    objectName: "pillKbInput"
+                    anchors.left: selSearchIc.right
+                    anchors.leftMargin: 6
+                    anchors.right: parent.right
+                    anchors.rightMargin: 8
+                    anchors.verticalCenter: parent.verticalCenter
+                    color: root.theme.text
+                    font.family: root.theme.mono
+                    font.pixelSize: root.theme.fsSmall
+                    clip: true
+                    selectByMouse: true
+                    selectionColor: root.theme.accentDim
+                    onTextChanged: root.selectQuery = text
+                    Keys.onPressed: (e) => { if (e.key === Qt.Key_Escape) { root.openSelect = null; e.accepted = true; } }
+                    Text {
+                        visible: selSearch.text.length === 0
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "Search…"
+                        color: root.theme.faint
+                        font.family: root.theme.mono
+                        font.pixelSize: root.theme.fsSmall
+                    }
+                }
+            }
+
+            // filtered list
+            Flickable {
+                anchors.top: selSearchBox.bottom
+                anchors.topMargin: 4
+                anchors.left: parent.left
+                anchors.leftMargin: 4
+                anchors.right: parent.right
+                anchors.rightMargin: 4
+                anchors.bottom: parent.bottom
+                anchors.bottomMargin: 4
+                contentHeight: selListCol.height
+                clip: true
+                Column {
+                    id: selListCol
+                    width: parent.width
+                    Repeater {
+                        model: selBox.filtered
+                        delegate: Rectangle {
+                            id: selRow
+                            required property var modelData
+                            width: selListCol.width
+                            height: 26
+                            radius: root.theme.radiusBtn
+                            readonly property bool cur: selBox.sel && selBox.sel.current === selRow.modelData
+                            color: selRowMa.containsMouse ? root.theme.rowHi
+                                 : (selRow.cur ? root.theme.accentSoft : "transparent")
+                            Text {
+                                anchors.left: parent.left
+                                anchors.leftMargin: 8
+                                anchors.right: parent.right
+                                anchors.rightMargin: 8
+                                anchors.verticalCenter: parent.verticalCenter
+                                elide: Text.ElideLeft
+                                text: selRow.modelData
+                                color: selRow.cur ? root.theme.accent : root.theme.textDim
+                                font.family: root.theme.mono
+                                font.pixelSize: root.theme.fsSmall
+                            }
+                            MouseArea {
+                                id: selRowMa
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: selBox.sel.pick(selRow.modelData)
+                            }
+                        }
+                    }
+                    Text {
+                        visible: selBox.filtered.length === 0
+                        width: selListCol.width
+                        height: 26
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                        text: "No matches"
+                        color: root.theme.faint
+                        font.family: root.theme.family
+                        font.italic: true
+                        font.pixelSize: root.theme.fsSmall
+                    }
                 }
             }
         }

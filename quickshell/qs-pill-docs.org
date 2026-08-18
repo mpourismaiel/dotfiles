@@ -644,9 +644,17 @@ title becomes the report name and the back chevron returns to =cal= (the "quick
 back"); in =cal= it closes the pill as usual. *Add* keeps the grid as a date
 picker (clicking a day re-dates the pending entry) and swaps the right panel for
 a form: Expense/Income segment, description + amount fields (=pillKbInput=, so
-the pill grabs the compositor keyboard), EUR/IRT toggle, a category list fed
-from =hledger accounts=, a click-to-cycle asset account, and Save/Cancel — save
-posts through =fin.addEntry= and surfaces =hledger check= errors inline.
+the pill grabs the compositor keyboard), EUR/IRT toggle, a *searchable category
+dropdown* and a *searchable asset-account dropdown* (both fed from =hledger
+accounts=), and Save/Cancel — save posts through =fin.addEntry= and surfaces
+=hledger check= errors inline. The two dropdowns share the =SearchSelect=
+component + one root-level overlay (=openSelect=/=selectQuery=, styled after
+RecordControls' =Select=): clicking a field opens the list and focuses its
+search box; options are sorted and filter as you type; the list flips upward
+near the pane's bottom edge. The category persists in =addAccount= (only a kind
+switch clears it) so it remembers the last pick; the asset is still tracked as
+an index (=addAssetIdx=) so the forecast prefill's =resolvePendingAsset= is
+unchanged.
 *Forecast* is a single scrollable timeline of every upcoming event (real +
 periodic) from today outward — each row shows the date, what happens, the
 ±amount and the *running projected balance* ("what I'd have"), with month-start
