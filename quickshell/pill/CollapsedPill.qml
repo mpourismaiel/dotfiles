@@ -435,7 +435,7 @@ Column {
                 id: ghostT
                 anchors.centerIn: parent
                 text: "88:88"
-                color: Qt.rgba(root.theme.accent.r, root.theme.accent.g, root.theme.accent.b, 0.22)
+                color: Qt.rgba(root.theme.accent.r, root.theme.accent.g, root.theme.accent.b, 0.52)
                 font.family: root.cs.clock.family
                 font.pixelSize: root.clockPx
                 font.weight: root.cs.clock.weight

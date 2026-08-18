@@ -357,16 +357,16 @@ QtObject {
     readonly property var clockStyles: [
         { "id": "1a", "name": "Serif Editorial", "font": "",
           "desc": "Quiet serif numerals over a mono caps status line — the pill's original look.",
-          "clock":  { "family": serif, "px": fsLarge, "weight": 400, "italic": false, "spacing": 0, "mode": "plain" },
+          "clock":  { "family": serif, "px": fsLarge + 1, "weight": 400, "italic": false, "spacing": 0, "mode": "plain" },
           "status": { "family": mono, "weight": 400, "spacing": labelSpacing, "caps": true, "muted": false, "prefix": "" } },
         { "id": "1b", "name": "Bold Grotesk Slab", "font": "Archivo",
           "desc": "Heavy, tight numerals with the status line flush beneath in one hard column.",
           "clock":  { "family": "Archivo", "px": fsLarge + 2, "weight": 800, "italic": false, "spacing": -0.7, "mode": "plain" },
           "status": { "family": mono, "weight": 700, "spacing": 1.2, "caps": true, "muted": false, "prefix": "" } },
-        { "id": "1c", "name": "Seven Segment LCD", "font": "Share Tech Mono",
+        { "id": "1c", "name": "Seven Segment LCD", "font": "ShureTechMono Nerd Font",
           "desc": "Skewed digits with a ghosted 88:88 behind them; the status line stays unlit-grey.",
-          "clock":  { "family": "Share Tech Mono", "px": fsLarge + 1, "weight": 400, "italic": false, "spacing": 0, "mode": "segment" },
-          "status": { "family": "Share Tech Mono", "weight": 400, "spacing": 1.2, "caps": true, "muted": true, "prefix": "" } },
+          "clock":  { "family": "ShureTechMono Nerd Font", "px": fsLarge + 1, "weight": 700, "italic": false, "spacing": 0, "mode": "segment" },
+          "status": { "family": "ShureTechMono Nerd Font", "weight": 400, "spacing": 1.2, "caps": true, "muted": true, "prefix": "" } },
         { "id": "1d", "name": "Casual Ubuntu", "font": "Ubuntu",
           "desc": "Distro-native voice with a sentence-case status line — the only look that isn't all-caps.",
           "clock":  { "family": "Ubuntu", "px": fsLarge, "weight": 500, "italic": false, "spacing": 0, "mode": "plain" },
@@ -374,15 +374,15 @@ QtObject {
         { "id": "1e", "name": "Terminal", "font": "JetBrains Mono",
           "desc": "Live blinking colon and a block cursor; the status line reads like shell output.",
           "clock":  { "family": "JetBrains Mono", "px": fsLarge, "weight": 700, "italic": false, "spacing": 0, "mode": "colon" },
-          "status": { "family": mono, "weight": 400, "spacing": 1.2, "caps": true, "muted": false, "prefix": ">" } },
+          "status": { "family": mono, "weight": 400, "spacing": 1.2, "caps": false, "muted": false, "prefix": ">" } },
         { "id": "1f", "name": "Dot Matrix Board", "font": "Doto",
           "desc": "Station-board digits so pending items feel scheduled. Needs the Doto font.",
-          "clock":  { "family": "Doto", "px": fsLarge + 1, "weight": 900, "italic": false, "spacing": 0.6, "mode": "plain" },
-          "status": { "family": "Doto", "weight": 700, "spacing": 1.6, "caps": true, "muted": false, "prefix": "" } },
+          "clock":  { "family": "Doto", "px": fsLarge + 2, "weight": 400, "italic": false, "spacing": 0.6, "mode": "plain" },
+          "status": { "family": "Doto", "weight": 700, "spacing": 1.6, "caps": false, "muted": false, "prefix": "" } },
         { "id": "1g", "name": "Spelled Out", "font": "Instrument Serif",
           "desc": "No numerals at rest — the time is spelled out in italic serif, so the agenda reads first.",
-          "clock":  { "family": "Instrument Serif", "px": fsLarge + 1, "weight": 400, "italic": true, "spacing": 0, "mode": "words" },
-          "status": { "family": mono, "weight": 400, "spacing": labelSpacing, "caps": true, "muted": false, "prefix": "" } }
+          "clock":  { "family": "Instrument Serif", "px": fsLarge + 1, "weight": 500, "italic": false, "spacing": 0, "mode": "words" },
+          "status": { "family": mono, "weight": 400, "spacing": labelSpacing, "caps": false, "muted": false, "prefix": "" } }
     ]
     // installed font families, lower-cased once for cheap membership tests.
     readonly property var _fontList: {
@@ -411,9 +411,9 @@ QtObject {
     // force a specific theme instead (e.g. "Papirus", "breeze") — run-pill.sh
     // reads this value and applies it. "" = follow KDE.
     readonly property string iconTheme:   ""
-    readonly property int fsSmall:       11
-    readonly property int fsNormal:      13
-    readonly property int fsLarge:       15
+    readonly property int fsSmall:       12
+    readonly property int fsNormal:      14
+    readonly property int fsLarge:       16
 
     // ---- animation ----
     readonly property int anim:          210
