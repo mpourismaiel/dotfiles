@@ -161,21 +161,47 @@ of the acm menu at point."
       (and (fboundp 'evil-normal-state-p)
            (not (evil-normal-state-p)))))
 
-(defun mp/lsp-bridge-ref-open-thing ()
-  "Open the reference on the current line, keeping focus in the results list.
+(defun mp/lsp-bridge-ref-open-and-quit ()
+  "Jump to the reference on the current line and close the references list.
 
 lsp-bridge's references buffer is color-rg-derived: a file-path header
 followed by `LINE:COL:' match lines.  On a match line this jumps there; on
 a file header it opens that file's FIRST match — the same as pressing RET
-on its first reference line.  Focus stays in the list (like the native
-RET, `lsp-bridge-ref-open-file-and-stay') so you can keep browsing; use
-SPC to jump into the file, or `q' to close."
+on its first reference line.
+
+Unlike the native RET (`lsp-bridge-ref-open-file-and-stay', which leaves
+the list window open) and `lsp-bridge-ref-quit' (which restores the layout
+from before the search, snapping you back to where `g r' was pressed), this
+lands you AT the reference with the list closed — RET means \"go to this
+reference for good.\"  Keep SPC for preview-while-browsing (opens the file
+but stays in the list)."
   (interactive)
   (beginning-of-line)
   (when (looking-at-p lsp-bridge-ref-regexp-file)
     (when-let ((pos (lsp-bridge-ref-find-next-position lsp-bridge-ref-regexp-position)))
       (goto-char pos)))
-  (lsp-bridge-ref-open-file-and-stay))
+  (let ((req lsp-bridge-ref-request-search-window))
+    ;; Native RET: open the reference in the request window and leave point IN
+    ;; that file.
+    (lsp-bridge-ref-open-file-and-stay)
+    ;; Tear the list down BY HAND. Deliberately NOT `lsp-bridge-ref-quit': quit
+    ;; restores the window layout captured when `g r' was pressed (snapping you
+    ;; back to the origin) and kills the buffer you just navigated into. Just
+    ;; drop the list's window + buffer and land in the request window, which now
+    ;; shows the reference.
+    (let ((ref-win (get-buffer-window lsp-bridge-ref-buffer)))
+      (when (and ref-win (window-valid-p ref-win)
+                 (not (eq ref-win req))
+                 (> (length (window-list nil 'no-mini)) 1))
+        (delete-window ref-win)))
+    (when (buffer-live-p (get-buffer lsp-bridge-ref-buffer))
+      (kill-buffer lsp-bridge-ref-buffer))
+    (when (window-valid-p req)
+      (select-window req))
+    ;; Clear the saved layout so nothing later resurrects the pre-search state.
+    (setq lsp-bridge-ref-window-configuration-before-search nil
+          lsp-bridge-ref-buffer-point-before-search nil
+          lsp-bridge-ref-request-search-window nil)))
 
 (use-package lsp-bridge
   :ensure (:host github :repo "manateelazycat/lsp-bridge"
@@ -229,9 +255,17 @@ SPC to jump into the file, or `q' to close."
   (with-eval-after-load 'evil
     (evil-set-initial-state 'lsp-bridge-ref-mode 'emacs))
   (with-eval-after-load 'lsp-bridge-ref
-    ;; RET: open at point, and on a file header open its first match.
-    (define-key lsp-bridge-ref-mode-map (kbd "RET") #'mp/lsp-bridge-ref-open-thing)
-    (define-key lsp-bridge-ref-mode-map (kbd "C-m") #'mp/lsp-bridge-ref-open-thing))
+    ;; RET: jump to the reference and close the list (on a file header, open its
+    ;; first match). SPC keeps the native preview-and-stay-in-list behaviour.
+    (define-key lsp-bridge-ref-mode-map (kbd "RET") #'mp/lsp-bridge-ref-open-and-quit)
+    (define-key lsp-bridge-ref-mode-map (kbd "C-m") #'mp/lsp-bridge-ref-open-and-quit)
+    ;; Arrow keys mirror the native j/k and h/l. The buffer is evil emacs-state,
+    ;; so bare <up>/<down> would otherwise crawl raw lines (file headers, blanks)
+    ;; instead of jumping match-to-match; <left>/<right> step file-to-file.
+    (define-key lsp-bridge-ref-mode-map (kbd "<down>")  #'lsp-bridge-ref-jump-next-keyword)
+    (define-key lsp-bridge-ref-mode-map (kbd "<up>")    #'lsp-bridge-ref-jump-prev-keyword)
+    (define-key lsp-bridge-ref-mode-map (kbd "<right>") #'lsp-bridge-ref-jump-next-file)
+    (define-key lsp-bridge-ref-mode-map (kbd "<left>")  #'lsp-bridge-ref-jump-prev-file))
   ;; The results buffer is a normal (non-child-frame) buffer, so the global SVG
   ;; header-line would otherwise render on top of it — turn it off.
   (add-hook 'lsp-bridge-ref-mode-hook
@@ -251,6 +285,10 @@ SPC to jump into the file, or `q' to close."
     "gi"        #'lsp-bridge-find-impl
     "gr"        #'lsp-bridge-find-references
     "gR"        #'lsp-bridge-rename
+    ;; vim's gf: open the file whose path is under point (config files, plain
+    ;; relative paths). For JS/TS imports use `gd' instead — the language server
+    ;; resolves the module and its extension; ffap can't guess `./a' -> `./a.ts'.
+    "gf"        #'find-file-at-point
     "K"         #'lsp-bridge-popup-documentation
     (kbd "] e") #'lsp-bridge-diagnostic-jump-next
     (kbd "[ e") #'lsp-bridge-diagnostic-jump-prev
