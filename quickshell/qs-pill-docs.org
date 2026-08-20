@@ -928,8 +928,16 @@ button, or the *Meta+D* shortcut; it takes the menu pane's place below the two
 dashboard rows. A back chevron + a focused search field, a grid/list toggle, ★
 favourites (empty query shows favourites if any, else all apps), a per-app
 right-click menu (=DesktopEntry.actions= + favourite toggle), and a calculator (a
-safe arithmetic expression, or one prefixed with ===, shows a result row that
-=wl-copy='s on click/Enter, thousands-grouped for display).
+safe arithmetic expression, or one prefixed with ===, shows a result row,
+thousands-grouped for display). The result row's *Copy* pill =wl-copy='s the raw
+value (and closes) on click/Enter; clicking anywhere else on the row *substitutes*
+the number back into the search field (=useResult=) so it can be operated on again
+(=15680= → =15680*1.1=) — pressing *Up* while the field still holds that exact
+result restores the original formula (=restoreFormula=, an undo for an accidental
+substitution). When the sum has ≥2 top-level additive terms, a *per-term
+breakdown* card lists each ×/÷ group resolved on its own "before" the +/− that
+joins them (=breakdownCalc=), showing each term's signed contribution; hovering a
+row floats a tooltip with that term's exact value and the running subtotal.
 
 Search is powered by *KRunner*: the query drives an =org.kde.milou= =ResultsModel=
 — the exact backend Plasma's own launcher, KRunner and the Overview use — so a
@@ -964,7 +972,9 @@ Code: [[file:pill/Launcher.qml][=pill/Launcher.qml=]]
 The non-visual core: open/close focus handling, the =q= query, the =filtered= /
 =favApps= / =model= derivations, =showGrid=, arrow-key selection (=currentIndex=,
 =setSel=, =moveVert= / =moveHoriz=, =activateCurrent=), favourite toggling, the safe
-arithmetic =evalCalc= calculator, and the =wl-copy= / power =Process= helpers.
+arithmetic =evalCalc= calculator with its =breakdownCalc= per-term split and
+=useResult= / =restoreFormula= result-chaining, and the =wl-copy= / power =Process=
+helpers.
 Code: part of [[file:pill/Launcher.qml][=pill/Launcher.qml=]] (was noweb chunk =launcher-logic=).
 
 **** Launcher.qml — search row

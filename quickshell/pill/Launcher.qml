@@ -8,9 +8,12 @@ pragma ComponentBehavior: Bound
 // Power, Locations, web shortcuts, … — whatever plugins are enabled in System
 // Settings → Search), grouped by category; running a row calls back into
 // KRunner. The search box also doubles as a calculator — an arithmetic
-// expression (or one prefixed with =) shows a result row that copies on
-// click/Enter. Right-click an app for its desktop actions and a favourite
-// toggle. Favourites + grid mode are persisted by the parent (see init.qml).
+// expression (or one prefixed with =) shows a result row: its Copy pill copies +
+// closes, while clicking the rest substitutes the number back into the field for
+// chaining (Up undoes it). A ≥2-term sum also lists a per-term breakdown (each ×/÷
+// group resolved before the +/− joins), with a hover tooltip. Right-click an app
+// for its desktop actions and a favourite toggle. Favourites + grid mode are
+// persisted by the parent (see init.qml).
 //
 // The resting app list is supplied by the parent (built once from
 // DesktopEntries and kept alive across opens), so opening is instant.
@@ -46,7 +49,7 @@ Item {
     signal confirmPower(string action, var cmd)
     
     // called by the parent when the launcher opens: clear + focus the search
-    function open() { search.text = ""; currentIndex = 0; search.forceActiveFocus(); }
+    function open() { search.text = ""; currentIndex = 0; calcPrevFormula = ""; calcSubstituted = ""; calcHoverTerm = null; search.forceActiveFocus(); }
     // called when the launcher closes: drop the search field's active focus so the
     // (kept-instantiated) launcher stops holding the layer surface's keyboard grab,
     // letting the focused window get the keyboard back. The parent sets the window's
@@ -190,7 +193,84 @@ Item {
         const intp = (dot < 0 ? s : s.slice(0, dot)).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
         return (n < 0 ? "-" : "") + intp + (dot < 0 ? "" : s.slice(dot));
     }
-    
+    // prettify a sub-expression for display: ASCII * / become × ÷, whitespace
+    // collapses. Only cosmetic — never fed back to the evaluator.
+    function prettyExpr(s) {
+        return String(s).replace(/\*/g, " × ").replace(/\//g, " ÷ ").replace(/\s+/g, " ").trim();
+    }
+
+    // ---- calculator: per-term breakdown ----
+    // Split a summable expression into its top-level additive terms so each ×/÷
+    // group is resolved on its own "before" the +/− that joins them (matching how
+    // people read "a*b + c*d - e"). Returns [{ op, src, value, running }] where
+    // `value` carries the term's additive sign and `running` is the subtotal up to
+    // and including that term; returns [] when there's nothing worth breaking down
+    // (a single term) or the expression won't parse/evaluate cleanly.
+    property var calcTerms: (calcResult !== null) ? breakdownCalc(search.text.trim()) : []
+    function breakdownCalc(expr) {
+        let e = expr.trim();
+        if (e.length > 0 && e[0] === "=") e = e.slice(1).trim();
+        if (e.length === 0) return [];
+        if (!/^[0-9.,+\-*/%()\s]+$/.test(e)) return [];
+        e = e.replace(/,/g, "");
+        // walk the string, splitting on +/- that sit at paren-depth 0 and act as a
+        // binary operator (i.e. follow a value: a digit, ')' , '.' or '%'); a +/-
+        // in any other spot is a unary sign that belongs to the term.
+        let parts = [];                       // { op, src }
+        let depth = 0, start = 0, op = "+", prev = "";
+        for (let i = 0; i < e.length; i++) {
+            const c = e[i];
+            if (c === "(") depth++;
+            else if (c === ")") depth--;
+            else if (depth === 0 && (c === "+" || c === "-") && /[0-9.)%]/.test(prev)) {
+                parts.push({ op: op, src: e.slice(start, i).trim() });
+                op = c; start = i + 1;
+            }
+            if (!/\s/.test(c)) prev = c;
+        }
+        parts.push({ op: op, src: e.slice(start).trim() });
+        if (parts.length < 2) return [];      // one term — nothing to break down
+        let out = [], running = 0;
+        for (const p of parts) {
+            if (p.src.length === 0) return []; // dangling operator → give up
+            let v;
+            try { v = Function('"use strict"; return (' + p.src + ');')(); }
+            catch (err) { return []; }
+            if (typeof v !== "number" || !isFinite(v)) return [];
+            const signed = (p.op === "-") ? -v : v;
+            running = parseFloat((running + signed).toFixed(8));
+            out.push({ op: p.op, src: p.src, value: signed, running: running });
+        }
+        return out;
+    }
+
+    // ---- calculator: "use this result" chaining ----
+    // Clicking the result row substitutes the number back into the search field so
+    // the user can keep operating on it (15680 → 15680*1.1). We stash the formula
+    // that produced it; pressing Up while the field still holds that exact result
+    // restores the original formula (an undo for an accidental substitution).
+    property string calcPrevFormula: ""
+    property string calcSubstituted: ""
+    function useResult() {
+        if (calcResult === null) return;
+        calcPrevFormula = search.text;
+        calcSubstituted = String(calcResult);
+        search.text = calcSubstituted;
+        search.cursorPosition = search.text.length;
+    }
+    function restoreFormula() {
+        if (calcPrevFormula.length === 0 || search.text !== calcSubstituted) return false;
+        search.text = calcPrevFormula;
+        search.cursorPosition = search.text.length;
+        calcPrevFormula = "";
+        calcSubstituted = "";
+        return true;
+    }
+    // term the pointer is over in the breakdown, and its top in `body` coords, so a
+    // tooltip can float free of the (clipped) breakdown list. null = nothing hovered.
+    property var calcHoverTerm: null
+    property real calcHoverY: 0
+
     Process { id: copyProc }
     function copy(s) { copyProc.command = ["wl-copy", "--", String(s)]; copyProc.startDetached(); }
     
@@ -254,7 +334,9 @@ Item {
             // arrow-key navigation over the list/grid (see moveVert/moveHoriz):
             // up/down always navigate; left/right navigate in the grid, or in a
             // list only when the query is empty — otherwise they move the cursor.
-            Keys.onUpPressed: root.moveVert(-1)
+            // Up first undoes a "use result" substitution (see restoreFormula),
+            // otherwise it steps up the results list.
+            Keys.onUpPressed: { if (!root.restoreFormula()) root.moveVert(-1); }
             Keys.onDownPressed: root.moveVert(1)
             Keys.onLeftPressed: e => {
                 if (!root.showGrid && root.q.length > 0) { e.accepted = false; return; }
@@ -437,10 +519,12 @@ Item {
         anchors.bottom: powerBar.top
         anchors.bottomMargin: root.theme.gap
     
-        // calculator result (top, when the query evaluates)
+        // calculator result (top, when the query evaluates). Clicking anywhere but
+        // the Copy pill *substitutes* the number back into the search field so the
+        // user can keep operating on it (see useResult / restoreFormula).
         Rectangle {
             id: calcCard
-    
+
             anchors.top: parent.top
             anchors.left: parent.left
             anchors.right: parent.right
@@ -450,7 +534,17 @@ Item {
             color: calcMa.containsMouse ? root.theme.rowHi : root.theme.bgElevated
             border.color: root.theme.border
             border.width: 1
-    
+
+            // whole-card click first, so the Copy pill (declared after) sits on top
+            MouseArea {
+                id: calcMa
+
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.useResult()
+            }
+
             Text {
                 anchors.left: parent.left
                 anchors.leftMargin: 14
@@ -460,50 +554,147 @@ Item {
                 font.family: root.theme.serif
                 font.pixelSize: root.theme.fsLarge + 3
             }
-    
-            Row {
+
+            // Copy pill — its own hit area (over calcMa) so copy stays a click away
+            // even though the rest of the card now substitutes instead of copying.
+            Rectangle {
+                id: copyPill
                 anchors.right: parent.right
-                anchors.rightMargin: 12
+                anchors.rightMargin: 8
                 anchors.verticalCenter: parent.verticalCenter
-                spacing: 5
-    
-                MSym {
-                    anchors.verticalCenter: parent.verticalCenter
-                    icon: "content_copy"
-                    size: 14
-                    color: root.theme.faint
+                height: 26
+                width: copyRow.implicitWidth + 18
+                radius: root.theme.radiusBtn
+                color: copyMa.containsMouse ? root.theme.accentSoft : "transparent"
+
+                Row {
+                    id: copyRow
+                    anchors.centerIn: parent
+                    spacing: 5
+
+                    MSym {
+                        anchors.verticalCenter: parent.verticalCenter
+                        icon: "content_copy"
+                        size: 14
+                        color: copyMa.containsMouse ? root.theme.accent : root.theme.faint
+                    }
+
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "Copy"
+                        color: copyMa.containsMouse ? root.theme.accent : root.theme.faint
+                        font.family: root.theme.mono
+                        font.pixelSize: root.theme.fsSmall
+                        font.letterSpacing: root.theme.labelSpacing
+                        font.capitalization: Font.AllUppercase
+                    }
                 }
-    
-                Text {
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: "Copy"
-                    color: root.theme.faint
-                    font.family: root.theme.mono
-                    font.pixelSize: root.theme.fsSmall
-                    font.letterSpacing: root.theme.labelSpacing
-                    font.capitalization: Font.AllUppercase
+
+                MouseArea {
+                    id: copyMa
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        root.copy(root.calcResult);
+                        root.launched();
+                    }
                 }
-    
             }
-    
-            MouseArea {
-                id: calcMa
-    
-                anchors.fill: parent
-                hoverEnabled: true
-                cursorShape: Qt.PointingHandCursor
-                onClicked: {
-                    root.copy(root.calcResult);
-                    root.launched();
-                }
-            }
-    
+
         }
-    
+
+        // ---- per-term breakdown (each ×/÷ group resolved before the +/− joins) ----
+        // Shown under the result whenever the sum has ≥2 additive terms. Hovering a
+        // row floats a tooltip (calcTip) with the running subtotal at that point.
+        Rectangle {
+            id: calcBreakdown
+
+            readonly property int rowH: 24
+            readonly property int maxRows: 7
+
+            anchors.top: calcCard.bottom
+            anchors.topMargin: visible ? 6 : 0
+            anchors.left: parent.left
+            anchors.right: parent.right
+            visible: root.calcTerms.length >= 2
+            height: visible ? Math.min(root.calcTerms.length, maxRows) * rowH + 12 : 0
+            radius: root.theme.radiusRow
+            color: root.theme.bgElevated
+            border.color: root.theme.border
+            border.width: 1
+            clip: true
+
+            ListView {
+                id: breakdownList
+                anchors.fill: parent
+                anchors.margins: 6
+                model: root.calcTerms
+                clip: true
+                boundsBehavior: Flickable.StopAtBounds
+                interactive: root.calcTerms.length > calcBreakdown.maxRows
+
+                delegate: Item {
+                    id: termRow
+                    required property var modelData
+                    required property int index
+                    width: breakdownList.width
+                    height: calcBreakdown.rowH
+
+                    Rectangle {
+                        anchors.fill: parent
+                        anchors.rightMargin: 2
+                        radius: root.theme.radiusBtn
+                        color: termMa.containsMouse ? root.theme.rowHi : "transparent"
+                    }
+
+                    // running index (1., 2., …) + the term as written (× ÷ prettified)
+                    Text {
+                        id: termExpr
+                        anchors.left: parent.left
+                        anchors.leftMargin: 10
+                        anchors.right: termVal.left
+                        anchors.rightMargin: 8
+                        anchors.verticalCenter: parent.verticalCenter
+                        elide: Text.ElideRight
+                        text: (termRow.index + 1) + ".  " + root.prettyExpr(termRow.modelData.src)
+                        color: root.theme.textDim
+                        font.family: root.theme.mono
+                        font.pixelSize: root.theme.fsSmall + 1
+                    }
+
+                    // signed contribution of this term (+ 4,680 / − 7,200)
+                    Text {
+                        id: termVal
+                        anchors.right: parent.right
+                        anchors.rightMargin: 12
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: (termRow.modelData.value < 0 ? "− " : "+ ")
+                              + root.fmtNum(Math.abs(termRow.modelData.value))
+                        color: termRow.modelData.value < 0 ? root.theme.faint : root.theme.accent
+                        font.family: root.theme.mono
+                        font.pixelSize: root.theme.fsSmall + 1
+                    }
+
+                    MouseArea {
+                        id: termMa
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        onEntered: {
+                            const p = termRow.mapToItem(body, 0, 0);
+                            root.calcHoverY = p.y;
+                            root.calcHoverTerm = termRow.modelData;
+                        }
+                        onExited: if (root.calcHoverTerm === termRow.modelData) root.calcHoverTerm = null;
+                    }
+                }
+            }
+        }
+
         Item {
             id: viewHost
-    
-            anchors.top: calcCard.bottom
+
+            anchors.top: calcBreakdown.bottom
             anchors.topMargin: calcCard.visible ? root.theme.gap : 0
             anchors.left: parent.left
             anchors.right: parent.right
@@ -823,7 +1014,47 @@ Item {
                 font.family: root.theme.family
                 font.pixelSize: root.theme.fsNormal
             }
-    
+
+        }
+
+        // breakdown tooltip — floats over the list, free of its clip, at the hovered
+        // row. Shows the term's exact value and the running subtotal up to it.
+        Rectangle {
+            id: calcTip
+            visible: root.calcHoverTerm !== null
+            z: 100
+            anchors.right: parent.right
+            anchors.rightMargin: 14
+            // sit just above the hovered row, clamped into the body
+            y: Math.max(0, root.calcHoverY - height - 4)
+            width: tipCol.implicitWidth + 20
+            height: tipCol.implicitHeight + 14
+            radius: root.theme.radiusRow
+            color: root.theme.rowHi
+            border.color: root.theme.border
+            border.width: 1
+
+            Column {
+                id: tipCol
+                anchors.centerIn: parent
+                spacing: 3
+
+                Text {
+                    text: root.calcHoverTerm
+                          ? root.prettyExpr(root.calcHoverTerm.src) + "  =  " + root.fmtNum(root.calcHoverTerm.value)
+                          : ""
+                    color: root.theme.text
+                    font.family: root.theme.mono
+                    font.pixelSize: root.theme.fsSmall
+                }
+                Text {
+                    text: root.calcHoverTerm ? "running total  " + root.fmtNum(root.calcHoverTerm.running) : ""
+                    color: root.theme.faint
+                    font.family: root.theme.mono
+                    font.pixelSize: root.theme.fsSmall
+                    font.letterSpacing: root.theme.labelSpacing
+                }
+            }
         }
 
     }
