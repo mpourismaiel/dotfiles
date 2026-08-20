@@ -20,7 +20,32 @@ the FULLSCREEN part is a separate layer window.
   click-while-recording = stop. IPC (`target: pill`): `screenshot` (full-screen) /
   `screenshotRegion` (reuse last crop) / `record` / `recordStop` / `captureCancel`.
 - Grabber = `spectacle -b -n -m` (only one that works on this KWin; swappable via `CaptureState.grabCmd`).
+- **Grab captures the pill's CURRENT state, THEN collapses** (so you can screenshot the pill expanded / with a
+  menu open, without reaching for another tool): the mode machine goes `idle → grabbing → selecting/annotating`;
+  during `grabbing` the pill is left exactly as it was and the grabber fires immediately. The host's collapse
+  (open/launcher/focused/ctx → off, so the pill morphs to the toolbar) is keyed on `onModeChanged` and SKIPS
+  `grabbing`, so it only runs once the grab has landed. The dashboard capture button also drops its "active"
+  tint while `grabbing` so a shot with the dashboard open doesn't catch it lit up.
 - Record = `gpu-screen-recorder -w portal` (restore token) with no-hardcode encoder.
+
+## ANNOTATION EDITOR (2026-08-20 expansion)
+
+- **Tools**: select / text / arrow / **line** (arrow with no head) / rect / rectFill / **freehand** (draw).
+  Line + freehand render as `Shape`s in `AnnItem` (freehand = a `PathPolyline` over `points`, appended on
+  drag via `addPoint`, moved by translating every point). rect + rectFill both make an `annType:"rect"`;
+  rectFill just starts `filled:true`.
+- **Rectangles have stroke AND optional fill**: `filled` + `fillColor` on top of `annColor`/`annWidth`.
+  A selected rect can be filled/unfilled and recoloured independently of its border.
+- **Contextual style row**: the toolbar is now two rows — tools+history+finish, then a style row that shows
+  ONLY what the *target* supports. Target = the selected annotation, else the current tool's draw defaults
+  (`CaptureState.attrType` / `cur*`). Colour for everything; stroke width for rect/arrow/line/draw (no longer
+  always shown); font size for text; a fill toggle + fill swatches for a selected rect; a delete button when
+  one is selected.
+- **Undo / redo**: a linear history of scene snapshots lives in `CaptureOverlay` (`_history`/`_hi`; annotations
+  are tracked in an explicit `_anns` array, not by scanning children). Any committed edit — create, move
+  (drag release), resize (handle release), attribute change, text-edit finish, delete — emits
+  `CaptureState.commitHistory()` → `_commit()` (truncates the redo branch, pushes a snapshot). Toolbar
+  undo/redo buttons + Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y; `canUndo`/`canRedo` drive the button enable state.
 
 ## STATUS
 

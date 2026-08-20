@@ -44,8 +44,9 @@ QtObject {
 
     // ---- annotation tool + style -------------------------------------------
     // select = move/resize/delete existing; the rest create on press-drag.
-    property string tool: "select"         // select | text | arrow | rect | rectFill
-    property color strokeColor: "#e6402e"
+    property string tool: "select"         // select | text | arrow | line | rect | rectFill | freehand
+    property color strokeColor: "#e6402e"  // stroke / line / text colour (the "next draw" default)
+    property color fillColor: "#e6402e"    // rect interior colour default
     property int   strokeWidth: 4
     property int   fontSize: 22
     // the palette offered in the toolbar (first = default)
@@ -53,6 +54,25 @@ QtObject {
         "#e6402e", "#f5a623", "#f8e71c", "#2ecc71",
         "#3aa0ff", "#b06bff", "#ffffff", "#1b1712"
     ]
+
+    // ---- attribute context: what the toolbar's style controls act on --------
+    // With something selected the controls edit THAT annotation; otherwise they set
+    // the default for the next drawn one. attrType is the effective type either way
+    // (rectFill tool folds to "rect"); the toolbar shows only the controls that type
+    // supports — stroke width for shapes, font size for text, fill for a rectangle.
+    readonly property string attrType: selected
+        ? (selected.annType || "")
+        : (tool === "select" ? "" : (tool === "rectFill" ? "rect" : tool))
+    readonly property bool attrHasStroke: attrType === "rect" || attrType === "arrow"
+                                       || attrType === "line" || attrType === "freehand"
+    readonly property bool attrHasFont: attrType === "text"
+    readonly property bool attrIsRect: attrType === "rect"
+    // current values shown by the controls (selected's, or the draw defaults)
+    readonly property color curColor: selected ? selected.annColor : strokeColor
+    readonly property int   curWidth: selected ? selected.annWidth : strokeWidth
+    readonly property int   curFont:  selected ? selected.fontPx : fontSize
+    readonly property bool  curFilled: selected ? (selected.filled || false) : (tool === "rectFill")
+    readonly property color curFill:  selected ? selected.fillColor : fillColor
 
     // monotonic z for annotations: bumped each time one is selected so the selected
     // annotation rises to the top of the stack (AnnItem.onIsSelectedChanged).
@@ -86,6 +106,16 @@ QtObject {
     signal cancelled()
     signal grabFailed(string why)
     signal clearAnnotations()              // overlay destroys all placed annotations
+    signal deleteSelectedRequested()       // overlay removes the selected annotation
+    // undo/redo live in the overlay (it owns the annotation objects); the toolbar
+    // drives them through these. commitHistory() is emitted after any committed edit
+    // (create/move/resize/attr/text) so the overlay snapshots a new undo step.
+    signal undoRequested()
+    signal redoRequested()
+    signal commitHistory()
+    // kept in sync by the overlay so the toolbar can enable/disable the buttons.
+    property bool canUndo: false
+    property bool canRedo: false
     // the toolbar now lives in the PILL, which can't reach the fullscreen canvas
     // item directly, so copy/save is a signal the canvas listens for (it owns the
     // grabToImage). "" = copy only; a path = save there + copy.
@@ -104,6 +134,9 @@ QtObject {
     // Start a screenshot: fire the grabber, then freeze + let the user draw a
     // region. The pill hotkey / IPC verb calls this.
     // full-screen-first: grab, then pre-select the whole screen + show the toolbar.
+    // The pill is left in whatever state it was in for the grab (so a shot can
+    // capture an expanded dashboard / open menu); it collapses only once the grab
+    // lands and we enter selecting/annotating (host onModeChanged skips "grabbing").
     function beginScreenshot() {
         root.reset();
         root.shotMode = "full";
@@ -174,19 +207,40 @@ QtObject {
         if (root.hasRegion) root.mode = "annotating";
     }
 
+    // each style setter updates the "next draw" default AND, when an annotation is
+    // selected, edits it in place + commits an undo step.
     function pickColor(c) {
         root.strokeColor = c;
-        if (root.selected && root.selected.setColor) root.selected.setColor(c);
+        if (root.selected && root.selected.setColor) { root.selected.setColor(c); root.commitHistory(); }
     }
     function pickWidth(w) {
         root.strokeWidth = w;
-        if (root.selected && root.selected.setWidth) root.selected.setWidth(w);
+        if (root.selected && root.selected.setWidth) { root.selected.setWidth(w); root.commitHistory(); }
+    }
+    function pickFont(s) {
+        root.fontSize = s;
+        if (root.selected && root.selected.setFont) { root.selected.setFont(s); root.commitHistory(); }
+    }
+    function pickFill(c) {
+        root.fillColor = c;
+        if (root.selected && root.selected.setFill) { root.selected.setFill(c); root.commitHistory(); }
+    }
+    function toggleFill() {
+        if (root.selected && root.selected.toggleFilled) {
+            root.selected.toggleFilled();
+            root.commitHistory();
+        }
     }
     function deleteSelected() {
-        if (root.selected) { root.selected.destroy(); root.selected = null; }
+        if (root.selected) root.deleteSelectedRequested();
     }
 
     // ---- the swappable grabber ---------------------------------------------
+    // Fire immediately: the grab captures the screen in its CURRENT state — the pill
+    // INCLUDED, in whatever expanded/menu state it's in when the shortcut fires. The
+    // mode machine leaves the pill untouched during "grabbing" and only collapses it
+    // AFTER the grab lands (see beginScreenshot + the host's onModeChanged), so a
+    // shot can capture any pill state and the editor opens over it afterwards.
     function grab() {
         root._grabSeq += 1;
         grabber.command = ["sh", "-c",

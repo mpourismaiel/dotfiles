@@ -43,6 +43,10 @@ Item {
         if (e.modifiers & Qt.ControlModifier) {
             if (e.key === Qt.Key_C) { overlay.state.requestCopy(); e.accepted = true; }
             else if (e.key === Qt.Key_S) { overlay.state.requestSave(); e.accepted = true; }
+            // Ctrl+Z undo, Ctrl+Shift+Z / Ctrl+Y redo
+            else if (e.key === Qt.Key_Z && (e.modifiers & Qt.ShiftModifier)) { overlay._redo(); e.accepted = true; }
+            else if (e.key === Qt.Key_Z) { overlay._undo(); e.accepted = true; }
+            else if (e.key === Qt.Key_Y) { overlay._redo(); e.accepted = true; }
         } else if ((e.key === Qt.Key_Delete || e.key === Qt.Key_Backspace)
                    && overlay.state.selected && overlay.state.tool === "select") {
             overlay.state.deleteSelected(); e.accepted = true;
@@ -101,27 +105,49 @@ Item {
                 cursorShape: Qt.CrossCursor
                 property var draft: null
                 onPressed: (e) => {
-                    const t = overlay.state.tool;
-                    creator.draft = annProto.createObject(annLayer, {
-                        state: overlay.state, theme: overlay.theme,
-                        annType: t, annColor: overlay.state.strokeColor,
-                        annWidth: overlay.state.strokeWidth, fontPx: overlay.state.fontSize,
+                    const t = overlay.state.tool, st = overlay.state;
+                    if (t === "freehand") {
+                        creator.draft = overlay._create({
+                            state: st, theme: overlay.theme, annType: "freehand",
+                            annColor: st.strokeColor, annWidth: st.strokeWidth,
+                            x1: e.x, y1: e.y, x2: e.x, y2: e.y, points: [{ x: e.x, y: e.y }]
+                        });
+                        st.selected = creator.draft;
+                        return;
+                    }
+                    // rect + rectFill both make an annType "rect"; rectFill just starts
+                    // filled (a selected rect can toggle fill / recolour later).
+                    const isRect = (t === "rect" || t === "rectFill");
+                    creator.draft = overlay._create({
+                        state: st, theme: overlay.theme,
+                        annType: isRect ? "rect" : t,
+                        annColor: st.strokeColor, annWidth: st.strokeWidth, fontPx: st.fontSize,
+                        filled: t === "rectFill", fillColor: st.fillColor,
                         x1: e.x, y1: e.y,
                         x2: t === "text" ? e.x + 80 : e.x,
-                        y2: t === "text" ? e.y + overlay.state.fontSize + 8 : e.y,
+                        y2: t === "text" ? e.y + st.fontSize + 8 : e.y,
                         textValue: ""
                     });
-                    overlay.state.selected = creator.draft;
+                    st.selected = creator.draft;
                 }
                 onPositionChanged: (e) => {
                     if (!creator.draft || overlay.state.tool === "text") return;
+                    if (overlay.state.tool === "freehand") { creator.draft.addPoint(e.x, e.y); return; }
                     creator.draft.x2 = e.x; creator.draft.y2 = e.y;
                 }
                 onReleased: () => {
                     const d = creator.draft; creator.draft = null;
                     if (!d) return;
-                    if (overlay.state.tool === "text") { d.beginEditIfText(); overlay.state.tool = "select"; return; }
-                    if (d.bw < 4 && d.bh < 4) { d.destroy(); overlay.state.selected = null; }
+                    const t = overlay.state.tool;
+                    if (t === "text") { d.beginEditIfText(); overlay.state.tool = "select"; overlay._commit(); return; }
+                    if (t === "freehand") {
+                        if ((d.points || []).length < 2) { overlay._remove(d); overlay.state.selected = null; }
+                        else overlay._commit();
+                        return;
+                    }
+                    // a bare click (no drag) makes a zero-size shape — discard it
+                    if (d.bw < 4 && d.bh < 4) { overlay._remove(d); overlay.state.selected = null; }
+                    else overlay._commit();
                 }
             }
 
@@ -224,25 +250,116 @@ Item {
 
     Component { id: annProto; AnnItem { } }
 
+    // ---- annotation bookkeeping + undo/redo ---------------------------------
+    // Annotations are stable QML objects (see AnnItem); we hold explicit refs in
+    // `_anns` rather than scanning annLayer.children so snapshot/hit-test never see
+    // an object mid-destroy. Undo/redo is a linear history of scene snapshots (plain
+    // JS, so colours/points serialise): `_history[_hi]` is the current scene; a
+    // commit truncates any redo branch and pushes a fresh snapshot; undo/redo just
+    // restore a neighbouring snapshot by rebuilding the objects.
+    property var _anns: []
+    property var _history: [ [] ]
+    property int _hi: 0
+
+    function _create(props) {
+        const o = annProto.createObject(annLayer, props);
+        if (o) overlay._anns.push(o);
+        return o;
+    }
+    function _remove(o) {
+        const i = overlay._anns.indexOf(o);
+        if (i >= 0) overlay._anns.splice(i, 1);
+        if (o) o.destroy();
+    }
+    function _clearAnns() {
+        for (let i = overlay._anns.length - 1; i >= 0; i--)
+            if (overlay._anns[i]) overlay._anns[i].destroy();
+        overlay._anns = [];
+        overlay.state.selected = null;
+    }
+    function _snapshot() {
+        const out = [];
+        for (let i = 0; i < overlay._anns.length; i++) {
+            const k = overlay._anns[i];
+            if (!k) continue;
+            out.push({
+                annType: k.annType, annColor: "" + k.annColor, annWidth: k.annWidth,
+                fontPx: k.fontPx, filled: k.filled, fillColor: "" + k.fillColor,
+                textValue: k.textValue, x1: k.x1, y1: k.y1, x2: k.x2, y2: k.y2,
+                points: (k.points || []).map(p => ({ x: p.x, y: p.y })), z: k.z
+            });
+        }
+        return out;
+    }
+    function _restore(list) {
+        overlay._clearAnns();
+        let maxZ = 0;
+        for (let i = 0; i < list.length; i++) {
+            const d = list[i];
+            const o = overlay._create({
+                state: overlay.state, theme: overlay.theme,
+                annType: d.annType, annColor: d.annColor, annWidth: d.annWidth,
+                fontPx: d.fontPx, filled: d.filled, fillColor: d.fillColor,
+                textValue: d.textValue, x1: d.x1, y1: d.y1, x2: d.x2, y2: d.y2,
+                points: d.points ? d.points.slice() : []
+            });
+            if (o && d.z !== undefined) { o.z = d.z; if (d.z > maxZ) maxZ = d.z; }
+        }
+        overlay.state.selected = null;
+        if (overlay.state._annZ < maxZ) overlay.state._annZ = maxZ;
+    }
+    function _commit() {
+        overlay._history = overlay._history.slice(0, overlay._hi + 1);
+        overlay._history.push(overlay._snapshot());
+        overlay._hi = overlay._history.length - 1;
+        overlay._syncHistoryFlags();
+    }
+    function _undo() {
+        if (overlay._hi <= 0) return;
+        overlay._hi -= 1;
+        overlay._restore(overlay._history[overlay._hi]);
+        overlay._syncHistoryFlags();
+    }
+    function _redo() {
+        if (overlay._hi >= overlay._history.length - 1) return;
+        overlay._hi += 1;
+        overlay._restore(overlay._history[overlay._hi]);
+        overlay._syncHistoryFlags();
+    }
+    function _syncHistoryFlags() {
+        overlay.state.canUndo = overlay._hi > 0;
+        overlay.state.canRedo = overlay._hi < overlay._history.length - 1;
+    }
+
     // test/programmatic helper: place an annotation directly (full-image coords).
     function addAnnotation(t, ax, ay, bx, by, c, tv) {
-        return annProto.createObject(annLayer, {
+        return overlay._create({
             state: overlay.state, theme: overlay.theme, annType: t,
             annColor: c || overlay.state.strokeColor, annWidth: overlay.state.strokeWidth,
             fontPx: overlay.state.fontSize, x1: ax, y1: ay, x2: bx, y2: by, textValue: tv || ""
         });
     }
-    // destroy every placed annotation (a new screenshot starts clean); the state
-    // fires clearAnnotations() from reset()/beginScreenshot().
+    // destroy every placed annotation + reset history (a new screenshot starts
+    // clean); the state fires clearAnnotations() from reset()/beginScreenshot().
     function clearAnnotations() {
-        const kids = annLayer.children;
-        for (let i = kids.length - 1; i >= 0; i--)
-            if (kids[i] && kids[i].isAnnotation) kids[i].destroy();
-        overlay.state.selected = null;
+        overlay._clearAnns();
+        overlay._history = [ [] ];
+        overlay._hi = 0;
+        overlay._syncHistoryFlags();
     }
     Connections {
         target: overlay.state
         function onClearAnnotations() { overlay.clearAnnotations(); }
+        function onCommitHistory() { overlay._commit(); }
+        function onUndoRequested() { overlay._undo(); }
+        function onRedoRequested() { overlay._redo(); }
+        function onDeleteSelectedRequested() {
+            const s = overlay.state.selected;
+            if (!s) return;
+            overlay._remove(s);
+            overlay.state.selected = null;
+            overlay._commit();
+        }
     }
 
     // a fresh grab asks for the full-screen default: once we know our size, pre-select
@@ -259,10 +376,9 @@ Item {
     // overlay's origin, so its children's x/y are directly comparable. Used to let a
     // press fall through to an annotation instead of starting a region draw.
     function _annAt(px, py) {
-        const kids = annLayer.children;
-        for (let i = kids.length - 1; i >= 0; i--) {
-            const k = kids[i];
-            if (k && k.isAnnotation && k.visible
+        for (let i = overlay._anns.length - 1; i >= 0; i--) {
+            const k = overlay._anns[i];
+            if (k && k.visible
                 && px >= k.x && px <= k.x + k.width
                 && py >= k.y && py <= k.y + k.height)
                 return k;

@@ -1286,15 +1286,23 @@ ShellRoot {
             // entering a capture collapses every other expanded state so the pill
             // shows ONLY the capture controls (never the dashboard/menu underneath);
             // leaving it resets the movable-pill position back to the top-centre home.
+            //
+            // BUT NOT during "grabbing": the screenshot must capture the pill in its
+            // CURRENT state (expanded dashboard, an open menu, whatever), so we leave
+            // it untouched while the grabber runs and only collapse once the grab has
+            // landed and we move on to selecting/annotating (or straight to recConfig
+            // for a record, which never grabs). Keyed on mode (not active) so the
+            // grabbing → selecting transition is what triggers the collapse.
             Connections {
                 target: capture
-                function onActiveChanged() {
+                function onModeChanged() {
                     if (!capture.active) {
                         win.capPositioned = false; win.capManual = false;
                         win.capAttached = true; win.capDragging = false;
                         win.capPosX = 0; win.capPosY = 0;
                         return;
                     }
+                    if (capture.mode === "grabbing") return;   // keep the pill as-is for the grab
                     win.open = false; win.launcher = false; win.focused = false;
                     win.kbNav = false; win.deadlines = false;
                     win.ctxGroup = null; win.trayItem = null; win.capMenu = false;
@@ -2793,16 +2801,19 @@ ShellRoot {
                         Rectangle {
                             id: captureBtn
                             readonly property bool recording: capture.mode === "recording"
+                            // "active" tint EXCEPT while grabbing — a screenshot taken with
+                            // this dashboard open would otherwise catch the button lit up.
+                            readonly property bool capActive: capture.active && capture.mode !== "grabbing"
                             width: theme.iconCell + 4; height: theme.iconCell + 4
                             radius: theme.radiusBtn
-                            color: (capture.active || captureMa.containsMouse) ? theme.accentDim : "transparent"
+                            color: (captureBtn.capActive || captureMa.containsMouse) ? theme.accentDim : "transparent"
                             Behavior on color { ColorAnimation { duration: theme.animFast } }
                             MSym {
                                 anchors.centerIn: parent
                                 icon: captureBtn.recording ? "stop_circle" : "screenshot_monitor"
                                 size: 21
                                 fill: captureBtn.recording ? 1 : 0
-                                color: capture.active ? theme.accent : theme.textDim
+                                color: captureBtn.capActive ? theme.accent : theme.textDim
                             }
                             MouseArea {
                                 id: captureMa
@@ -3177,11 +3188,11 @@ ShellRoot {
                     NumberAnimation {
                         duration: theme.animFast
                     }
-    
+
                 }
-    
+
             }
-    
+
             // ==================== voice cancel: floating X beside the pill ====================
             // A circular X that floats NEXT TO the recorder pill (a sibling of `pill`,
             // like the floating deck, so the pill's own clip/margins can't eat it) for
