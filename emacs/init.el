@@ -1,11 +1,15 @@
 ;;; init.el --- Vanilla Emacs config (ported from Doom) -*- lexical-binding: t; -*-
 
+;;; Commentary:
+
 ;; Layout:
 ;;   lisp/mp-*.el      configuration modules, loaded in order below
 ;;   packages/<name>/  self-contained custom features (ported Doom packages)
 ;;   themes/           custom themes (dobri-c07)
 ;; Deployed to ~/.config/emacs-vanilla/ by deploy.sh; launch with
 ;;   emacs --init-directory=~/.config/emacs-vanilla
+
+;;; Code:
 
 ;;; Directories
 

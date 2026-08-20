@@ -438,6 +438,18 @@ Replaces Doom-era `+eval/test' (which was an unbound command)."
  "M-<up>"   #'mp/move-lines-up
  "M-<down>" #'mp/move-lines-down)
 
+;; Never let comment commands (C-/, gc, comment-line, comment-dwim, ...) stop
+;; to ask "No comment syntax is defined.  Use:".  Any major mode that leaves
+;; `comment-start' unset -- fundamental-mode, text-mode, and assorted config
+;; buffers -- gets a sane `#' fallback so commenting Just Works everywhere.
+;; Modes that define their own comment syntax are untouched.
+(defun mp/ensure-comment-syntax-h ()
+  "Default an undefined comment syntax to `#' so C-/ never prompts."
+  (unless comment-start
+    (setq-local comment-start "# ")
+    (setq-local comment-end "")))
+(add-hook 'after-change-major-mode-hook #'mp/ensure-comment-syntax-h)
+
 (defun mp/clipboard-copy ()
   (interactive)
   (clipboard-kill-ring-save (region-beginning) (region-end))

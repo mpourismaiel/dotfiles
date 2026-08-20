@@ -382,6 +382,13 @@ With prefix arg TEST, build in test mode (-t)."
 (use-package csv-mode
   :mode ("\\.csv\\'" "\\.tsv\\'"))
 
+;; .env files: without a major mode these open in fundamental-mode -- no
+;; highlighting, and no `comment-start', which is why C-/ (comment-line)
+;; prompts "No comment syntax is defined".  dotenv-mode gives font-lock and
+;; `#' comments.  Matches `.env', `.env.local', `.env.production', etc.
+(use-package dotenv-mode
+  :mode ("\\.env\\'" "\\.env\\.[^/]*\\'"))
+
 ;; Minimal here: the hledger custom package (loaded in mp-tools) does the
 ;; real configuration.
 (use-package ledger-mode
