@@ -24,17 +24,40 @@ Item {
         root.mode = m;
         root.addError = "";
         root.openSelect = null;
+        root.catPickWhich = "";
         if (m === "forecast") root.forecastHorizon = 12;   // reset the lazy horizon
+        if (m === "register") root.registerLimit = 50;     // reset the infinite-scroll window
         loadModeData(m);
     }
     function loadModeData(m) {
         if (!root.fin) return;
         if (m === "add")      { root.fin.loadAccounts(); }
         if (m === "forecast") { root.fin.loadTimeline(root.forecastHorizon); }
-        if (m === "register") { root.fin.loadRegister(root.registerFilter, 50); }
+        if (m === "register") { root.loadRegisterView(); }
         if (m === "balances") { root.fin.loadBalances(); }
         if (m === "wishlist") { root.fin.loadWishlist(); }
         if (m === "plan")     { root.fin.loadPlan(); }
+    }
+    // register has two faces: the transaction list (All/Expenses/Income/Assets)
+    // and the "Category" summary (date-range totals per category). This loads
+    // whichever the current registerFilter selects.
+    function loadRegisterView() {
+        if (!root.fin) return;
+        if (root.registerFilter === "category")
+            root.fin.loadCategorySums(root.catStart, root.catEnd);
+        else
+            root.fin.loadRegister(root.registerFilter, root.registerLimit);
+    }
+    // infinite scroll: grow the window and refetch when the list is scrolled near
+    // its end. cmd_register returns at most `registerLimit` rows (newest first), so
+    // a full page means there may be older rows; a short page means we've hit bottom.
+    function loadMoreRegister() {
+        if (!root.fin || root.registerFilter === "category") return;
+        if (root.fin.registerLoading) return;
+        var items = root.fin.registerItems || [];
+        if (items.length < root.registerLimit) return;    // reached the oldest txn
+        root.registerLimit += 50;
+        root.fin.loadRegister(root.registerFilter, root.registerLimit);
     }
 
     // ---- view state (mirrors CalendarMenu) ----
@@ -49,7 +72,16 @@ Item {
 
     // ---- report state ----
     property int forecastHorizon: 12          // timeline months ahead; grows on scroll
-    property string registerFilter: ""        // "" | expenses | income | assets
+    property string registerFilter: ""        // "" | expenses | income | assets | category
+    property int registerLimit: 50            // register infinite-scroll window; grows on scroll
+    // "Category" summary date range (inclusive). Defaults to the two-week window
+    // running from the Saturday of last week to the Saturday of next week.
+    property string catStart: ""
+    property string catEnd: ""
+    // date-picker popover target: "" (closed) | "start" | "end"; catPickAnchor is
+    // the button Item it should float beneath (mapped in the shared popover layer).
+    property string catPickWhich: ""
+    property var catPickAnchor: null
     readonly property var planMonths: (root.fin && root.fin.planData && root.fin.planData.months)
         ? root.fin.planData.months : []
     readonly property var planUnbuyable: {    // wishlist items that never fit the horizon
@@ -181,6 +213,65 @@ Item {
     function ordinal(n) {
         var s = ["th","st","nd","rd"], v = n % 100;
         return n + (s[(v - 20) % 10] || s[v] || s[0]);
+    }
+    // "YYYY-MM-DD" → a compact human label for the date-range buttons
+    function shortDate(key) {
+        var p = ("" + key).split("-");
+        if (p.length < 3) return key || "—";
+        return root.monthNames[(+p[1] || 1) - 1] + " " + (+p[2]) + ", " + p[0];
+    }
+    // a 42-cell Gregorian month grid (Sunday-first) for the date-picker popover
+    function monthGrid(y, m) {
+        var first = new Date(y, m - 1, 1);
+        var start = new Date(y, m - 1, 1 - first.getDay());
+        var cells = [];
+        for (var i = 0; i < 42; i++) {
+            var dt = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
+            var gy = dt.getFullYear(), gm = dt.getMonth() + 1, gd = dt.getDate();
+            cells.push({ y: gy, m: gm, d: gd, key: root.dateKey(gy, gm, gd),
+                         inMonth: (gm === m && gy === y) });
+        }
+        return cells;
+    }
+    // the default "Category" window: Saturday of last week → Saturday of next week
+    // (a two-week span, computed with a Saturday-based week like the Shamsi grid).
+    function saturdayRange() {
+        var t = new Date();
+        var sinceSat = (t.getDay() + 1) % 7;          // Sat→0, Sun→1, … Fri→6
+        var thisSat = new Date(t.getFullYear(), t.getMonth(), t.getDate() - sinceSat);
+        var a = new Date(thisSat.getFullYear(), thisSat.getMonth(), thisSat.getDate() - 7);
+        var b = new Date(thisSat.getFullYear(), thisSat.getMonth(), thisSat.getDate() + 7);
+        return { start: root.dateKey(a.getFullYear(), a.getMonth() + 1, a.getDate()),
+                 end: root.dateKey(b.getFullYear(), b.getMonth() + 1, b.getDate()) };
+    }
+    // category label: drop the "expenses:"/"income:" top segment (colour already
+    // signals which), keep the rest of the path (e.g. "car:gas", "family:help").
+    function catLabel(account) {
+        var parts = ("" + account).split(":");
+        return parts.length > 1 ? parts.slice(1).join(":") : account;
+    }
+    // hledger books expenses positive and income negative; flip that so spending
+    // reads negative (red) and income reads positive (green), matching a wallet.
+    function catAmtText(v, cur) {
+        if (!root.fin) return "";
+        var d = -v;
+        return (d < 0 ? "−" : "+") + root.fin.fmtAmount(Math.abs(d), cur);
+    }
+    function catAmtColor(v) {
+        return v > 0 ? root.theme.danger : root.theme.good;   // v>0 = expense
+    }
+
+    // apply a date pick from the popover, keeping start ≤ end, then refetch
+    function setCatDate(which, key) {
+        if (which === "start") {
+            root.catStart = key;
+            if (root.catEnd && key > root.catEnd) root.catEnd = key;
+        } else {
+            root.catEnd = key;
+            if (root.catStart && key < root.catStart) root.catStart = key;
+        }
+        root.catPickWhich = "";
+        if (root.fin) root.fin.loadCategorySums(root.catStart, root.catEnd);
     }
     function isoWeek(y, m, d) {
         var t = new Date(Date.UTC(y, m - 1, d));
@@ -382,6 +473,9 @@ Item {
 
     Component.onCompleted: {
         var t = new Date();
+        var sr = root.saturdayRange();
+        root.catStart = sr.start;
+        root.catEnd = sr.end;
         root.todayKey = root.dateKey(t.getFullYear(), t.getMonth() + 1, t.getDate());
         root.gY = t.getFullYear(); root.gM = t.getMonth() + 1;
         var j = root.toJalaali(root.gY, root.gM, t.getDate());
@@ -1723,7 +1817,8 @@ Item {
                     { label: "All", q: "" },
                     { label: "Expenses", q: "expenses" },
                     { label: "Income", q: "income" },
-                    { label: "Assets", q: "assets" }
+                    { label: "Assets", q: "assets" },
+                    { label: "Category", q: "category" }
                 ]
                 delegate: Rectangle {
                     id: chip
@@ -1750,7 +1845,9 @@ Item {
                         cursorShape: Qt.PointingHandCursor
                         onClicked: {
                             root.registerFilter = chip.modelData.q;
-                            if (root.fin) root.fin.loadRegister(chip.modelData.q, 50);
+                            root.registerLimit = 50;         // fresh scroll window per filter
+                            root.catPickWhich = "";
+                            root.loadRegisterView();
                         }
                     }
                     Behavior on color { ColorAnimation { duration: root.theme.animFast } }
@@ -1758,13 +1855,22 @@ Item {
             }
         }
 
+        // transaction list (All / Expenses / Income / Assets) — infinite scroll
         Flickable {
+            id: regFlick
+            visible: root.registerFilter !== "category"
             anchors.top: regChips.bottom
             anchors.topMargin: root.theme.gap
             anchors.bottom: parent.bottom
             width: parent.width
             contentHeight: regCol.height
             clip: true
+            // grow the window as the bottom approaches; loadMoreRegister no-ops
+            // while a fetch is in flight or the oldest txn is already shown.
+            onContentYChanged: {
+                if (contentHeight > height && contentY + height > contentHeight - 240)
+                    root.loadMoreRegister();
+            }
             Column {
                 id: regCol
                 width: parent.width
@@ -1808,6 +1914,17 @@ Item {
                         }
                     }
                 }
+                // spinner-ish hint while the next page loads
+                Text {
+                    visible: !!(root.fin && root.fin.registerLoading
+                                && root.fin.registerItems && root.fin.registerItems.length)
+                    width: regCol.width
+                    horizontalAlignment: Text.AlignHCenter
+                    text: "Loading…"
+                    color: root.theme.faint
+                    font.family: root.theme.mono
+                    font.pixelSize: root.theme.fsSmall
+                }
                 Text {
                     visible: !root.fin || !root.fin.registerItems || root.fin.registerItems.length === 0
                     text: "No transactions."
@@ -1815,6 +1932,207 @@ Item {
                     font.family: root.theme.family
                     font.italic: true
                     font.pixelSize: root.theme.fsNormal
+                }
+            }
+        }
+
+        // ---- "Category" summary: a date range + per-category totals ----
+        Item {
+            id: catView
+            visible: root.registerFilter === "category"
+            anchors.top: regChips.bottom
+            anchors.topMargin: root.theme.gap
+            anchors.bottom: parent.bottom
+            width: parent.width
+
+            // date-range header: two buttons open the date-picker popover
+            Row {
+                id: catRange
+                spacing: 8
+                height: 28
+
+                component DateBtn: Rectangle {
+                    id: dbtn
+                    property string label: ""
+                    property string value: ""
+                    property string which: ""
+                    width: dbtnRow.implicitWidth + 20
+                    height: 28
+                    radius: root.theme.radiusRow
+                    readonly property bool active: root.catPickWhich === dbtn.which
+                    color: (dbtn.active || dbtnMa.containsMouse) ? root.theme.rowHi : root.theme.row
+                    border.color: dbtn.active ? root.theme.accent : root.theme.border
+                    border.width: 1
+                    Row {
+                        id: dbtnRow
+                        anchors.centerIn: parent
+                        spacing: 6
+                        MSym {
+                            anchors.verticalCenter: parent.verticalCenter
+                            icon: "event"
+                            size: 14
+                            color: root.theme.textDim
+                        }
+                        Column {
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing: 0
+                            Text {
+                                text: dbtn.label
+                                color: root.theme.faint
+                                font.family: root.theme.mono
+                                font.pixelSize: root.theme.fsSmall - 3
+                                font.letterSpacing: root.theme.labelSpacing
+                                font.capitalization: Font.AllUppercase
+                            }
+                            Text {
+                                text: root.shortDate(dbtn.value)
+                                color: root.theme.text
+                                font.family: root.theme.mono
+                                font.pixelSize: root.theme.fsSmall
+                            }
+                        }
+                    }
+                    MouseArea {
+                        id: dbtnMa
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            root.catPickAnchor = dbtn;
+                            root.catPickWhich = (root.catPickWhich === dbtn.which ? "" : dbtn.which);
+                        }
+                    }
+                    Behavior on color { ColorAnimation { duration: root.theme.animFast } }
+                }
+
+                DateBtn { label: "From"; value: root.catStart; which: "start" }
+                MSym {
+                    anchors.verticalCenter: parent.verticalCenter
+                    icon: "arrow_forward"
+                    size: 16
+                    color: root.theme.faint
+                }
+                DateBtn { label: "To"; value: root.catEnd; which: "end" }
+            }
+
+            Flickable {
+                anchors.top: catRange.bottom
+                anchors.topMargin: root.theme.gap
+                anchors.bottom: parent.bottom
+                width: parent.width
+                contentHeight: catCol.height
+                clip: true
+                Column {
+                    id: catCol
+                    width: parent.width
+                    spacing: 4
+                    Repeater {
+                        model: (root.fin && root.fin.categoryItems && root.fin.categoryItems.rows)
+                            ? root.fin.categoryItems.rows : []
+                        delegate: Item {
+                            id: catRow
+                            required property var modelData
+                            width: catCol.width
+                            height: Math.max(catAmts.height, 18)
+                            Text {
+                                id: catName
+                                anchors.left: parent.left
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: Math.min(implicitWidth, catRow.width - catAmts.width - 30)
+                                elide: Text.ElideRight
+                                text: root.catLabel(catRow.modelData.account)
+                                color: root.theme.text
+                                font.family: root.theme.family
+                                font.pixelSize: root.theme.fsNormal
+                            }
+                            Rectangle {                              // leader rule to the figure
+                                anchors.left: catName.right
+                                anchors.leftMargin: 10
+                                anchors.right: catAmts.left
+                                anchors.rightMargin: 10
+                                anchors.verticalCenter: parent.verticalCenter
+                                height: 1
+                                color: root.theme.divider
+                            }
+                            Column {
+                                id: catAmts
+                                anchors.right: parent.right
+                                spacing: 1
+                                Repeater {
+                                    model: catRow.modelData.amounts
+                                    delegate: Text {
+                                        id: catAmt
+                                        required property var modelData
+                                        anchors.right: parent.right
+                                        text: root.catAmtText(catAmt.modelData.value, catAmt.modelData.currency)
+                                        color: root.catAmtColor(catAmt.modelData.value)
+                                        font.family: root.theme.mono
+                                        font.pixelSize: root.theme.fsSmall
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Rectangle {
+                        visible: !!(root.fin && root.fin.categoryItems
+                                    && root.fin.categoryItems.rows && root.fin.categoryItems.rows.length)
+                        width: parent.width
+                        height: 1
+                        color: root.theme.divider
+                    }
+                    Item {
+                        visible: !!(root.fin && root.fin.categoryItems
+                                    && root.fin.categoryItems.rows && root.fin.categoryItems.rows.length)
+                        width: catCol.width
+                        height: Math.max(catTotAmts.height, 18)
+                        Text {
+                            id: catTotLabel
+                            anchors.left: parent.left
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: "Net"
+                            color: root.theme.textDim
+                            font.family: root.theme.mono
+                            font.pixelSize: root.theme.fsSmall
+                            font.letterSpacing: root.theme.labelSpacing
+                            font.capitalization: Font.AllUppercase
+                        }
+                        Rectangle {                              // leader rule to the net figure
+                            anchors.left: catTotLabel.right
+                            anchors.leftMargin: 10
+                            anchors.right: catTotAmts.left
+                            anchors.rightMargin: 10
+                            anchors.verticalCenter: parent.verticalCenter
+                            height: 1
+                            color: root.theme.divider
+                        }
+                        Column {
+                            id: catTotAmts
+                            anchors.right: parent.right
+                            spacing: 1
+                            Repeater {
+                                model: (root.fin && root.fin.categoryItems && root.fin.categoryItems.totals)
+                                    ? root.fin.categoryItems.totals : []
+                                delegate: Text {
+                                    id: catTot
+                                    required property var modelData
+                                    anchors.right: parent.right
+                                    text: root.catAmtText(catTot.modelData.value, catTot.modelData.currency)
+                                    color: root.catAmtColor(catTot.modelData.value)
+                                    font.family: root.theme.mono
+                                    font.pixelSize: root.theme.fsSmall
+                                }
+                            }
+                        }
+                    }
+                    Text {
+                        visible: !root.fin || !root.fin.categoryItems || !root.fin.categoryItems.rows
+                                 || root.fin.categoryItems.rows.length === 0
+                        text: "No activity in this range."
+                        color: root.theme.faint
+                        font.family: root.theme.family
+                        font.italic: true
+                        font.pixelSize: root.theme.fsNormal
+                    }
                 }
             }
         }
@@ -2311,6 +2629,175 @@ Item {
                         font.family: root.theme.family
                         font.italic: true
                         font.pixelSize: root.theme.fsSmall
+                    }
+                }
+            }
+        }
+    }
+
+    // ---- date-picker popover (Category range) ----
+    // Same "last child paints above all" trick as the dropdown overlay: a mini
+    // Gregorian month grid floats beneath the tapped From/To button. Its own
+    // pickY/pickM month is seeded from whichever end (catStart/catEnd) is open.
+    Item {
+        id: catPickLayer
+        anchors.fill: parent
+        z: 1001
+        visible: root.catPickWhich !== ""
+        MouseArea { anchors.fill: parent; onClicked: root.catPickWhich = "" }
+        Rectangle {
+            id: catPickBox
+            readonly property point p: root.catPickAnchor
+                ? root.catPickAnchor.mapToItem(catPickLayer, 0, 0) : Qt.point(0, 0)
+            property int pickY: 2026
+            property int pickM: 1
+            readonly property string curVal: root.catPickWhich === "end" ? root.catEnd : root.catStart
+            width: 236
+            readonly property int boxH: catPickHead.height + catPickWd.height + 6 * cpCellH + 18
+            readonly property real cpCellW: (width - 12) / 7
+            readonly property real cpCellH: 26
+            // seed the shown month from the value being edited when it opens
+            onVisibleChanged: if (visible) {
+                var p = ("" + catPickBox.curVal).split("-");
+                var y = +p[0], m = +p[1];
+                var t = new Date();
+                catPickBox.pickY = y || t.getFullYear();
+                catPickBox.pickM = m || (t.getMonth() + 1);
+            }
+            // flip up if it would spill past the pane bottom
+            readonly property bool up: root.catPickAnchor
+                ? (p.y + root.catPickAnchor.height + 4 + boxH > catPickLayer.height) : false
+            x: Math.max(0, Math.min(p.x, catPickLayer.width - width))
+            y: catPickBox.up ? (p.y - 4 - boxH)
+                             : (p.y + (root.catPickAnchor ? root.catPickAnchor.height : 0) + 4)
+            height: boxH
+            radius: root.theme.radiusRow
+            color: root.theme.bgElevated
+            border.color: root.theme.border
+            border.width: 1
+            clip: true
+
+            // month nav header
+            Item {
+                id: catPickHead
+                x: 6; y: 6
+                width: parent.width - 12
+                height: 26
+                Rectangle {
+                    id: cpPrev
+                    width: 24; height: 24
+                    anchors.left: parent.left
+                    anchors.verticalCenter: parent.verticalCenter
+                    radius: root.theme.radiusBtn
+                    color: cpPrevMa.containsMouse ? root.theme.rowHi : "transparent"
+                    MSym { anchors.centerIn: parent; icon: "chevron_left"; size: 16; color: root.theme.textDim }
+                    MouseArea {
+                        id: cpPrevMa
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            var m = catPickBox.pickM - 1, y = catPickBox.pickY;
+                            if (m < 1) { m = 12; y -= 1; }
+                            catPickBox.pickM = m; catPickBox.pickY = y;
+                        }
+                    }
+                }
+                Text {
+                    anchors.centerIn: parent
+                    text: root.gMonths[catPickBox.pickM - 1] + " " + catPickBox.pickY
+                    color: root.theme.text
+                    font.family: root.theme.mono
+                    font.pixelSize: root.theme.fsSmall
+                }
+                Rectangle {
+                    id: cpNext
+                    width: 24; height: 24
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    radius: root.theme.radiusBtn
+                    color: cpNextMa.containsMouse ? root.theme.rowHi : "transparent"
+                    MSym { anchors.centerIn: parent; icon: "chevron_right"; size: 16; color: root.theme.textDim }
+                    MouseArea {
+                        id: cpNextMa
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            var m = catPickBox.pickM + 1, y = catPickBox.pickY;
+                            if (m > 12) { m = 1; y += 1; }
+                            catPickBox.pickM = m; catPickBox.pickY = y;
+                        }
+                    }
+                }
+            }
+
+            // weekday header (Sunday-first, matching monthGrid)
+            Row {
+                id: catPickWd
+                x: 6
+                anchors.top: catPickHead.bottom
+                width: parent.width - 12
+                height: 20
+                Repeater {
+                    model: ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"]
+                    delegate: Item {
+                        required property var modelData
+                        width: catPickBox.cpCellW
+                        height: 20
+                        Text {
+                            anchors.centerIn: parent
+                            text: parent.modelData
+                            color: root.theme.faint
+                            font.family: root.theme.mono
+                            font.pixelSize: root.theme.fsSmall - 2
+                            font.capitalization: Font.AllUppercase
+                        }
+                    }
+                }
+            }
+
+            // day grid
+            Grid {
+                x: 6
+                anchors.top: catPickWd.bottom
+                width: parent.width - 12
+                columns: 7
+                Repeater {
+                    model: root.monthGrid(catPickBox.pickY, catPickBox.pickM)
+                    delegate: Item {
+                        id: cpCell
+                        required property var modelData
+                        width: catPickBox.cpCellW
+                        height: catPickBox.cpCellH
+                        readonly property bool selected: cpCell.modelData.key === catPickBox.curVal
+                        readonly property bool isToday: cpCell.modelData.key === root.todayKey
+                        Rectangle {
+                            anchors.centerIn: parent
+                            width: catPickBox.cpCellW - 4
+                            height: catPickBox.cpCellH - 4
+                            radius: root.theme.radiusSmall
+                            color: cpCell.selected ? root.theme.accentSoft
+                                 : (cpCellMa.containsMouse ? root.theme.rowHi : "transparent")
+                            border.color: cpCell.selected ? root.theme.accent
+                                 : (cpCell.isToday ? root.theme.borderStrong : "transparent")
+                            border.width: 1
+                            Text {
+                                anchors.centerIn: parent
+                                text: cpCell.modelData.d
+                                color: cpCell.selected ? root.theme.accent
+                                     : (cpCell.modelData.inMonth ? root.theme.text : root.theme.faint)
+                                font.family: root.theme.mono
+                                font.pixelSize: root.theme.fsSmall
+                            }
+                        }
+                        MouseArea {
+                            id: cpCellMa
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.setCatDate(root.catPickWhich, cpCell.modelData.key)
+                        }
                     }
                 }
             }

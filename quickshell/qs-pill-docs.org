@@ -662,8 +662,10 @@ dot + day list), the [[*Launcher.qml][=Launcher=]] (privacy toggle) and
 hollow-dot =forecastMap= and =forecastRangeItems=, the full forecast rows;
 =forecastForDay(key)= filters them for the calendar's *Upcoming* section — each
 row carries its category + money account so =pendingPrefill= can seed the add
-form), =loadAccounts= / =loadBalances= / =loadTimeline= / =loadRegister= /
-=loadWishlist= (the finance menu's views), =addEntry(payload)= (quick-add; emits
+form), =loadAccounts= / =loadBalances= / =loadTimeline= / =loadRegister= (with
+=registerLoading= for the infinite-scroll guard) / =loadCategorySums(a,b)= (the
+Register's *Category* tab, into =categoryItems=) / =loadWishlist= (the finance
+menu's views), =addEntry(payload)= (quick-add; emits
 =addFinished(ok, error)= and =entryAdded()= on success) and =checkToday()= (the
 nag's "did I log anything today?"). All best-effort: empty shapes if hledger
 fails.
@@ -746,7 +748,28 @@ unchanged.
 periodic) from today outward — each row shows the date, what happens, the
 ±amount and the *running projected balance* ("what I'd have"), with month-start
 separators; it lazily extends its horizon as you scroll to the bottom.
-*Register* is the newest-first transaction list with account-group filter chips;
+*Register* is the newest-first transaction list with account-group filter chips
+(*All / Expenses / Income / Assets*). It *infinite-scrolls*: the list is loaded
+with a =registerLimit= window (starts at 50) and =loadMoreRegister()= grows it by
+50 and refetches whenever the flick nears the bottom — a short page (fewer rows
+than the window) means the oldest txn is reached, so it stops. A fifth chip,
+*Category*, switches the register to a per-category *summary* instead of a
+transaction list: a two-button date-range header (*From* → *To*) over a
+list of each expenses/income category's total for that span, with a *Net* footer.
+Each row shows the full category path minus its top segment (=car:gas=,
+=family:help=), a *leader rule* to the figure, and a *wallet-signed* amount —
+hledger books expenses positive / income negative, so the pill negates it: spending
+is red and negative, income green and positive (=catLabel= / =catAmtText= /
+=catAmtColor=). The bridge runs =balance --flat= (NOT the default tree) so every
+account is its own full-named row: tree mode elides single-child parents
+(=expenses:car:gas= with no =expenses:car=), which read as *missing categories*
+once only the leaf segment is shown. The range defaults to the two weeks running from the Saturday of
+last week to the Saturday of next week (=saturdayRange()=). Tapping a date button
+opens a *date-picker popover* — a mini Gregorian month grid floated beneath the
+button via the same "last child paints above all" trick as the searchable-dropdown
+overlay (=catPickWhich= / =catPickAnchor=); picking a day keeps start ≤ end and
+refetches. The category totals come from the bridge's =catsum A B [CUR]= command
+(a date-scoped =balance= over =expenses income=), held in =fin.categoryItems=.
 *balances* renders the account tree with per-commodity totals; *wishlist* shows liquid assets and each
 item with an affordability badge (✓ affordable, hourglass not yet, ? when the
 commodity has no liquid counterpart to compare against).
@@ -1465,7 +1488,10 @@ Emacs, no rollback); =accounts= prints the known accounts grouped by top segment
 =assets liabilities=); =forecast [months]= prints upcoming rows from tomorrow
 through N months out (periodic rules from =forecast.journal= via =--forecast=,
 plus any real future-dated entries); =register [query] [limit]= prints the newest
-rows first; =wishlist= prints the wishlist items with per-commodity affordability
+rows first (the pill grows =limit= for infinite scroll); =catsum A B [CUR]= prints
+per-category (expenses + income) totals over the date range =[A,B]= (end-exclusive)
+in the same =\{rows, totals\}= shape as =balances=, for the Register's *Category*
+tab; =wishlist= prints the wishlist items with per-commodity affordability
 against liquid =assets= (=affordable= is =null= when the commodities differ — no
 EUR/IRT rate is kept); =today-has-entry= prints =\{has, count\}= (drives the
 evening nag). Everything is best-effort: if =hledger= fails or the journals are

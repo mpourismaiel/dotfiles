@@ -18,6 +18,8 @@
 #                      from today over the next `mo` months, real + forecast events
 #                      (--historical: balance starts from the current asset total)
 #   register [q][n][CUR] print JSON [txn_row, …] newest first, at most n (default 50)
+#   catsum A B [CUR]   print JSON {rows, totals} — per-category (expenses+income)
+#                      totals over the date range [A,B] (end-exclusive), valued CUR
 #   wishlist [CUR]     print JSON {liquid, buffer, spendable, currency,
 #                      items: [{description, amount, currency, affordable}]} — a
 #                      wish is affordable when (liquid − buffer) ≥ its price
@@ -441,6 +443,27 @@ def cmd_register(query, limit, cur="native"):
     return list(reversed(rows))[:limit]
 
 
+def cmd_category_sums(a, b, cur="native"):
+    """Per-category totals (expenses + income) over the date range [a,b], valued
+    in `cur`. Uses `--flat` so EVERY account is its own row with its FULL name and
+    its OWN amount — the default tree mode elides single-child parents (e.g.
+    `expenses:car:gas` collapses with no `expenses:car` row), which read as missing
+    categories once the pill shows only the leaf segment. `date:` is end-exclusive
+    (day_after), matching the calendar day queries. Returns {rows, totals} where
+    each row is {account (full), amounts:[{currency,value}]}."""
+    span = "date:%s..%s" % (a, day_after(b))
+    out = run_hledger(["balance", "--flat", "-O", "json"] + val(cur)
+                      + ["expenses", "income", span])
+    if out is None:
+        return {"rows": [], "totals": []}
+    try:
+        rows_raw, totals_raw = json.loads(out)
+    except Exception:
+        return {"rows": [], "totals": []}
+    rows = [{"account": r[0], "amounts": amounts_of(r[3])} for r in rows_raw]
+    return {"rows": rows, "totals": amounts_of(totals_raw)}
+
+
 def valued_total(query, cur):
     """Single float: the total of `query` valued in `cur`. (After valuation the
     totals coalesce to one commodity, so summing is safe.)"""
@@ -726,6 +749,9 @@ def main():
         query = argv[1] if len(argv) > 1 else ""
         limit = int(argv[2]) if len(argv) > 2 else 50
         out = cmd_register(query, limit, argv[3] if len(argv) > 3 else "native")
+    elif cmd == "catsum" and len(argv) > 2:
+        out = cmd_category_sums(argv[1], argv[2],
+                                argv[3] if len(argv) > 3 else "native")
     elif cmd == "wishlist":
         out = cmd_wishlist(argv[1] if len(argv) > 1 else None)
     elif cmd == "plan":

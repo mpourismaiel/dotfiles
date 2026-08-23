@@ -81,6 +81,9 @@ QtObject {
     property var balances: ({ rows: [], totals: [] })
     property var timelineItems: []        // [{ date, description, amount, currency, kind, balance }]
     property var registerItems: []
+    readonly property bool registerLoading: registerProc.running
+    // per-category totals over a date range (same shape as `balances`)
+    property var categoryItems: ({ rows: [], totals: [] })
     property var wishlist: ({ liquid: 0, buffer: 0, spendable: 0, currency: "EUR", items: [] })
     // savings + wishlist-purchase plan: { currency, buffer, goal, goal_date,
     // start, months:[{month,end_date,net,projected,floor,cushion,purchases}],
@@ -146,6 +149,11 @@ QtObject {
     function loadWishlist() {
         wishlistProc.command = root.bridge(["wishlist", root.displayCurrency]);
         if (!wishlistProc.running) wishlistProc.running = true;
+    }
+    function loadCategorySums(a, b) {
+        if (!root.enabled || !a || !b) { root.categoryItems = { rows: [], totals: [] }; return; }
+        catSumProc.command = root.bridge(["catsum", a, b, root.displayCurrency]);
+        if (!catSumProc.running) catSumProc.running = true;
     }
     function checkToday() {
         if (!root.enabled) { root.todayHasEntry = true; return; }
@@ -317,6 +325,14 @@ QtObject {
             onStreamFinished: {
                 try { root.registerItems = JSON.parse(this.text) || []; }
                 catch (e) { root.registerItems = []; }
+            }
+        }
+    }
+    property Process catSumProc: Process {
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try { root.categoryItems = JSON.parse(this.text) || { rows: [], totals: [] }; }
+                catch (e) { root.categoryItems = { rows: [], totals: [] }; }
             }
         }
     }

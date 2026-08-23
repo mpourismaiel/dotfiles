@@ -147,6 +147,8 @@ FloatingWindow {
         { name: "menu-finance-wishlist", comp: cFinWish },
         { name: "menu-finance-forecast", comp: cFinFore },
         { name: "menu-finance-plan", comp: cFinPlan },
+        { name: "menu-finance-register", comp: cFinReg },
+        { name: "menu-finance-category", comp: cFinCat },
         { name: "menu-tetris",   comp: cTetris },
         { name: "menu-tetris-share", comp: cTetrisShare },
         { name: "menu-blockblast", comp: cBlockBlast },
@@ -537,6 +539,26 @@ FloatingWindow {
             FinanceMenu {
                 anchors.fill: parent; theme: theme; fin: fin
                 Component.onCompleted: openMode("plan")
+            }
+        }
+    }
+    Component {
+        id: cFinReg
+        MenuHost {
+            pillW: 760
+            FinanceMenu {
+                anchors.fill: parent; theme: theme; fin: fin
+                Component.onCompleted: openMode("register")
+            }
+        }
+    }
+    Component {
+        id: cFinCat
+        MenuHost {
+            pillW: 760
+            FinanceMenu {
+                anchors.fill: parent; theme: theme; fin: fin
+                Component.onCompleted: { openMode("register"); registerFilter = "category"; loadRegisterView(); }
             }
         }
     }

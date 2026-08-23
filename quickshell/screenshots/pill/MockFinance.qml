@@ -50,6 +50,18 @@ QtObject {
         { date: "2026-07-20", description: "Savings transfer", kind: "transfer", amount: 500.00, currency: "EUR", postings: [] },
         { date: "2026-07-18", description: "Groceries", kind: "expense", amount: 2100000, currency: "IRT", postings: [] }
     ]
+    property bool registerLoading: false
+    // per-category totals over a date range (same shape as `balances`)
+    property var categoryItems: ({
+        rows: [
+            { account: "expenses:food:groceries", amounts: [{ currency: "EUR", value: 214.30 }] },
+            { account: "expenses:car:gas", amounts: [{ currency: "EUR", value: 62.00 }] },
+            { account: "expenses:family:help", amounts: [{ currency: "EUR", value: 120.00 }] },
+            { account: "expenses:trip:fees", amounts: [{ currency: "EUR", value: 45.00 }] },
+            { account: "income:salary", amounts: [{ currency: "EUR", value: -2000.00 }] }
+        ],
+        totals: [{ currency: "EUR", value: -1558.70 }]
+    })
     property var wishlist: ({
         liquid: 8187.50, buffer: 1000, spendable: 7187.50, currency: "EUR",
         items: [
@@ -120,6 +132,7 @@ QtObject {
     function loadBalances() {}
     function loadTimeline(months) {}
     function loadRegister(query, limit) {}
+    function loadCategorySums(a, b) {}
     function loadWishlist() {}
     function checkToday() {}
     function addEntry(payload) {}
