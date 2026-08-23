@@ -39,6 +39,9 @@ FloatingWindow {
         property string orgAgendaDir: "~/org"
         property bool financeEnabled: true
         property string financeDir: "~/Documents/finance"
+        // Done page config (Settings › Productivity)
+        property var productivityDirs: ["~/Documents/projects/awesome", "~/Documents/projects/teamwork", "~/work/shledger"]
+        property var productivityEmails: ["you@example.com", "you@work.dev"]
         // seed a mid-game Tetris so the screenshot shows a real stack, not an empty well
         property var tetris: ({
             "board": (function () {
@@ -91,6 +94,9 @@ FloatingWindow {
             "score": 14, "best": 22, "over": false
         })
     }
+
+    // stand-in for DoneState (seeded CODE + AGENDA data, no bridge calls)
+    MockDone { id: mockDone }
 
     // mock clock strings so the dashboard is deterministic
     readonly property string clockShort: "09:41"
@@ -148,6 +154,9 @@ FloatingWindow {
         { name: "menu-blockblast-share", comp: cBlockBlastShare },
         { name: "menu-snake",    comp: cSnake },
         { name: "settings",      comp: cSettings },
+        { name: "settings-productivity", comp: cSettingsProd },
+        { name: "menu-done",     comp: cDone },
+        { name: "menu-done-loading", comp: cDoneLoading },
         { name: "menu-notifhistory", comp: cNotifHist },
         { name: "notif-stack",   comp: cNotifStack },
         { name: "power-hush",    comp: cPowerHush },
@@ -485,6 +494,12 @@ FloatingWindow {
     } }
     // the launcher's Settings page (Org Agenda page shown: toggle + directory field)
     Component { id: cSettings; MenuHost { pillW: 860; pillH: 580; SettingsMenu { anchors.fill: parent; theme: theme; acc: null; settings: mockSettings; themeSettings: mockThemeSettings; page: 0 } } }
+    // the Productivity settings page (project dirs + author emails)
+    Component { id: cSettingsProd; MenuHost { pillW: 860; pillH: 580; SettingsMenu { anchors.fill: parent; theme: theme; acc: null; settings: mockSettings; themeSettings: mockThemeSettings; page: 4 } } }
+    // the Done work-history page (menu 15) over the seeded MockDone
+    Component { id: cDone; MenuHost { pillW: 820; pillH: 560; DoneMenu { anchors.fill: parent; theme: theme; done: mockDone } } }
+    // the Done page mid-load (skeleton chapters + busy stripe)
+    Component { id: cDoneLoading; MenuHost { pillW: 820; pillH: 420; DoneMenu { anchors.fill: parent; theme: theme; done: MockDone { loading: true } } } }
     Component {
         id: cFinAdd
         MenuHost {

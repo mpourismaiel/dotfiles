@@ -206,6 +206,59 @@ HELPERS = r"""
             (ignore-errors (org-fold-show-entry))
             (ignore-errors (org-fold-show-children))))))
     nil)
+  ;; --- Done page: terminal facts in a date range [A,B] (the pill's work
+  ;; history). A/B are "YYYY-MM-DD". Counts a task as done when it carries a
+  ;; done-keyword AND a CLOSED stamp inside the range (so it stays counted
+  ;; forever, on the day it ended); CANCELLED-style keywords are split off as
+  ;; their own outcome. `hours' sums CLOCK ranges whose clock-in falls in the
+  ;; window, and `items' are the headings ranked by those clocked hours.
+  (defun pill--first-date-abs (s)                ; first YYYY-MM-DD in S -> day num
+    (when (and s (string-match "\\([0-9]\\{4\\}-[0-9][0-9]-[0-9][0-9]\\)" s))
+      (ignore-errors (org-time-string-to-absolute (match-string 1 s)))))
+  (defun pill--clocked-minutes (a b)             ; minutes clocked in [a,b] under point
+    (let ((end (save-excursion (org-end-of-subtree t t) (point)))
+          (total 0))
+      (save-excursion
+        (while (re-search-forward
+                (concat "^[ \t]*CLOCK: \\[\\([0-9]\\{4\\}-[0-9][0-9]-[0-9][0-9]\\)"
+                        "[^]]*\\][^=]*=>[ \t]*\\([0-9]+\\):\\([0-9][0-9]\\)")
+                end t)
+          (let ((d (ignore-errors (org-time-string-to-absolute (match-string 1))))
+                (h (string-to-number (match-string 2)))
+                (m (string-to-number (match-string 3))))
+            (when (and d (>= d a) (<= d b))
+              (setq total (+ total (* h 60) m))))))
+      total))
+  (defun pill-done (astr bstr)
+    (let ((a (pill--first-date-abs astr))
+          (b (pill--first-date-abs bstr))
+          (done 0) (cancelled 0) (mins 0) (items '()))
+      (when (and a b)
+        (ignore-errors
+          (org-map-entries
+           (lambda ()
+             (let* ((state (org-get-todo-state))
+                    (isdone (and state (member state org-done-keywords)))
+                    (cabs (pill--first-date-abs (org-entry-get nil "CLOSED")))
+                    (cm (pill--clocked-minutes a b)))
+               (when (and isdone cabs (>= cabs a) (<= cabs b))
+                 (if (string-match-p "CANCEL" state)
+                     (setq cancelled (1+ cancelled))
+                   (setq done (1+ done))))
+               (when (> cm 0)
+                 (setq mins (+ mins cm))
+                 (push (list (cons "text" (org-trim
+                                           (substring-no-properties
+                                            (or (nth 4 (org-heading-components)) ""))))
+                             (cons "hours" (/ cm 60.0)))
+                       items))))
+           t 'agenda)))
+      (setq items (sort items (lambda (x y) (> (cdr (assoc "hours" x))
+                                               (cdr (assoc "hours" y))))))
+      (when (> (length items) 8) (setq items (seq-take items 8)))
+      (json-encode (list (cons "done" done) (cons "cancelled" cancelled)
+                         (cons "hours" (/ mins 60.0))
+                         (cons "items" (vconcat items))))))
   (defun pill-open ()
     (let ((f (or (seq-find #'frame-visible-p (frame-list))
                  (car (frame-list))
@@ -307,6 +360,19 @@ def main():
         except ValueError:
             ahead = 30
         sys.stdout.write(_eval_to_file(_wrap("(pill-deadlines %d)" % ahead)))
+    elif cmd == "done" and len(argv) > 2:
+        # terminal facts (DONE/CANCELLED closures + clocked hours) in [A,B]. A
+        # trailing PERIOD label (argv[3]) is echoed back so the caller can drop
+        # stale responses from a period it has since switched away from.
+        import json
+        raw = _eval_to_file(_wrap("(pill-done %s %s)" % (_esc(argv[1]), _esc(argv[2]))))
+        period = argv[3] if len(argv) > 3 else ""
+        try:
+            obj = json.loads(raw)
+        except ValueError:
+            obj = {"done": 0, "cancelled": 0, "hours": 0.0, "items": []}
+        obj["period"] = period
+        sys.stdout.write(json.dumps(obj, ensure_ascii=False))
     elif cmd == "goto" and len(argv) > 2:
         # open FILE at headline POS in a visible frame (fire-and-forget)
         _emacs(

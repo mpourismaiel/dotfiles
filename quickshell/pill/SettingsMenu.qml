@@ -20,14 +20,16 @@ Item {
     property var acc                       // AccountsState (Online Accounts page)
     property var settings                  // JsonAdapter (feature flags + dirs)
     property var themeSettings             // JsonAdapter (theme colour overrides)
+    property var picker: null              // root.pickFolder(cb) — native folder picker
     signal closeRequested()
 
-    property int page: 0                   // 0 appearance · 1 accounts · 2 org agenda · 3 finance
+    property int page: 0                   // 0 appearance · 1 accounts · 2 org agenda · 3 finance · 4 productivity
     readonly property var pages: [
         { key: "appearance", label: "Appearance",      icon: "palette" },
         { key: "accounts",   label: "Online Accounts", icon: "account_circle" },
         { key: "org",        label: "Org Agenda",      icon: "event_note" },
-        { key: "finance",    label: "Finance",         icon: "account_balance_wallet" }
+        { key: "finance",    label: "Finance",         icon: "account_balance_wallet" },
+        { key: "productivity", label: "Productivity",  icon: "commit" }
     ]
 
     // opaque backdrop so the launcher body doesn't bleed through
@@ -216,6 +218,15 @@ Item {
                 path: root.settings ? root.settings.financeDir : ""
                 onFeatureToggled: (v) => { if (root.settings) root.settings.financeEnabled = v; }
                 onPathEdited: (v) => { if (root.settings) root.settings.financeDir = v; }
+            }
+
+            // Productivity — Done page config (project dirs + author emails)
+            ProductivitySettings {
+                anchors.fill: parent
+                visible: root.page === 4
+                theme: root.theme
+                settings: root.settings
+                picker: root.picker
             }
         }
     }

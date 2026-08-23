@@ -450,6 +450,16 @@ Dispatches by mode: code structure in `prog-mode', outline ancestors in
         ((derived-mode-p 'org-mode) (mp/header-svg-org-parents))
         (t nil)))
 
+(defun mp/header-svg-ledger-rows ()
+  "Rolling balance-account rows for hledger `.journal' buffers, or nil.
+
+Delegates to the hledger package (loaded separately, so guarded by `fboundp');
+returns a list of already-propertized strings, one balance account per line,
+rendered plainly (no line-number gutter, not clickable) below the header."
+  (when (and (derived-mode-p 'ledger-mode)
+             (fboundp 'mp/hledger-header-balance-rows))
+    (mp/hledger-header-balance-rows)))
+
 (defun mp/header-svg-org-parents ()
   "Return the off-screen ancestor Org headings of point, top to bottom."
   (when (derived-mode-p 'org-mode)
@@ -588,6 +598,9 @@ syntax highlighting and a simulated line-number gutter."
          (filename (mp/header-svg-filename))
          (err (mp/header-svg-error-text))
          (parents (mp/header-svg-parent-lines))
+         ;; Rolling balances for journal buffers (mutually exclusive with
+         ;; parents, which only exist in prog/org modes).
+         (balances (mp/header-svg-ledger-rows))
          (fh (frame-char-height))
          (cw (frame-char-width))
          (font-size (or mp/header-svg-font-size
@@ -632,7 +645,8 @@ syntax highlighting and a simulated line-number gutter."
          (sig (list width status project filename err
                     (mapcar (lambda (p)
                               (cons (car p) (substring-no-properties (cdr p))))
-                            parents))))
+                            parents)
+                    (mapcar #'substring-no-properties balances))))
     ;; Remember geometry so a click maps back to a parent line or a button.
     (setq mp/header-svg-rows
           (list pad-y line-h (mapcar #'car parents) button-boxes))
@@ -649,7 +663,7 @@ syntax highlighting and a simulated line-number gutter."
              (family (or (face-attribute 'default :family nil 'default)
                          "monospace"))
              (gap cw)
-             (nlines (1+ (length parents)))
+             (nlines (+ 1 (length parents) (length balances)))
              (height (+ (* 2 pad-y) (* nlines line-h)))
              (svg (svg-create width height)))
         (svg-rectangle svg 0 0 width height :fill bg)
@@ -704,6 +718,20 @@ syntax highlighting and a simulated line-number gutter."
                 (setq x (mp/header-svg-cell svg "  " x baseline cw
                                             linenum-fg "normal" family font-size))
                 (dolist (run (mp/header-svg-runs (cdr p)))
+                  (let* ((rtext (mp/header-svg-expand-tabs (car run)))
+                         (rface (cdr run))
+                         (rfg (or (mp/header-svg-face-attr rface :foreground) fg))
+                         (rweight (mp/header-svg-weight rface)))
+                    (setq x (mp/header-svg-cell svg rtext x baseline cw
+                                                rfg rweight family font-size))))
+                (setq i (1+ i))))))
+        ;; ---- rolling balance rows (journal buffers), no gutter ----
+        (when balances
+          (let ((i (1+ (length parents))))
+            (dolist (b balances)
+              (let ((baseline (+ pad-y (* i line-h) base-off))
+                    (x (+ pad-x cw)))
+                (dolist (run (mp/header-svg-runs b))
                   (let* ((rtext (mp/header-svg-expand-tabs (car run)))
                          (rface (cdr run))
                          (rfg (or (mp/header-svg-face-attr rface :foreground) fg))

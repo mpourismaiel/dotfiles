@@ -245,6 +245,34 @@ ShellRoot {
         running: true
         command: ["python", Quickshell.shellPath("clipbridge.py"), "watch"]
     }
+    // ---- native folder picker (Settings folder fields) ----
+    // A kdialog/zenity dialog is a normal window and thus opens BENEATH the pill's
+    // Overlay-layer surface; while it is up every pill goes click-through + hidden
+    // (root.picking) so the dialog is visible and interactive, then reappears with
+    // its pane intact. pickFolder(cb) hands the chosen path to `cb`.
+    property bool picking: false
+    property var _pickCb: null
+    function pickFolder(cb) {
+        root._pickCb = cb || null;
+        root.picking = true;
+        folderPickProc.command = ["sh", "-c",
+            "kdialog --getexistingdirectory \"$HOME\" 2>/dev/null || "
+            + "zenity --file-selection --directory 2>/dev/null"];
+        if (!folderPickProc.running) folderPickProc.running = true;
+    }
+    Process {
+        id: folderPickProc
+        stdout: StdioCollector {
+            onStreamFinished: {
+                var p = ("" + this.text).trim();
+                var cb = root._pickCb;
+                root._pickCb = null;
+                root.picking = false;
+                if (p && cb) cb(p);
+            }
+        }
+        onRunningChanged: if (!running) root.picking = false;
+    }
     // ---- org agenda state (Emacs daemon via orgbridge.py), shared with the calendar ----
     // Gated by the Settings page: off → no orgbridge calls, no dots/deadlines; the
     // configured dir overrides Emacs's org-agenda-files so it's not tied to one setup.
@@ -271,6 +299,14 @@ ShellRoot {
         enabled: settings.financeEnabled
         financeDir: settings.financeDir
         screenShare: root.screenRecording
+        now: sysclock.date
+    }
+    // ---- Done / work-history state (git via gitbridge.py + org closures via
+    //      orgbridge.py + attended meetings from calEvents), shared with DoneMenu ----
+    DoneState {
+        id: doneState
+        settings: settings
+        cal: calEvents
         now: sysclock.date
     }
     // ---- network state (Wi-Fi native + LAN/VPN via nmcli), shared ----
@@ -935,6 +971,9 @@ ShellRoot {
             property string orgAgendaDir: ""           // dir of .org files (org-agenda-files override)
             property bool financeEnabled: false        // enable the hledger finance menu + nag
             property string financeDir: ""             // the hledger finance repo (BASE_DIR override)
+            // ---- productivity / Done page (Settings → Productivity, see DoneState) ----
+            property var productivityDirs: []          // project dirs scanned for git activity
+            property var productivityEmails: []        // commit-author emails counted as yours
             // ---- finance (see FinanceState) ----
             property bool financePrivacy: false        // manual privacy choice (masks amounts)
             property string financeNagDismissedUntil: "" // ISO timestamp; "" = not dismissed
@@ -1019,7 +1058,14 @@ ShellRoot {
             readonly property bool restUnderline: !orgHidden
                 && (orgAgenda.hasDue || calEvents.hasMeetingSoon)
             property bool dash: open || launcher || focused || ctxMode
-            property int menu: 4 // 0 net, 1 vol, 2 bt, 3 batt, 5 clipboard, 6 calendar, 7 voice memo, 8 finance, 9 tetris, 10 block blast, 11 games, 12 brick breaker, 4 notif (default pane)
+            property int menu: 4 // 0 net, 1 vol, 2 bt, 3 batt, 5 clipboard, 6 calendar, 7 voice memo, 8 finance, 9 tetris, 10 block blast, 11 games, 12 brick breaker, 13 settings, 14 snake, 15 done, 4 notif (default pane)
+            // a native folder picker (kdialog/zenity) is a normal window, so it opens
+            // BENEATH this Overlay-layer surface. While one is up we make the whole
+            // overlay click-through (empty mask) and hide the pill, so the dialog is
+            // fully visible + interactive; the open pane's state is untouched and
+            // reappears when the pick returns. State lives at root (the picker is a
+            // root-level Process, shared by every monitor's pill) — see root.pickFolder.
+            readonly property bool picking: root.picking
             // keyboard-focus gating. The pill grabs the compositor keyboard ONLY while
             // it actually needs it: the launcher, clipboard, or notification menu is up
             // (they auto-focus a field / drive arrow-key nav), or *some* editable field
@@ -1048,6 +1094,15 @@ ShellRoot {
             // a preset grid + a scrolling wall of per-colour rows next to a sidebar.
             readonly property int settingsWidth: 860
             readonly property int settingsHeight: 580
+            // the Done work-history page (menu 15): wide enough for the headline
+            // sentence + chip row. Its height tracks the DoneMenu content (clamped),
+            // so switching timeframe resizes the pane — animated by the height
+            // Behavior below (scoped to this pane).
+            readonly property int doneWidth: 820
+            readonly property int doneHeight: (win.open && win.menu === 15
+                    && menuLoader.item && menuLoader.item.contentHeight)
+                ? Math.max(220, Math.min(680, Math.round(menuLoader.item.contentHeight) + theme.pad * 2))
+                : 560
             // the game panes (menu 9 Tetris, 10 Block Blast, 12 Brick Breaker) run
             // wider + taller than a normal menu so the board and its side column both
             // get room to breathe (Tetris' 10×24px well is 240px; the others fit too).
@@ -1071,7 +1126,7 @@ ShellRoot {
             // open + launcher pill height
             // the clipboard-history menu runs 200px taller than the other panes so more
             // history is visible; every other open menu (and the launcher) uses openHeight.
-            readonly property int openPaneHeight: (open && menu === 5) ? openHeight + 200 : (open && menu === 7) ? 440 : (open && menu === 13) ? settingsHeight : (open && menu === 12) ? brickHeight : (open && menu === 14) ? snakeHeight : (open && (menu === 9 || menu === 10)) ? tetrisHeight : openHeight
+            readonly property int openPaneHeight: (open && menu === 5) ? openHeight + 200 : (open && menu === 7) ? 440 : (open && menu === 13) ? settingsHeight : (open && menu === 15) ? doneHeight : (open && menu === 12) ? brickHeight : (open && menu === 14) ? snakeHeight : (open && (menu === 9 || menu === 10)) ? tetrisHeight : openHeight
             // hovered dashboard geometry (its own generous, HTML-scale size — distinct
             // from the open menu's 520 so the two rows can breathe).
             readonly property int hoverWidth: 640
@@ -1543,6 +1598,26 @@ ShellRoot {
                 }
             }
 
+            // open (or toggle shut) the Done work-history page (menu 15) — the git
+            // glyph between the games and settings buttons. Reloads on open so the
+            // numbers reflect the latest commits/closures for the current period.
+            function openDone() {
+                if (win.open && win.menu === 15) {
+                    const wasGrabbing = win.grabsKeyboard;
+                    win.open = false;
+                    if (wasGrabbing)
+                        root.restoreFocus();
+
+                } else {
+                    win.launcher = false;
+                    win.ctxGroup = null;
+                    win.trayItem = null;
+                    win.menu = 15;
+                    win.open = true;
+                    doneState.reload();
+                }
+            }
+
             // open (or toggle shut) the Brick Breaker pane (menu 12) — routed from the
             // games list (see the menuLoader Connections). Mirrors openBlockBlast.
             function openBrickBreaker() {
@@ -1606,7 +1681,7 @@ ShellRoot {
             // capShow deliberately falls through to pillRegion (NOT fullRegion): the
             // pill captures input only over its controls, so clicks elsewhere reach
             // the fullscreen capture canvas below (region draw / annotation).
-            mask: (win.open || win.launcher || win.ctxMode || win.confirmActive || win.focused || win.deadlines) ? fullRegion : (win.fsHide ? emptyRegion : pillRegion)
+            mask: win.picking ? emptyRegion : ((win.open || win.launcher || win.ctxMode || win.confirmActive || win.focused || win.deadlines) ? fullRegion : (win.fsHide ? emptyRegion : pillRegion))
     
             Process {
                 id: confirmProc
@@ -1679,10 +1754,10 @@ ShellRoot {
             // our editable fields (objectName "pillKbInput") holds focus.
             Item {
                 id: kbProbe
-    
+
                 readonly property var focusItem: Window.activeFocusItem
             }
-    
+
             // keyboard-nav mode: the expanded dashboard's key sink. Focused only while
             // the dashboard itself shows — an open menu runs MenuKbNav (or, for the
             // notification/clipboard panes and the launcher, its own key handling).
@@ -1938,7 +2013,7 @@ ShellRoot {
                 // exactly as the old body handler did.
                 // the voice recorder leads the chains: a larger resting pill (220x36,
                 // iPhone-memo style) — voiceMorph already yields to open/launcher/ctx.
-                width: win.capShow ? (captureLoader.item ? captureLoader.item.implicitWidth + theme.pad * 2 : 520) : win.voiceMorph ? 220 : win.showBurst ? (burstLoader.item ? burstLoader.item.implicitWidth : 96) : win.launcher ? win.launcherWidth : win.ctxMode ? 520 : (win.notifMorph ? (morphStack.item ? morphStack.item.implicitWidth : 420) : (win.open ? (win.menu === 13 ? win.settingsWidth : win.menu === 6 || win.menu === 8 ? win.calWidth : win.menu === 12 ? win.brickWidth : win.menu === 14 ? win.snakeWidth : (win.menu === 9 || win.menu === 10) ? win.tetrisWidth : 520) : (win.dash ? win.hoverWidth : Math.max(56, collapsedPill.implicitWidth + 23))))
+                width: win.capShow ? (captureLoader.item ? captureLoader.item.implicitWidth + theme.pad * 2 : 520) : win.voiceMorph ? 220 : win.showBurst ? (burstLoader.item ? burstLoader.item.implicitWidth : 96) : win.launcher ? win.launcherWidth : win.ctxMode ? 520 : (win.notifMorph ? (morphStack.item ? morphStack.item.implicitWidth : 420) : (win.open ? (win.menu === 13 ? win.settingsWidth : win.menu === 15 ? win.doneWidth : win.menu === 6 || win.menu === 8 ? win.calWidth : win.menu === 12 ? win.brickWidth : win.menu === 14 ? win.snakeWidth : (win.menu === 9 || win.menu === 10) ? win.tetrisWidth : 520) : (win.dash ? win.hoverWidth : Math.max(56, collapsedPill.implicitWidth + 23))))
                 // in ctx mode the pill sizes to whichever menu loader is active (app
                 // context menu or tray menu).
                 height: win.capShow ? (captureLoader.item ? captureLoader.item.implicitHeight + theme.pad * 2 : 120) : win.voiceMorph ? 36 : win.showBurst ? (burstLoader.item ? burstLoader.item.implicitHeight : 28) : (win.open || win.launcher) ? win.openPaneHeight : win.ctxMode ? Math.min(win.openHeight, ((ctxLoader.item || trayLoader.item) ? (ctxLoader.item || trayLoader.item).implicitHeight + theme.pad * 2 : 300)) : (win.notifMorph ? morphStack.implicitHeight : (win.dash ? win.hoverHeight : Math.max(win.restUnderline ? 48 : 28, collapsedPill.implicitHeight + 7)))
@@ -1946,8 +2021,16 @@ ShellRoot {
                 // hovered / open / a notification is morphing it (or a camera/recording
                 // is live, or a voice take is recording, or the agenda popup is up);
                 // fully hidden while a fullscreen window is focused (fsHide)
-                opacity: win.capShow ? 1 : win.voiceMorph ? 1 : win.showBurst ? 1 : (win.fsHide ? 0 : ((win.dash || win.notifMorph || win.privacyRest || win.deadlines || win.idleDragging) ? 1 : theme.idleOpacity))
-    
+                opacity: win.picking ? 0 : (win.capShow ? 1 : win.voiceMorph ? 1 : win.showBurst ? 1 : (win.fsHide ? 0 : ((win.dash || win.notifMorph || win.privacyRest || win.deadlines || win.idleDragging) ? 1 : theme.idleOpacity)))
+
+                // animate the pane height ONLY on the Done page (menu 15), whose
+                // height tracks its content and so changes when the timeframe does;
+                // every other pane keeps its instant size + cross-fade.
+                Behavior on height {
+                    enabled: win.open && win.menu === 15
+                    NumberAnimation { duration: theme.anim; easing.type: Easing.OutCubic }
+                }
+
                 HoverHandler {
                     id: hover
                 }
@@ -2562,14 +2645,53 @@ ShellRoot {
 
                             }
 
+                            // done button — a git/commit glyph that opens the Done
+                            // work-history page (menu 15: CODE + AGENDA chapters). Sits
+                            // between the games button and the settings gear.
+                            Rectangle {
+                                id: doneMenuBtn
+
+                                anchors.left: gameMenuBtn.right
+                                anchors.leftMargin: 8
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: 22
+                                height: 22
+                                radius: theme.radiusSmall
+                                color: (doneMa.containsMouse || (win.open && win.menu === 15)) ? theme.accentSoft : "transparent"
+
+                                MSym {
+                                    anchors.centerIn: parent
+                                    icon: "commit"
+                                    size: 16
+                                    fill: (win.open && win.menu === 15) ? 1 : 0
+                                    color: (doneMa.containsMouse || (win.open && win.menu === 15)) ? theme.text : theme.accent
+                                }
+
+                                MouseArea {
+                                    id: doneMa
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: win.openDone()
+                                }
+
+                                Behavior on color {
+                                    ColorAnimation {
+                                        duration: theme.animFast
+                                    }
+
+                                }
+
+                            }
+
                             // settings button — a gear glyph that opens the Settings
                             // pane (menu 13: Appearance / Online Accounts / Org Agenda /
-                            // Finance). Sits right of the games button; the Settings page
-                            // used to open from the launcher's gear (now moved here).
+                            // Finance / Productivity). Sits right of the done button; the
+                            // Settings page used to open from the launcher's gear.
                             Rectangle {
                                 id: settingsMenuBtn
 
-                                anchors.left: gameMenuBtn.right
+                                anchors.left: doneMenuBtn.right
                                 anchors.leftMargin: 8
                                 anchors.verticalCenter: parent.verticalCenter
                                 width: 22
@@ -2882,7 +3004,7 @@ ShellRoot {
     
                         anchors.fill: parent
                         active: win.open
-                        sourceComponent: win.menu === 0 ? cNet : win.menu === 1 ? cVol : win.menu === 2 ? cBt : win.menu === 3 ? cBatt : win.menu === 5 ? cClip : win.menu === 6 ? cCal : win.menu === 7 ? cVoice : win.menu === 8 ? cFin : win.menu === 9 ? cTetris : win.menu === 10 ? cBlockBlast : win.menu === 11 ? cGames : win.menu === 12 ? cBrickBreaker : win.menu === 13 ? cSettings : win.menu === 14 ? cSnake : cNotif
+                        sourceComponent: win.menu === 0 ? cNet : win.menu === 1 ? cVol : win.menu === 2 ? cBt : win.menu === 3 ? cBatt : win.menu === 5 ? cClip : win.menu === 6 ? cCal : win.menu === 7 ? cVoice : win.menu === 8 ? cFin : win.menu === 9 ? cTetris : win.menu === 10 ? cBlockBlast : win.menu === 11 ? cGames : win.menu === 12 ? cBrickBreaker : win.menu === 13 ? cSettings : win.menu === 14 ? cSnake : win.menu === 15 ? cDone : cNotif
                     }
                     // chevron back -> collapse panel
     
@@ -2959,7 +3081,7 @@ ShellRoot {
                         z: -1
                         theme: theme
                         target: menuLoader.item
-                        active: win.kbNav && win.open && win.menu !== 4 && win.menu !== 5 && win.menu !== 9 && win.menu !== 10 && win.menu !== 12 && win.menu !== 13
+                        active: win.kbNav && win.open && win.menu !== 4 && win.menu !== 5 && win.menu !== 9 && win.menu !== 10 && win.menu !== 12 && win.menu !== 13 && win.menu !== 15
                         shortcuts: win.menu === 6
                         onEscaped: win.open = false // back to the expanded dashboard
                         onShortcutRequested: (m) => {
@@ -3420,7 +3542,8 @@ ShellRoot {
     Component { id: cGames; GamesMenu { theme: theme; settings: settings } }
     Component { id: cBrickBreaker; BrickBreakerMenu { theme: theme; settings: settings } }
     Component { id: cSnake; SnakeMenu { theme: theme; settings: settings } }
-    Component { id: cSettings; SettingsMenu { theme: theme; acc: accounts; settings: settings; themeSettings: themeAdapter } }
+    Component { id: cSettings; SettingsMenu { theme: theme; acc: accounts; settings: settings; themeSettings: themeAdapter; picker: root.pickFolder } }
+    Component { id: cDone; DoneMenu { theme: theme; done: doneState } }
     Component { id: cVoice; VoiceMemoMenu { theme: theme; settings: settings; setup: voiceSetup } }
     Component { id: cNotif; NotificationHistory { theme: theme; notifs: notifs } }
     // the active-notification deck, reused for the pill morph and the floating stack

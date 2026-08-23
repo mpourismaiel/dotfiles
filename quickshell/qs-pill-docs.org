@@ -500,6 +500,11 @@ settings), as its own pane (=menu 13= in =init.qml=, component =cSettings=). A
   and — once on — a *directory field*). =FeaturePage= is a pure view: it reads
   =featureOn= / =path= in and emits =featureToggled(bool)= / =pathEdited(string)=;
   =SettingsMenu= persists those to the launcher settings JSON.
+- *Productivity* — [[*DoneMenu.qml + DoneState.qml + gitbridge.py + ProductivitySettings.qml][=ProductivitySettings=]]:
+  configures the *Done* work-history page. Two multi-item lists (each a =ListEditor=):
+  the *project directories* scanned for git activity (a folder picker + per-item delete
+  with inline confirm) and the *commit-author emails* counted as yours. Persisted as
+  =productivityDirs= / =productivityEmails= on the settings =JsonAdapter=.
 
 *Config model.* Both optional features ship *off* so a fresh checkout works without an
 org/hledger setup, and neither path is hard-coded — the design goal was a shareable
@@ -575,6 +580,75 @@ initial/seed state, so opening it can't clobber the stored colour).
 Code: [[file:pill/AppearanceSettings.qml][=pill/AppearanceSettings.qml=]] ·
 [[file:pill/ColorField.qml][=pill/ColorField.qml=]] ·
 [[file:pill/ColorPicker.qml][=pill/ColorPicker.qml=]]
+
+** DoneMenu.qml + DoneState.qml + gitbridge.py + ProductivitySettings.qml + ListEditor.qml
+*** Description
+The *Done* work-history page (=menu 15= in =init.qml=, component =cDone=, opened by
+the *git/commit glyph* between the games button and the settings gear — =openDone()=,
+which reloads on open). It reports *finished work* from two *independent* sources that
+are never joined, compared, or summed — rendered as two stacked chapters, each complete
+on its own (concept *5b* of the design in =__ignore__/work history panel/=):
+- *CODE* (accent) — git activity across the configured project directories.
+- *AGENDA* (muted) — org DONE closures + clocked hours, merged with attended calendar
+  meetings.
+
+*The one rule.* Nothing on the page represents *absence*: a zero-count chip is *omitted*
+(never rendered as "0"), deletions are shown as *craft* (green additions, muted
+deletions — never red), and the window is always =[periodStart … today]= so a meeting
+only ever appears as *attended*, never upcoming. The *period selector* in the header
+(=WEEK · MONTH · QUARTER · YEAR · ALL TIME=, default all-time) recomputes
+calendar-aligned starts and reloads; switching it *fades the fresh figures in* and the
+pane *resizes* to the new content (the pill height tracks =DoneMenu.contentHeight=,
+clamped, with a =Behavior on height= in =init.qml= scoped to this pane).
+
+Cards are equal-width =flex:1= cards with a *square top edge* (a 2px accent/neutral top
+border = the card colour showing above a rounded-bottom fill); the highlight list is a
+*two-column grid* with a fixed 64px verb column, a leader rule, and a single net figure.
+
+Each chapter is a *templated headline sentence* (numbers lead, past tense, exactly one
+accent span — e.g. "*402* commits across 11 repos, 38 branches this quarter."), a row of
+additive *state chips* (=COMMITS / BRANCHES / PROJECTS / MERGES / PRS= for CODE,
+=DONE / MEETINGS / CANCELLED= for AGENDA, each with a 2px accent/neutral top border),
+and a ranked *highlight list* (biggest commits by lines changed for CODE; most-clocked
+items for AGENDA, with a leader rule to the right-hand figure).
+
+*State (=DoneState.qml=).* Best-effort — an unreachable source leaves its chapter empty,
+never in an error state. =code= comes from =gitbridge.py=; =agenda= merges =orgbridge.py=
+=done A B= with meetings computed *client-side* from =CalendarEvents= (non-cancelled,
+self-attending, timed, in-window). Configuration gates: CODE needs *both* project dirs
+*and* author emails (else an empty-state prompt pointing at Settings › Productivity);
+AGENDA needs org enabled *or* any calendar event. Results are cached *per period*
+(=_cache=, stale-while-revalidate): switching timeframe reuses the last copy for that
+period *instantly* and only re-runs the bridges when it is older than =ttlMs= (5 min), so
+the page never lags behind the chips.
+
+*Git backend (=gitbridge.py=).* Local git only for the fast =summary SINCE DIRS EMAILS=
+(commits, merges, branches created in-period, active projects, and the top-6 biggest
+commits by =add+del=); a configured dir is a repo *or* a root whose immediate children
+are repos. PRs are a *separate* =prs SINCE DIRS= command over the =gh= CLI with a
+*stale-while-revalidate* cache (=~/.cache/quickshell-pill/done-prs.json=): the cache is
+the fast answer, the network is hit only past a TTL (default 900 s), and on failure the
+last cached value is served (=stale: true=). =DoneState= fires both in parallel, so the
+PR card fills in when the network call returns without blocking the rest of the page.
+
+*Org backend (=orgbridge.py done A B=).* Terminal facts in a date range: a task counts
+when it carries a done-keyword *and* a CLOSED stamp inside the range (so it stays counted
+forever, on the day it ended); CANCELLED-style keywords split off as their own outcome.
+=hours= sums CLOCK ranges whose clock-in falls in the window, and the returned =items=
+are the headings ranked by those clocked hours.
+
+*Settings (=ProductivitySettings.qml= + =ListEditor.qml=).* The Productivity page hosts
+two =ListEditor='s — a reusable *labelled multi-item string list*: an add control (a
+*folder picker* via =kdialog= → =zenity= in =folder= mode, a text field in =text= mode)
+plus each current item with a *delete button that asks for inline confirmation* before
+removing. Every mutation is emitted *whole* via =changed(list)= so the host reassigns the
+=JsonAdapter= array (reassign, not mutate, so it flushes).
+*** Code
+Code: [[file:pill/DoneMenu.qml][=pill/DoneMenu.qml=]] ·
+[[file:pill/DoneState.qml][=pill/DoneState.qml=]] ·
+[[file:pill/gitbridge.py][=pill/gitbridge.py=]] ·
+[[file:pill/ProductivitySettings.qml][=pill/ProductivitySettings.qml=]] ·
+[[file:pill/ListEditor.qml][=pill/ListEditor.qml=]]
 
 ** FinanceState.qml
 *** Description

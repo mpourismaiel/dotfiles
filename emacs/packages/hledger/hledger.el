@@ -222,6 +222,127 @@ Handles negatives (the sign stays attached, not split off by the grouping)."
   "Format number N with a currency suffix, e.g. \"1,234.50 EUR\"."
   (format "%s %s" (mp/hledger--fmt-num (float (or n 0))) cur))
 
+;;;; Rolling balances (SVG header + add-transaction annotations)
+;;
+;; "Balance accounts" = the balance-sheet accounts that carry a running total
+;; (assets + liabilities, hledger `type:AL'), as opposed to the flow accounts
+;; (income/expenses). Their current balances are shown live in the SVG header
+;; of every `.journal' buffer, and offered as completion annotations while
+;; adding a transaction (`SPC o l a'), so you always see where each account
+;; stands as you edit. Both read from one place so the numbers agree.
+
+(defface mp/hledger-amount-positive '((t :inherit success))
+  "Face for non-negative balances in the header/annotations.")
+
+(defface mp/hledger-amount-negative '((t :inherit error))
+  "Face for negative balances (money owed) in the header/annotations.")
+
+(defvar mp/hledger-header-max-accounts 12
+  "Maximum number of balance accounts shown in the journal SVG header.")
+
+(defun mp/hledger--journal-buffer-p ()
+  "Non-nil when the current buffer visits an hledger `.journal' file."
+  (and buffer-file-name (string-suffix-p ".journal" buffer-file-name)))
+
+(defun mp/hledger--balance-alist (&optional query)
+  "Return an alist of ACCOUNT -> \"AMT CUR[, AMT CUR]\" via `hledger balance'.
+QUERY is an extra query argument list (e.g. \\='(\"type:AL\")) narrowing which
+accounts to include.  Accounts holding more than one commodity get their
+per-commodity amounts comma-joined into a single string.  Order follows
+hledger's output (accounts with no balance are already omitted)."
+  (let ((rows (mp/hledger--parse-bare-tsv
+               (append '("balance" "-N" "--flat") query)))
+        (map (make-hash-table :test 'equal))
+        (order nil))
+    (dolist (r rows)
+      (pcase-let ((`(,acct ,cur ,bal) r))
+        (when (and acct cur bal)
+          (unless (member acct order) (push acct order))
+          (let ((amt (mp/hledger--fmt-money (string-to-number bal) cur)))
+            (puthash acct
+                     (if (gethash acct map)
+                         (concat (gethash acct map) ", " amt)
+                       amt)
+                     map)))))
+    (mapcar (lambda (a) (cons a (gethash a map))) (nreverse order))))
+
+(defun mp/hledger--amount-face (amount)
+  "Return the face for the balance string AMOUNT (negative → owed)."
+  (if (string-prefix-p "-" amount)
+      'mp/hledger-amount-negative
+    'mp/hledger-amount-positive))
+
+;;; SVG-header cache.  `mp/hledger-header-balance-rows' is called on every
+;;; redisplay, so it must be cheap: it shells out only when a journal was just
+;;; saved (`mp/hledger--header-dirty') or the active book changed, and serves
+;;; the cached rows otherwise.  Cache is book-global (all journals of a book
+;;; share its balances), not per-buffer.
+
+(defvar mp/hledger--header-rows nil
+  "Cached list of propertized balance-account rows for the header.")
+(defvar mp/hledger--header-rows-entity nil
+  "Book (`mp/hledger-entity') the header cache was computed for.")
+(defvar mp/hledger--header-dirty t
+  "Non-nil when the header balance cache must be recomputed.")
+
+(defun mp/hledger--header-compute ()
+  "Compute propertized balance-account rows for the SVG header.
+One line per balance account: the account name (dimmed, left-padded to a
+common width) followed by its current balance, coloured by sign."
+  (let* ((alist (seq-take (mp/hledger--balance-alist '("type:AL"))
+                          mp/hledger-header-max-accounts))
+         (width (if alist
+                    (apply #'max (mapcar (lambda (c) (length (car c))) alist))
+                  0)))
+    (mapcar
+     (lambda (cell)
+       (let* ((acct (car cell))
+              (amt (or (cdr cell) ""))
+              (pad (make-string (max 0 (- width (length acct))) ?\s)))
+         (concat
+          (propertize (concat acct pad) 'face 'shadow)
+          "  "
+          (propertize amt 'face (mp/hledger--amount-face amt)))))
+     alist)))
+
+(defun mp/hledger-header-balance-rows ()
+  "Cached propertized balance-account rows for the journal SVG header.
+Cheap on redisplay: recomputes only when a journal was saved or the active
+book changed.  Returns a list of already-propertized strings, or nil when the
+current buffer is not a journal."
+  (when (mp/hledger--journal-buffer-p)
+    (when (or mp/hledger--header-dirty
+              (not (equal mp/hledger--header-rows-entity mp/hledger-entity)))
+      (setq mp/hledger--header-rows
+            (ignore-errors (mp/hledger--header-compute))
+            mp/hledger--header-rows-entity mp/hledger-entity
+            mp/hledger--header-dirty nil))
+    mp/hledger--header-rows))
+
+(defun mp/hledger--header-invalidate (&rest _)
+  "Mark the header balance cache stale so the next redisplay recomputes it."
+  (setq mp/hledger--header-dirty t))
+
+;; Any journal save changes the balances shown in the header.
+(add-hook 'after-save-hook
+          (lambda ()
+            (when (mp/hledger--journal-buffer-p)
+              (mp/hledger--header-invalidate))))
+
+(defun mp/hledger--account-collection (accounts balances)
+  "Return a completion table over ACCOUNTS annotating each with its balance.
+BALANCES is an alist ACCOUNT -> balance-string (from
+`mp/hledger--balance-alist'); the current balance is shown, dimmed, to the
+right of each candidate so you see where an account stands while picking it."
+  (lambda (string pred action)
+    (if (eq action 'metadata)
+        `(metadata
+          (annotation-function
+           . ,(lambda (cand)
+                (when-let ((bal (cdr (assoc cand balances))))
+                  (concat "  " (propertize bal 'face 'shadow))))))
+      (complete-with-action action accounts string pred))))
+
 (defun mp/hledger-open-journal ()
   "Pick and open a journal file (current month offered first)."
   (interactive)
@@ -259,9 +380,13 @@ appends an aligned entry, saves, and runs `hledger check' on the result."
   (let* ((date (read-string "Date: " (format-time-string "%Y-%m-%d")))
          (desc (read-string "Description: "))
          (accounts (mp/hledger--accounts))
-         (target (completing-read "Account (to): " accounts nil nil "expenses:"))
+         ;; Current per-account balances, shown as completion annotations so the
+         ;; rolling balance of each account is visible while choosing it.
+         (balances (mp/hledger--balance-alist))
+         (table (mp/hledger--account-collection accounts balances))
+         (target (completing-read "Account (to): " table nil nil "expenses:"))
          (amount (mp/hledger--read-amount))
-         (source (completing-read "Account (from): " accounts nil nil "assets:"))
+         (source (completing-read "Account (from): " table nil nil "assets:"))
          (parsed (parse-time-string date))
          (time (encode-time 0 0 0 (or (nth 3 parsed) 1) (nth 4 parsed) (nth 5 parsed)))
          (file (mp/hledger--ensure-month-file (mp/hledger--month-file time))))
