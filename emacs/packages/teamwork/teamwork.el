@@ -34,12 +34,12 @@
 ;;   C-c C-c   submit     C-c C-k   close       C-c C-r   refresh
 ;;   C-c C-d   set range  C-c C-l   live log + changes preview   C-c C-o   task comments
 ;;   C-c C-p   set a task property (tags/due/priority/assignee) with completion
-;;   C-c C-b   set labels (tags)   C-c C-t   toggle the task's :DONE: state (true/false)
+;;   C-c C-b   set labels (tags)   (complete a task by marking a log [d])
 ;; In the management buffer:
 ;;   C-c C-c submit  C-c C-l changes preview  C-c C-o comments  C-c C-f filter
 ;;   C-c C-p set property (tags/due/priority/assignee w/ value completion)  C-c C-r refresh
 ;;   C-c C-b labels · C-c C-u urgency · C-c C-d due date · C-c C-a assignee  (dedicated pickers)
-;;   C-c C-t toggle the task's :DONE: state (true/false)
+;;   C-c C-t org-todo: cycle the task heading's TODO/DONE keyword (complete/reopen)
 ;; In a comments buffer:
 ;;   C-c C-c submit  C-c C-l changes preview  C-c C-k close  C-c C-r refresh
 ;;
@@ -165,7 +165,6 @@ from."
     (define-key m (kbd "C-c C-o") #'teamwork-comments)
     (define-key m (kbd "C-c C-p") #'teamwork-set-property)
     (define-key m (kbd "C-c C-b") #'teamwork-set-labels)
-    (define-key m (kbd "C-c C-t") #'teamwork-toggle-done)
     m)
   "Keymap active in the timesheet buffer.")
 
@@ -190,7 +189,6 @@ from."
     (define-key m (kbd "C-c C-u") #'teamwork-set-urgency)
     (define-key m (kbd "C-c C-d") #'teamwork-set-due)
     (define-key m (kbd "C-c C-a") #'teamwork-set-assignee)
-    (define-key m (kbd "C-c C-t") #'teamwork-toggle-done)
     m)
   "Keymap active in the management buffer.")
 
@@ -461,7 +459,7 @@ toggle carries `:on' (whether completed items are currently shown)."
   "Header help line for KIND, prefixed by STATE-HELP."
   (concat state-help "   "
           (pcase kind
-            ("manage" "C-c C-c submit · C-c C-t DONE · C-c C-b/u/d/a labels/urgency/due/assignee · C-c C-p props · click a hidden project to restore it")
+            ("manage" "C-c C-c submit · C-c C-t todo/done · C-c C-b/u/d/a labels/urgency/due/assignee · C-c C-p props · click a hidden project to restore it")
             ("timesheet" "C-c C-c submit · C-c C-d range · C-c C-b labels · C-c C-l logs · click a hidden project to restore it")
             ("comments" "C-c C-c submit · C-c C-r refresh")
             (_ "C-c C-c submit"))))
@@ -1159,16 +1157,15 @@ The same diff C-c C-c would apply, recomputed (debounced) as you edit."
 ;; Folding: hide property drawers on open, keep the #+TEAMWORK header visible
 ;; --------------------------------------------------------------------------- ;;
 (defun teamwork--restyle-completed ()
-  "Dim + checkmark headings of completed tasks (:DONE: true) and task lists
-\(:COMPLETED: set).  Purely cosmetic overlays over the fetched completion state
-\(shown only when the management \"Tasks/Lists: all\" view is on); re-run on fill
-and after a `teamwork-toggle-done'."
+  "Dim + checkmark headings of completed task lists (:COMPLETED: set).
+Purely cosmetic overlays over the fetched completion state (shown only when the
+management \"Lists: all\" view is on); re-run on fill.  Completed *tasks* carry an
+org DONE keyword instead, which org fontifies/strikes on its own."
   (remove-overlays (point-min) (point-max) 'teamwork-completed t)
   (org-with-wide-buffer
    (goto-char (point-min))
    (while (re-search-forward org-heading-regexp nil t)
-     (when (or (equal (org-entry-get (point) "DONE") "true")
-               (org-entry-get (point) "COMPLETED"))
+     (when (org-entry-get (point) "COMPLETED")
        (let ((ov (make-overlay (line-beginning-position) (line-end-position))))
          (overlay-put ov 'teamwork-completed t)
          (overlay-put ov 'face 'teamwork-completed-face)
@@ -1476,23 +1473,18 @@ matches neither is still accepted but rejected at submit.  Empty clears."
   "Set a property on the task at point, completing over the available values.
 A one-stop dispatcher over the same pickers as the dedicated commands
 \(`teamwork-set-labels', `teamwork-set-due', `teamwork-set-urgency',
-`teamwork-set-assignee').  Done is true/false, priority is a fixed list, the due
-date uses the org calendar, and tags / assignees complete against values already
-in the buffer plus the account's tags / project people (you can still type a new
-one).  In a timesheet buffer only Tags applies."
+`teamwork-set-assignee').  Priority is a fixed list, the due date uses the org
+calendar, and tags / assignees complete against values already in the buffer
+plus the account's tags / project people (you can still type a new one).  In a
+timesheet buffer only Tags applies.  The done state is not here — use org's own
+C-c C-t (`org-todo') on the task heading to complete/reopen it."
   (interactive)
   (unless (org-entry-get nil "TASK_ID" t)
     (user-error "Point is not on a task (no TASK_ID here or above)"))
   (let* ((manage (equal teamwork--kind "manage"))
-         (choices (if manage '("Done" "Tags" "Due date" "Priority" "Assignee") '("Tags")))
+         (choices (if manage '("Tags" "Due date" "Priority" "Assignee") '("Tags")))
          (prop (if (cdr choices) (completing-read "Set property: " choices nil t) "Tags")))
     (pcase prop
-      ("Done"
-       (teamwork--put-property
-        "DONE" (completing-read "Done: " '("true" "false") nil t
-                                nil nil
-                                ;; default to the opposite of the current value
-                                (if (equal (org-entry-get nil "DONE") "true") "false" "true"))))
       ("Due date" (teamwork--pick-due))
       ("Priority" (teamwork--pick-urgency))
       ("Tags"     (teamwork--pick-labels))
@@ -1539,24 +1531,10 @@ empty answer clears the labels."
   (interactive)
   (teamwork--set-one-property #'teamwork--pick-assignee "Assignee" t))
 
-;;;###autoload
-(defun teamwork-toggle-done ()
-  "Flip the :DONE: state (true/false) of the task heading at point.
-Point may sit anywhere in the task's subtree; the enclosing task heading is
-used.  Completion round-trips via the :DONE: property, so C-c C-c submits it
-(management completes/reopens; a timesheet task is completed too).  In a
-management buffer, un-checking a completed task needs it to be visible first —
-toggle \"Tasks: all\" in the header when it is hidden."
-  (interactive)
-  (save-excursion
-    (unless (ignore-errors (org-back-to-heading t) t)
-      (user-error "Point is not on a task"))
-    (unless (org-entry-get nil "TASK_ID")   ; non-inherited: THIS heading is a task
-      (user-error "Point is not on a task heading (no :TASK_ID: here)"))
-    (let ((new (if (equal (org-entry-get nil "DONE") "true") "false" "true")))
-      (org-entry-put (point) "DONE" new)
-      (message "Teamwork: DONE=%s — C-c C-l previews, C-c C-c submits." new)))
-  (teamwork--restyle-completed))
+;; Task done state is an org TODO/DONE keyword on the heading, so `org-todo'
+;; (C-c C-t, org's own binding) cycles it — no custom toggle command, and org
+;; fontifies/strikes the completed headings itself.  The heading's keyword
+;; round-trips through the sidecar, so C-c C-c submits the completion.
 
 ;; --------------------------------------------------------------------------- ;;
 ;; Submit: preview -> confirm -> streamed apply

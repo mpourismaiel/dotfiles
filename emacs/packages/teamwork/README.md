@@ -7,22 +7,25 @@ buffer kinds share the same pull → edit → review-diff → streamed-apply flo
   your time logs for a date range; edit logs, then submit.
 - **Management** (`teamwork-management`) — the same tree with *no time filter*,
   for creating / renaming / **deleting** task-lists, tasks and subtasks, and
-  editing task **properties** — `:DONE:` (`true`/`false`), `:LABELS:`, `:DUE:`
-  (date), `:URGENCY:` (low/medium/high) and `:ASSIGNEE:` (by name) — plus a
-  **description** as plain text under the drawer. `C-c C-p` sets a property with
-  completion over the available values (project people, existing tags, the
-  priority list, a calendar for the due date, true/false for done), or jump
-  straight to one with a dedicated combo — `C-c C-b` labels, `C-c C-u` urgency,
-  `C-c C-d` due date, `C-c C-a` assignee (the last three are management-only;
-  `C-c C-b` also works in the timesheet). Completion for labels / urgency /
-  assignee is seeded with the values already used on the loaded tasks (plus the
-  account's tags and the project's people for those two), so common values are
-  one keystroke away, and you can still type a custom one. Flip `:DONE:` to close
-  or reopen a task on submit, or toggle it fast with `C-c C-t`. By
+  editing task **properties** — `:LABELS:`, `:DUE:` (date), `:URGENCY:`
+  (low/medium/high) and `:ASSIGNEE:` (by name) — plus a **description** as plain
+  text under the drawer. A task's **done state is an Org `TODO`/`DONE` keyword on
+  its heading** (the buffer declares `#+TODO: TODO | DONE`), so Org fontifies and
+  strikes completed tasks itself and its own `C-c C-t` (`org-todo`) cycles the
+  state — completing or reopening the task on submit. `C-c C-p` sets a property
+  with completion over the available values (project people, existing tags, the
+  priority list, a calendar for the due date), or jump straight to one with a
+  dedicated combo — `C-c C-b` labels, `C-c C-u` urgency, `C-c C-d` due date,
+  `C-c C-a` assignee (the last three are management-only; `C-c C-b` also works in
+  the timesheet). Completion for labels / urgency / assignee is seeded with the
+  values already used on the loaded tasks (plus the account's tags and the
+  project's people for those two), so common values are one keystroke away, and
+  you can still type a custom one. By
   default management shows only **open** work — completed tasks and completed
   task lists are hidden (a clean "what's left" view); the header's **Tasks** and
-  **Lists** buttons (persisted per account) reveal them, shown dimmed with a
-  checkmark, so a done task/list can be found and reopened. Removing a heading
+  **Lists** buttons (persisted per account) reveal them — a completed task shows
+  as an Org `DONE` heading, a completed task list dimmed with a checkmark — so a
+  done task/list can be found and reopened. Removing a heading
   deletes it in Teamwork on submit (children cascade); the preview lists every
   deletion. Deletion is management-only — timesheet mode never deletes tasks/lists.
   (Hidden completed items are kept out of the fetched snapshot too, so they are
@@ -34,7 +37,8 @@ buffer kinds share the same pull → edit → review-diff → streamed-apply flo
   relocated. Moving is management-only.
 
   Properties carry no prefix: the drawer keys are `TASK_ID` (never edit — it
-  identifies the task), `DONE`, `LABELS`, `DUE`, `URGENCY`, `ASSIGNEE`. `LABELS`
+  identifies the task), `LABELS`, `DUE`, `URGENCY`, `ASSIGNEE` (the done state is
+  the heading's `TODO`/`DONE` keyword, not a drawer key). `LABELS`
   and `URGENCY` are deliberately *not* named `TAGS`/`PRIORITY`, which Org reserves
   as special property names (Org would return the headline's tags / priority cookie
   instead of the drawer value).

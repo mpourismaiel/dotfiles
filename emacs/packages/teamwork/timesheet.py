@@ -650,18 +650,49 @@ def _drawer_multi(pairs) -> str:
     return "\n".join(lines)
 
 
+# --------------------------------------------------------------------------- #
+# Org TODO keywords for management task headings
+# --------------------------------------------------------------------------- #
+# A Teamwork task is binary — open or completed — so the keyword set is exactly
+# TODO | DONE.  Emitting the state as an org keyword on the heading (instead of a
+# :DONE: property) lets org fontify/strike completed tasks and cycle them with
+# its native C-c C-t, so the package needs no custom face or toggle command.
+_TODO_KEYWORDS = ("TODO",)
+_DONE_KEYWORDS = ("DONE",)
+MANAGE_TODO_HEADER = "#+TODO: " + " ".join(_TODO_KEYWORDS) + " | " + " ".join(_DONE_KEYWORDS)
+
+
+def _todo_keyword(done) -> str:
+    """The heading keyword for a task's completion state."""
+    return _DONE_KEYWORDS[0] if done else _TODO_KEYWORDS[0]
+
+
+def _split_todo_keyword(title: str):
+    """Split a leading org TODO/DONE keyword off TITLE.
+    Returns (done, rest): done is None when TITLE carries no keyword, else True
+    for a DONE-group keyword / False for a TODO-group one, with REST the title
+    text that follows.  Every keyword we emit is a whole space-delimited token, so
+    a task literally named 'TODO cleanup' still round-trips (its heading being
+    'TODO TODO cleanup')."""
+    head, _sep, rest = title.partition(" ")
+    if head in _DONE_KEYWORDS:
+        return True, rest.strip()
+    if head in _TODO_KEYWORDS:
+        return False, rest.strip()
+    return None, title
+
+
 def _task_drawer(tk: dict, with_props=False):
     """Property drawer for task TK: id + LABELS, and (management only, WITH_PROPS)
-    DONE / DUE / URGENCY / ASSIGNEE lines. Returns None when there is nothing to
-    show (a brand-new task with no properties), so callers can skip it. In
-    management the DONE line is always emitted, so the drawer is never empty."""
+    DUE / URGENCY / ASSIGNEE lines. The done state rides the heading's org keyword
+    (see `_todo_keyword`), not the drawer. Returns None when there is nothing to
+    show (a brand-new task with no id and no properties), so callers can skip it."""
     tags = tk.get("tags")
     pairs = [("TASK_ID", tk.get("id")),
              ("LABELS", ", ".join(tags) if tags else None)]
     if with_props:
         names = tk.get("assignee_names")
-        pairs += [("DONE", "true" if tk.get("done") else "false"),
-                  ("DUE", tk.get("due") or None),
+        pairs += [("DUE", tk.get("due") or None),
                   ("URGENCY", tk.get("priority") or None),
                   ("ASSIGNEE", ", ".join(names) if names else None)]
     return _drawer_multi(pairs) if any(v not in (None, "") for _, v in pairs) else None
@@ -698,7 +729,10 @@ def _emit_project_tree(out, projects, tasklists, tasks, logs_by_task=None,
             tops_by_tl.setdefault(tk["tasklist_id"], []).append(tk)
 
     def emit_task(tk, level):
-        out.append(f"{'*' * level} {tk['title']}")
+        # Management headings carry the done state as an org TODO/DONE keyword;
+        # timesheet headings stay bare (there completion rides a [d] log marker).
+        head = f"{_todo_keyword(tk.get('done'))} {tk['title']}" if with_props else tk["title"]
+        out.append(f"{'*' * level} {head}")
         drawer = _task_drawer(tk, with_props=with_props)
         if drawer:
             out.append(drawer)
@@ -787,6 +821,7 @@ def _manage_header(user, account=None, hidden=None, hidden_names=None,
     lines = [
         "#+TITLE: Teamwork management",
         f"#+TEAMWORK_MANAGE: user={user}",
+        MANAGE_TODO_HEADER,   # so org recognises the task headings' TODO/DONE keyword
     ]
     if account:
         lines.append(f"#+TEAMWORK_ACCOUNT: {account}")
@@ -999,7 +1034,6 @@ def _log_snap(lg: dict) -> dict:
 _HEAD_RE = re.compile(r"^(\*+)\s+(.*)$")
 _PROP_RE = re.compile(r"^\s*:(PROJECT_ID|TASKLIST_ID|TASK_ID):\s*(\d+)\s*$")
 _TAGS_RE = re.compile(r"^\s*:LABELS:\s*(.*)$")
-_DONE_RE = re.compile(r"^\s*:DONE:\s*(.*)$")
 _TASKPROP_RE = re.compile(r"^\s*:(DUE|URGENCY|ASSIGNEE):\s*(.*)$")
 
 
@@ -1105,8 +1139,20 @@ def parse_org(text: str) -> dict:
                 if level > 3 and parent is None:
                     problems.append(f"line {lineno}: subtask '{title}' has no parent task")
                     continue
+                # A leading org TODO/DONE keyword on a task heading is the task's
+                # completion state — but only in management, where we always emit
+                # one.  The state is authoritative there: a bare heading (keyword
+                # cycled away) reads as open.  In timesheet we never emit a keyword,
+                # so we must NOT strip a leading "TODO"/"DONE" word — it is part of
+                # the title (completion there rides a task's [d] log marker).
+                done = None
+                if meta["mode"] == "manage":
+                    kw_done, title = _split_todo_keyword(title)
+                    done = bool(kw_done)          # bare heading (None) -> open
                 cur_tk = {"id": None, "title": title, "logs": [], "subtasks": [],
                           "tasklist": cur_tl, "parent": parent}
+                if done is not None:
+                    cur_tk["done"] = done
                 if parent is None:
                     cur_tl["tasks"].append(cur_tk)
                 else:
@@ -1132,13 +1178,6 @@ def parse_org(text: str) -> dict:
             # Presence of the line is authoritative: empty value clears tags,
             # a missing line (handled by never getting here) leaves them untouched.
             cur_tk["tags"] = [t.strip() for t in tagm.group(1).split(",") if t.strip()]
-            continue
-
-        donem = _DONE_RE.match(raw)
-        if donem and cur_tk is not None:
-            # Presence of the line is authoritative: it holds the task's completed
-            # state (true/false); flipping it completes/uncompletes on submit.
-            cur_tk["done"] = _parse_bool(donem.group(1))
             continue
 
         propm = _TASKPROP_RE.match(raw)
@@ -1414,7 +1453,7 @@ def compute_plan(parsed: dict, snapshot: dict, user_id: int) -> dict:
                                        "summary": _summary(lg, tk, "edit"), "_obj": lg})
         # Completion. Two independent triggers, mutually exclusive in practice:
         #  - timesheet: a [d] marker on any of the task's logs completes it;
-        #  - management: the :DONE: property flipping true/false (no logs there).
+        #  - management: the heading's TODO/DONE keyword (no logs there).
         title40 = tk["title"][:40]
         if has_done:
             want = bool(tk["done"])

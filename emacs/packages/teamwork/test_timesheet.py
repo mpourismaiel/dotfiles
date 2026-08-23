@@ -944,33 +944,42 @@ class TaskProperties(unittest.TestCase):
 
 
 class ManageDone(unittest.TestCase):
-    """The :DONE: property completes/reopens a task in management mode."""
+    """A task heading's org TODO/DONE keyword completes/reopens it (management)."""
 
-    def _tree(self, done_line):
+    def _tree(self, kw):
+        """Management tree whose only task carries the KW keyword ('' = bare)."""
+        head = "*** " + ((kw + " ") if kw else "") + "A\n"
         return ("#+TEAMWORK_MANAGE: user=42\n"
                 "* P\n:PROPERTIES:\n:PROJECT_ID: 100\n:END:\n"
                 "** L\n:PROPERTIES:\n:TASKLIST_ID: 200\n:END:\n"
-                "*** A\n:PROPERTIES:\n:TASK_ID: 300\n" + done_line + ":END:\n")
+                + head + ":PROPERTIES:\n:TASK_ID: 300\n:END:\n")
 
     def _snap(self, done):
         return {"tasks": {"300": "A"}, "task_done": {"300": done}}
 
     # -- render --
-    def test_render_emits_done_state(self):
+    def test_render_declares_todo_keywords(self):
+        text = T.render_manage([{"id": 100, "name": "P"}],
+                               [{"id": 200, "name": "L", "project_id": 100}], [],
+                               {"user_id": 42})
+        self.assertIn("#+TODO: TODO | DONE", text)
+
+    def test_render_emits_done_keyword(self):
         tasks = [{"id": 300, "title": "A", "tasklist_id": 200, "project_id": 100,
                   "parent_id": None, "tags": [], "description": "", "done": True}]
         text = T.render_manage([{"id": 100, "name": "P"}],
                                [{"id": 200, "name": "L", "project_id": 100}], tasks,
                                {"user_id": 42})
-        self.assertIn(":DONE: true", text)
+        self.assertIn("*** DONE A", text)
+        self.assertNotIn(":DONE:", text)
 
-    def test_render_emits_done_false_for_open_task(self):
+    def test_render_emits_todo_keyword_for_open_task(self):
         tasks = [{"id": 300, "title": "A", "tasklist_id": 200, "project_id": 100,
                   "parent_id": None, "tags": [], "description": ""}]  # no "done" -> open
         text = T.render_manage([{"id": 100, "name": "P"}],
                                [{"id": 200, "name": "L", "project_id": 100}], tasks,
                                {"user_id": 42})
-        self.assertIn(":DONE: false", text)
+        self.assertIn("*** TODO A", text)
 
     def test_timesheet_render_omits_done(self):
         tasks = [{"id": 300, "title": "A", "tasklist_id": 200, "project_id": 100,
@@ -979,44 +988,65 @@ class ManageDone(unittest.TestCase):
                             [{"id": 200, "name": "L", "project_id": 100}], tasks, [],
                             {"from": "2026-06-01", "to": "2026-06-30", "user_id": 1})
         self.assertNotIn("DONE", text)
+        self.assertIn("*** A", text)          # bare heading, no keyword
 
     # -- parse --
-    def test_parse_done_true_false(self):
-        for raw, want in ((":DONE: true\n", True), (":DONE: false\n", False)):
-            tk = T.parse_org(self._tree(raw))["projects"][0]["tasklists"][0]["tasks"][0]
+    def test_parse_keyword_done_open(self):
+        for kw, want in (("DONE", True), ("TODO", False)):
+            tk = T.parse_org(self._tree(kw))["projects"][0]["tasklists"][0]["tasks"][0]
+            self.assertEqual(tk["title"], "A")     # keyword stripped off the title
             self.assertEqual(tk["done"], want)
 
-    def test_missing_done_line_absent(self):
+    def test_parse_bare_heading_reads_open(self):
+        # A management heading with the keyword cycled away reads as open, so it
+        # reopens a task that was completed — matching the absent DONE marker.
         tk = T.parse_org(self._tree(""))["projects"][0]["tasklists"][0]["tasks"][0]
-        self.assertNotIn("done", tk)          # no line -> leave completion untouched
+        self.assertEqual((tk["title"], tk["done"]), ("A", False))
+
+    def test_parse_keeps_title_starting_with_keyword_word(self):
+        # A task literally named "TODO cleanup" renders as "*** TODO TODO cleanup".
+        tree = self._tree("TODO").replace("A\n", "TODO cleanup\n")
+        tk = T.parse_org(tree)["projects"][0]["tasklists"][0]["tasks"][0]
+        self.assertEqual((tk["title"], tk["done"]), ("TODO cleanup", False))
+
+    def test_timesheet_title_keyword_word_not_stripped(self):
+        # Timesheet headings are bare, so a task named "DONE writeup" must keep its
+        # whole title and gain no done state (only manage strips a leading keyword).
+        text = ("#+TEAMWORK: from=2026-06-01 to=2026-06-30 user=1\n"
+                "* P\n:PROPERTIES:\n:PROJECT_ID: 100\n:END:\n"
+                "** L\n:PROPERTIES:\n:TASKLIST_ID: 200\n:END:\n"
+                "*** DONE writeup\n:PROPERTIES:\n:TASK_ID: 300\n:END:\n")
+        tk = T.parse_org(text)["projects"][0]["tasklists"][0]["tasks"][0]
+        self.assertEqual(tk["title"], "DONE writeup")
+        self.assertNotIn("done", tk)
 
     # -- diff --
-    def test_plan_completes_when_flipped_true(self):
-        plan = T.compute_plan(T.parse_org(self._tree(":DONE: true\n")), self._snap(False), 42)
+    def test_plan_completes_when_flipped_done(self):
+        plan = T.compute_plan(T.parse_org(self._tree("DONE")), self._snap(False), 42)
         self.assertEqual([a["type"] for a in plan["actions"]], ["complete_task"])
         self.assertEqual(plan["actions"][0]["task"], 300)
 
-    def test_plan_uncompletes_when_flipped_false(self):
-        plan = T.compute_plan(T.parse_org(self._tree(":DONE: false\n")), self._snap(True), 42)
+    def test_plan_uncompletes_when_flipped_open(self):
+        plan = T.compute_plan(T.parse_org(self._tree("TODO")), self._snap(True), 42)
         self.assertEqual([a["type"] for a in plan["actions"]], ["uncomplete_task"])
         self.assertEqual(plan["actions"][0]["task"], 300)
 
     def test_plan_unchanged_done_no_action(self):
         self.assertEqual(
-            T.compute_plan(T.parse_org(self._tree(":DONE: true\n")), self._snap(True), 42)["actions"], [])
+            T.compute_plan(T.parse_org(self._tree("DONE")), self._snap(True), 42)["actions"], [])
         self.assertEqual(
-            T.compute_plan(T.parse_org(self._tree(":DONE: false\n")), self._snap(False), 42)["actions"], [])
+            T.compute_plan(T.parse_org(self._tree("TODO")), self._snap(False), 42)["actions"], [])
 
     def test_plan_new_task_created_done_targets_ref(self):
         text = ("#+TEAMWORK_MANAGE: user=42\n"
                 "* P\n:PROPERTIES:\n:PROJECT_ID: 100\n:END:\n"
                 "** L\n:PROPERTIES:\n:TASKLIST_ID: 200\n:END:\n"
-                "*** Fresh\n:PROPERTIES:\n:DONE: true\n:END:\n")
+                "*** DONE Fresh\n")
         types = [a["type"] for a in T.compute_plan(T.parse_org(text), {}, 42)["actions"]]
         self.assertEqual(types, ["create_task", "complete_task"])
 
     def test_done_state_survives_snapshot_round_trip(self):
-        p = T.parse_org(self._tree(":DONE: true\n"))
+        p = T.parse_org(self._tree("DONE"))
         snap = T.build_snapshot_from_parsed(p)
         self.assertEqual(snap["task_done"], {"300": True})
 

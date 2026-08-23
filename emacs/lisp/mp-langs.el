@@ -239,6 +239,79 @@ bin/godot-emacsclient."
   (add-hook 'kill-emacs-hook #'dape-breakpoint-save)
   (dape-breakpoint-load))
 
+;; VSCode-style, context-aware debugging keys (global, not just Godot).
+;; The localleader `SPC m d d' path is untouched; these are quicker equivalents
+;; for the actions used most.  All infer the live session via dape's own
+;; connection helpers, so they no-op sensibly when nothing is running.
+
+(defun mp/dape-save-project-buffers ()
+  "Save every modified file buffer belonging to the current project.
+Falls back to saving all modified file buffers when no project is found.
+Never prompts."
+  (let ((root (or (and (fboundp 'projectile-project-root)
+                       (ignore-errors (projectile-project-root)))
+                  (when-let* ((proj (project-current))) (project-root proj)))))
+    (save-some-buffers
+     t                                  ; no confirmation
+     (when root
+       (let ((root (expand-file-name root)))
+         (lambda ()
+           (and buffer-file-name
+                (string-prefix-p root (expand-file-name buffer-file-name)))))))))
+
+(defun mp/dape-start-or-continue ()
+  "F5: start debugging, or continue/pause a live session (VSCode F5).
+Stopped at a breakpoint -> continue.  Otherwise running -> pause.  No
+session -> save all project buffers, then start it, reusing the last dape
+configuration when one exists (so no prompt), else prompt like `SPC m d d'."
+  (interactive)
+  (require 'dape)
+  (cond
+   ((dape--live-connection 'stopped t) (call-interactively #'dape-continue))
+   ((dape--live-connection 'last t)    (call-interactively #'dape-pause))
+   (t
+    (mp/dape-save-project-buffers)
+    (if dape-history
+        (dape (apply #'dape--config-eval
+                     (dape--config-from-string (car dape-history))))
+      (call-interactively #'dape)))))
+
+(defun mp/dape-restart ()
+  "Shift+F5: restart the debug session (saves project buffers first).
+No-op with a message when nothing is running."
+  (interactive)
+  (require 'dape)
+  (if (dape--live-connection 'last t)
+      (progn (mp/dape-save-project-buffers)
+             (call-interactively #'dape-restart))
+    (message "No debug session to restart")))
+
+(defun mp/dape-step-over ()
+  "F10: step over the current line, only when stopped at a breakpoint."
+  (interactive)
+  (require 'dape)
+  (if (dape--live-connection 'stopped t)
+      (call-interactively #'dape-next)
+    (message "Not stopped at a breakpoint")))
+
+(defun mp/dape-stop ()
+  "Ctrl+Shift+F5: terminate the debug session.
+No-op with a message when nothing is running."
+  (interactive)
+  (require 'dape)
+  (if (dape--live-connection 'last t)
+      (dape-quit)
+    (message "No debug session to stop")))
+
+;; Bound across every evil state; function keys aren't remapped by evil, so
+;; these win globally regardless of mode.  <f10> shadows `menu-bar-open'.
+(general-define-key
+ :states '(normal visual insert motion emacs)
+ "<f5>"     #'mp/dape-start-or-continue
+ "<S-f5>"   #'mp/dape-restart
+ "<f10>"    #'mp/dape-step-over
+ "<C-S-f5>" #'mp/dape-stop)
+
 ;;; ---------------------------------------------------------------------------
 ;;; Twine / Twee (SugarCube)
 ;; Authoring Twine 2 interactive fiction as Tweego .twee source, compiled to
@@ -384,10 +457,11 @@ With prefix arg TEST, build in test mode (-t)."
 
 ;; .env files: without a major mode these open in fundamental-mode -- no
 ;; highlighting, and no `comment-start', which is why C-/ (comment-line)
-;; prompts "No comment syntax is defined".  dotenv-mode gives font-lock and
-;; `#' comments.  Matches `.env', `.env.local', `.env.production', etc.
-(use-package dotenv-mode
-  :mode ("\\.env\\'" "\\.env\\.[^/]*\\'"))
+;; prompts "No comment syntax is defined".  Built-in conf-mode gives font-lock
+;; for KEY=value plus `#' comments.  Deliberately NOT the external dotenv-mode
+;; package -- it failed to clone under elpaca and conf-mode needs no dependency.
+;; One regexp covers `.env', `.env.local', `.env.production', etc.
+(add-to-list 'auto-mode-alist '("\\.env\\(\\.[^/]*\\)?\\'" . conf-mode))
 
 ;; Minimal here: the hledger custom package (loaded in mp-tools) does the
 ;; real configuration.
