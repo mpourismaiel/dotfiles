@@ -28,8 +28,8 @@ export SHOT_ONLY="$TARGET"
 mkdir -p "$PW" "$EW" "$OUT"
 
 echo "==> copying repo sources to $SHOT (temp build dir, not live)"
-for f in "$REPO"/quickshell/pill/*;  do case "$(basename "$f")" in deploy.sh|check.sh|README.md|CLAUDE.md) ;; *) cp -p "$f" "$PW"/ ;; esac; done
-for f in "$REPO"/quickshell/emaqs/*; do case "$(basename "$f")" in deploy.sh|check.sh|README.md|CLAUDE.md) ;; *) cp -p "$f" "$EW"/ ;; esac; done
+for f in "$REPO"/quickshell/pill/*;  do [ -f "$f" ] || continue; case "$(basename "$f")" in deploy.sh|check.sh|README.md|CLAUDE.md) ;; *) cp -p "$f" "$PW"/ ;; esac; done
+for f in "$REPO"/quickshell/emaqs/*; do [ -f "$f" ] || continue; case "$(basename "$f")" in deploy.sh|check.sh|README.md|CLAUDE.md) ;; *) cp -p "$f" "$EW"/ ;; esac; done
 
 echo "==> installing mock state objects + harnesses from the repo"
 cp "$HERE"/pill/*.qml  "$PW"/
