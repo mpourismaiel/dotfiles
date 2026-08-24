@@ -337,6 +337,12 @@ def _eval_to_file(call):
 
 def main():
     global AGENDA_DIR
+    # DEMO mode: serve deterministic fake agenda data (see demodata.py) instead
+    # of talking to the user's Emacs daemon, so the pill is safe to record.
+    if os.environ.get("DEMO"):
+        import demodata
+        demodata.run("org", sys.argv[1:])
+        return
     argv = sys.argv[1:]
     # optional leading `--dir DIR` overrides Emacs's org-agenda-files
     if len(argv) >= 2 and argv[0] == "--dir":

@@ -1536,6 +1536,41 @@ missing, data commands print =[]= / empty shapes and the UI just shows nothing.
 *** Code
 Code: [[file:pill/hledgerbridge.py][=pill/hledgerbridge.py=]]
 
+** demodata.py
+*** Description
+Deterministic fake-data generator for *DEMO mode* — so the pill can be
+screen-recorded without leaking anything personal. Launch the pill with
+=DEMO=true= in its environment (=DEMO=true ./run-pill.sh=) and every private
+data source is replaced with fakes: org agenda + deadlines + work-history,
+Google/Proton/KDE calendar events, the whole hledger ledger (balances, register,
+per-day breakdowns, forecast, wishlist, plan), the online-accounts list, the
+"Done" page's git activity, and clipboard history.
+
+*** How the seam works
+No QML changes were needed. The five data bridges (=orgbridge=, =gcalbridge=,
+=hledgerbridge=, =gitbridge=, =clipbridge=) are spawned by QML =Process=es, which
+inherit the launch environment; each checks =os.environ["DEMO"]= at the top of
+its =main()= and, when set, hands the whole invocation to
+=demodata.run(kind, argv)= instead of touching =emacsclient= / Google / =hledger=
+/ real repos / =cliphist=. =demodata.py= imports none of the bridges — it
+re-implements only the output *shapes* each command returns (matching every
+bridge header schema).
+
+*** Determinism
+Every generator is a *pure function of the calendar date* (relative views like
+deadlines/timeline/plan also depend on today). A PRNG is seeded on a stable key
+(=namespace|date=) via sha256, so the same day always yields the same agenda,
+events and transactions across processes and re-runs. Finance is generated from
+*one* ledger (opening balances + recurring rules + seeded daily spend) that is
+the single source of truth, so balances, the register, per-day lists, the
+forecast and the plan all agree with each other. A recording can therefore be
+paused, replayed and re-shot identically. =DEMO_DATE=YYYY-MM-DD= pins "today" for
+repeatable shots; a single command can be exercised standalone, e.g.
+=DEMO=1 python demodata.py finance plan EUR=. Two clipboard images are emitted as
+real PNGs (a tiny in-file encoder, no Pillow) into the cliphist cache so the
+image previews actually render. *Out of scope* (may still show real content):
+the taskbar's open windows, notifications, and launcher search.
+
 ** voicebridge.py
 *** Description
 The voice-to-text backend for the pill's recording mode (see

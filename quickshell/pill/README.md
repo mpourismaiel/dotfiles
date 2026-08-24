@@ -85,7 +85,9 @@ Python bridges:
 - `orgbridge.py` — org agenda via emacsclient.
 - `gcalbridge.py` — Google/Proton/KDE calendar events (signond SSO); dedups across providers.
 - `hledgerbridge.py` — hledger queries for the finance menu.
+- `gitbridge.py` — git activity (commits/merges/branches/PRs) for the "Done" work-history page.
 - `voicebridge.py` — faster-whisper transcription + optional Claude polish (runs in its own venv).
+- `demodata.py` — deterministic fake data for DEMO mode (see below). Not a bridge itself; the five data bridges import it.
 
 Scripts & assets:
 - `run-pill.sh` — launcher (resolves Wayland env before Qt starts).
@@ -108,3 +110,31 @@ the mock-data screenshot rig (`../screenshots/check.sh`, also live-safe — see
 the `quickshell-qml-validation` and `quickshell-screenshot-harness` agent
 memories). `qmllint` is broken on this
 machine; the `qml` tool is useless offscreen — use `qs`.
+
+## DEMO mode (safe screen recording)
+
+Launching the pill with `DEMO=true` in its environment swaps every personal data
+source for deterministic fakes, so nothing private (agenda, calendar, finance,
+online accounts, project git history, clipboard) is ever read or shown:
+
+```sh
+DEMO=true ./run-pill.sh        # or: DEMO=true qs -p init.qml
+```
+
+How it works: the five data bridges (`orgbridge`, `gcalbridge`, `hledgerbridge`,
+`gitbridge`, `clipbridge`) are spawned by QML `Process`es, which inherit the
+launch environment. Each checks `os.environ["DEMO"]` at the top of `main()` and,
+when set, hands the whole invocation to `demodata.run(kind, argv)` — so no QML
+changes are needed and the real `hledger`/`emacsclient`/`cliphist`/`gh`/Google
+paths are never touched.
+
+`demodata.py` generators are **pure functions of the date**: the same calendar
+day always yields the same agenda, calendar events and finance transactions; the
+clipboard and online accounts are fixed. A finance ledger generated once is the
+single source of truth, so balances, register, per-day breakdowns, forecast and
+plan all agree. This means a recording can be paused/replayed/re-shot and the
+pill looks identical. Pin "today" with `DEMO_DATE=YYYY-MM-DD` for repeatable
+shots; test a single command with e.g. `DEMO=1 python demodata.py finance plan EUR`.
+
+Out of scope (may still show real content in DEMO): the taskbar's open windows,
+notifications, and launcher search — close/quiet those before recording.

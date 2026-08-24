@@ -244,6 +244,12 @@ def _jarr(s):
 
 
 def main():
+    # DEMO mode: serve deterministic fake git activity (demodata.py) instead of
+    # scanning the user's real repos, so the pill is safe to record.
+    if os.environ.get("DEMO"):
+        import demodata
+        demodata.run("git", sys.argv[1:])
+        return
     argv = sys.argv[1:]
     cmd = argv[0] if argv else ""
     # a trailing PERIOD label is echoed back so the caller can drop stale responses

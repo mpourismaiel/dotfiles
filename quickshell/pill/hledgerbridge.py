@@ -711,6 +711,12 @@ def cmd_git_push():
 
 def main():
     global BASE_DIR, FINANCE_DIR, MAIN, WISHLIST
+    # DEMO mode: serve a deterministic fake ledger (demodata.py) instead of the
+    # user's real journals, so the pill is safe to screen-record.
+    if os.environ.get("DEMO"):
+        import demodata
+        demodata.run("finance", sys.argv[1:])
+        return
     argv = sys.argv[1:]
     # optional leading `--dir DIR` overrides the base finance repo (default
     # ~/Documents/finance) so the pill isn't tied to one path

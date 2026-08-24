@@ -171,6 +171,12 @@ def cmd_watch():
 
 
 def main():
+    # DEMO mode: serve a fixed fake clipboard history (demodata.py) and never
+    # touch the real clipboard, so the pill is safe to record.
+    if os.environ.get("DEMO"):
+        import demodata
+        demodata.run("clip", sys.argv[1:])
+        return
     cmd = sys.argv[1] if len(sys.argv) > 1 else ""
     arg = sys.argv[2] if len(sys.argv) > 2 else None
     if cmd == "list":

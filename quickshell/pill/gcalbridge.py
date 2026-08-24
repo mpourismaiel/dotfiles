@@ -816,6 +816,12 @@ def _default_window():
 
 
 def main():
+    # DEMO mode: serve deterministic fake calendar/account data (demodata.py)
+    # instead of hitting Google / KDE accounts, so the pill is safe to record.
+    if os.environ.get("DEMO"):
+        import demodata
+        demodata.run("gcal", sys.argv[1:])
+        return
     cmd = sys.argv[1] if len(sys.argv) > 1 else "read"
     if cmd == "fetch":
         a, b = (sys.argv[2], sys.argv[3]) if len(sys.argv) > 3 else _default_window()
