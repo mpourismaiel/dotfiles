@@ -57,6 +57,18 @@
     (add-to-list 'exec-path local-bin)
     (setenv "PATH" (concat local-bin path-separator (getenv "PATH")))))
 
+;; Go's tool bin (GOPATH/bin) — where `go install' drops gopls, dlv,
+;; staticcheck, etc.  It isn't on the login-shell PATH here, so
+;; exec-path-from-shell's `-l' misses it and Emacs can't find gopls (lsp-bridge
+;; `gd'/`gr' silently no-op in Go) or dlv (dape debugging fails to launch).
+;; GOBIN overrides the location; otherwise it's <GOPATH>/bin, default ~/go/bin.
+(let ((go-bin (or (getenv "GOBIN")
+                  (expand-file-name "bin" (or (getenv "GOPATH")
+                                              (expand-file-name "~/go"))))))
+  (when (file-directory-p go-bin)
+    (add-to-list 'exec-path go-bin)
+    (setenv "PATH" (concat go-bin path-separator (getenv "PATH")))))
+
 ;;; Files & state
 
 (setq delete-by-moving-to-trash t
