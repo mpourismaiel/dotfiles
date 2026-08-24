@@ -29,8 +29,8 @@ mask). Components receive state via required properties — no singletons.
 `Process`es speaking line-JSON on stdout (winbridge, clipbridge) or one-shot
 query tools (orgbridge, gcalbridge, hledgerbridge, voicebridge); each has a QML
 state component wrapping it. External control comes through `IpcHandler`
-targets (`qs ipc call pill …` — clipboard/brightness/volume/voice/expand; `media`
-for the media keys).
+targets (`qs ipc call pill …` — clipboard/emoji/brightness/volume/voice/expand;
+`media` for the media keys).
 
 ## Files
 
@@ -63,6 +63,7 @@ Control-panel menus (opened via `win.menu` index in init.qml):
 - `Clipboard.qml` + `ClipboardMenu.qml` — cliphist history + fuzzy search.
 - `VoiceMemoMenu.qml` (menu 7), `VoiceRecorderPill.qml`, `VoiceSetup.qml`, `PolishConfig.qml`, `Memos.qml` — voice-memo config, recording face, transcription setup/state.
 - `TetrisMenu.qml` (menu 9) + `BlockBlastMenu.qml` (menu 10) — two little games, opened from the stacked buttons beside the clock; keyboard Tetris and mouse-drag 10×10 block puzzle. Both park-draggable by a header grip, state in `settings.tetris` / `settings.blockBlast`.
+- `EmojiMenu.qml` (menu 16) + `emojidata.js` — emoji picker opened from the smiley button (between games and Done) or the `emoji` IPC command; search + category tabs + a keyboard-navigable grid of every emoji, Enter/click copies via `wl-copy`, right-click favourites (`settings.emojiFavorites`). Data bundled in `emojidata.js` (generated from the iamcal emoji-datasource).
 - `NotificationHistory.qml` — grouped notification history.
 
 Notifications:

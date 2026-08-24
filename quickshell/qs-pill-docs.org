@@ -1018,6 +1018,43 @@ saved on every step and on destruction; =best= is shown in the Games list.
 *** Code
 Code: [[file:pill/SnakeMenu.qml][=pill/SnakeMenu.qml=]]
 
+** EmojiMenu.qml + emojidata.js
+*** Description
+The *emoji picker* (=win.menu === 16=), opened from the *smiley button* (=mood=
+glyph) between the games and Done buttons on the expanded dashboard, or via the
+=emoji= / =emojiOn(screen)= *IPC command* (bind to a KDE shortcut). It runs a touch
+wide (=emojiWidth= 600 × =emojiHeight= 470) and *grabs the keyboard* (present in
+=grabsKeyboard=, and excluded from the generic =MenuKbNav= since it drives its own).
+
+*Layout.* A =MenuHeader= ("Emoji"), then one baseline holding the *search field*
+(left) and a *category tab strip* (right) — a representative emoji glyph per tab —
+then a virtualised =GridView= of emoji cells below. The tabs are a synthetic
+*Favorites* tab (⭐, only present when the user has any) followed by the nine
+categories. =tab= defaults to =0=, so the picker *opens on Favorites when present,
+else the first category* — the requested default.
+
+*Data.* Every emoji is bundled in [[file:pill/emojidata.js][=emojidata.js=]] (a
+=.pragma library= file *generated* from the iamcal =emoji-datasource=: 1805 emoji in
+9 categories, each row =[char, name, keywords]=). Search filters across *all*
+categories on =keywords= (Unicode name + every short-name word) + the display name;
+otherwise the active tab's list shows. The Favorites tab stores only chars, rendered
+via a =char → row= lookup.
+
+*Keyboard nav* mirrors the launcher: the search field keeps focus and its arrow keys
+drive =sel= over the grid (all four arrows navigate, since the view is always a grid);
+=grid.cols= steps a full row. *Enter* (or click) copies the highlighted emoji to the
+clipboard (=wl-copy=) and closes the pane; *Escape* closes; typing filters.
+
+*Favourites.* *Right-click* any emoji for a small in-pane menu (positioned in root
+coords, clamped to bounds so it never leaves the clip region) that *adds/removes* it
+from =settings.emojiFavorites= (reassigned whole, never mutated, so the =JsonAdapter=
+flushes — like the launcher's pins). A tiny ⭐ badge marks favourited cells outside
+the Favorites tab; =toggleFav= nudges =tab= by one as the Favorites tab appears /
+disappears so the currently-viewed category stays put.
+*** Code
+Code: [[file:pill/EmojiMenu.qml][=pill/EmojiMenu.qml=]] ·
+[[file:pill/emojidata.js][=pill/emojidata.js=]]
+
 ** Launcher.qml
 *** Description
 KDE-style app launcher, opened by clicking the hovered pill body, the Row-2 grid

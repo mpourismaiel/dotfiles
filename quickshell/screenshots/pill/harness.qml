@@ -42,6 +42,8 @@ FloatingWindow {
         // Done page config (Settings › Productivity)
         property var productivityDirs: ["~/Documents/projects/awesome", "~/Documents/projects/teamwork", "~/work/shledger"]
         property var productivityEmails: ["you@example.com", "you@work.dev"]
+        // seed a few emoji favourites so the picker opens on its Favorites tab
+        property var emojiFavorites: ["😀", "🔥", "❤️", "🎉", "👍", "🚀", "😂", "✅"]
         // seed a mid-game Tetris so the screenshot shows a real stack, not an empty well
         property var tetris: ({
             "board": (function () {
@@ -157,6 +159,8 @@ FloatingWindow {
         { name: "menu-snake",    comp: cSnake },
         { name: "settings",      comp: cSettings },
         { name: "settings-productivity", comp: cSettingsProd },
+        { name: "menu-emoji",    comp: cEmoji },
+        { name: "menu-emoji-search", comp: cEmojiSearch },
         { name: "menu-done",     comp: cDone },
         { name: "menu-done-loading", comp: cDoneLoading },
         { name: "menu-notifhistory", comp: cNotifHist },
@@ -498,6 +502,13 @@ FloatingWindow {
     Component { id: cSettings; MenuHost { pillW: 860; pillH: 580; SettingsMenu { anchors.fill: parent; theme: theme; acc: null; settings: mockSettings; themeSettings: mockThemeSettings; page: 0 } } }
     // the Productivity settings page (project dirs + author emails)
     Component { id: cSettingsProd; MenuHost { pillW: 860; pillH: 580; SettingsMenu { anchors.fill: parent; theme: theme; acc: null; settings: mockSettings; themeSettings: mockThemeSettings; page: 4 } } }
+    // the emoji picker (menu 16) opened on its Favorites tab (mockSettings seeds a
+    // few favourites), plus a search variant (Timer types a query post-load)
+    Component { id: cEmoji; MenuHost { pillW: 600; pillH: 470; EmojiMenu { anchors.fill: parent; theme: theme; settings: mockSettings } } }
+    Component { id: cEmojiSearch; MenuHost { pillW: 600; pillH: 470;
+        EmojiMenu { id: emo; anchors.fill: parent; theme: theme; settings: mockSettings }
+        Timer { running: true; interval: 60; onTriggered: emo.query = "heart" }
+    } }
     // the Done work-history page (menu 15) over the seeded MockDone
     Component { id: cDone; MenuHost { pillW: 820; pillH: 560; DoneMenu { anchors.fill: parent; theme: theme; done: mockDone } } }
     // the Done page mid-load (skeleton chapters + busy stripe)
