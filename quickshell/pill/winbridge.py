@@ -99,7 +99,16 @@ KWIN_JS = (
     "  return o; }\n"
     'function pushList(){ callDBus("org.kde.pill","/Active","org.kde.pill","List",'
     " JSON.stringify(ids())); }\n"
-    'function setActive(w){ callDBus("org.kde.pill","/Active","org.kde.pill","Set",'
+    # Ignore activation of our OWN overlay surfaces (the pill / emaqs). KWin reports
+    # the Quickshell layer surface as a NORMAL window with resourceClass "quickshell",
+    # so when the pill grabs the keyboard it fires windowActivated for itself; without
+    # this guard `active` (and so the pill's lastActiveWindow) gets overwritten with
+    # the pill, and "restore focus" then re-activates the pill => focus stuck on it.
+    # Skipping it keeps `active` pointing at the real app the user came from, which is
+    # the correct restore target. (A plain `!normalWindow` test does NOT catch the
+    # pill — it *is* normalWindow here — which is exactly what bit us.)
+    'function setActive(w){ if (w && String(w.resourceClass)==="quickshell") return;\n'
+    ' callDBus("org.kde.pill","/Active","org.kde.pill","Set",'
     ' w ? String(w.internalId) : "", (w && w.fullScreen) ? "1" : "0",'
     ' (w && w.output) ? String(w.output.name) : ""); }\n'
     "function watch(w){ if (!w) return;\n"
@@ -153,6 +162,8 @@ def load_kwin_script():
 # whose internalId is in TARGETS and applies VERB. Toggle verbs act on the group's
 # AGGREGATE state so a grouped app stays in sync — e.g. minimize hides them all
 # unless they're already all hidden (then it restores all). maximizeMode 3 = full.
+# The `activate` verb (single window) focuses+raises it — used to restore focus to
+# the app that was active before a keyboard-grabbing pill pane opened.
 ACTION_JS = (
     "(function(){\n"
     "  var wl = workspace.windowList ? workspace.windowList() : workspace.clientList();\n"
@@ -161,7 +172,14 @@ ACTION_JS = (
     "    for (var j=0;j<TARGETS.length;j++) if (TARGETS[j]===id){ wins.push(wl[i]); break; } }\n"
     "  if (!wins.length) return;\n"
     "  function every(f){ for (var i=0;i<wins.length;i++) if (!f(wins[i])) return false; return true; }\n"
-    '  if (VERB === "close"){ for (var i=0;i<wins.length;i++) wins[i].closeWindow(); }\n'
+    # activate: give the (single) window keyboard focus + raise it. Used to hand
+    # focus BACK to the app that was active before a keyboard-grabbing pill pane
+    # opened — KWin/Wayland won't do it on its own when our layer surface lets go
+    # of the keyboard. Done in-compositor (workspace.activeWindow = w), so it's
+    # not subject to focus-stealing prevention the way an external request is.
+    '  if (VERB === "activate"){ var a=wins[0];\n'
+    "    a.minimized=false; workspace.raiseWindow(a); workspace.activeWindow=a; }\n"
+    '  else if (VERB === "close"){ for (var i=0;i<wins.length;i++) wins[i].closeWindow(); }\n'
     '  else if (VERB === "minimize"){ var on = !every(function(w){return w.minimized;});\n'
     "    for (var i=0;i<wins.length;i++) wins[i].minimized = on; }\n"
     '  else if (VERB === "maximize"){ var on = !every(function(w){return w.maximizeMode === 3;});\n'

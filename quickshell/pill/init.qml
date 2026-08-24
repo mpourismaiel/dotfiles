@@ -27,13 +27,14 @@ ShellRoot {
     property string activeWindow: ""  // active window uuid "{...}"
     property string activeScreen: ""  // output name of the focused window's monitor
     property bool activeFullscreen: false  // is the focused window fullscreen?
-    // last *real* focused window — opening the pill (layer-shell keyboard grab)
-    // can momentarily clear activeWindow on KWin, so we keep the last non-empty
-    // value and re-activate it when the pill closes (KWin doesn't restore focus
-    // to the previously-active window on its own when a layer surface lets go).
+    // last *real* focused window. Opening a keyboard-grabbing pane makes KWin
+    // clear the active window (our layer surface takes the keyboard), so we keep
+    // the last non-empty value and re-activate it when the pane closes —
+    // restoreFocus() below. (KWin does NOT hand focus back on its own when a
+    // layer surface drops an OnDemand keyboard grab.)
     property string lastActiveWindow: ""
     onActiveWindowChanged: if (activeWindow !== "") lastActiveWindow = activeWindow
-    
+
     // requested via the Meta+D global shortcut (KWin script -> winbridge -> here)
     signal launcherShortcut(string screen)
     // requested via IPC (`qs ipc call pill clipboard`) — bind a KDE custom shortcut to
@@ -759,14 +760,6 @@ ShellRoot {
         runProc.running = true;
     }
     Process { id: runProc }
-    // re-focus the window that was active before the pill grabbed the keyboard
-    // (called when the pill is dismissed without launching anything).
-    function restoreFocus() {
-        const u = root.lastActiveWindow;
-        if (!u) return;
-        const w = root.windows.find(x => x.uuid === u);
-        if (w) root.activateWindow(w.id);
-    }
     Process { id: launchProc }
     function launch(execString) { launchProc.command = ["sh", "-c", execString]; launchProc.startDetached(); }
     // run a pre-split argv detached (no shell) — safe for paths/args with spaces.
@@ -786,7 +779,41 @@ ShellRoot {
             JSON.stringify(uuids), verb];
         actionProc.running = true;
     }
-    
+    // re-focus the app that was active before a keyboard-grabbing pane opened.
+    // KWin (Wayland) does NOT return focus to the previous window when our persistent
+    // layer surface merely drops its keyboard grab, so we re-activate it ourselves.
+    //
+    // We use the KRunner windows runner (org.kde.krunner1.Run, via activateWindow) —
+    // the exact path KDE's own window switching uses, reliable on Wayland. The KWin-
+    // script `workspace.activeWindow = w` assignment does NOT work here (logged:
+    // activeWindow read back empty immediately after setting it — the property is
+    // effectively read-only), which is why earlier attempts left focus stuck.
+    //
+    // Deferred by a short timer: at the instant a pane closes the pill's layer
+    // surface may still hold the keyboard (the keyboardFocus=None commit is async),
+    // and KWin would bounce focus straight back off it. Waiting a beat lets the grab
+    // fully release first. Only the deliberate closers call this (pick / Escape /
+    // click-away / toggle-off); close-on-blur must NOT (there the user chose another
+    // window on purpose).
+    Timer {
+        id: restoreTimer
+        interval: 60
+        onTriggered: {
+            if (!root.lastActiveWindow) return;
+            // Activate via the KWin script (windowAction "activate"): the KRunner
+            // windows runner does NOT list every window (the focused window can be
+            // missing from its results), but workspace.windowList() in the KWin script
+            // always has it. Deferred 60ms so the pill's layer surface has committed
+            // keyboardFocus=None first (activating while it still holds the wl keyboard
+            // would let KWin bounce focus straight back).
+            root.windowAction([root.lastActiveWindow], "activate");
+        }
+    }
+    function restoreFocus() {
+        if (root.lastActiveWindow)
+            restoreTimer.restart();
+    }
+
     // best DesktopEntry for a window: try its desktopFileName, then resourceClass,
     // then the KRunner icon name (heuristicLookup is fuzzy). Used to group windows of
     // one app together and to resolve a real icon — the bare KRunner icon name often
@@ -1424,12 +1451,15 @@ ShellRoot {
                 win.confirmCmd = null;
             }
     
-            // toggle the launcher (used by the Meta+D global shortcut). Restores
-            // focus to the previously-active window when the shortcut closes it.
+            // toggle the launcher (used by the Meta+D global shortcut). Closing it
+            // drops the keyboard grab and hands focus back to the previously-active
+            // window (unless in kb-nav mode, where the pill stays on the dashboard
+            // still grabbing).
             function toggleLauncher() {
                 if (win.launcher) {
                     win.launcher = false;
-                    root.restoreFocus();
+                    if (!win.kbNav)
+                        root.restoreFocus();
                 } else {
                     win.open = false;
                     win.ctxGroup = null;
@@ -1441,11 +1471,10 @@ ShellRoot {
     
             // open (or toggle shut) the clipboard-history menu — bound to the IPC
             // clipboard shortcut. Mirrors toggleLauncher: re-firing while it's already
-            // showing closes it and restores focus to the previously-active window.
+            // showing closes it (KWin returns the keyboard to the previous window).
             function openClipboard() {
                 if (win.open && win.menu === 5) {
-                    win.open = false;
-                    root.restoreFocus();
+                    win.closeMenu();
                 } else {
                     win.launcher = false;
                     win.ctxGroup = null;
@@ -1461,11 +1490,7 @@ ShellRoot {
             // so its arrow/Enter/i/x navigation works from the first keystroke.
             function openNotifications() {
                 if (win.open && win.menu === 4) {
-                    const wasGrabbing = win.grabsKeyboard;
-                    win.open = false;
-                    if (wasGrabbing)
-                        root.restoreFocus();
-    
+                    win.closeMenu();
                 } else {
                     win.launcher = false;
                     win.ctxGroup = null;
@@ -1480,7 +1505,7 @@ ShellRoot {
             // stops a running take, handled in the IPC handler).
             function openVoiceMemo() {
                 if (win.open && win.menu === 7) {
-                    win.open = false;
+                    win.closeMenu();
                 } else {
                     win.launcher = false;
                     win.ctxGroup = null;
@@ -1496,12 +1521,7 @@ ShellRoot {
             // over a mouse-opened dashboard upgrades it to keyboard-nav in place.
             function openExpanded() {
                 if (win.kbNav) {
-                    win.open = false;
-                    win.launcher = false;
-                    win.ctxGroup = null;
-                    win.trayItem = null;
-                    win.focused = false; // dash drops -> kbNav auto-clears
-                    root.restoreFocus();
+                    win.dismissAndRestore(); // dash drops -> kbNav auto-clears
                 } else {
                     win.open = false;
                     win.launcher = false;
@@ -1512,16 +1532,43 @@ ShellRoot {
                     win.hoverItem = dateTimeBlock; // clock/calendar is the default focus
                 }
             }
+            // dismiss every open surface at once. Bare close, no focus change — used
+            // by the close-on-blur handler, where the user already moved focus to
+            // another window on purpose (restoring would yank it back).
+            function dismiss() {
+                win.open = false;
+                win.launcher = false;
+                win.ctxGroup = null;
+                win.trayItem = null;
+                win.focused = false;
+                win.deadlines = false;
+            }
+            // close the current menu on a DELIBERATE dismiss (a toggle re-fire, or a
+            // menu's own back/Escape/pick). If the pane held the keyboard, hand focus
+            // back to the app that had it before the grab. In keyboard-nav mode the
+            // pill stays up on the dashboard (still grabbing), so keep the keyboard.
+            function closeMenu() {
+                const wasGrabbing = win.grabsKeyboard;
+                win.open = false;
+                if (win.kbNav)
+                    return ;
+                if (wasGrabbing)
+                    root.restoreFocus();
+            }
+            // full dismiss (outside click / Escape) that also restores focus when the
+            // pill was grabbing — the pointer/keyboard counterpart of closeMenu.
+            function dismissAndRestore() {
+                const wasGrabbing = win.grabsKeyboard;
+                win.dismiss();
+                if (wasGrabbing)
+                    root.restoreFocus();
+            }
     
             // open (or toggle shut) the calendar pane — fired by clicking the dashboard
             // date/time. Mirrors openClipboard: re-firing while it's showing closes it.
             function openCalendar() {
                 if (win.open && win.menu === 6) {
-                    const wasGrabbing = win.grabsKeyboard;
-                    win.open = false;
-                    if (wasGrabbing)
-                        root.restoreFocus();
-    
+                    win.closeMenu();
                 } else {
                     win.launcher = false;
                     win.ctxGroup = null;
@@ -1535,11 +1582,7 @@ ShellRoot {
             // button beside the expanded-pill clock. Mirrors openCalendar.
             function openTetris() {
                 if (win.open && win.menu === 9) {
-                    const wasGrabbing = win.grabsKeyboard;
-                    win.open = false;
-                    if (wasGrabbing)
-                        root.restoreFocus();
-
+                    win.closeMenu();
                 } else {
                     win.launcher = false;
                     win.ctxGroup = null;
@@ -1553,11 +1596,7 @@ ShellRoot {
             // plus/T button below the Tetris button. Mirrors openTetris.
             function openBlockBlast() {
                 if (win.open && win.menu === 10) {
-                    const wasGrabbing = win.grabsKeyboard;
-                    win.open = false;
-                    if (wasGrabbing)
-                        root.restoreFocus();
-
+                    win.closeMenu();
                 } else {
                     win.launcher = false;
                     win.ctxGroup = null;
@@ -1573,11 +1612,7 @@ ShellRoot {
             // menuLoader Connections). Mirrors openBlockBlast.
             function openGames() {
                 if (win.open && win.menu === 11) {
-                    const wasGrabbing = win.grabsKeyboard;
-                    win.open = false;
-                    if (wasGrabbing)
-                        root.restoreFocus();
-
+                    win.closeMenu();
                 } else {
                     win.launcher = false;
                     win.ctxGroup = null;
@@ -1592,11 +1627,7 @@ ShellRoot {
             // every emoji; Enter/click copies to the clipboard. Mirrors openGames.
             function openEmoji() {
                 if (win.open && win.menu === 16) {
-                    const wasGrabbing = win.grabsKeyboard;
-                    win.open = false;
-                    if (wasGrabbing)
-                        root.restoreFocus();
-
+                    win.closeMenu();
                 } else {
                     win.launcher = false;
                     win.ctxGroup = null;
@@ -1613,11 +1644,7 @@ ShellRoot {
             // them), mirroring the old launcher-overlay behaviour.
             function openSettings() {
                 if (win.open && win.menu === 13) {
-                    const wasGrabbing = win.grabsKeyboard;
-                    win.open = false;
-                    if (wasGrabbing)
-                        root.restoreFocus();
-
+                    win.closeMenu();
                 } else {
                     win.launcher = false;
                     win.ctxGroup = null;
@@ -1634,11 +1661,7 @@ ShellRoot {
             // numbers reflect the latest commits/closures for the current period.
             function openDone() {
                 if (win.open && win.menu === 15) {
-                    const wasGrabbing = win.grabsKeyboard;
-                    win.open = false;
-                    if (wasGrabbing)
-                        root.restoreFocus();
-
+                    win.closeMenu();
                 } else {
                     win.launcher = false;
                     win.ctxGroup = null;
@@ -1653,11 +1676,7 @@ ShellRoot {
             // games list (see the menuLoader Connections). Mirrors openBlockBlast.
             function openBrickBreaker() {
                 if (win.open && win.menu === 12) {
-                    const wasGrabbing = win.grabsKeyboard;
-                    win.open = false;
-                    if (wasGrabbing)
-                        root.restoreFocus();
-
+                    win.closeMenu();
                 } else {
                     win.launcher = false;
                     win.ctxGroup = null;
@@ -1671,11 +1690,7 @@ ShellRoot {
             // list (see the menuLoader Connections). Mirrors openBrickBreaker.
             function openSnake() {
                 if (win.open && win.menu === 14) {
-                    const wasGrabbing = win.grabsKeyboard;
-                    win.open = false;
-                    if (wasGrabbing)
-                        root.restoreFocus();
-
+                    win.closeMenu();
                 } else {
                     win.launcher = false;
                     win.ctxGroup = null;
@@ -1697,16 +1712,21 @@ ShellRoot {
             onMenuChanged: if (win.menu !== 9 && win.menu !== 10 && win.menu !== 12 && win.menu !== 14) win.tetrisMoved = false;
             screen: modelData
             WlrLayershell.layer: WlrLayer.Overlay
-            // grab the keyboard only when the pill genuinely needs it (see
+            // take the keyboard only when the pill genuinely needs it (see
             // `grabsKeyboard`): the launcher/clipboard is up, or an editable field has
             // focus. Everything else — collapsed/hovered pill, an appearing notification,
             // a menu you're only clicking toggles in — stays KeyboardFocus.None and never
-            // touches the active window's focus. The launcher and clipboard need
-            // *Exclusive* so their search field grabs the keyboard even when opened by a
-            // shortcut/IPC (no click to trigger focus) and arrow-key nav works from the
-            // first keystroke; a wifi-password / reply field pulls Exclusive the moment it
-            // takes focus (its own `focus:`/click), so typing works without a stray grab.
-            WlrLayershell.keyboardFocus: win.grabsKeyboard ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+            // touches the active window's focus.
+            //
+            // *OnDemand*, NOT Exclusive: OnDemand lets KWin manage focus normally and,
+            // crucially, lets us OBSERVE losing it (Window.active below) so the pill
+            // can close-on-blur when you switch to another window. KWin still does NOT
+            // hand focus back to the previous window when we drop the grab, so the
+            // deliberate closers re-activate it via restoreFocus() (a KWin-script
+            // activate — see the `activate` verb in winbridge.py). Exclusive gave us
+            // neither: no blur signal, and the same no-restore behaviour but harder to
+            // recover from.
+            WlrLayershell.keyboardFocus: win.grabsKeyboard ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
             exclusionMode: ExclusionMode.Ignore
             color: "transparent"
             // capShow deliberately falls through to pillRegion (NOT fullRegion): the
@@ -1795,6 +1815,18 @@ ShellRoot {
                 id: kbProbe
 
                 readonly property var focusItem: Window.activeFocusItem
+                // close-on-blur: whether OUR surface currently holds the keyboard.
+                // With OnDemand focus KWin flips this off the moment you activate
+                // another window (Alt+Tab, click into an app). When that happens
+                // while a grabbing pane is up, dismiss the pill so it can't sit there
+                // still owning the keyboard. Skip while a child dialog (the folder
+                // picker) legitimately holds focus — that pane must survive to receive
+                // its result and reappears when the dialog returns.
+                readonly property bool winActive: Window.active
+                onWinActiveChanged: {
+                    if (!winActive && win.grabsKeyboard && !win.picking)
+                        win.dismiss();
+                }
             }
 
             // keyboard-nav mode: the expanded dashboard's key sink. Focused only while
@@ -1843,12 +1875,7 @@ ShellRoot {
                     };
                     if (event.key === Qt.Key_Escape) {
                         // Escape on the dashboard closes the pill entirely
-                        win.open = false;
-                        win.launcher = false;
-                        win.ctxGroup = null;
-                        win.trayItem = null;
-                        win.focused = false; // dash drops -> kbNav auto-clears
-                        root.restoreFocus();
+                        win.dismissAndRestore(); // dash drops -> kbNav auto-clears
                         event.accepted = true;
                     } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
                         if (cur && cur.keyClick)
@@ -1934,23 +1961,11 @@ ShellRoot {
     
                 anchors.fill: parent
                 enabled: win.open || win.launcher || win.ctxMode || win.focused || win.deadlines
-                // dismiss without launching -> hand focus back to the active window, but
-                // only if the pill actually held the keyboard (otherwise there's nothing
-                // to restore and re-activating the last window is just disruptive).
+                // click outside the pill -> dismiss everything and, if it was
+                // grabbing, hand the keyboard back to the previously-active window.
                 // (deadlines is cleared here too as a safety net — its own popup
                 // backdrop normally handles the outside click first.)
-                onClicked: {
-                    const wasGrabbing = win.grabsKeyboard;
-                    win.open = false;
-                    win.launcher = false;
-                    win.ctxGroup = null;
-                    win.trayItem = null;
-                    win.focused = false;
-                    win.deadlines = false;
-                    if (wasGrabbing)
-                        root.restoreFocus();
-    
-                }
+                onClicked: win.dismissAndRestore()
             }
     
             Item {
@@ -3088,16 +3103,11 @@ ShellRoot {
     
                     Connections {
                         function onCloseRequested() {
-                            const wasGrabbing = win.grabsKeyboard;
-                            win.open = false;
-                            // keyboard-nav mode: back to the expanded dashboard (the
-                            // pill keeps the keyboard); Escape there closes for real.
-                            if (win.kbNav)
-                                return ;
-    
-                            if (wasGrabbing)
-                                root.restoreFocus();
-    
+                            // a menu closed itself (back chevron / Escape / a pick like
+                            // copying an emoji or clipboard entry): close the pane and,
+                            // if it was grabbing, hand focus back to the app. In kb-nav
+                            // mode the pill stays on the dashboard (still grabbing).
+                            win.closeMenu();
                         }
     
                         // VoiceMemoMenu (menu 7) Start: commit the config + begin a take
@@ -3210,20 +3220,19 @@ ShellRoot {
                         fin: finance
                         onLaunched: {
                             win.launcher = false;
-                            // keyboard-nav mode holds an Exclusive grab — drop the
-                            // whole pill so the launched app can take the keyboard.
+                            // keyboard-nav mode holds the grab on the dashboard — drop
+                            // the whole pill so the launched app can take the keyboard.
                             if (win.kbNav)
                                 win.focused = false;
-    
+
                         }
                         onCloseRequested: {
                             win.launcher = false;
-                            // keyboard-nav mode: Escape returns to the expanded
-                            // dashboard instead of dismissing the pill (the Meta+D /
-                            // mouse-opened launcher still closes outright).
+                            // Escape/back on the launcher: hand focus back to the app,
+                            // except in kb-nav mode where it returns to the dashboard
+                            // (still grabbing the keyboard).
                             if (!win.kbNav)
                                 root.restoreFocus();
-    
                         }
                         // right-click on an app: show the floating AppMenu at the click.
                         // The point arrives in the Launcher's coordinates; map it into
@@ -3485,10 +3494,8 @@ ShellRoot {
                 px: pill.x + pill.width / 2 - 200
                 py: pill.y + pill.height + 8
                 onDismissed: {
-                    const wasGrabbing = win.grabsKeyboard;
                     win.deadlines = false;
-                    if (wasGrabbing)
-                        root.restoreFocus();
+                    root.restoreFocus();
                 }
             }
 
