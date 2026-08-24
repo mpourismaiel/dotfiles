@@ -10,6 +10,21 @@ This repo is mostly managed and written with LLM. As it is my daily driver I hav
 
 The most interesting part of this repo is the pill. Its a quickshell module that is compact enough not to be distracting and still packs enough information to be useful.
 
+### Some of the screenshots
+
+|                                                                               |                                                                                     |
+|-------------------------------------------------------------------------------|-------------------------------------------------------------------------------------|
+| ![idle](./quickshell/screenshots/pill/images/pill-0-resting.png)              | ![idle-agenda](./quickshell/screenshots/pill/images/pill-2-resting-due.png)         |
+| Idle                                                                          | Idle with pending agenda items                                                      |
+| ![dashboard](./quickshell/screenshots/pill/images/pill-6-dashboard.png)       | ![notification-stack](./quickshell/screenshots/pill/images/pill-33-notif-stack.png) |
+| Dashboard                                                                     | Notification stack                                                                  |
+| ![calendar](./quickshell/screenshots/pill/images/pill-12-menu-calendar.png)   | ![finance](./quickshell/screenshots/pill/images/pill-13-menu-finance.png)           |
+| Calendar menu                                                                 | Finance menu                                                                        |
+| ![clipboard](./quickshell/screenshots/pill/images/pill-11-menu-clipboard.png) | ![tetris](./quickshell/screenshots/pill/images/pill-21-menu-tetris-share.png)       |
+| Clipboard menu                                                                | Tetris                                                                              |
+| ![emoji](./quickshell/screenshots/pill/images/pill-29-menu-emoji-search.png)  | ![summary](./quickshell/screenshots/pill/images/pill-30-menu-done.png)              |
+| Emoji picker                                                                  | Work summary                                                                        |
+
 ### Features
 
 Almost everything I was using from KDE is now packed in here. Its heavily interconnected with KDE so not really sure what its portability would be without KDE dependencies.
