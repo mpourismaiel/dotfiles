@@ -2419,7 +2419,10 @@ Code: part of [[file:pill/init.qml][=pill/init.qml=]] (was noweb chunk =init-clo
 *** Description
 The launch script (=./run-pill.sh=). Qt picks its platform plugin before any QML
 loads, so the Wayland socket and the icon theme (see [[*Look, translucency & icons][§ Look, translucency & icons]])
-have to be resolved here, not in =init.qml=.
+have to be resolved here, not in =init.qml=. =-r= restarts instead of running in
+the foreground: it kills any instance of this config (=qs kill -p=) and
+relaunches the script detached in the background (=setsid -f=), so it's safe to
+bind to a key or call from a terminal you're about to close.
 *** Code
 Code: [[file:pill/run-pill.sh][=pill/run-pill.sh=]]
 
