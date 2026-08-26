@@ -100,6 +100,7 @@ export class WorkspacesController {
   }
 
   emit() {
+    this.#refreshSuccessor();
     for (const cb of this.listeners) {
       try {
         cb(this);
@@ -271,7 +272,59 @@ export class WorkspacesController {
     if (ws?.containerId && Containers.exists(ws.containerId)) {
       this.win.setTimeout(() => this.#applyContainerDefault(tab, Number(ws.containerId)), 0);
     }
+    // Position the new tab within its workspace. A blank tab (Ctrl+T / new-tab
+    // button) goes to the END; a tab opened FROM a link (middle-click, "open in
+    // new tab" — Firefox sets openerTab) goes right after the tab it came from.
+    // Deferred so it runs after Firefox finishes inserting the tab. openerTab is
+    // captured now because Firefox can clear it as related tabs chain.
+    const opener = tab.openerTab || null;
+    this.win.setTimeout(() => this.#placeNewTab(tab, opener), 0);
     this.emit();
+  }
+
+  // Place a freshly-opened tab within its workspace. Skips pinned and grouped
+  // tabs (respect the group). Link-opened tabs (an opener) go next to the opener;
+  // blank tabs go to the end of the workspace.
+  #placeNewTab(tab, opener) {
+    try {
+      if (!tab || tab.closing || tab.pinned || tab.group) return;
+      if (!this.gBrowser.tabs.includes(tab)) return;
+      if (opener && !opener.closing && this.gBrowser.tabs.includes(opener)) {
+        this.#placeAfterOpener(tab, opener);
+      } else {
+        this.#moveToWorkspaceEnd(tab);
+      }
+    } catch (e) {
+      console.warn("[sine-workspaces] placeNewTab failed:", e);
+    }
+  }
+
+  // A link-opened tab sits immediately after the tab it came from. If that tab
+  // is pinned, the link tab can't live among the pinned tabs, so it's prepended
+  // to the workspace's non-pinned tabs instead.
+  #placeAfterOpener(tab, opener) {
+    const wsId = Store.getTabWorkspace(tab) || Store.defaultId;
+    if (opener.pinned) {
+      const normals = this.#tabsFor(wsId).filter((t) => t !== tab && !t.pinned);
+      if (!normals.length) return; // tab is the only non-pinned one — already fine
+      const first = normals[0]; // #tabsFor sorts by _tPos ascending
+      if (tab._tPos > first._tPos) this.gBrowser.moveTabTo(tab, { tabIndex: first._tPos });
+    } else {
+      const target = tab._tPos > opener._tPos ? opener._tPos + 1 : opener._tPos;
+      if (tab._tPos !== target) this.gBrowser.moveTabTo(tab, { tabIndex: target });
+    }
+  }
+
+  // Move a freshly-opened blank tab so it sits just after the last (non-pinned)
+  // tab of its workspace. No-op when there are no other normal tabs (Firefox
+  // already appends at the end).
+  #moveToWorkspaceEnd(tab) {
+    const wsId = Store.getTabWorkspace(tab) || Store.defaultId;
+    const peers = this.#tabsFor(wsId).filter((t) => t !== tab && !t.pinned);
+    if (!peers.length) return;
+    const last = peers[peers.length - 1]; // #tabsFor sorts by _tPos ascending
+    const target = tab._tPos > last._tPos ? last._tPos + 1 : last._tPos;
+    if (tab._tPos !== target) this.gBrowser.moveTabTo(tab, { tabIndex: target });
   }
 
   #applyContainerDefault(tab, userContextId) {
@@ -304,7 +357,13 @@ export class WorkspacesController {
     this.lastActiveByWs.forEach((v, k) => {
       if (v === tab) this.lastActiveByWs.delete(k);
     });
+    // If the active tab is closing, choose its replacement ourselves — the
+    // closest still-loaded tab in the workspace — rather than leaving whatever
+    // positional neighbor Firefox selects, which may be an unloaded tab.
     // If the active tab of the current workspace is closing, re-pick per cascade.
+    // (Firefox usually beats us to it via the successor tab we keep set — see
+    // #refreshSuccessor — but this covers the cases where it doesn't, e.g. the
+    // workspace just went empty.)
     if (tab.selected && (Store.getTabWorkspace(tab) || Store.defaultId) === this.activeId) {
       this.win.setTimeout(() => {
         const sel = this.gBrowser.selectedTab;
@@ -316,6 +375,27 @@ export class WorkspacesController {
       }, 0);
     } else {
       this.emit();
+    }
+  }
+
+  // Keep the selected tab's "successor" pointed at the closest still-loaded tab
+  // in its workspace. Firefox selects a closing tab's successor first of all
+  // (tabbrowser._findTabToBlurTo), so this makes closing the active tab land on
+  // the nearest loaded neighbor (a pinned tab counts) instead of whatever
+  // positional — possibly unloaded — tab Firefox would otherwise pick. Falls
+  // back to the closest tab of any load state; clears the successor if the tab
+  // is alone in its workspace (so an empty workspace is handled by #onTabClose).
+  #refreshSuccessor() {
+    try {
+      const tab = this.gBrowser.selectedTab;
+      if (!tab || tab.closing) return;
+      const wsId = Store.getTabWorkspace(tab) || Store.defaultId;
+      const peers = this.#tabsFor(wsId).filter((t) => t !== tab && !t.closing);
+      let succ = this.#closest(peers.filter((t) => this.#isLoaded(t)), tab._tPos);
+      if (!succ) succ = this.#closest(peers, tab._tPos);
+      this.gBrowser.setSuccessor(tab, succ || null);
+    } catch (e) {
+      console.warn("[sine-workspaces] refreshSuccessor failed:", e);
     }
   }
 
@@ -331,6 +411,7 @@ export class WorkspacesController {
       this.emit();
     } else {
       this.lastActiveByWs.set(this.activeId, tab);
+      this.#refreshSuccessor();
     }
   }
 
