@@ -17,10 +17,10 @@ the same one. Per-account state (hidden-project prefs, snapshot cache) is keyed
 by account, so accounts never clobber each other.
 
 Besides the timesheet, the same tree/diff/apply machinery drives a management
-buffer (structure + labels, no time filter) and a per-task comments buffer. A
-per-account project `filter` (persisted in prefs) selects which projects appear;
-every pull also caches its rendered org so a reopen can show stale data instantly
-while a fresh pull runs in the background (`cached` reads that cache).
+buffer (structure + labels + inline task comments, no time filter). A per-account
+project `filter` (persisted in prefs) selects which projects appear; every pull
+also caches its rendered org so a reopen can show stale data instantly while a
+fresh pull runs in the background (`cached` reads that cache).
 
 Subcommands:
     ping [--account N]                health check: who am I (read-only)
@@ -33,12 +33,10 @@ Subcommands:
     manage [--projects ids] [...]     emit the project structure (no time filter)
     manage-state [--account N]        management header state (view + hidden) JSON
     unhide --id ID [--account N]      restore a hidden project (drop from prefs)
-    comments-pull --task ID [...]     emit a task's comments as an editable buffer
     cached --kind K --key K [...]     print the last cached buffer (exit 3 if none)
     submit --file F [--json]          print the diff plan (JSON with --json)
     submit --file F --apply --out G   apply the plan, stream progress, write the
                                       updated buffer to G
-    comments-submit --file F [...]    same, for an edited comments buffer
 """
 from __future__ import annotations
 
@@ -327,6 +325,10 @@ class Client:
                 "priority": _norm_priority(t.get("priority")),
                 "assignees": _assignee_ids(t),
                 "done": _task_completed(t),
+                # How many comments the task has, so management only fetches the
+                # comment list for tasks that actually carry any (v1 field).
+                "comment_count": int(t.get("comments-count")
+                                     or t.get("commentsCount") or 0),
             })
             for sub in (t.get("subTasks") or t.get("subtasks") or []):
                 add(sub, tid)
@@ -334,12 +336,6 @@ class Client:
         for t in raw:
             add(t, None)
         return out
-
-    def task_title(self, task_id: int) -> str:
-        """Title (content) of a single task — for the comments buffer header."""
-        d = self.get(f"/tasks/{task_id}.json")
-        item = (d.get("todo-item") if isinstance(d, dict) else None) or {}
-        return (item.get("content") or "").strip() or f"task {task_id}"
 
     def comments(self, task_id: int) -> list[dict]:
         return [normalize_comment(c)
@@ -572,6 +568,8 @@ def normalize_comment(c: dict) -> dict:
     return {
         "id": int(pick("id", default=0) or 0),
         "author": author,
+        # Author id lets the diff gate editing to the current user's own comments.
+        "author_id": str(pick("author-id", "authorId", "author-user-id", default="") or ""),
         "datetime": when,
         "body": (pick("body", default="") or "").strip(),
     }
@@ -682,19 +680,47 @@ def _split_todo_keyword(title: str):
     return None, title
 
 
+_LABELS_PREFIX_RE = re.compile(r"^<([^>]*)>")
+
+
+def _labels_prefix(tags) -> str:
+    """The `<tag1,tag2>` prefix a management task heading carries for its labels,
+    or '' when it has none. Keeping labels in the heading (rather than a drawer)
+    makes them visible at a glance; org fontifies the rest of the line as the
+    title."""
+    tags = [t.strip() for t in (tags or []) if t and t.strip()]
+    return f"<{','.join(tags)}>" if tags else ""
+
+
+def _split_labels_prefix(title: str):
+    """Split a leading `<a,b,c>` label prefix off TITLE.
+    Returns (tags, rest): tags is None when TITLE carries no prefix, else the
+    (possibly empty) list of labels — a literal `<>` reads as no labels. REST is
+    the title text that follows the prefix."""
+    m = _LABELS_PREFIX_RE.match(title)
+    if not m:
+        return None, title
+    return ([t.strip() for t in m.group(1).split(",") if t.strip()],
+            title[m.end():].lstrip())
+
+
 def _task_drawer(tk: dict, with_props=False):
-    """Property drawer for task TK: id + LABELS, and (management only, WITH_PROPS)
-    DUE / URGENCY / ASSIGNEE lines. The done state rides the heading's org keyword
-    (see `_todo_keyword`), not the drawer. Returns None when there is nothing to
-    show (a brand-new task with no id and no properties), so callers can skip it."""
+    """Property drawer for task TK: id, plus (management only, WITH_PROPS)
+    DUE / URGENCY / ASSIGNEE lines. Labels ride the heading — a `<a,b>` prefix in
+    management (see `_labels_prefix`), the :LABELS: line in the timesheet — and the
+    done state rides the heading's org keyword (see `_todo_keyword`); neither lives
+    here in management. Returns None when there is nothing to show (a brand-new task
+    with no id and no properties), so callers can skip it."""
     tags = tk.get("tags")
-    pairs = [("TASK_ID", tk.get("id")),
-             ("LABELS", ", ".join(tags) if tags else None)]
+    pairs = [("TASK_ID", tk.get("id"))]
     if with_props:
         names = tk.get("assignee_names")
         pairs += [("DUE", tk.get("due") or None),
                   ("URGENCY", tk.get("priority") or None),
                   ("ASSIGNEE", ", ".join(names) if names else None)]
+    else:
+        # Timesheet keeps labels in the drawer (its headings stay bare).
+        pairs.append(("LABELS", ", ".join(tags) if tags else None))
     return _drawer_multi(pairs) if any(v not in (None, "") for _, v in pairs) else None
 
 
@@ -705,6 +731,35 @@ def _tasklist_drawer(tl: dict) -> str:
     unchanged; the parser ignores the marker (completion doesn't round-trip)."""
     return _drawer_multi([("TASKLIST_ID", tl["id"]),
                           ("COMPLETED", "t" if tl.get("completed") else None)])
+
+
+# --------------------------------------------------------------------------- #
+# Task comments (management only): shown inline under a `# Comments` marker.
+# --------------------------------------------------------------------------- #
+# An existing comment's header line carries its author, timestamp and id so it is
+# recognisable on re-parse; a body-less bare `-` marks a NEW comment to post.
+_COMMENT_META_RE = re.compile(
+    r"^-\s+(?P<author>.*?),\s*"
+    r"(?P<when>[0-9]{4}-[0-9]{2}-[0-9]{2}[ T][0-9]{2}:[0-9]{2})\s*,\s*"
+    r"`(?P<id>\d+)`\s*$")
+_COMMENT_NEW_RE = re.compile(r"^-\s*$")
+
+
+def _comment_marker(c: dict) -> str:
+    """The `- author, when, `id`` header line for an existing comment, or a bare
+    `-` for a new (unsent) one."""
+    if c.get("id"):
+        return f"- {c.get('author') or '?'}, {c.get('datetime') or ''}, `{c['id']}`"
+    return "-"
+
+
+def _emit_comments(out, comments):
+    """Append the `# Comments` section for a task (always emitted in management,
+    even with no comments, so a comment can be added by typing a `-` block)."""
+    out.append("# Comments")
+    for c in (comments or []):
+        out.append(_comment_marker(c))
+        out.extend((c.get("body") or "").split("\n"))
 
 
 def _emit_project_tree(out, projects, tasklists, tasks, logs_by_task=None,
@@ -729,15 +784,21 @@ def _emit_project_tree(out, projects, tasklists, tasks, logs_by_task=None,
             tops_by_tl.setdefault(tk["tasklist_id"], []).append(tk)
 
     def emit_task(tk, level):
-        # Management headings carry the done state as an org TODO/DONE keyword;
-        # timesheet headings stay bare (there completion rides a [d] log marker).
-        head = f"{_todo_keyword(tk.get('done'))} {tk['title']}" if with_props else tk["title"]
+        # Management headings carry the done state as an org TODO/DONE keyword and
+        # the labels as a `<a,b>` title prefix; timesheet headings stay bare (there
+        # completion rides a [d] log marker and labels live in the drawer).
+        if with_props:
+            head = f"{_todo_keyword(tk.get('done'))} {_labels_prefix(tk.get('tags'))}{tk['title']}"
+        else:
+            head = tk["title"]
         out.append(f"{'*' * level} {head}")
         drawer = _task_drawer(tk, with_props=with_props)
         if drawer:
             out.append(drawer)
         if with_desc and (tk.get("description") or "").strip():
             out.extend(tk["description"].split("\n"))
+        if with_props:                    # management: comments live under the task
+            _emit_comments(out, tk.get("comments"))
         for lg in sorted(logs_by_task.get(tk["id"], []), key=lambda l: (l["date"], l.get("start") or "")):
             out.extend(render_log_line(lg))
         for sub in sorted(subs_by_parent.get(tk["id"], []), key=lambda t: t["title"].lower()):
@@ -843,57 +904,6 @@ def render_manage(projects, tasklists, tasks, meta: dict, hidden_names: dict = N
     return "\n".join(out) + "\n"
 
 
-def _comments_help() -> list:
-    return [
-        "# One * heading per comment. Edit the text below a heading to change it;",
-        "# add a new * heading with body text to post a comment; delete a heading to",
-        "# remove its comment. Keep each comment's :COMMENT_ID:. The author/date",
-        "# line is informational — only the body text and id matter on submit.",
-    ]
-
-
-def render_comments(task_id, task_title, comments, meta: dict) -> str:
-    """Render a task's comments as an editable org buffer (chronological)."""
-    out = [
-        f"#+TITLE: Comments — {task_title}",
-        f"#+TEAMWORK_COMMENTS: task={task_id} user={meta.get('user_id')}",
-    ]
-    if meta.get("account"):
-        out.append(f"#+TEAMWORK_ACCOUNT: {meta['account']}")
-    out += _comments_help()
-    out.append("")
-    for c in comments:
-        head = c.get("author") or "?"
-        if c.get("datetime"):
-            head = f"{head} — {c['datetime']}"
-        out.append(f"* {head}")
-        out.append(_drawer("COMMENT_ID", c["id"]))
-        out.extend((c.get("body") or "").split("\n"))
-        out.append("")
-    return "\n".join(out) + "\n"
-
-
-def serialize_comments(parsed: dict) -> str:
-    """Rebuild a comments buffer from a parsed (and possibly mutated) tree — used
-    after apply so freshly-created comments carry their new ids."""
-    m = parsed["meta"]
-    out = [
-        "#+TITLE: Comments",
-        f"#+TEAMWORK_COMMENTS: task={m.get('task')} user={m.get('user')}",
-    ]
-    if m.get("account"):
-        out.append(f"#+TEAMWORK_ACCOUNT: {m['account']}")
-    out += _comments_help()
-    out.append("")
-    for c in parsed["comments"]:
-        out.append(f"* {c.get('author') or 'me'}")
-        if c.get("id") is not None:
-            out.append(_drawer("COMMENT_ID", c["id"]))
-        out.extend((c.get("body") or "").split("\n"))
-        out.append("")
-    return "\n".join(out) + "\n"
-
-
 def serialize_parsed(parsed: dict) -> str:
     """Reproduce an org buffer from a parsed (and possibly mutated) tree.
 
@@ -909,12 +919,21 @@ def serialize_parsed(parsed: dict) -> str:
                       account=m.get("account"))
 
     def emit_task(tk, level):
-        out.append(f"{'*' * level} {tk['title']}")
-        drawer = _task_drawer(tk, with_props=manage)   # keeps id/tags/props on retry
+        # Management re-serialisation must preserve the done state (TODO/DONE
+        # keyword) and labels (`<a,b>` prefix) that ride the heading, so a reload
+        # after apply looks like a fresh render; timesheet headings stay bare.
+        if manage:
+            head = f"{_todo_keyword(tk.get('done'))} {_labels_prefix(tk.get('tags'))}{tk['title']}"
+        else:
+            head = tk["title"]
+        out.append(f"{'*' * level} {head}")
+        drawer = _task_drawer(tk, with_props=manage)   # keeps id/props on retry
         if drawer:
             out.append(drawer)
         if manage and (tk.get("description") or "").strip():
             out.extend(tk["description"].split("\n"))
+        if manage:
+            _emit_comments(out, tk.get("comments"))
         for lg in tk["logs"]:
             out.extend(render_log_line(lg))
         for sub in tk.get("subtasks", []):
@@ -955,19 +974,31 @@ def build_snapshot(projects, tasklists, tasks, logs, meta: dict) -> dict:
         "task_parent": {str(t["id"]): (str(t["parent_id"]) if t.get("parent_id") else None)
                         for t in tasks},
         "tasklist_project": {str(t["id"]): t["project_id"] for t in tasklists},
+        "task_comments": {str(c["id"]): (c.get("body") or "")
+                          for t in tasks for c in (t.get("comments") or []) if c.get("id")},
+        "comment_authors": {str(c["id"]): str(c.get("author_id") or "")
+                            for t in tasks for c in (t.get("comments") or []) if c.get("id")},
     }
 
 
-def build_snapshot_from_parsed(parsed: dict, people=None) -> dict:
+def build_snapshot_from_parsed(parsed: dict, people=None, comment_authors=None) -> dict:
     m = parsed["meta"]
     logs, tls, tks, tags = {}, {}, {}, {}
     desc, due, pri, asg, done = {}, {}, {}, {}, {}
     t_proj, t_tl, t_parent, tl_proj = {}, {}, {}, {}
+    cmts, cmt_auth = {}, {}
 
     def walk(tk, proj_id, tl_id, parent_id):
         if tk["id"] is not None:
             sid = str(tk["id"])
             tks[sid] = tk["title"]
+            for c in tk.get("comments", []):
+                if c.get("id"):
+                    cmts[str(c["id"])] = c.get("body") or ""
+                    # The parsed buffer has no author id; preserving None means the
+                    # own-comment guard trusts the manage snapshot (which does).
+                    if c.get("author_id"):
+                        cmt_auth[str(c["id"])] = str(c["author_id"])
             if "tags" in tk:                 # only record when the buffer stated it
                 tags[sid] = tk.get("tags") or []
             if "description" in tk:
@@ -999,21 +1030,12 @@ def build_snapshot_from_parsed(parsed: dict, people=None) -> dict:
     return {"from": m.get("from"), "to": m.get("to"), "logs": logs,
             "tasklists": tls, "tasks": tks, "task_tags": tags, "task_desc": desc,
             "task_due": due, "task_priority": pri, "task_assignees": asg,
-            "task_done": done,
+            "task_done": done, "task_comments": cmts,
+            # Buffer parse has no author ids, so carry the manage snapshot's forward
+            # (COMMENT_AUTHORS) — else the own-comment guard weakens after an apply.
+            "comment_authors": {**(comment_authors or {}), **cmt_auth},
             "task_project": t_proj, "task_tasklist": t_tl, "task_parent": t_parent,
             "tasklist_project": tl_proj, "people": people or {}}
-
-
-def build_comment_snapshot(task_id, comments) -> dict:
-    return {"task": str(task_id),
-            "comments": {str(c["id"]): c["body"] for c in comments if c.get("id")}}
-
-
-def build_comment_snapshot_from_parsed(parsed: dict) -> dict:
-    m = parsed["meta"]
-    return {"task": m.get("task"),
-            "comments": {str(c["id"]): c.get("body", "")
-                         for c in parsed["comments"] if c.get("id") is not None}}
 
 
 def _log_snap(lg: dict) -> dict:
@@ -1110,6 +1132,14 @@ def parse_org(text: str) -> dict:
         if raw.startswith("#+TEAMWORK_HIDDEN:"):
             meta["hidden"] = [int(x) for x in raw.split(":", 1)[1].split() if x.isdigit()]
             continue
+        # A `# Comments` marker (management) opens the current task's comment
+        # section — everything below it, until the next heading, is comments not
+        # description.  Caught before the generic `#` skip so it isn't dropped.
+        if (meta["mode"] == "manage" and cur_tk is not None
+                and raw.strip().lower() == "# comments"):
+            cur_tk["_in_comments"] = True
+            cur_tk.setdefault("_comments", [])
+            continue
         if raw.startswith("#"):
             continue
 
@@ -1146,13 +1176,21 @@ def parse_org(text: str) -> dict:
                 # so we must NOT strip a leading "TODO"/"DONE" word — it is part of
                 # the title (completion there rides a task's [d] log marker).
                 done = None
+                inline_tags = None
                 if meta["mode"] == "manage":
                     kw_done, title = _split_todo_keyword(title)
                     done = bool(kw_done)          # bare heading (None) -> open
+                    # Labels ride a leading `<a,b>` prefix on management headings.
+                    inline_tags, title = _split_labels_prefix(title)
                 cur_tk = {"id": None, "title": title, "logs": [], "subtasks": [],
                           "tasklist": cur_tl, "parent": parent}
                 if done is not None:
                     cur_tk["done"] = done
+                if meta["mode"] == "manage":
+                    # The heading fully specifies the labels: the `<a,b>` prefix
+                    # (absent/empty -> none). A later :LABELS: drawer line, if a
+                    # stale buffer still carries one, overrides this.
+                    cur_tk["tags"] = inline_tags or []
                 if parent is None:
                     cur_tl["tasks"].append(cur_tk)
                 else:
@@ -1189,6 +1227,22 @@ def parse_org(text: str) -> dict:
                 cur_tk["priority"] = _norm_priority(val)
             elif key == "ASSIGNEE":
                 cur_tk["assignee_names"] = [n.strip() for n in val.split(",") if n.strip()]
+            continue
+
+        # Inside a task's `# Comments` section (management): a `- author, when,
+        # `id`` line opens an existing comment, a bare `-` opens a new one, and
+        # everything else is the current comment's body.
+        if meta["mode"] == "manage" and cur_tk is not None and cur_tk.get("_in_comments"):
+            mm = _COMMENT_META_RE.match(raw)
+            if mm:
+                cur_tk["_comments"].append(
+                    {"id": int(mm.group("id")), "author": mm.group("author").strip(),
+                     "datetime": mm.group("when").replace("T", " "), "_body": []})
+            elif _COMMENT_NEW_RE.match(raw):
+                cur_tk["_comments"].append(
+                    {"id": None, "author": None, "datetime": None, "_body": []})
+            elif cur_tk["_comments"]:
+                cur_tk["_comments"][-1]["_body"].append(raw)
             continue
 
         # In management mode there are no time logs: free text under a task (after
@@ -1242,6 +1296,18 @@ def parse_org(text: str) -> dict:
         def _finalize_desc(tk):
             lines = tk.pop("_desc_lines", None)
             tk["description"] = "\n".join(lines).strip() if lines else ""
+            # Comments: only recorded when the task carried a `# Comments` marker
+            # (so a task typed without one leaves its comments untouched). An empty
+            # new `-` block (no body) is dropped rather than posted.
+            raw_comments = tk.pop("_comments", None)
+            if tk.pop("_in_comments", False) or raw_comments is not None:
+                comments = []
+                for c in (raw_comments or []):
+                    c["body"] = "\n".join(c.pop("_body", [])).strip()
+                    if c["id"] is None and not c["body"]:
+                        continue
+                    comments.append(c)
+                tk["comments"] = comments
             for sub in tk.get("subtasks", []):
                 _finalize_desc(sub)
         for p in projects:
@@ -1291,8 +1357,8 @@ def compute_plan(parsed: dict, snapshot: dict, user_id: int) -> dict:
     a different endpoint than a top-level task, so it gets its own action type; a
     depth-first walk that appends a parent's create before its children's keeps
     parents ahead of children in the plan, so ref resolution works during apply."""
-    creates_tl, creates_tk, renames, moves, tag_writes, log_writes, completes, deletes = \
-        [], [], [], [], [], [], [], []
+    creates_tl, creates_tk, renames, moves, tag_writes, comment_writes, log_writes, completes, deletes = \
+        [], [], [], [], [], [], [], [], []
     problems = list(parsed["problems"])
     manage = parsed["meta"].get("mode") == "manage"
     billable = parsed["meta"].get("billable_default", True)
@@ -1307,6 +1373,8 @@ def compute_plan(parsed: dict, snapshot: dict, user_id: int) -> dict:
     snap_done = snapshot.get("task_done", {})         # {task_id: bool}
     snap_tl_of = snapshot.get("task_tasklist", {})    # {task_id: tasklist_id (str)}
     snap_parent_of = snapshot.get("task_parent", {})  # {task_id: parent_id (str) | None}
+    snap_comments = snapshot.get("task_comments", {})   # {comment_id: body}
+    snap_comment_author = snapshot.get("comment_authors", {})  # {comment_id: author_id}
     people = snapshot.get("people", {})               # {id: name}
     name2id = {v.strip().lower(): k for k, v in people.items()}
     present_pids = {p["id"] for p in parsed["projects"] if p["id"] is not None}
@@ -1470,6 +1538,27 @@ def compute_plan(parsed: dict, snapshot: dict, user_id: int) -> dict:
         elif any(lg.get("done") for lg in tk["logs"]):
             completes.append({"type": "complete_task", "task": tk_target,
                               "summary": f"mark task {title40!r} done", "_obj": tk})
+        # Comments (management): a bare `-` block is a new comment to post; an
+        # edited body on an existing comment is an update, but only of the current
+        # user's OWN comments (editing someone else's is refused with a problem).
+        for cm in tk.get("comments", []):
+            body = (cm.get("body") or "").strip()
+            cid = cm.get("id")
+            if cid is None:
+                if body:
+                    comment_writes.append(
+                        {"type": "create_comment", "task": tk_target, "body": body,
+                         "summary": f"comment on {title40!r}: {body[:30]!r}", "_obj": cm})
+                continue
+            scid = str(cid)
+            if scid not in snap_comments or (snap_comments.get(scid) or "").strip() == body:
+                continue                                  # unknown or unchanged
+            author = snap_comment_author.get(scid)
+            if author not in (None, "") and str(author) != str(user_id):
+                problems.append(f"comment {cid} on {title40!r} is not yours — cannot edit")
+                continue
+            comment_writes.append({"type": "update_comment", "id": cid, "body": body,
+                                   "summary": f"edit comment {cid} on {title40!r}", "_obj": cm})
         for sub in tk["subtasks"]:
             process_task(sub, tk_target, tl_target, tl_name)
 
@@ -1537,7 +1626,7 @@ def compute_plan(parsed: dict, snapshot: dict, user_id: int) -> dict:
     # and before deletes (relocate a task out of a list before that list is
     # deleted, so it is not swept away by the cascade).
     return {"actions": (creates_tl + creates_tk + renames + moves + tag_writes
-                        + log_writes + completes + deletes),
+                        + comment_writes + log_writes + completes + deletes),
             "problems": problems}
 
 
@@ -1598,6 +1687,10 @@ def _execute(a: dict, client: "Client", created: dict):
         client.complete_task(int(_resolve(a["task"], created)))
     elif t == "uncomplete_task":
         client.uncomplete_task(int(_resolve(a["task"], created)))
+    elif t == "create_comment":
+        a["_new_id"] = client.create_comment(int(_resolve(a["task"], created)), a["body"])
+    elif t == "update_comment":
+        client.update_comment(a["id"], a["body"])
     elif t == "create_timelog":
         a["_new_id"] = client.create_timelog(int(_resolve(a["task"], created)), a["body"])
     elif t == "update_timelog":
@@ -1614,6 +1707,12 @@ def _mutate_on_success(a: dict, created: dict):
         a["_obj"]["id"] = created[a["ref"]]
     elif a["type"] == "create_timelog":
         a["_obj"]["id"] = a.get("_new_id")
+    elif a["type"] == "create_comment":
+        # Stamp the new comment so the post-apply reload renders (and re-parses) it
+        # as an existing comment — author/time are refreshed on the next pull.
+        a["_obj"]["id"] = a.get("_new_id")
+        a["_obj"].setdefault("author", "me")
+        a["_obj"]["datetime"] = dt.datetime.now().strftime("%Y-%m-%d %H:%M")
 
 
 def _emit(obj: dict):
@@ -1662,117 +1761,20 @@ def apply_stream(plan: dict, client: "Client", parsed: dict, out_path: str, snap
         lambda a: _execute(a, client, created),
         lambda a: _mutate_on_success(a, created))
     # Always persist the (partially) applied state so unapplied edits survive.
-    # Carry the people map (id->name) forward so the next assignee diff resolves.
-    people = {}
+    # Carry the people map (id->name) and comment authors forward so the next
+    # assignee diff resolves and the own-comment guard still knows who owns what.
+    people, authors = {}, {}
     try:
-        people = json.loads(pathlib.Path(snap_path).read_text(encoding="utf-8")).get("people", {})
+        old = json.loads(pathlib.Path(snap_path).read_text(encoding="utf-8"))
+        people = old.get("people", {})
+        authors = old.get("comment_authors", {})
     except (OSError, ValueError):
         pass
     pathlib.Path(out_path).write_text(serialize_parsed(parsed), encoding="utf-8")
     pathlib.Path(snap_path).write_text(
-        json.dumps(build_snapshot_from_parsed(parsed, people)), encoding="utf-8")
+        json.dumps(build_snapshot_from_parsed(parsed, people, authors)), encoding="utf-8")
     _emit({"event": "done", "aborted": aborted, "applied": applied,
            "total": len(actions), "buffer": out_path})
-
-
-# --------------------------------------------------------------------------- #
-# Comments: parse / diff / apply (a flat list of * headings under one task)
-# --------------------------------------------------------------------------- #
-_COMMENT_ID_RE = re.compile(r"^\s*:COMMENT_ID:\s*(\d+)\s*$")  # _DRAWER_LINE_RE: see top
-
-
-def parse_comments(text: str) -> dict:
-    """Parse a comments buffer: one `*` heading per comment, body text below it,
-    optional :COMMENT_ID: (present = existing, absent = a new comment)."""
-    meta = {"task": None, "user": None, "account": None}
-    comments: list[dict] = []
-    problems: list[str] = []
-    cur = None
-
-    def close():
-        nonlocal cur
-        if cur is not None:
-            cur["body"] = "\n".join(cur.pop("_lines")).strip()
-        cur = None
-
-    for raw in text.splitlines():
-        if raw.startswith("#+TEAMWORK_COMMENTS:"):
-            for tok in raw.split(":", 1)[1].split():
-                if tok.startswith("task="):
-                    meta["task"] = tok[5:]
-                elif tok.startswith("user="):
-                    meta["user"] = tok[5:]
-            continue
-        if raw.startswith("#+TEAMWORK_ACCOUNT:"):
-            meta["account"] = raw.split(":", 1)[1].strip() or None
-            continue
-        if raw.startswith("#+") or raw.startswith("#"):
-            continue
-        hm = _HEAD_RE.match(raw)
-        if hm:
-            close()
-            cur = {"id": None, "author": hm.group(2).strip(), "_lines": []}
-            comments.append(cur)
-            continue
-        cm = _COMMENT_ID_RE.match(raw)
-        if cm and cur is not None:
-            cur["id"] = int(cm.group(1))
-            continue
-        if _DRAWER_LINE_RE.match(raw):
-            continue
-        if cur is not None:
-            cur["_lines"].append(raw)
-    close()
-    return {"meta": meta, "comments": comments, "problems": problems}
-
-
-def compute_comment_plan(parsed: dict, snapshot: dict) -> dict:
-    """Diff parsed comments against the snapshot -> create/update/delete actions."""
-    actions = []
-    problems = list(parsed["problems"])
-    snap = dict(snapshot.get("comments", {}))
-    seen: set[str] = set()
-    for c in parsed["comments"]:
-        body = (c.get("body") or "").strip()
-        if c["id"] is None:
-            if body:  # a new heading with no text is ignored, not posted
-                actions.append({"type": "create_comment", "body": body,
-                                "summary": f"new comment {body[:40]!r}", "_obj": c})
-        else:
-            sid = str(c["id"])
-            seen.add(sid)
-            prev = snap.get(sid)
-            if prev is None or (prev or "").strip() != body:
-                actions.append({"type": "update_comment", "id": c["id"], "body": body,
-                                "summary": f"edit comment {c['id']}", "_obj": c})
-    for sid in snap:
-        if sid not in seen:
-            actions.append({"type": "delete_comment", "id": int(sid),
-                            "summary": f"delete comment {sid}"})
-    return {"actions": actions, "problems": problems}
-
-
-def apply_comments(plan: dict, client: "Client", task_id: int, parsed: dict,
-                   out_path: str, snap_path: str):
-    def execute_one(a):
-        t = a["type"]
-        if t == "create_comment":
-            a["_new_id"] = client.create_comment(task_id, a["body"])
-        elif t == "update_comment":
-            client.update_comment(a["id"], a["body"])
-        elif t == "delete_comment":
-            client.delete_comment(a["id"])
-
-    def on_success(a):
-        if a["type"] == "create_comment":
-            a["_obj"]["id"] = a.get("_new_id")
-
-    applied, aborted = _apply_actions(plan["actions"], execute_one, on_success)
-    pathlib.Path(out_path).write_text(serialize_comments(parsed), encoding="utf-8")
-    pathlib.Path(snap_path).write_text(
-        json.dumps(build_comment_snapshot_from_parsed(parsed)), encoding="utf-8")
-    _emit({"event": "done", "aborted": aborted, "applied": applied,
-           "total": len(plan["actions"]), "buffer": out_path})
 
 
 # --------------------------------------------------------------------------- #
@@ -1792,17 +1794,10 @@ def manage_snapshot_path(account=None) -> pathlib.Path:
     return CACHE_DIR / (f"manage_{_slug(account)}.json" if account else "manage.json")
 
 
-def comment_snapshot_path(task_id, account=None) -> pathlib.Path:
-    CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    return CACHE_DIR / (f"comments_{_slug(account)}_{task_id}.json" if account
-                        else f"comments_{task_id}.json")
-
-
 def cache_org_path(kind: str, key: str, account=None) -> pathlib.Path:
     """Where the last rendered org buffer for (KIND, KEY, account) is cached, so a
     reopen can show stale data instantly while a fresh pull runs in the
-    background. KIND is timesheet|manage|comments; KEY is the range / "manage" /
-    task id."""
+    background. KIND is timesheet|manage; KEY is the range / "manage"."""
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     return CACHE_DIR / f"buf_{kind}_{_slug(account)}_{_slug(key)}.org"
 
@@ -1985,28 +1980,20 @@ def cmd_manage(args):
         tk["assignee_names"] = [people.get(i, i) for i in tk.get("assignees", [])]
     sys.stderr.write(f"people assignable: {len(people)}\n")
 
+    # Fetch comments up front (only for tasks that have any) so they render inline
+    # under each task — no slow per-task fetch when the user wants to read them.
+    n_comments = 0
+    for tk in tasks:
+        tk["comments"] = c.comments(tk["id"]) if tk.get("comment_count") else []
+        n_comments += len(tk["comments"])
+    sys.stderr.write(f"comments fetched: {n_comments}\n")
+
     update_prefs(account, hidden=hidden_names, shown=[p["id"] for p in projects])
     snap = build_snapshot(projects, tasklists, tasks, [], meta)
     snap["people"] = people
     manage_snapshot_path(account).write_text(json.dumps(snap), encoding="utf-8")
     org = render_manage(projects, tasklists, tasks, meta, hidden_names, filt, filt_names)
     cache_org_path("manage", "manage", account).write_text(org, encoding="utf-8")
-    (open(args.out, "w", encoding="utf-8") if args.out else sys.stdout).write(org)
-
-
-def cmd_comments_pull(args):
-    creds = load_creds(getattr(args, "account", None))
-    account = creds.get("account")
-    c = Client(creds)
-    tid = int(args.task)
-    title = c.task_title(tid)
-    comments = c.comments(tid)
-    sys.stderr.write(f"comments on task {tid}: {len(comments)}\n")
-    meta = {"user_id": creds["user_id"], "account": account}
-    comment_snapshot_path(tid, account).write_text(
-        json.dumps(build_comment_snapshot(tid, comments)), encoding="utf-8")
-    org = render_comments(tid, title, comments, meta)
-    cache_org_path("comments", str(tid), account).write_text(org, encoding="utf-8")
     (open(args.out, "w", encoding="utf-8") if args.out else sys.stdout).write(org)
 
 
@@ -2145,34 +2132,6 @@ def cmd_submit(args):
     _print_plan(plan)
 
 
-def cmd_comments_submit(args):
-    text = pathlib.Path(args.file).read_text(encoding="utf-8")
-    parsed = parse_comments(text)
-    tid = parsed["meta"].get("task")
-    if not tid:
-        raise SystemExit("buffer is missing its #+TEAMWORK_COMMENTS: task=.. header")
-    account = parsed["meta"].get("account") or getattr(args, "account", None)
-    snap_file = comment_snapshot_path(tid, account)
-    if not snap_file.exists():
-        raise SystemExit(f"no comment snapshot for task {tid} (re-run comments-pull first)")
-    snapshot = json.loads(snap_file.read_text(encoding="utf-8"))
-    plan = compute_comment_plan(parsed, snapshot)
-
-    if args.json:
-        print(json.dumps({"actions": [public_action(a) for a in plan["actions"]],
-                          "problems": plan["problems"]}, ensure_ascii=False))
-        return
-    if args.apply:
-        if plan["problems"]:
-            _emit({"event": "error", "problems": plan["problems"]})
-            raise SystemExit(2)
-        creds = load_creds(account)
-        out = args.out or (str(args.file) + ".applied")
-        apply_comments(plan, Client(creds), int(tid), parsed, out, str(snap_file))
-        return
-    _print_plan(plan)
-
-
 def _print_plan(plan: dict):
     if plan["problems"]:
         print("PROBLEMS:")
@@ -2228,12 +2187,6 @@ def main(argv=None):
     mn.add_argument("--account", default=None, help="which stored account to use")
     mn.add_argument("--out", default=None)
     mn.set_defaults(func=cmd_manage)
-
-    cp = sub.add_parser("comments-pull", help="emit a task's comments as an editable org buffer")
-    cp.add_argument("--task", required=True, help="task id to fetch comments for")
-    cp.add_argument("--account", default=None, help="which stored account to use")
-    cp.add_argument("--out", default=None)
-    cp.set_defaults(func=cmd_comments_pull)
 
     pr = sub.add_parser("projects", help="list active projects as JSON (with in_filter flags)")
     pr.add_argument("--account", default=None, help="which stored account to use")
@@ -2293,14 +2246,6 @@ def main(argv=None):
     sb.add_argument("--account", default=None, help="account fallback if the buffer lacks a header")
     sb.add_argument("--out", default=None, help="where to write the updated buffer after --apply")
     sb.set_defaults(func=cmd_submit)
-
-    cs = sub.add_parser("comments-submit", help="diff/apply an edited comments buffer")
-    cs.add_argument("--file", required=True)
-    cs.add_argument("--apply", action="store_true", help="execute the plan (streams progress)")
-    cs.add_argument("--json", action="store_true", help="emit the plan as JSON and exit")
-    cs.add_argument("--account", default=None, help="account fallback if the buffer lacks a header")
-    cs.add_argument("--out", default=None, help="where to write the updated buffer after --apply")
-    cs.set_defaults(func=cmd_comments_submit)
 
     args = ap.parse_args(argv)
     args.func(args)

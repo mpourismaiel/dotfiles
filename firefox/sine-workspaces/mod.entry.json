@@ -1,0 +1,25 @@
+{
+  "id": "sine-workspaces",
+  "name": "Sine Workspaces",
+  "author": "mahdi",
+  "description": "Sidebery-style workspaces for Firefox native vertical tabs: a nav-bar switcher that hides/shows each workspace's tabs (pinned + normal + groups), with URL rules and per-workspace containers.",
+  "version": "0.1.0",
+  "homepage": "",
+  "style": {
+    "chrome": "styles/workspaces.css"
+  },
+  "chromeManifest": "sine-chrome.manifest",
+  "tags": ["chrome"],
+  "fork": ["firefox", "floorp", "waterfox", "librewolf"],
+  "scripts": {
+    "src": {
+      "workspaces.uc.mjs": {
+        "loadOrder": 20,
+        "include": ["chrome://browser/content/browser.xhtml"]
+      }
+    }
+  },
+  "origin": "store",
+  "no-updates": true,
+  "enabled": true
+}

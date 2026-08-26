@@ -750,8 +750,9 @@ class Manage(unittest.TestCase):
                                {"user_id": 42, "account": "work"})
         self.assertIn("#+TEAMWORK_MANAGE: user=42", text)
         self.assertNotIn("#+TEAMWORK:", text)
-        self.assertIn("*** T", text)
-        self.assertIn(":LABELS: x", text)
+        # Labels ride the heading as a `<a,b>` prefix in management, not a drawer.
+        self.assertIn("*** TODO <x>T", text)
+        self.assertNotIn(":LABELS:", text)
 
     def test_manage_serialize_round_trips_mode(self):
         text = T.render_manage([{"id": 100, "name": "P"}],
@@ -1050,6 +1051,221 @@ class ManageDone(unittest.TestCase):
         snap = T.build_snapshot_from_parsed(p)
         self.assertEqual(snap["task_done"], {"300": True})
 
+    # -- serialize (the reload written after apply) --
+    def test_serialize_preserves_done_keyword(self):
+        # Regression: the buffer reloaded after submit is serialize_parsed(), which
+        # used to drop the heading keyword — so a DONE task read back as bare/open.
+        for kw, want in (("DONE", "*** DONE A"), ("TODO", "*** TODO A")):
+            out = T.serialize_parsed(T.parse_org(self._tree(kw)))
+            self.assertIn(want, out)
+            self.assertEqual(
+                T.parse_org(out)["projects"][0]["tasklists"][0]["tasks"][0]["done"],
+                kw == "DONE")
+
+
+class ManageLabels(unittest.TestCase):
+    """Management labels ride the heading as a `<a,b>` prefix, not a :LABELS: drawer."""
+
+    def _tree(self, head):
+        return ("#+TEAMWORK_MANAGE: user=42\n"
+                "* P\n:PROPERTIES:\n:PROJECT_ID: 100\n:END:\n"
+                "** L\n:PROPERTIES:\n:TASKLIST_ID: 200\n:END:\n"
+                + head + ":PROPERTIES:\n:TASK_ID: 300\n:END:\n")
+
+    def _render(self, tags, done=None):
+        tk = {"id": 300, "title": "A", "tasklist_id": 200, "project_id": 100,
+              "parent_id": None, "tags": tags, "description": ""}
+        if done is not None:
+            tk["done"] = done
+        return T.render_manage([{"id": 100, "name": "P"}],
+                               [{"id": 200, "name": "L", "project_id": 100}], [tk],
+                               {"user_id": 42})
+
+    def test_render_emits_inline_label_prefix(self):
+        text = self._render(["bug", "ui"])
+        self.assertIn("*** TODO <bug,ui>A", text)
+        self.assertNotIn(":LABELS:", text)
+
+    def test_render_prefix_after_keyword_when_done(self):
+        self.assertIn("*** DONE <bug>A", self._render(["bug"], done=True))
+
+    def test_render_no_labels_no_prefix(self):
+        text = self._render([])
+        self.assertIn("*** TODO A", text)
+        self.assertNotIn("<", text)
+
+    def test_parse_inline_labels(self):
+        tk = T.parse_org(self._tree("*** TODO <bug,Backend>A\n"))[
+            "projects"][0]["tasklists"][0]["tasks"][0]
+        self.assertEqual((tk["title"], tk["tags"]), ("A", ["bug", "Backend"]))
+
+    def test_parse_inline_labels_without_keyword(self):
+        # A bare (keyword cycled away) heading still yields its labels + open state.
+        tk = T.parse_org(self._tree("*** <bug>A\n"))[
+            "projects"][0]["tasklists"][0]["tasks"][0]
+        self.assertEqual((tk["title"], tk["tags"], tk["done"]), ("A", ["bug"], False))
+
+    def test_parse_no_prefix_reads_no_labels(self):
+        # In management the heading fully specifies the labels: no prefix -> none,
+        # so removing the prefix clears the labels (unlike the timesheet drawer).
+        tk = T.parse_org(self._tree("*** TODO A\n"))[
+            "projects"][0]["tasklists"][0]["tasks"][0]
+        self.assertEqual(tk["tags"], [])
+
+    def test_empty_prefix_clears(self):
+        tk = T.parse_org(self._tree("*** TODO <>A\n"))[
+            "projects"][0]["tasklists"][0]["tasks"][0]
+        self.assertEqual((tk["title"], tk["tags"]), ("A", []))
+
+    def test_render_parse_round_trip_labels_and_done(self):
+        p = T.parse_org(self._render(["bug", "ui"], done=True))
+        tk = p["projects"][0]["tasklists"][0]["tasks"][0]
+        self.assertEqual((tk["title"], tk["tags"], tk["done"]), ("A", ["bug", "ui"], True))
+
+    def test_serialize_preserves_inline_labels(self):
+        # The reload after apply must keep the labels in the heading too.
+        out = T.serialize_parsed(T.parse_org(self._tree("*** DONE <bug,ui>A\n")))
+        self.assertIn("*** DONE <bug,ui>A", out)
+        self.assertNotIn(":LABELS:", out)
+
+    def test_plan_sets_tags_from_inline_prefix(self):
+        snap = {"logs": {}, "tasks": {"300": "A"}, "task_tags": {"300": ["old"]}}
+        plan = T.compute_plan(T.parse_org(self._tree("*** TODO <new,hot>A\n")), snap, 42)
+        tagw = [a for a in plan["actions"] if a["type"] == "set_task_tags"]
+        self.assertEqual((tagw[0]["task"], tagw[0]["tags"]), (300, ["new", "hot"]))
+
+    def test_plan_clears_tags_when_prefix_removed(self):
+        snap = {"logs": {}, "tasks": {"300": "A"}, "task_tags": {"300": ["gone"]}}
+        plan = T.compute_plan(T.parse_org(self._tree("*** TODO A\n")), snap, 42)
+        tagw = [a for a in plan["actions"] if a["type"] == "set_task_tags"]
+        self.assertEqual((tagw[0]["task"], tagw[0]["tags"]), (300, []))
+
+    def test_plan_no_action_when_labels_unchanged(self):
+        snap = {"logs": {}, "tasks": {"300": "A"}, "task_tags": {"300": ["Bug", "ui"]}}
+        plan = T.compute_plan(T.parse_org(self._tree("*** TODO <ui,bug>A\n")), snap, 42)
+        self.assertEqual([a for a in plan["actions"] if a["type"] == "set_task_tags"], [])
+
+    def test_stale_labels_drawer_still_parses(self):
+        # A cached buffer from before this change may still carry a :LABELS: drawer;
+        # it must keep working (the drawer overrides the absent inline prefix).
+        text = ("#+TEAMWORK_MANAGE: user=42\n"
+                "* P\n:PROPERTIES:\n:PROJECT_ID: 100\n:END:\n"
+                "** L\n:PROPERTIES:\n:TASKLIST_ID: 200\n:END:\n"
+                "*** TODO A\n:PROPERTIES:\n:TASK_ID: 300\n:LABELS: legacy\n:END:\n")
+        tk = T.parse_org(text)["projects"][0]["tasklists"][0]["tasks"][0]
+        self.assertEqual(tk["tags"], ["legacy"])
+
+
+class ManageComments(unittest.TestCase):
+    """Management tasks carry their comments inline under a `# Comments` marker."""
+
+    def _tree(self, body):
+        return ("#+TEAMWORK_MANAGE: user=42\n"
+                "* P\n:PROPERTIES:\n:PROJECT_ID: 100\n:END:\n"
+                "** L\n:PROPERTIES:\n:TASKLIST_ID: 200\n:END:\n"
+                "*** TODO Task\n:PROPERTIES:\n:TASK_ID: 300\n:END:\n" + body)
+
+    def _render(self, comments, desc=""):
+        tk = {"id": 300, "title": "Task", "tasklist_id": 200, "project_id": 100,
+              "parent_id": None, "tags": [], "description": desc, "comments": comments}
+        return T.render_manage([{"id": 100, "name": "P"}],
+                               [{"id": 200, "name": "L", "project_id": 100}], [tk],
+                               {"user_id": 42})
+
+    def test_normalize_comment_keeps_author_id(self):
+        n = T.normalize_comment({"id": "9", "author-firstname": "Ann", "author-lastname": "Lee",
+                                 "author-id": "42", "datetime": "2026-06-10T09:30:00Z",
+                                 "body": "hi\nthere"})
+        self.assertEqual((n["id"], n["author"], n["author_id"], n["datetime"], n["body"]),
+                         (9, "Ann Lee", "42", "2026-06-10 09:30", "hi\nthere"))
+
+    def test_render_marker_always_present(self):
+        # `# Comments` is emitted even with no comments and an empty description.
+        text = self._render([])
+        self.assertIn("# Comments", text)
+
+    def test_render_and_parse_round_trip(self):
+        comments = [{"id": 9, "author": "Ann Lee", "author_id": "42",
+                     "datetime": "2026-06-10 09:30", "body": "line one\nline two"}]
+        text = self._render(comments, desc="the description")
+        self.assertIn("# Comments", text)
+        self.assertIn("- Ann Lee, 2026-06-10 09:30, `9`", text)
+        tk = T.parse_org(text)["projects"][0]["tasklists"][0]["tasks"][0]
+        self.assertEqual(tk["description"], "the description")
+        self.assertEqual(tk["comments"],
+                         [{"id": 9, "author": "Ann Lee", "datetime": "2026-06-10 09:30",
+                           "body": "line one\nline two"}])
+
+    def test_serialize_preserves_comments(self):
+        # The buffer reloaded after apply keeps the comment section intact.
+        out = T.serialize_parsed(T.parse_org(self._tree(
+            "# Comments\n- Ann, 2026-06-10 09:30, `9`\nkeep me\n")))
+        self.assertIn("- Ann, 2026-06-10 09:30, `9`", out)
+        self.assertIn("keep me", out)
+
+    def test_plan_creates_new_comment(self):
+        snap = {"tasks": {"300": "Task"}}
+        plan = T.compute_plan(T.parse_org(self._tree("# Comments\n-\nbrand new\n")), snap, 42)
+        cw = [a for a in plan["actions"] if a["type"] == "create_comment"]
+        self.assertEqual((cw[0]["task"], cw[0]["body"]), (300, "brand new"))
+
+    def test_empty_new_comment_ignored(self):
+        snap = {"tasks": {"300": "Task"}}
+        plan = T.compute_plan(T.parse_org(self._tree("# Comments\n-\n\n")), snap, 42)
+        self.assertEqual([a for a in plan["actions"] if a["type"] == "create_comment"], [])
+
+    def test_plan_updates_own_comment(self):
+        snap = {"tasks": {"300": "Task"}, "task_comments": {"9": "old"},
+                "comment_authors": {"9": "42"}}
+        buf = self._tree("# Comments\n- me, 2026-06-10 09:30, `9`\nnew body\n")
+        plan = T.compute_plan(T.parse_org(buf), snap, 42)
+        upd = [a for a in plan["actions"] if a["type"] == "update_comment"]
+        self.assertEqual((upd[0]["id"], upd[0]["body"]), (9, "new body"))
+
+    def test_plan_refuses_editing_others_comment(self):
+        snap = {"tasks": {"300": "Task"}, "task_comments": {"9": "old"},
+                "comment_authors": {"9": "99"}}
+        buf = self._tree("# Comments\n- bob, 2026-06-10 09:30, `9`\nhijacked\n")
+        plan = T.compute_plan(T.parse_org(buf), snap, 42)
+        self.assertEqual([a for a in plan["actions"] if a["type"] == "update_comment"], [])
+        self.assertTrue(any("not yours" in p for p in plan["problems"]))
+
+    def test_plan_unchanged_comment_no_action(self):
+        snap = {"tasks": {"300": "Task"}, "task_comments": {"9": "same"},
+                "comment_authors": {"9": "42"}}
+        buf = self._tree("# Comments\n- me, 2026-06-10 09:30, `9`\nsame\n")
+        self.assertEqual(T.compute_plan(T.parse_org(buf), snap, 42)["actions"], [])
+
+    def test_comment_diff_skipped_when_no_marker(self):
+        # A task typed with no `# Comments` section leaves its comments untouched.
+        snap = {"tasks": {"300": "Task"}, "task_comments": {"9": "keep"},
+                "comment_authors": {"9": "42"}}
+        plan = T.compute_plan(T.parse_org(self._tree("")), snap, 42)
+        self.assertEqual([a for a in plan["actions"]
+                          if "comment" in a["type"]], [])
+
+    def test_new_comment_on_new_task_targets_ref(self):
+        # A brand-new task with a comment: create the task, then post under its ref.
+        buf = ("#+TEAMWORK_MANAGE: user=42\n"
+               "* P\n:PROPERTIES:\n:PROJECT_ID: 100\n:END:\n"
+               "** L\n:PROPERTIES:\n:TASKLIST_ID: 200\n:END:\n"
+               "*** TODO Fresh\n# Comments\n-\nfirst!\n")
+        plan = T.compute_plan(T.parse_org(buf), {}, 42)
+        types = [a["type"] for a in plan["actions"]]
+        self.assertEqual(types, ["create_task", "create_comment"])
+        create = next(a for a in plan["actions"] if a["type"] == "create_task")
+        post = next(a for a in plan["actions"] if a["type"] == "create_comment")
+        self.assertEqual(post["task"], {"ref": create["ref"]})
+
+    def test_snapshot_records_comment_author(self):
+        tasks = [{"id": 300, "title": "T", "tasklist_id": 200, "project_id": 100,
+                  "parent_id": None, "comments": [
+                      {"id": 9, "author": "A", "author_id": "42", "body": "b"}]}]
+        snap = T.build_snapshot([{"id": 100, "name": "P"}],
+                                [{"id": 200, "name": "L", "project_id": 100}], tasks, [], {})
+        self.assertEqual(snap["task_comments"], {"9": "b"})
+        self.assertEqual(snap["comment_authors"], {"9": "42"})
+
 
 class ManageDeletions(unittest.TestCase):
     """Removing a task/tasklist heading in management mode deletes it in Teamwork."""
@@ -1215,88 +1431,6 @@ class MoveTask(unittest.TestCase):
         with contextlib.redirect_stdout(io.StringIO()):
             T.apply_stream(plan, client, parsed, out, snap)
         self.assertEqual(client.moved, [(500, 210, None)])
-
-
-class Comments(unittest.TestCase):
-    def _buf(self, body):
-        return ("#+TITLE: Comments — X\n#+TEAMWORK_COMMENTS: task=555 user=1\n"
-                "#+TEAMWORK_ACCOUNT: work\n\n" + body)
-
-    def test_normalize_comment(self):
-        n = T.normalize_comment({"id": "9", "author-firstname": "Ann", "author-lastname": "Lee",
-                                 "datetime": "2026-06-10T09:30:00Z", "body": "hello\nthere"})
-        self.assertEqual((n["id"], n["author"], n["datetime"], n["body"]),
-                         (9, "Ann Lee", "2026-06-10 09:30", "hello\nthere"))
-
-    def test_render_and_parse_round_trip(self):
-        comments = [{"id": 9, "author": "Ann Lee", "datetime": "2026-06-10 09:30",
-                     "body": "first line\nsecond line"}]
-        text = T.render_comments(555, "My Task", comments, {"user_id": 1, "account": "work"})
-        self.assertIn("#+TEAMWORK_COMMENTS: task=555 user=1", text)
-        p = T.parse_comments(text)
-        self.assertEqual(p["meta"]["task"], "555")
-        self.assertEqual(p["meta"]["account"], "work")
-        self.assertEqual(p["comments"][0]["id"], 9)
-        self.assertEqual(p["comments"][0]["body"], "first line\nsecond line")
-
-    def test_plan_create_edit_delete(self):
-        buf = self._buf(
-            "* Ann — 2026-06-10 09:30\n:PROPERTIES:\n:COMMENT_ID: 9\n:END:\nedited body\n\n"
-            "* me\nbrand new comment\n")
-        snap = {"task": "555", "comments": {"9": "old body", "8": "will be deleted"}}
-        plan = T.compute_comment_plan(T.parse_comments(buf), snap)
-        types = [a["type"] for a in plan["actions"]]
-        self.assertEqual(sorted(types), ["create_comment", "delete_comment", "update_comment"])
-        upd = next(a for a in plan["actions"] if a["type"] == "update_comment")
-        self.assertEqual((upd["id"], upd["body"]), (9, "edited body"))
-        dele = next(a for a in plan["actions"] if a["type"] == "delete_comment")
-        self.assertEqual(dele["id"], 8)
-
-    def test_plan_unchanged_no_action(self):
-        buf = self._buf("* Ann\n:PROPERTIES:\n:COMMENT_ID: 9\n:END:\nsame body\n")
-        snap = {"task": "555", "comments": {"9": "same body"}}
-        self.assertEqual(T.compute_comment_plan(T.parse_comments(buf), snap)["actions"], [])
-
-    def test_empty_new_heading_ignored(self):
-        buf = self._buf("* me\n\n")   # heading with no body -> not posted
-        self.assertEqual(T.compute_comment_plan(T.parse_comments(buf), {"comments": {}})["actions"], [])
-
-
-class _CommentClient:
-    def __init__(self):
-        self._id = 900
-        self.deleted, self.updated = [], []
-
-    def create_comment(self, task_id, body):
-        self._id += 1
-        return self._id
-
-    def update_comment(self, cid, body):
-        self.updated.append((cid, body))
-
-    def delete_comment(self, cid):
-        self.deleted.append(cid)
-
-
-class ApplyComments(unittest.TestCase):
-    def setUp(self):
-        T.BACKOFF_BASE = 0
-
-    def test_apply_folds_created_id_and_persists(self):
-        import io, json as _json, tempfile, contextlib
-        buf = ("#+TEAMWORK_COMMENTS: task=555 user=1\n\n* me\nbrand new\n")
-        parsed = T.parse_comments(buf)
-        plan = T.compute_comment_plan(parsed, {"task": "555", "comments": {}})
-        out = tempfile.NamedTemporaryFile("w+", suffix=".org", delete=False).name
-        snap = tempfile.NamedTemporaryFile("w+", suffix=".json", delete=False).name
-        b = io.StringIO()
-        with contextlib.redirect_stdout(b):
-            T.apply_comments(plan, _CommentClient(), 555, parsed, out, snap)
-        events = [_json.loads(l) for l in b.getvalue().splitlines() if l.strip()]
-        self.assertEqual(events[-1]["applied"], 1)
-        reparsed = T.parse_comments(open(out).read())
-        self.assertIsNotNone(reparsed["comments"][0]["id"])       # created id folded in
-        self.assertEqual(_json.load(open(snap))["comments"], {str(reparsed["comments"][0]["id"]): "brand new"})
 
 
 class Prefs(unittest.TestCase):

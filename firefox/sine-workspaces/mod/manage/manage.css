@@ -1,0 +1,150 @@
+:root {
+  --accent: AccentColor;
+  --bg: Canvas;
+  --fg: CanvasText;
+  --muted: color-mix(in srgb, CanvasText 55%, transparent);
+  --line: color-mix(in srgb, CanvasText 15%, transparent);
+  --card: color-mix(in srgb, CanvasText 4%, transparent);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  font: 14px system-ui, sans-serif;
+  color: var(--fg);
+  background: var(--bg);
+  margin: 0;
+  padding: 24px min(6vw, 64px);
+}
+
+#app { max-width: 1100px; margin: 0 auto; }
+
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+h1 { font-size: 22px; margin: 0; }
+.actions { display: flex; align-items: center; gap: 8px; }
+#status { color: var(--muted); font-size: 13px; }
+
+button {
+  font: inherit;
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--fg);
+  cursor: pointer;
+}
+button:hover { background: color-mix(in srgb, CanvasText 9%, transparent); }
+button:disabled { opacity: 0.4; cursor: default; }
+button.primary { border-color: transparent; background: var(--accent); color: AccentColorText; font-weight: 600; }
+button.icon { padding: 4px 8px; }
+button.small { padding: 4px 10px; font-size: 13px; }
+button.danger { color: #e5484d; }
+
+input, select {
+  font: inherit;
+  padding: 6px 9px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: Field;
+  color: FieldText;
+}
+input[type="color"] {
+  padding: 0;
+  width: 34px;
+  height: 30px;
+  cursor: pointer;
+}
+label.muted, .muted { color: var(--muted); }
+label.inline { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 13px; }
+
+/* ---- toolbar (badge color + rule tester) ---- */
+.toolbar {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin: 16px 0 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--card);
+}
+.tool-group { display: flex; align-items: center; gap: 8px; }
+.tool-group.grow { flex: 1; min-width: 260px; }
+.tool-label { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+.swatch { width: 16px; height: 16px; border-radius: 5px; border: 1px solid var(--line); }
+.test-input { flex: 1; min-width: 180px; }
+.test-result { font-size: 13px; color: var(--muted); white-space: nowrap; }
+.test-result.match { color: color-mix(in srgb, #30a46c 90%, CanvasText); font-weight: 600; }
+.test-result.nomatch { color: var(--muted); }
+
+/* ---- cards ---- */
+#list { margin-top: 4px; }
+.card {
+  border: 1px solid var(--line);
+  background: var(--card);
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin: 12px 0;
+  transition: border-color 120ms ease, box-shadow 120ms ease, opacity 120ms ease;
+}
+.card.dragging { opacity: 0.5; }
+.card.drop-target { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 40%, transparent); }
+
+.row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.row.head { flex-wrap: nowrap; }
+
+.drag-handle {
+  cursor: grab;
+  padding: 0 4px;
+  color: var(--muted);
+  font-size: 18px;
+  user-select: none;
+  line-height: 1;
+}
+.drag-handle:active { cursor: grabbing; }
+
+.icon-btn {
+  width: 40px; height: 40px; padding: 0;
+  font-size: 20px; line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 10px; flex: 0 0 auto;
+}
+input.name-input { flex: 1; min-width: 12ch; }
+input.pattern-input { flex: 1; min-width: 18ch; }
+
+/* ---- emoji picker ---- */
+.emoji-pop {
+  margin: 10px 0 2px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: color-mix(in srgb, CanvasText 3%, Canvas);
+}
+.emoji-search { width: 100%; margin-bottom: 8px; }
+.emoji-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(34px, 1fr));
+  gap: 4px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+.emoji-cell {
+  font-size: 20px; line-height: 1; padding: 6px 0;
+  border: 1px solid transparent; background: transparent;
+}
+.emoji-cell:hover {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+}
+.pad { padding: 8px; }
+
+/* ---- rules ---- */
+.rules { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--line); }
+.rules h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 0 0 8px; }
+.rule-row { display: flex; gap: 8px; margin-bottom: 6px; }

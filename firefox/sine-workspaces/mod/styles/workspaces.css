@@ -1,0 +1,73 @@
+/*
+ * sine-workspaces — nav-bar strip styling + workspace tab hiding.
+ * Loaded into browser.xhtml via the mod's `style.chrome` entry.
+ */
+
+/* Hide tabs that don't belong to the active workspace. This attribute-based hide
+   works for PINNED tabs too (gBrowser.hideTab refuses pinned). */
+.tabbrowser-tab[sine-ws-hidden="true"] {
+  display: none !important;
+}
+
+#sine-workspaces-strip {
+  gap: 5px;
+  -moz-box-align: center;
+  margin-inline: 8px;
+  min-height: 0;
+}
+
+/* Each workspace is a compact rounded square (no border/padding). */
+.sine-ws-chip {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: color-mix(in srgb, currentColor 8%, transparent);
+  transition: background 120ms ease, transform 80ms ease;
+}
+
+.sine-ws-chip:hover {
+  background: color-mix(in srgb, currentColor 16%, transparent);
+}
+
+.sine-ws-chip:hover:active {
+  transform: scale(0.93);
+}
+
+.sine-ws-chip[active="true"] {
+  --sine-ws-color: var(--natsumi-accent-color, AccentColor);
+  background: color-mix(in srgb, var(--sine-ws-color) 32%, transparent);
+}
+
+.sine-ws-chip-icon {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1;
+}
+
+/* Tab count as a small badge at the top-right of the icon. */
+.sine-ws-chip-count {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  margin: 0;
+  min-width: 9px;
+  padding: 0 3px;
+  font-size: 9px;
+  font-weight: 400;
+  line-height: 13px;
+  text-align: center;
+  border-radius: 999px;
+  color: #fff;
+  background: var(--sine-badge-bg, var(--natsumi-accent-color, AccentColor));
+  box-shadow: 0 0 0 1.5px var(--toolbar-bgcolor, var(--lwt-accent-color, transparent));
+}
+
+/* Hide the pinned-tabs area entirely when the active workspace has no visible
+   pinned tabs (otherwise other workspaces show an empty pinned strip). */
+#pinned-tabs-container:not(:has(.tabbrowser-tab[pinned]:not([sine-ws-hidden="true"]))) {
+  display: none !important;
+}

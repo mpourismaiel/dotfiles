@@ -1,6 +1,6 @@
 # teamwork — Teamwork.com from Org
 
-Work with [Teamwork.com](https://teamwork.com) from editable Org buffers. Three
+Work with [Teamwork.com](https://teamwork.com) from editable Org buffers. Two
 buffer kinds share the same pull → edit → review-diff → streamed-apply flow:
 
 - **Timesheet** (`teamwork-timesheet`) — the project / task-list / task tree plus
@@ -11,8 +11,9 @@ buffer kinds share the same pull → edit → review-diff → streamed-apply flo
   (low/medium/high) and `:ASSIGNEE:` (by name) — plus a **description** as plain
   text under the drawer. A task's **done state is an Org `TODO`/`DONE` keyword on
   its heading** (the buffer declares `#+TODO: TODO | DONE`), so Org fontifies and
-  strikes completed tasks itself and its own `C-c C-t` (`org-todo`) cycles the
-  state — completing or reopening the task on submit. `C-c C-p` sets a property
+  strikes completed tasks itself; edit the keyword on the heading directly (type
+  over `TODO`/`DONE`) to complete or reopen the task on submit — Org's own
+  `C-c C-t` (`org-todo`) is intentionally **disabled** here. `C-c C-p` sets a property
   with completion over the available values (project people, existing tags, the
   priority list, a calendar for the due date), or jump straight to one with a
   dedicated combo — `C-c C-b` labels, `C-c C-u` urgency, `C-c C-d` due date,
@@ -42,8 +43,20 @@ buffer kinds share the same pull → edit → review-diff → streamed-apply flo
   and `URGENCY` are deliberately *not* named `TAGS`/`PRIORITY`, which Org reserves
   as special property names (Org would return the headline's tags / priority cookie
   instead of the drawer value).
-- **Comments** (`teamwork-comments`) — the comments of the task under point, in a
-  new buffer you can edit, add to and delete from.
+- **Comments** — each task's comments are shown **inline** in the management
+  buffer under a `# Comments` line (fetched with the pull, so there is no separate
+  buffer to open). Each existing comment is a `- author, YYYY-MM-DD HH:MM, `id``
+  header with its text below; edit the text of **your own** comment to change it
+  (editing someone else's is refused), or add a bodied `-` block to post a new
+  comment:
+
+  ```
+  # Comments
+  - Ann Lee, 2026-06-10 09:30, `1234`
+  looks good to me
+  -
+  my brand-new reply
+  ```
 
 Tasks nest to any depth: a heading demoted below a task (`****` or deeper) is a
 subtask, and subtasks take logs, renames, labels and `[d]` completion like any

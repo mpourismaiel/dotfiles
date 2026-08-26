@@ -10,7 +10,6 @@
 ;; Commands:
 ;;   M-x teamwork-timesheet        pull the previous month (C-u = prompt dates)
 ;;   M-x teamwork-management       edit the project structure (no time filter) + labels
-;;   M-x teamwork-comments         open comments of the task under point (edit/add/delete)
 ;;   M-x teamwork-filter           pick which projects appear (stored per account)
 ;;   M-x teamwork-submit           review the diff, then apply on confirm
 ;;   M-x teamwork-refresh          re-fetch the current buffer's data
@@ -32,16 +31,17 @@
 ;; side window with C-c C-l.
 ;; In the timesheet buffer:
 ;;   C-c C-c   submit     C-c C-k   close       C-c C-r   refresh
-;;   C-c C-d   set range  C-c C-l   live log + changes preview   C-c C-o   task comments
+;;   C-c C-d   set range  C-c C-l   live log + changes preview
 ;;   C-c C-p   set a task property (tags/due/priority/assignee) with completion
 ;;   C-c C-b   set labels (tags)   (complete a task by marking a log [d])
 ;; In the management buffer:
-;;   C-c C-c submit  C-c C-l changes preview  C-c C-o comments  C-c C-f filter
+;;   C-c C-c submit  C-c C-l changes preview  C-c C-f filter
 ;;   C-c C-p set property (tags/due/priority/assignee w/ value completion)  C-c C-r refresh
 ;;   C-c C-b labels · C-c C-u urgency · C-c C-d due date · C-c C-a assignee  (dedicated pickers)
-;;   C-c C-t org-todo: cycle the task heading's TODO/DONE keyword (complete/reopen)
-;; In a comments buffer:
-;;   C-c C-c submit  C-c C-l changes preview  C-c C-k close  C-c C-r refresh
+;;   Tasks carry their comments inline under a `# Comments' line: edit your own
+;;   comment's text to change it, or add a `-'-prefixed block to post a new one.
+;;   Done state rides the heading's TODO/DONE keyword (edit it directly; C-c C-t
+;;   is disabled).
 ;;
 ;; Every editable buffer also shows an interactive header line (rendered as a
 ;; tall SVG when the config's `svg-header' package is loaded, else a clickable
@@ -162,9 +162,9 @@ from."
     (define-key m (kbd "C-c C-d") #'teamwork-set-range)
     (define-key m (kbd "C-c C-l") #'teamwork-log-preview)
     (define-key m (kbd "C-c C-r") #'teamwork-refresh)
-    (define-key m (kbd "C-c C-o") #'teamwork-comments)
     (define-key m (kbd "C-c C-p") #'teamwork-set-property)
     (define-key m (kbd "C-c C-b") #'teamwork-set-labels)
+    (define-key m (kbd "C-c C-t") #'teamwork--todo-key-disabled)  ; shadow org-todo
     m)
   "Keymap active in the timesheet buffer.")
 
@@ -182,13 +182,13 @@ from."
     (define-key m (kbd "C-c C-k") #'teamwork-quit)
     (define-key m (kbd "C-c C-r") #'teamwork-refresh)
     (define-key m (kbd "C-c C-l") #'teamwork-changes-preview)
-    (define-key m (kbd "C-c C-o") #'teamwork-comments)
     (define-key m (kbd "C-c C-f") #'teamwork-filter)
     (define-key m (kbd "C-c C-p") #'teamwork-set-property)
     (define-key m (kbd "C-c C-b") #'teamwork-set-labels)
     (define-key m (kbd "C-c C-u") #'teamwork-set-urgency)
     (define-key m (kbd "C-c C-d") #'teamwork-set-due)
     (define-key m (kbd "C-c C-a") #'teamwork-set-assignee)
+    (define-key m (kbd "C-c C-t") #'teamwork--todo-key-disabled)  ; shadow org-todo
     m)
   "Keymap active in the management buffer.")
 
@@ -197,28 +197,19 @@ from."
   :lighter " TWm"
   :keymap teamwork-management-mode-map)
 
-(defvar teamwork-comments-mode-map
-  (let ((m (make-sparse-keymap)))
-    (define-key m (kbd "C-c C-c") #'teamwork-submit)
-    (define-key m (kbd "C-c C-k") #'teamwork-quit)
-    (define-key m (kbd "C-c C-r") #'teamwork-refresh)
-    (define-key m (kbd "C-c C-l") #'teamwork-changes-preview)
-    m)
-  "Keymap active in a comments buffer.")
-
-(define-minor-mode teamwork-comments-mode
-  "Minor mode for a Teamwork task-comments buffer."
-  :lighter " TWc"
-  :keymap teamwork-comments-mode-map)
-
 (defun teamwork--enable-timesheet-mode () (teamwork-timesheet-mode 1))
 (defun teamwork--enable-management-mode () (teamwork-management-mode 1))
-(defun teamwork--enable-comments-mode () (teamwork-comments-mode 1))
+
+(defun teamwork--todo-key-disabled ()
+  "Shadow org's C-c C-t in Teamwork buffers: done-toggling via that key is off.
+Edit the TODO/DONE keyword on the task heading directly to change its state."
+  (interactive)
+  (message "Teamwork: C-c C-t is disabled; edit the task's TODO/DONE keyword directly."))
 
 ;; --------------------------------------------------------------------------- ;;
 ;; Cached-first, background-refresh loading with a data-freshness banner
 ;;
-;; Every teamwork buffer (timesheet / management / comments) is filled from a
+;; Every teamwork buffer (timesheet / management) is filled from a
 ;; local cache instantly (marked STALE), then a fresh copy is fetched in the
 ;; background and swapped in (FRESH).  A banner in the header-line tells you the
 ;; state; while stale/errored, submit refuses (its diff would be against data
@@ -227,11 +218,11 @@ from."
 ;; The per-buffer state below is `permanent-local' so it survives the `org-mode'
 ;; call inside `teamwork--fill-buffer' (which otherwise wipes local variables).
 ;; --------------------------------------------------------------------------- ;;
-(defvar-local teamwork--kind nil "This buffer's kind: \"timesheet\"|\"manage\"|\"comments\".")
+(defvar-local teamwork--kind nil "This buffer's kind: \"timesheet\"|\"manage\".")
 (defvar-local teamwork--key nil "Cache key: range \"FROM_TO\" / \"manage\" / task id.")
 (defvar-local teamwork--account nil "Account this buffer was pulled from.")
 (defvar-local teamwork--fresh-args nil "Sidecar argv (sans --account/--out/--prev) for a live fetch.")
-(defvar-local teamwork--submit-cmd nil "Sidecar subcommand submit uses (\"submit\"|\"comments-submit\").")
+(defvar-local teamwork--submit-cmd nil "Sidecar subcommand submit uses (always \"submit\").")
 (defvar-local teamwork--mode-fn nil "Function enabling this buffer's teamwork minor mode.")
 (defvar-local teamwork--use-prev nil "Whether to pass the old buffer as --prev on refresh.")
 (defvar-local teamwork--data-state nil "One of nil, `stale', `fresh', `error'.")
@@ -459,9 +450,8 @@ toggle carries `:on' (whether completed items are currently shown)."
   "Header help line for KIND, prefixed by STATE-HELP."
   (concat state-help "   "
           (pcase kind
-            ("manage" "C-c C-c submit · C-c C-t todo/done · C-c C-b/u/d/a labels/urgency/due/assignee · C-c C-p props · click a hidden project to restore it")
+            ("manage" "C-c C-c submit · C-c C-b/u/d/a labels/urgency/due/assignee · C-c C-p props · edit comments inline under # Comments · click a hidden project to restore it")
             ("timesheet" "C-c C-c submit · C-c C-d range · C-c C-b labels · C-c C-l logs · click a hidden project to restore it")
-            ("comments" "C-c C-c submit · C-c C-r refresh")
             (_ "C-c C-c submit"))))
 
 ;; -- text (TTY / no-svg) renderer ------------------------------------------- ;;
@@ -1315,34 +1305,14 @@ Asks which account to use when several are configured."
 (defun teamwork-management ()
   "Open a management buffer: the project/tasklist/task/subtask structure with no
 time filter.  Create tasks/lists/subtasks by adding headings, rename by editing
-heading text, and label tasks with a :LABELS: property.  Which projects appear
-is the per-account filter (see `teamwork-filter').  C-c C-c submits."
+heading text, and label tasks with a `<a,b>' prefix on the task heading (C-c C-b).
+Which projects appear is the per-account filter (see `teamwork-filter').  C-c C-c
+submits."
   (interactive)
   (let ((account (or (teamwork--buffer-account (get-buffer teamwork-management-buffer))
                      (teamwork--choose-account "Teamwork account (manage): "))))
     (teamwork--fetch (get-buffer-create teamwork-management-buffer) "manage" "manage" account
                      (list "manage") "submit" #'teamwork--enable-management-mode t)))
-
-;; --------------------------------------------------------------------------- ;;
-;; Comments — fetch/edit the comments of the task under point (any TW buffer)
-;; --------------------------------------------------------------------------- ;;
-;;;###autoload
-(defun teamwork-comments ()
-  "Open the comments of the task under point in a new buffer (edit/add/delete).
-Run from a timesheet or management buffer with point inside a task; the task's
-:TASK_ID: (inherited from ancestors) selects which task.  C-c C-c submits the
-comment changes."
-  (interactive)
-  (let ((tid (org-entry-get nil "TASK_ID" t))
-        (account (or teamwork--account (teamwork--buffer-account (current-buffer))))
-        (origin (current-buffer)))
-    (unless tid
-      (user-error "No task under point (no TASK_ID here or above)"))
-    (teamwork--fetch (get-buffer-create (format "teamwork-comments-%s" tid))
-                     "comments" tid account
-                     (list "comments-pull" "--task" tid)
-                     "comments-submit" #'teamwork--enable-comments-mode nil
-                     origin)))
 
 ;; --------------------------------------------------------------------------- ;;
 ;; Project filter — a per-account allowlist of projects (persisted in prefs)
@@ -1429,17 +1399,69 @@ Signals a `user-error' when point is not inside a task subtree.  Wrapped in
 
 ;; Each picker prompts for and sets one property on the task at point.  They are
 ;; shared by the dispatcher (`teamwork-set-property') and the dedicated commands.
+;; Labels live in the heading in a management buffer — a `<a,b>` prefix before the
+;; task title (rendered/parsed by the sidecar) — but stay in the :LABELS: drawer in
+;; a timesheet.  These helpers read/write whichever form this buffer uses so the
+;; picker and completion source don't have to care.
+(defun teamwork--heading-label-prefix ()
+  "The task heading text at point with its leading `<...>' label prefix stripped,
+and the labels it carried.  Returns (REST . LABELS)."
+  (save-excursion
+    (org-back-to-heading t)
+    (let ((h (org-get-heading t t t t)))
+      (if (string-match "\\`<\\([^>]*\\)>[ \t]*" h)
+          (cons (substring h (match-end 0))
+                (split-string (match-string 1 h) "[,]+" t "[ \t]+"))
+        (cons h nil)))))
+
+(defun teamwork--manage-buffer-p ()
+  (equal teamwork--kind "manage"))
+
+(defun teamwork--current-labels ()
+  "Labels on the task at point: from the `<...>' title prefix in a management
+buffer, else the :LABELS: drawer."
+  (if (teamwork--manage-buffer-p)
+      (cdr (teamwork--heading-label-prefix))
+    (teamwork--current-prop-list "LABELS")))
+
+(defun teamwork--set-labels (labels)
+  "Set the task at point's LABELS: the `<...>' title prefix in a management buffer
+\(empty LABELS drops the prefix), else the :LABELS: drawer."
+  (if (teamwork--manage-buffer-p)
+      (save-excursion
+        (org-back-to-heading t)
+        (let ((rest (car (teamwork--heading-label-prefix)))
+              (prefix (if labels (concat "<" (mapconcat #'identity labels ",") ">") "")))
+          (org-edit-headline (concat prefix rest))))
+    (teamwork--put-property "LABELS" (mapconcat #'identity labels ", "))))
+
+(defun teamwork--buffer-label-values ()
+  "Distinct labels used across the buffer, from title prefixes in a management
+buffer, else the :LABELS: drawers."
+  (if (teamwork--manage-buffer-p)
+      (let (vals)
+        (save-excursion
+          (org-map-entries
+           (lambda ()
+             (let ((h (org-get-heading t t t t)))
+               (when (string-match "\\`<\\([^>]*\\)>" h)
+                 (dolist (x (split-string (match-string 1 h) "[,]+" t "[ \t]+"))
+                   (push x vals)))))))
+        (delete-dups (nreverse vals)))
+    (teamwork--buffer-prop-values "LABELS")))
+
 (defun teamwork--pick-labels ()
-  "Prompt for and set the task's :LABELS: (tags), completing over the labels
+  "Prompt for and set the task's labels (tags), completing over the labels
 already used in this buffer plus the account's configured tags; custom values
-allowed, empty clears."
-  (let* ((all (delete-dups (append (teamwork--buffer-prop-values "LABELS")
+allowed, empty clears.  In a management buffer the labels are a `<a,b>' prefix
+on the task heading; in a timesheet they are the :LABELS: drawer property."
+  (let* ((all (delete-dups (append (teamwork--buffer-label-values)
                                    (teamwork--json-or-nil "tags"))))
-         (cur (teamwork--current-prop-list "LABELS"))
+         (cur (teamwork--current-labels))
          (chosen (completing-read-multiple
                   "Tags (comma-separated, empty clears): " all nil nil
                   (and cur (mapconcat #'identity cur ",")))))
-    (teamwork--put-property "LABELS" (mapconcat #'identity chosen ", "))))
+    (teamwork--set-labels chosen)))
 
 (defun teamwork--pick-urgency ()
   "Prompt for and set the task's :URGENCY: (priority) from the fixed set, seeded
@@ -1506,9 +1528,10 @@ be dropped by the submit."
 
 ;;;###autoload
 (defun teamwork-set-labels ()
-  "Set the task's :LABELS: (tags), completing over buffer + account values.
-Point may sit anywhere in the task's subtree.  Custom values are allowed and an
-empty answer clears the labels."
+  "Set the task's labels (tags), completing over buffer + account values.
+In a management buffer the labels are a `<a,b>' prefix on the task heading; in
+a timesheet they are the :LABELS: drawer property.  Point may sit anywhere in
+the task's subtree.  Custom values are allowed, and an empty answer clears them."
   (interactive)
   (teamwork--set-one-property #'teamwork--pick-labels "Labels"))
 
@@ -1723,9 +1746,9 @@ No-op if the preview was closed (its window lost focus) — apply still runs."
 
 ;;;###autoload
 (defun teamwork-submit ()
-  "Compute the diff for the current teamwork buffer (timesheet, management or
-comments), review it, then apply.  Preview appears in a split below; on confirm
-it applies with live progress.
+  "Compute the diff for the current teamwork buffer (timesheet or management),
+review it, then apply.  Preview appears in a split below; on confirm it applies
+with live progress.
 
 Refuses when the buffer is not current (`stale'/`error'): its diff would be
 against data that is about to be — or already has been — replaced.  Wait for the
