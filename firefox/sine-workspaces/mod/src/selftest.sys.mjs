@@ -144,7 +144,41 @@ export function runSelfTest(win, controller, strip) {
     const csEmpty = container ? win.getComputedStyle(container).display : "?";
     console.log(`${P} pinned container when empty: display=${csEmpty} (want none)`);
 
-    console.log(`${P} DONE ${ok1 && ok2 && ok3 && ok4 ? "ALL PASS" : "SOME FAIL"}`);
+    // 8. moveTabsToWorkspace (the drag-drop-onto-chip engine action).
+    controller.switchTo(firstId);
+    const mv = controller.newTabInWorkspace(firstId, { select: false });
+    controller.moveTabsToWorkspace([mv], targetId);
+    const movedTag = Store.getTabWorkspace(mv);
+    const movedHidden = mv.hasAttribute("sine-ws-hidden");
+    const ok5 = movedTag === targetId && movedHidden;
+    console.log(`${P} move-tabs: tag=${movedTag} hidden=${movedHidden} ${ok5 ? "PASS" : "FAIL"}`);
+
+    // 9. Tab-group hiding: group 2 tabs in firstId, switch away, verify the group
+    //    element computes to display:none (confirms the CSS `tab-group` selector).
+    try {
+      controller.switchTo(firstId);
+      while (controller.orderedTabs(firstId).filter((t) => !t.pinned).length < 2) {
+        controller.newTabInWorkspace(firstId, { select: false });
+      }
+      const gtabs = controller.orderedTabs(firstId).filter((t) => !t.pinned).slice(0, 2);
+      let group = null;
+      try { group = win.gBrowser.addTabGroup(gtabs, { label: "SW Test" }); }
+      catch (e) { console.log(`${P} addTabGroup err: ${e}`); }
+      const gEl = group || gtabs[0].group;
+      console.log(`${P} group el: tag=${gEl?.tagName} class="${gEl?.className}" tabGroupsApi=${!!win.gBrowser.tabGroups}`);
+      controller.switchTo(targetId);
+      const gDisp = gEl ? win.getComputedStyle(gEl).display : "?";
+      console.log(`${P} group after switch-away: display=${gDisp} (want none)`);
+      controller.switchTo(firstId);
+      try {
+        if (gEl?.ungroupTabs) gEl.ungroupTabs();
+        else if (win.gBrowser.removeTabGroup) win.gBrowser.removeTabGroup(gEl);
+      } catch (_e) { /* cleanup best-effort */ }
+    } catch (e) {
+      console.error(`${P} group test threw:`, e);
+    }
+
+    console.log(`${P} DONE ${ok1 && ok2 && ok3 && ok4 && ok5 ? "ALL PASS" : "SOME FAIL"}`);
   } catch (e) {
     console.error(`${P} threw:`, e);
   }

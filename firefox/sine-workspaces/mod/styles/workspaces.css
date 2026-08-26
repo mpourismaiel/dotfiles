@@ -71,3 +71,9 @@
 #pinned-tabs-container:not(:has(.tabbrowser-tab[pinned]:not([sine-ws-hidden="true"]))) {
   display: none !important;
 }
+
+/* Hide a tab group (folder) when the active-workspace filter has hidden all of
+   its tabs — otherwise groups from other workspaces still show up. */
+tab-group:not(:has(.tabbrowser-tab:not([sine-ws-hidden="true"]))) {
+  display: none !important;
+}

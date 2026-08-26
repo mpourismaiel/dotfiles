@@ -321,6 +321,34 @@ export class WorkspacesController {
     this.emit();
   }
 
+  // Move one or more tabs (e.g. dropped on a workspace chip) into a workspace.
+  // Marks them manual (sticky). If the active tab is among them and the target
+  // isn't the active workspace, picks a replacement active tab first so the
+  // moved tabs can be safely hidden.
+  moveTabsToWorkspace(tabs, wsId) {
+    if (!Store.hasWorkspace(wsId)) return;
+    const list = [...new Set(tabs)].filter(
+      (t) => t && !t.closing && this.gBrowser.tabs.includes(t)
+    );
+    if (!list.length) return;
+
+    const movedActive = list.includes(this.gBrowser.selectedTab);
+    const refIndex = this.gBrowser.selectedTab?._tPos ?? 0;
+
+    for (const tab of list) {
+      Store.setTabWorkspace(tab, wsId);
+      Store.setManual(tab, true);
+    }
+
+    if (movedActive && wsId !== this.activeId) {
+      this.#pickAndSelect(this.activeId, refIndex);
+    }
+
+    for (const tab of list) this.#setTabHidden(tab, wsId !== this.activeId);
+    this.#updateGroups();
+    this.emit();
+  }
+
   newTabInWorkspace(wsId, { select = true } = {}) {
     const ws = Store.getWorkspace(wsId);
     const opts = {};

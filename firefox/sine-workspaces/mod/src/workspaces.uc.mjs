@@ -13,6 +13,7 @@ import Store from "./store.sys.mjs";
 import { WorkspacesController } from "./engine.sys.mjs";
 import { WorkspacesStrip } from "./strip.sys.mjs";
 import { WorkspacesShortcuts } from "./shortcuts.sys.mjs";
+import { WorkspaceTabMenu } from "./tabmenu.sys.mjs";
 
 (() => {
   const win = window;
@@ -50,13 +51,20 @@ import { WorkspacesShortcuts } from "./shortcuts.sys.mjs";
       const shortcuts = new WorkspacesShortcuts(win, controller);
       shortcuts.attach();
 
+      const tabMenu = new WorkspaceTabMenu(win, controller);
+      try {
+        tabMenu.build();
+      } catch (e) {
+        console.error("[sine-workspaces] tab menu build failed:", e);
+      }
+
       const unobserve = Store.observeConfigChange(async () => {
         await Store.reload();
         controller.onConfigReloaded();
         strip.render();
       });
 
-      win.__sineWorkspacesAPI = { controller, strip, shortcuts };
+      win.__sineWorkspacesAPI = { controller, strip, shortcuts, tabMenu };
       console.log(
         `[sine-workspaces] ready — ${Store.workspaces.length} workspaces, active=${controller.activeId}`
       );
@@ -75,6 +83,7 @@ import { WorkspacesShortcuts } from "./shortcuts.sys.mjs";
         try {
           unobserve();
           shortcuts.detach();
+          tabMenu.destroy();
           strip.destroy();
           controller.destroy();
         } catch (e) {

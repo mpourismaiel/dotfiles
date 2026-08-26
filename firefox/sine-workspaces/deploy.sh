@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
 # Deploy sine-workspaces into a Firefox profile's Sine mods directory.
 #
-#   ./deploy.sh                       # deploys to the default "testing 2" profile
-#   ./deploy.sh "/path/to/profile"    # deploys to another profile (explicit opt-in)
-#   ./deploy.sh --close               # close the terminal after a successful deploy
-#                                     # (used by __ignore__/scripts/ SPC p S wrapper)
+#   ./deploy.sh <profile-dir>            # deploy to the given Firefox profile
+#   ./deploy.sh --close <profile-dir>    # ...and close the terminal on success
+#                                        # (used by the __ignore__/scripts SPC p S wrapper)
+#
+# The profile path is a required argument — this script is committed, so it must
+# not hardcode a machine-specific profile. Personal paths live in the (ignored)
+# __ignore__/scripts/ wrapper.
 #
 # This copies files only. It NEVER launches or kills Firefox, and it only ever
 # writes inside the target profile's chrome/sine-mods/ tree. Your live
@@ -15,13 +18,19 @@ cd "$(dirname "$0")"
 REPO="$PWD"
 
 CLOSE=0
-PROFILE="/home/mahdi/.mozilla/firefox/x3iaw2cf.testing 2"
+PROFILE=""
 for arg in "$@"; do
   case "$arg" in
     --close) CLOSE=1 ;;
     *) PROFILE="$arg" ;;
   esac
 done
+
+if [[ -z "$PROFILE" ]]; then
+  echo "ERROR: no profile path given." >&2
+  echo "Usage: deploy.sh [--close] <profile-dir>" >&2
+  exit 1
+fi
 
 MODS_DIR="$PROFILE/chrome/sine-mods"
 DEST="$MODS_DIR/sine-workspaces"
