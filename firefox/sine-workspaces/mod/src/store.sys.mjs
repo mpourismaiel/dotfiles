@@ -26,6 +26,11 @@ const MANUAL_KEY = "sine-workspaces-manual";
 // Pref used purely as a cross-window "config changed" signal (Manage page bumps it).
 const NONCE_PREF = "sine-workspaces.config-nonce";
 
+// Last workspace the user was on (any window), persisted across restarts. Used at
+// startup to restore the active workspace when a window opens onto a fresh
+// external / command-line tab that carries no workspace tag yet.
+const LAST_ACTIVE_PREF = "sine-workspaces.last-active";
+
 const Store = {
   _config: null,
   _loaded: false,
@@ -146,6 +151,24 @@ const Store = {
   setManual(tab, manual) {
     try {
       SessionStore.setCustomTabValue(tab, MANUAL_KEY, manual ? "1" : "0");
+    } catch (_e) {
+      /* ignore */
+    }
+  },
+
+  // ---- last-active workspace (persisted across restarts) ------------------
+
+  getLastActiveId() {
+    try {
+      return Services.prefs.getStringPref(LAST_ACTIVE_PREF, "") || null;
+    } catch (_e) {
+      return null;
+    }
+  },
+
+  setLastActiveId(id) {
+    try {
+      Services.prefs.setStringPref(LAST_ACTIVE_PREF, String(id || ""));
     } catch (_e) {
       /* ignore */
     }

@@ -31,14 +31,28 @@ export class WorkspacesController {
   // ---- lifecycle -----------------------------------------------------------
 
   init() {
-    // Choose the initial active workspace from the restored selected tab.
+    // Choose the initial active workspace. Normally it's the restored selected
+    // tab's workspace. But on a cold start triggered by an external link (a
+    // Slack message, etc.), Firefox creates and selects that tab before this
+    // controller exists, so it carries no workspace tag. Falling back to the
+    // default here would yank the user out of the workspace they left — and hide
+    // it — which reads as "the link just opened an empty new tab". So when the
+    // selected tab is untagged, restore the last workspace the user was on.
     const selTag = Store.getTabWorkspace(this.gBrowser.selectedTab);
-    this.activeId = selTag && Store.hasWorkspace(selTag) ? selTag : Store.defaultId;
-
-    // Tag any untagged tabs (fresh profile / imported session) with the default.
-    for (const tab of this.gBrowser.tabs) {
-      if (!Store.getTabWorkspace(tab)) Store.setTabWorkspace(tab, Store.defaultId);
+    if (selTag && Store.hasWorkspace(selTag)) {
+      this.activeId = selTag;
+    } else {
+      const last = Store.getLastActiveId();
+      this.activeId = last && Store.hasWorkspace(last) ? last : Store.defaultId;
     }
+
+    // Tag any untagged tabs (fresh profile / imported session / a brand-new
+    // external tab created before we wired up) into the ACTIVE workspace, so
+    // they stay visible instead of being hidden away in the default one.
+    for (const tab of this.gBrowser.tabs) {
+      if (!Store.getTabWorkspace(tab)) Store.setTabWorkspace(tab, this.activeId);
+    }
+    Store.setLastActiveId(this.activeId);
 
     this.#wire();
     this.applyVisibility();
@@ -180,6 +194,7 @@ export class WorkspacesController {
     this._switching = true;
     try {
       this.activeId = wsId;
+      Store.setLastActiveId(wsId);
       // Show the target workspace's tabs first so we can safely select one.
       for (const tab of this.#tabsFor(wsId)) this.#setTabHidden(tab, false);
       this.#pickAndSelect(wsId, prevIndex);
@@ -263,7 +278,16 @@ export class WorkspacesController {
     if (!tab || tab.closing || !this.gBrowser.tabs.includes(tab)) return;
     const current = parseInt(tab.getAttribute("usercontextid") || "0", 10);
     if (current === userContextId) return;
-    const spec = tab.linkedBrowser?.currentURI?.spec ?? "";
+    const browser = tab.linkedBrowser;
+    // A tab opened for a real URL (external link from Slack/Telegram, a
+    // link with target=_blank, etc.) reports currentURI="about:blank" for the
+    // first tick — the load hasn't committed yet — but already carries its
+    // destination in userTypedValue (and, a moment later, a live document
+    // load). Reopening it in the container would discard that pending load and
+    // leave an empty new tab, so bail out. Only genuinely blank new tabs
+    // (Ctrl+T, with no pending navigation) get reopened into the container.
+    if (browser?.userTypedValue || browser?.webProgress?.isLoadingDocument) return;
+    const spec = browser?.currentURI?.spec ?? "";
     if (!BLANK.has(spec)) return; // only reopen blank tabs — never lose page state
 
     const index = tab._tPos + 1;
@@ -302,6 +326,7 @@ export class WorkspacesController {
     if (wid !== this.activeId && Store.hasWorkspace(wid)) {
       this.lastActiveByWs.set(wid, tab);
       this.activeId = wid;
+      Store.setLastActiveId(wid);
       this.applyVisibility();
       this.emit();
     } else {

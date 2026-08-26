@@ -30,8 +30,13 @@ export class WorkspacesShortcuts {
 
   #onKeyDown(e) {
     if (!e.ctrlKey || e.altKey || e.metaKey || e.repeat) return;
-    if (e.key < "1" || e.key > "9") return;
-    const n = Number(e.key);
+    // Match the physical digit key via e.code, not e.key: with Shift held e.key
+    // is the shifted symbol ("!"…"(" on a US layout), so keying off e.key made
+    // Ctrl+Shift+1…9 (switch workspace) never fire. e.code stays "Digit1"…
+    // "Digit9" / "Numpad1"…"Numpad9" regardless of modifiers or layout.
+    const m = /^(?:Digit|Numpad)([1-9])$/.exec(e.code || "");
+    if (!m) return;
+    const n = Number(m[1]);
 
     e.preventDefault();
     e.stopImmediatePropagation();
