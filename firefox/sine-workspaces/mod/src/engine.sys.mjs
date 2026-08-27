@@ -13,7 +13,10 @@ import Store from "./store.sys.mjs";
 import Rules from "./rules.sys.mjs";
 import Containers from "./containers.sys.mjs";
 
-const BLANK = new Set(["about:newtab", "about:blank", "about:home", "", "chrome://browser/content/blanktab.html"]);
+// Genuine "fresh tab" pages. A bare about:blank / "" is deliberately excluded:
+// Firefox's real new tab is about:newtab/home, so a bare about:blank with no
+// typed URL is a special trusted tab (e.g. Customize Toolbar) we must not touch.
+const NEWTAB = new Set(["about:newtab", "about:home", "chrome://browser/content/blanktab.html"]);
 
 export class WorkspacesController {
   constructor(win) {
@@ -267,17 +270,20 @@ export class WorkspacesController {
     Store.setManual(tab, false);
     this._pendingRule.add(tab);
 
-    // Apply the active workspace's default container to genuinely blank new tabs.
+    // A tab opened FROM a page (middle-click, "open in new tab") has an
+    // openerTab and inherits that page's container — leave those alone. Every
+    // other new tab (Ctrl+T, the new-tab button, a link from an external app
+    // like Telegram) has no opener, so give it the workspace's default
+    // container. Captured now because Firefox can clear openerTab as related
+    // tabs chain.
+    const opener = tab.openerTab || null;
     const ws = Store.getWorkspace(this.activeId);
-    if (ws?.containerId && Containers.exists(ws.containerId)) {
+    if (!opener && ws?.containerId && Containers.exists(ws.containerId)) {
       this.win.setTimeout(() => this.#applyContainerDefault(tab, Number(ws.containerId)), 0);
     }
     // Position the new tab within its workspace. A blank tab (Ctrl+T / new-tab
-    // button) goes to the END; a tab opened FROM a link (middle-click, "open in
-    // new tab" — Firefox sets openerTab) goes right after the tab it came from.
-    // Deferred so it runs after Firefox finishes inserting the tab. openerTab is
-    // captured now because Firefox can clear it as related tabs chain.
-    const opener = tab.openerTab || null;
+    // button) goes to the END; a tab opened FROM a link goes right after the tab
+    // it came from. Deferred so it runs after Firefox finishes inserting the tab.
     this.win.setTimeout(() => this.#placeNewTab(tab, opener), 0);
     this.emit();
   }
@@ -327,24 +333,32 @@ export class WorkspacesController {
     if (tab._tPos !== target) this.gBrowser.moveTabTo(tab, { tabIndex: target });
   }
 
+  // Reopen a new tab in the workspace's default container (a tab's container
+  // can't be changed in place). The destination is preserved so nothing is lost:
+  // an external link (from Telegram/Slack) reports currentURI="about:blank" for
+  // the first tick but carries its target in userTypedValue, so the container
+  // tab reloads that URL; a genuinely blank tab reopens about:newtab. A tab that
+  // has already committed a real page is left alone (we'd otherwise lose state).
   #applyContainerDefault(tab, userContextId) {
     if (!tab || tab.closing || !this.gBrowser.tabs.includes(tab)) return;
     const current = parseInt(tab.getAttribute("usercontextid") || "0", 10);
-    if (current === userContextId) return;
+    // Respect any container the tab already has — a Multi-Account-Containers
+    // site assignment or an explicit "open in container" wins over the
+    // workspace default. Only tabs with no container (0) get the default.
+    if (current !== 0) return;
     const browser = tab.linkedBrowser;
-    // A tab opened for a real URL (external link from Slack/Telegram, a
-    // link with target=_blank, etc.) reports currentURI="about:blank" for the
-    // first tick — the load hasn't committed yet — but already carries its
-    // destination in userTypedValue (and, a moment later, a live document
-    // load). Reopening it in the container would discard that pending load and
-    // leave an empty new tab, so bail out. Only genuinely blank new tabs
-    // (Ctrl+T, with no pending navigation) get reopened into the container.
-    if (browser?.userTypedValue || browser?.webProgress?.isLoadingDocument) return;
+    const pending = browser?.userTypedValue || "";
     const spec = browser?.currentURI?.spec ?? "";
-    if (!BLANK.has(spec)) return; // only reopen blank tabs — never lose page state
+    // With a typed destination (e.g. an external link that reports about:blank
+    // for a tick but carries its target in userTypedValue) we reload it into the
+    // container. With none, only a genuine new-tab page qualifies — a bare
+    // about:blank is a special/trusted tab (Customize Toolbar, view-source, a
+    // script-opened blank) that must be left alone, not replaced with a new tab.
+    if (!pending && !NEWTAB.has(spec)) return;
+    const url = pending || "about:newtab";
 
     const index = tab._tPos + 1;
-    const newTab = this.#addTab("about:newtab", { userContextId, index });
+    const newTab = this.#addTab(url, { userContextId, index });
     if (!newTab) return;
     Store.setTabWorkspace(newTab, this.activeId);
     Store.setManual(newTab, false);
