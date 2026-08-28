@@ -1266,6 +1266,104 @@ class ManageComments(unittest.TestCase):
         self.assertEqual(snap["task_comments"], {"9": "b"})
         self.assertEqual(snap["comment_authors"], {"9": "42"})
 
+    def test_unloaded_count_hint_rendered(self):
+        # A task with comments on the server but none loaded shows the count hint.
+        tk = {"id": 300, "title": "Task", "tasklist_id": 200, "project_id": 100,
+              "parent_id": None, "tags": [], "description": "", "comments": [],
+              "comment_count": 3}
+        text = T.render_manage([{"id": 100, "name": "P"}],
+                               [{"id": 200, "name": "L", "project_id": 100}], [tk],
+                               {"user_id": 42})
+        self.assertRegex(text, r"# Comments \(3 ")
+
+    def test_loaded_comments_use_plain_marker(self):
+        # Once bodies are present the hint disappears (plain `# Comments`).
+        text = self._render([{"id": 9, "author": "A", "author_id": "42",
+                              "datetime": "2026-06-10 09:30", "body": "hi"}])
+        self.assertIn("# Comments\n", text)
+        self.assertNotRegex(text, r"# Comments \(")
+
+    def test_count_hint_survives_serialize_reload(self):
+        # The unloaded count is parsed back out and re-emitted, so a post-apply
+        # serialize keeps the hint instead of silently blanking it.
+        buf = self._tree("# Comments (3 — select + C-c C-o to load)\n")
+        out = T.serialize_parsed(T.parse_org(buf))
+        self.assertRegex(out, r"# Comments \(3 ")
+
+    def test_count_hint_parses_no_comment_actions(self):
+        # An unloaded (hint-only) section must not diff as any comment change.
+        snap = {"tasks": {"300": "Task"}, "task_comments": {"9": "old"},
+                "comment_authors": {"9": "42"}}
+        plan = T.compute_plan(
+            T.parse_org(self._tree("# Comments (3 — select + C-c C-o to load)\n")), snap, 42)
+        self.assertEqual([a for a in plan["actions"] if "comment" in a["type"]], [])
+
+
+class CommentsLoad(unittest.TestCase):
+    """`comments-load` fetches bodies on demand and folds them into the snapshot."""
+
+    def setUp(self):
+        import tempfile, pathlib
+        self._dir = tempfile.mkdtemp()
+        self._orig_cache = T.CACHE_DIR
+        T.CACHE_DIR = pathlib.Path(self._dir)
+        self._orig_creds = T.load_creds
+        self._orig_client = T.Client
+        T.load_creds = lambda account=None: {"account": account, "user_id": "42"}
+
+    def tearDown(self):
+        T.CACHE_DIR = self._orig_cache
+        T.load_creds = self._orig_creds
+        T.Client = self._orig_client
+
+    def _run(self, ids, account="work"):
+        import io, json as _json, contextlib
+        a = type("A", (), {"ids": ids, "account": account})()
+        b = io.StringIO()
+        with contextlib.redirect_stdout(b):
+            T.cmd_comments_load(a)
+        return _json.loads(b.getvalue())
+
+    def test_emits_rendered_block_and_updates_snapshot(self):
+        import json as _json
+        snap_file = T.manage_snapshot_path("work")
+        snap_file.write_text(_json.dumps(
+            {"tasks": {"300": "Task"}, "task_comments": {}, "comment_authors": {}}))
+
+        class C:
+            def __init__(self, creds):
+                pass
+            def comments(self, tid):
+                return [{"id": 9, "author": "Ann", "author_id": "77",
+                         "datetime": "2026-06-10 09:30", "body": "hello"}]
+        T.Client = C
+
+        out = self._run(["300"])
+        block = out["comments"]["300"]
+        self.assertIn("# Comments", block)
+        self.assertIn("- Ann, 2026-06-10 09:30, `9`", block)
+        self.assertIn("hello", block)
+        # snapshot now carries the fetched body + author so a later submit can diff
+        snap = _json.loads(snap_file.read_text())
+        self.assertEqual(snap["task_comments"]["9"], "hello")
+        self.assertEqual(snap["comment_authors"]["9"], "77")
+
+    def test_dedups_ids_and_handles_no_snapshot(self):
+        # No snapshot on disk: still emits blocks (just can't pre-seed a diff).
+        calls = []
+
+        class C:
+            def __init__(self, creds):
+                pass
+            def comments(self, tid):
+                calls.append(tid)
+                return []
+        T.Client = C
+        out = self._run(["300", "300", "301"])
+        self.assertEqual(calls, [300, 301])          # de-duped, ints
+        self.assertEqual(set(out["comments"]), {"300", "301"})
+        self.assertRegex(out["comments"]["300"], r"^# Comments$")
+
 
 class ManageDeletions(unittest.TestCase):
     """Removing a task/tasklist heading in management mode deletes it in Teamwork."""

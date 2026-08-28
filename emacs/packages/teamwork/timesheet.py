@@ -385,7 +385,10 @@ class Client:
         return int(d.get("id") or d.get("taskId"))
 
     def create_subtask(self, parent_task_id: int, item: dict) -> int:
-        d = self._req("POST", f"/tasks/{parent_task_id}/subtasks.json",
+        # V1 creates a subtask by POSTing the todo-item to the PARENT task's own
+        # endpoint (`/tasks/{parentId}.json`). The `/tasks/{id}/subtasks.json`
+        # path is GET-only (it lists a task's subtasks); POSTing there 400s.
+        d = self._req("POST", f"/tasks/{parent_task_id}.json",
                       body={"todo-item": item})
         return int(d.get("id") or d.get("taskId"))
 
@@ -743,6 +746,11 @@ _COMMENT_META_RE = re.compile(
     r"(?P<when>[0-9]{4}-[0-9]{2}-[0-9]{2}[ T][0-9]{2}:[0-9]{2})\s*,\s*"
     r"`(?P<id>\d+)`\s*$")
 _COMMENT_NEW_RE = re.compile(r"^-\s*$")
+# The `# Comments` section marker, with an optional `(N — …)` unloaded-count hint.
+# Management fetches comment bodies lazily (see the `comments-load` command), so a
+# task with comments on the server but none loaded renders the count here; the
+# count is parsed back out so it survives a serialize/reload after apply.
+_COMMENT_SECTION_RE = re.compile(r"^#\s*comments\b\s*(?:\(\s*(\d+))?", re.IGNORECASE)
 
 
 def _comment_marker(c: dict) -> str:
@@ -753,11 +761,20 @@ def _comment_marker(c: dict) -> str:
     return "-"
 
 
-def _emit_comments(out, comments):
+def _emit_comments(out, tk):
     """Append the `# Comments` section for a task (always emitted in management,
-    even with no comments, so a comment can be added by typing a `-` block)."""
-    out.append("# Comments")
-    for c in (comments or []):
+    even with no comments, so a comment can be added by typing a `-` block).
+
+    Comments load lazily: a task with comments on the server but none fetched into
+    TK gets a `# Comments (N — …)` hint so the user knows to load them (via
+    `comments-load`); once loaded the plain marker plus each comment is emitted."""
+    comments = tk.get("comments") or []
+    count = tk.get("comment_count") or 0
+    if not comments and count:
+        out.append(f"# Comments ({count} — select + C-c C-o to load)")
+    else:
+        out.append("# Comments")
+    for c in comments:
         out.append(_comment_marker(c))
         out.extend((c.get("body") or "").split("\n"))
 
@@ -798,7 +815,7 @@ def _emit_project_tree(out, projects, tasklists, tasks, logs_by_task=None,
         if with_desc and (tk.get("description") or "").strip():
             out.extend(tk["description"].split("\n"))
         if with_props:                    # management: comments live under the task
-            _emit_comments(out, tk.get("comments"))
+            _emit_comments(out, tk)
         for lg in sorted(logs_by_task.get(tk["id"], []), key=lambda l: (l["date"], l.get("start") or "")):
             out.extend(render_log_line(lg))
         for sub in sorted(subs_by_parent.get(tk["id"], []), key=lambda t: t["title"].lower()):
@@ -933,7 +950,7 @@ def serialize_parsed(parsed: dict) -> str:
         if manage and (tk.get("description") or "").strip():
             out.extend(tk["description"].split("\n"))
         if manage:
-            _emit_comments(out, tk.get("comments"))
+            _emit_comments(out, tk)
         for lg in tk["logs"]:
             out.extend(render_log_line(lg))
         for sub in tk.get("subtasks", []):
@@ -1135,11 +1152,14 @@ def parse_org(text: str) -> dict:
         # A `# Comments` marker (management) opens the current task's comment
         # section — everything below it, until the next heading, is comments not
         # description.  Caught before the generic `#` skip so it isn't dropped.
-        if (meta["mode"] == "manage" and cur_tk is not None
-                and raw.strip().lower() == "# comments"):
-            cur_tk["_in_comments"] = True
-            cur_tk.setdefault("_comments", [])
-            continue
+        if meta["mode"] == "manage" and cur_tk is not None:
+            cmatch = _COMMENT_SECTION_RE.match(raw.strip())
+            if cmatch:
+                cur_tk["_in_comments"] = True
+                cur_tk.setdefault("_comments", [])
+                if cmatch.group(1):       # unloaded-count hint: `# Comments (N — …)`
+                    cur_tk["_comment_count"] = int(cmatch.group(1))
+                continue
         if raw.startswith("#"):
             continue
 
@@ -1308,6 +1328,12 @@ def parse_org(text: str) -> dict:
                         continue
                     comments.append(c)
                 tk["comments"] = comments
+            # Preserve an unloaded-count hint so a serialize/reload after apply
+            # keeps the `# Comments (N — …)` marker (else lazy sections would
+            # silently look empty until the next full refresh).
+            cnt = tk.pop("_comment_count", None)
+            if cnt is not None:
+                tk["comment_count"] = cnt
             for sub in tk.get("subtasks", []):
                 _finalize_desc(sub)
         for p in projects:
@@ -1980,13 +2006,13 @@ def cmd_manage(args):
         tk["assignee_names"] = [people.get(i, i) for i in tk.get("assignees", [])]
     sys.stderr.write(f"people assignable: {len(people)}\n")
 
-    # Fetch comments up front (only for tasks that have any) so they render inline
-    # under each task — no slow per-task fetch when the user wants to read them.
-    n_comments = 0
+    # Comments are loaded lazily (see the `comments-load` command): fetching every
+    # commented task up front cost one request per task and made a big project's
+    # manage pull very slow.  Each task already carries its `comment_count` (from
+    # the tree walk), so the `# Comments (N — …)` hint renders without any fetch;
+    # the user loads bodies on demand for the tasks they select.
     for tk in tasks:
-        tk["comments"] = c.comments(tk["id"]) if tk.get("comment_count") else []
-        n_comments += len(tk["comments"])
-    sys.stderr.write(f"comments fetched: {n_comments}\n")
+        tk["comments"] = []
 
     update_prefs(account, hidden=hidden_names, shown=[p["id"] for p in projects])
     snap = build_snapshot(projects, tasklists, tasks, [], meta)
@@ -1995,6 +2021,37 @@ def cmd_manage(args):
     org = render_manage(projects, tasklists, tasks, meta, hidden_names, filt, filt_names)
     cache_org_path("manage", "manage", account).write_text(org, encoding="utf-8")
     (open(args.out, "w", encoding="utf-8") if args.out else sys.stdout).write(org)
+
+
+def cmd_comments_load(args):
+    """Fetch comments for the given task ids on demand and emit, per task, the
+    rendered `# Comments` section for Emacs to splice into the manage buffer.
+
+    Also folds the fetched comments into the manage snapshot (bodies + author ids)
+    so a later submit can diff edits and enforce the own-comment guard — otherwise
+    an edited-but-never-in-the-snapshot comment would be silently ignored."""
+    creds = load_creds(getattr(args, "account", None))
+    account = creds.get("account")
+    c = Client(creds)
+    snap_file = manage_snapshot_path(account)
+    snap = json.loads(snap_file.read_text(encoding="utf-8")) if snap_file.exists() else None
+    if snap is not None:
+        snap.setdefault("task_comments", {})
+        snap.setdefault("comment_authors", {})
+    blocks = {}
+    for tid in dict.fromkeys(args.ids):        # de-dup, keep order
+        comments = c.comments(int(tid))
+        block: list[str] = []
+        _emit_comments(block, {"comments": comments})   # loaded -> plain marker
+        blocks[str(tid)] = "\n".join(block)
+        if snap is not None:
+            for cm in comments:
+                if cm.get("id"):
+                    snap["task_comments"][str(cm["id"])] = cm.get("body") or ""
+                    snap["comment_authors"][str(cm["id"])] = str(cm.get("author_id") or "")
+    if snap is not None:
+        snap_file.write_text(json.dumps(snap), encoding="utf-8")
+    print(json.dumps({"comments": blocks}, ensure_ascii=False))
 
 
 def cmd_projects(args):
@@ -2187,6 +2244,12 @@ def main(argv=None):
     mn.add_argument("--account", default=None, help="which stored account to use")
     mn.add_argument("--out", default=None)
     mn.set_defaults(func=cmd_manage)
+
+    cl = sub.add_parser("comments-load",
+                        help="fetch comments for task ids on demand; update the manage snapshot")
+    cl.add_argument("ids", nargs="+", help="task ids to load comments for")
+    cl.add_argument("--account", default=None, help="which stored account to use")
+    cl.set_defaults(func=cmd_comments_load)
 
     pr = sub.add_parser("projects", help="list active projects as JSON (with in_filter flags)")
     pr.add_argument("--account", default=None, help="which stored account to use")

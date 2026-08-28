@@ -38,8 +38,11 @@
 ;;   C-c C-c submit  C-c C-l changes preview  C-c C-f filter
 ;;   C-c C-p set property (tags/due/priority/assignee w/ value completion)  C-c C-r refresh
 ;;   C-c C-b labels · C-c C-u urgency · C-c C-d due date · C-c C-a assignee  (dedicated pickers)
-;;   Tasks carry their comments inline under a `# Comments' line: edit your own
-;;   comment's text to change it, or add a `-'-prefixed block to post a new one.
+;;   Tasks carry their comments inline under a `# Comments' line, loaded on demand
+;;   to keep the pull fast: a task with comments shows `# Comments (N — …)'; select
+;;   the tasks you want and press C-c C-o to fetch and splice in just those
+;;   sections.  Once loaded, edit your own comment's text to change it, or add a
+;;   `-'-prefixed block to post a new one.
 ;;   Done state rides the heading's TODO/DONE keyword (edit it directly; C-c C-t
 ;;   is disabled).
 ;;
@@ -117,6 +120,14 @@
 (defface teamwork-completed-face '((t :inherit shadow))
   "Face dimming completed tasks / task lists in the management buffer.")
 
+(defface teamwork-label-face '((t :inherit font-lock-keyword-face))
+  "Face for the `<tag1,tag2>' label prefix on management task headings.")
+
+(defconst teamwork--label-font-lock-keywords
+  '(("^\\*+[ \t]+\\(?:[A-Z]+[ \t]+\\)?\\(<[^>\n]*>\\)"
+     1 'teamwork-label-face prepend))
+  "Font-lock keyword coloring the `<...>' label prefix on task headings.")
+
 ;; --------------------------------------------------------------------------- ;;
 ;; Accounts — several Teamwork logins, told apart by name (one keyring item each)
 ;; --------------------------------------------------------------------------- ;;
@@ -188,6 +199,7 @@ from."
     (define-key m (kbd "C-c C-u") #'teamwork-set-urgency)
     (define-key m (kbd "C-c C-d") #'teamwork-set-due)
     (define-key m (kbd "C-c C-a") #'teamwork-set-assignee)
+    (define-key m (kbd "C-c C-o") #'teamwork-load-comments)
     (define-key m (kbd "C-c C-t") #'teamwork--todo-key-disabled)  ; shadow org-todo
     m)
   "Keymap active in the management buffer.")
@@ -195,7 +207,11 @@ from."
 (define-minor-mode teamwork-management-mode
   "Minor mode for the Teamwork management buffer."
   :lighter " TWm"
-  :keymap teamwork-management-mode-map)
+  :keymap teamwork-management-mode-map
+  (if teamwork-management-mode
+      (font-lock-add-keywords nil teamwork--label-font-lock-keywords 'append)
+    (font-lock-remove-keywords nil teamwork--label-font-lock-keywords))
+  (when font-lock-mode (font-lock-flush) (font-lock-ensure)))
 
 (defun teamwork--enable-timesheet-mode () (teamwork-timesheet-mode 1))
 (defun teamwork--enable-management-mode () (teamwork-management-mode 1))
@@ -1416,6 +1432,74 @@ and the labels it carried.  Returns (REST . LABELS)."
 
 (defun teamwork--manage-buffer-p ()
   (equal teamwork--kind "manage"))
+
+;; --------------------------------------------------------------------------- ;;
+;; Lazy comment loading — management no longer fetches every task's comments up
+;; front (slow on big projects).  Each task renders a `# Comments (N — …)' hint;
+;; the user selects some tasks and loads their comments on demand, rewriting only
+;; those `# Comments' sections in place.
+(defun teamwork--tasks-in-region (beg end)
+  "Task headings whose heading line starts within [BEG, END).
+Returns a list of (MARKER . TASK-ID); headings with no :TASK_ID: (new, unsaved
+tasks and the project/list headings) are skipped."
+  (let (out)
+    (save-excursion
+      (goto-char beg)
+      (unless (org-at-heading-p) (outline-next-heading))
+      (while (and (not (eobp)) (< (point) end))
+        (let ((id (and (org-at-heading-p) (org-entry-get nil "TASK_ID"))))
+          (when (and id (not (string-empty-p (string-trim id))))
+            (push (cons (copy-marker (point)) (string-trim id)) out)))
+        (outline-next-heading)))
+    (nreverse out)))
+
+(defun teamwork--replace-comment-section (block)
+  "Replace the `# Comments' section of the task heading at point with BLOCK.
+The section spans from its `# Comments' line to the next heading (a child or
+sibling), so a task's own comments are rewritten without touching its subtasks."
+  (save-excursion
+    (org-back-to-heading t)
+    (let* ((limit (save-excursion (if (outline-next-heading) (point) (point-max))))
+           (cstart (save-excursion
+                     (forward-line 1)
+                     (and (re-search-forward "^#[ \t]*[Cc]omments\\b" limit t)
+                          (line-beginning-position)))))
+      (when cstart
+        (delete-region cstart limit)
+        (goto-char cstart)
+        (insert (string-trim-right block) "\n")))))
+
+;;;###autoload
+(defun teamwork-load-comments ()
+  "Fetch comments for the selected task(s) and splice them into their sections.
+With an active region, every task heading within it that has a :TASK_ID: is
+loaded (new, id-less tasks are skipped); with no region, the task at point.
+Only the affected `# Comments' sections are rewritten — the rest of the buffer,
+and any unsaved edits in it, are left untouched."
+  (interactive)
+  (unless (teamwork--manage-buffer-p)
+    (user-error "Loading comments is only available in the management buffer"))
+  (let* ((targets (if (use-region-p)
+                      (teamwork--tasks-in-region (region-beginning) (region-end))
+                    (teamwork--with-task-heading
+                      (teamwork--tasks-in-region (point) (1+ (point))))))
+         (ids (delete-dups (mapcar #'cdr targets))))
+    (unless targets
+      (user-error "No existing tasks selected (nothing to load)"))
+    (deactivate-mark)
+    (message "Teamwork: loading comments for %d task(s)…" (length ids))
+    (let* ((res (apply #'teamwork--run-json "comments-load"
+                       (append (teamwork--account-args) ids)))
+           (blocks (alist-get 'comments res))
+           (inhibit-read-only t))
+      (save-excursion
+        (dolist (tgt targets)
+          (let ((block (alist-get (intern (cdr tgt)) blocks)))
+            (when (and block (marker-position (car tgt)))
+              (goto-char (car tgt))
+              (teamwork--replace-comment-section block)))))
+      (dolist (tgt targets) (set-marker (car tgt) nil))
+      (message "Teamwork: loaded comments for %d task(s)." (length ids)))))
 
 (defun teamwork--current-labels ()
   "Labels on the task at point: from the `<...>' title prefix in a management

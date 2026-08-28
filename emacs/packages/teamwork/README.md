@@ -21,7 +21,8 @@ buffer kinds share the same pull → edit → review-diff → streamed-apply flo
   the timesheet). Completion for labels / urgency / assignee is seeded with the
   values already used on the loaded tasks (plus the account's tags and the
   project's people for those two), so common values are one keystroke away, and
-  you can still type a custom one. By
+  you can still type a custom one. `C-c C-o` loads the selected tasks' comments
+  on demand (see **Comments** below). By
   default management shows only **open** work — completed tasks and completed
   task lists are hidden (a clean "what's left" view); the header's **Tasks** and
   **Lists** buttons (persisted per account) reveal them — a completed task shows
@@ -43,12 +44,22 @@ buffer kinds share the same pull → edit → review-diff → streamed-apply flo
   and `URGENCY` are deliberately *not* named `TAGS`/`PRIORITY`, which Org reserves
   as special property names (Org would return the headline's tags / priority cookie
   instead of the drawer value).
-- **Comments** — each task's comments are shown **inline** in the management
-  buffer under a `# Comments` line (fetched with the pull, so there is no separate
-  buffer to open). Each existing comment is a `- author, YYYY-MM-DD HH:MM, `id``
-  header with its text below; edit the text of **your own** comment to change it
-  (editing someone else's is refused), or add a bodied `-` block to post a new
-  comment:
+- **Comments** — each task's comments live **inline** in the management buffer
+  under a `# Comments` line, but are **loaded on demand** so the pull stays fast
+  on big projects. A task with comments on the server shows a hint with the count:
+
+  ```
+  # Comments (3 — select + C-c C-o to load)
+  ```
+
+  Put point on a task (or **select a region** spanning several tasks) and press
+  `C-c C-o` (`teamwork-load-comments`): the comments for the selected existing
+  tasks are fetched and spliced in, rewriting only those sections — the rest of
+  the buffer, and any unsaved edits, are untouched. New (id-less) tasks in the
+  selection are skipped. Once loaded, each existing comment is a
+  `- author, YYYY-MM-DD HH:MM, `id`` header with its text below; edit the text of
+  **your own** comment to change it (editing someone else's is refused), or add a
+  bodied `-` block to post a new comment:
 
   ```
   # Comments
