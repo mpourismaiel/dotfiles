@@ -557,6 +557,12 @@ FloatingWindow {
     Component { id: cInvaders; MenuHost { pillW: 772; pillH: 556;
         InvadersMenu { id: inv; anchors.fill: parent; theme: theme; settings: mockSettings }
         Timer { running: true; interval: 60; onTriggered: inv.paused = false }
+        // in-flight bullets don't reach the flock before the grab — inject a few
+        // damage numbers so the still shows them mid-flight
+        Timer { running: true; interval: 550; onTriggered: {
+            inv.spawnDmg(inv.chickX(13), inv.chickY(13) - 10, 1);
+            inv.spawnDmg(inv.chickX(15), inv.chickY(15) - 10, 1);
+        } }
     } }
     // …its between-wave upgrade draft (three random bullet/ship cards)
     Component { id: cInvadersDraft; MenuHost { pillW: 772; pillH: 556;

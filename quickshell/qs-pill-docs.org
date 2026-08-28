@@ -1040,11 +1040,15 @@ H·L), dodging eggs and lining up shots. An egg hit or a chicken diving past the
 - *bullet* — streams of shot; tracks: Streams (+1, max 5 total), Rapid Fire
   (+20%/lv, max +100%), Skewers (pierce +1, max 2).
 - *laser* — an INSTANT full-height beam every 2s at the ship's x, alive
-  0.1s (+0.05s/lv, max 0.25s), 10% of a chicken wide (+20%pt/lv, max 90%),
+  0.3s (+0.05s/lv, max 0.45s), 10% of a chicken wide (+20%pt/lv, max 90%),
   damage 1→2; burns each crossing chicken once per firing (=laserHits=).
 - *vapor* — a rotating smoke orb launched every 1.2s, travelling at bullet
-  speed, 2 chickens square (+¼/lv, max 3), dealing 0.2 dps (+0.2/lv, max 1.0)
+  speed, 2 chickens square (+¼/lv, max 3), dealing 0.3 dps (+0.3/lv, max 1.5)
   to everything it overlaps (fractional chicken hp — tint indexes =ceil(hp)=).
+Every hit pops a *floating damage number* (=spawnDmg= → the =dmgs= pool: an
+overshoot pop, then it flies up, shrinking and fading over 600ms); vapor's drip
+aggregates per chicken into one number per half-second of burn (=va=/=vt=,
+flushed immediately on death).
 After clearing every *even* wave (2, 4, 6 …) a draft of three offers the chosen
 path's unmaxed tracks + the always-available *ship* tracks (Hull Plating +1 max
 hull & patch, Thrusters +30% speed, Evasion +10%/lv chance to whiff an egg, max

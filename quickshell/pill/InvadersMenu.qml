@@ -8,8 +8,10 @@ pragma ComponentBehavior: Bound
 //
 // The loop: a formation of chickens sweeps side-to-side and slowly descends,
 // raining eggs (egg drop speed steps up every 3rd wave). Your ship AUTOFIRES —
-// you only fly (←→ / H·L), dodging eggs and lining up shots. Egg hits and
-// chickens diving past the hull line each cost 1 hull; at 0 hull the run ends.
+// you only fly (←→ / H·L), dodging eggs and lining up shots. Every hit pops a
+// floating damage number that flies up, shrinking (vapor's drip aggregates into
+// one number per half-second of burn). Egg hits and chickens diving past the
+// hull line each cost 1 hull; at 0 hull the run ends.
 //
 // The roguelike part is the DRAFT. Before wave 1 you arm the ship: pick ONE of
 // three attack paths, locked for the whole run —
@@ -98,6 +100,7 @@ Item {
     property real laserT: 0                           // ms of beam life left (0 = off)
     property var laserHits: ({})                      // chicken slots already burned by this beam
     property var pops: []                             // kill puffs: { x, y, age }
+    property var dmgs: []                             // floating damage numbers: { x, y, age, txt }
     property real fx: 30                              // formation origin (sweeps)
     property real fy: 8                               //   … and descends
     property real formT: 0                            // ms since the wave spawned
@@ -116,13 +119,13 @@ Item {
     readonly property int pierce: root.lv.pierce || 0
     // laser path — an instant beam every laserMs, alive upMs, beamW wide
     readonly property real laserMs: 2000
-    readonly property real upMs: 100 + 50 * (root.lv.luptime || 0)
+    readonly property real upMs: 300 + 50 * (root.lv.luptime || 0)
     readonly property real beamW: root.chickW * (0.1 + 0.2 * (root.lv.lwidth || 0))
     readonly property real laserDmg: 1 + (root.lv.ldmg || 0)
     // vapor path — an orb every vaporMs, vaporSize square, vaporDps while overlapping
     readonly property real vaporMs: 1200
     readonly property real vaporSize: root.chickW * (2 + 0.25 * (root.lv.vsize || 0))
-    readonly property real vaporDps: 0.2 + 0.2 * (root.lv.vdmg || 0)
+    readonly property real vaporDps: 0.3 + 0.3 * (root.lv.vdmg || 0)
     readonly property int chickHp: 1 + Math.floor((root.wave - 1) / 2)
     readonly property real eggSpeed: 100 + 30 * Math.floor((root.wave - 1) / 3)   // steps up every 3rd wave
 
@@ -140,7 +143,7 @@ Item {
         "ldmg":     { "path": "laser",  "name": "Hot Beam",     "icon": "bolt",          "max": 1, "desc": "beam damage 1 → 2" },
         "luptime":  { "path": "laser",  "name": "Long Burn",    "icon": "timer",         "max": 3, "desc": "beam lingers +0.05s" },
         "vsize":    { "path": "vapor",  "name": "Big Cloud",    "icon": "open_in_full",  "max": 4, "desc": "cloud +¼ chicken size" },
-        "vdmg":     { "path": "vapor",  "name": "Acid Cloud",   "icon": "science",       "max": 4, "desc": "+0.2 damage per second" },
+        "vdmg":     { "path": "vapor",  "name": "Acid Cloud",   "icon": "science",       "max": 4, "desc": "+0.3 damage per second" },
         "plating":  { "path": "ship",   "name": "Hull Plating", "icon": "shield",        "max": 99, "desc": "+1 max hull, patch 1" },
         "thrusters":{ "path": "ship",   "name": "Thrusters",    "icon": "rocket_launch", "max": 99, "desc": "fly 30% faster" },
         "evasion":  { "path": "ship",   "name": "Evasion",      "icon": "alt_route",     "max": 5, "desc": "+10% chance to dodge eggs" }
@@ -174,7 +177,7 @@ Item {
             c.push({ "alive": true, "hp": root.chickHp });
         root.chix = c;
         root.aliveCount = c.length;
-        root.bullets = []; root.eggs = []; root.blobs = []; root.pops = [];
+        root.bullets = []; root.eggs = []; root.blobs = []; root.pops = []; root.dmgs = [];
         root.laserT = 0; root.laserHits = {};
         root.formT = 0; root.fireAcc = 0; root.invulnMs = 0;
         root.fx = (root.fieldW - root.cols * root.slotW) / 2; root.fy = 8;
@@ -349,6 +352,13 @@ Item {
         root.pops.push({ "x": x, "y": y, "age": 0 });
     }
 
+    // a floating damage number — pops in, flies up, shrinks and fades (see the
+    // dmgs render pool). One decimal, trailing .0 dropped ("1", "2", "0.6").
+    function spawnDmg(x, y, amount) {
+        if (root.dmgs.length >= 12) root.dmgs.shift();
+        root.dmgs.push({ "x": x, "y": y, "age": 0, "txt": (Math.round(amount * 10) / 10).toString() });
+    }
+
     // ---- the tick: ship → formation → weapon → projectiles → eggs → cleanup ----
     function tick() {
         var dt = 16;
@@ -377,6 +387,7 @@ Item {
                     if (!root.chix[lk].alive || root.laserHits[lk]) continue;
                     if (Math.abs(root.chickX(lk) - root.laserX) < root.beamW / 2 + 12) {
                         root.laserHits[lk] = true;
+                        root.spawnDmg(root.chickX(lk), root.chickY(lk) - 10, root.laserDmg);
                         root.damageChick(lk, root.laserDmg);
                     }
                 }
@@ -398,9 +409,24 @@ Item {
                 o.y -= 320 * dt / 1000;
                 if (o.y < -half) { root.blobs.splice(vb, 1); continue; }
                 for (var vk = 0; vk < root.chix.length; vk++) {
-                    if (!root.chix[vk].alive) continue;
-                    if (Math.abs(root.chickX(vk) - o.x) < half + 12 && Math.abs(root.chickY(vk) - o.y) < half + 11)
-                        root.damageChick(vk, root.vaporDps * dt / 1000);
+                    var cv = root.chix[vk];
+                    if (!cv.alive) continue;
+                    if (Math.abs(root.chickX(vk) - o.x) < half + 12 && Math.abs(root.chickY(vk) - o.y) < half + 11) {
+                        var dvp = root.vaporDps * dt / 1000;
+                        cv.va = (cv.va || 0) + dvp;   // aggregate the drip into one number
+                        root.damageChick(vk, dvp);
+                    }
+                }
+            }
+            // flush each chicken's aggregated vapor damage into a floating number
+            // every 500ms of burn (immediately on death, so no damage goes unseen)
+            for (var vf = 0; vf < root.chix.length; vf++) {
+                var cf = root.chix[vf];
+                if (!cf.va) continue;
+                cf.vt = (cf.vt || 0) + dt;
+                if (cf.vt >= 500 || !cf.alive) {
+                    root.spawnDmg(root.chickX(vf), root.chickY(vf) - 10, cf.va);
+                    cf.va = 0; cf.vt = 0;
                 }
             }
         } else {   // bullet (the default path)
@@ -415,6 +441,7 @@ Item {
             for (var k = 0; k < root.chix.length; k++) {
                 if (!root.chix[k].alive) continue;
                 if (Math.abs(b.x - root.chickX(k)) < 15 && Math.abs(b.y - root.chickY(k)) < 13) {
+                    root.spawnDmg(root.chickX(k), root.chickY(k) - 10, 1);
                     root.damageChick(k, 1);
                     if (b.thru > 0) b.thru--; else root.bullets.splice(i, 1);
                     break;
@@ -459,10 +486,14 @@ Item {
             }
         }
 
-        // kill puffs age out
+        // kill puffs + damage numbers age out
         for (var p = root.pops.length - 1; p >= 0; p--) {
             root.pops[p].age += dt;
             if (root.pops[p].age > 320) root.pops.splice(p, 1);
+        }
+        for (var dn = root.dmgs.length - 1; dn >= 0; dn--) {
+            root.dmgs[dn].age += dt;
+            if (root.dmgs[dn].age > 600) root.dmgs.splice(dn, 1);
         }
 
         root.simRev++;
@@ -775,6 +806,28 @@ Item {
                             height: (Math.floor(root.tSim / 96) % 2) ? 6 : 4
                             radius: 1.5
                             color: "#d68a3c"
+                        }
+                    }
+
+                    // ---- floating damage numbers (pop in → fly up, shrink, fade) ----
+                    Repeater {
+                        model: 12
+                        delegate: Text {
+                            required property int index
+                            readonly property bool live: { root.simRev; return index < root.dmgs.length; }
+                            readonly property real t: { root.simRev; return live ? root.dmgs[index].age / 600 : 0; }
+                            visible: live
+                            text: { root.simRev; return live ? root.dmgs[index].txt : ""; }
+                            x: { root.simRev; return live ? root.dmgs[index].x - width / 2 : 0; }
+                            // eased upward flight (fast at birth, settling near the top)
+                            y: { root.simRev; return live ? root.dmgs[index].y - 26 * (1 - (1 - t) * (1 - t)) : 0; }
+                            // quick overshoot pop, then shrink away
+                            scale: t < 0.2 ? 0.6 + 2.5 * t : 1.1 - 0.55 * (t - 0.2) / 0.8
+                            opacity: t < 0.75 ? 1 : 1 - (t - 0.75) / 0.25
+                            color: "#f2e8d5"
+                            font.family: root.theme.mono
+                            font.pixelSize: 12
+                            font.bold: true
                         }
                     }
                 }
