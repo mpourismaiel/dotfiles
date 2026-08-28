@@ -997,6 +997,7 @@ ShellRoot {
             property var blockBlast: ({})    // saved Block Blast game (board/tray/score/combo) — see BlockBlastMenu
             property var brickBreaker: ({})  // saved Brick Breaker game (grid/round/balls/launchX/best) — see BrickBreakerMenu
             property var snake: ({})         // saved Snake game (body/dir/apple/score/best) — see SnakeMenu
+            property var minesweeper: ({})   // Minesweeper best times per difficulty + selected level — see MinesweeperMenu
             // ---- optional features (configured from the launcher's Settings page) ----
             // Both ship OFF so a fresh checkout works without an org/hledger setup;
             // enabling them in Settings persists here and points the bridges at a
@@ -1092,7 +1093,7 @@ ShellRoot {
             readonly property bool restUnderline: !orgHidden
                 && (orgAgenda.hasDue || calEvents.hasMeetingSoon)
             property bool dash: open || launcher || focused || ctxMode
-            property int menu: 4 // 0 net, 1 vol, 2 bt, 3 batt, 5 clipboard, 6 calendar, 7 voice memo, 8 finance, 9 tetris, 10 block blast, 11 games, 12 brick breaker, 13 settings, 14 snake, 15 done, 16 emoji, 4 notif (default pane)
+            property int menu: 4 // 0 net, 1 vol, 2 bt, 3 batt, 5 clipboard, 6 calendar, 7 voice memo, 8 finance, 9 tetris, 10 block blast, 11 games, 12 brick breaker, 13 settings, 14 snake, 15 done, 16 emoji, 17 minesweeper, 4 notif (default pane)
             // a native folder picker (kdialog/zenity) is a normal window, so it opens
             // BENEATH this Overlay-layer surface. While one is up we make the whole
             // overlay click-through (empty mask) and hide the pill, so the dialog is
@@ -1153,6 +1154,12 @@ ShellRoot {
             // (no specials legend), so the field is the tall element here.
             readonly property int snakeWidth: 560
             readonly property int snakeHeight: 400
+            // Minesweeper (menu 17) reuses Snake's two-column layout: a fixed square
+            // well (the cell scales with the chosen grid so the board never resizes)
+            // beside a difficulty selector + stats + rules + button. Sized like Snake,
+            // a touch taller for the extra difficulty row.
+            readonly property int mineWidth: 560
+            readonly property int mineHeight: 420
             // the emoji picker (menu 16) runs a touch wider than a normal menu so a
             // roomy grid (≈12 columns) sits beside the search field + category tabs,
             // and taller so plenty of rows show before scrolling.
@@ -1160,12 +1167,12 @@ ShellRoot {
             readonly property int emojiHeight: 470
             // the game panes are draggable-to-park by the same machinery — only one is
             // ever open at a time, so they share the tetris* park state below.
-            readonly property bool gamePane: win.open && (win.menu === 9 || win.menu === 10 || win.menu === 12 || win.menu === 14)
+            readonly property bool gamePane: win.open && (win.menu === 9 || win.menu === 10 || win.menu === 12 || win.menu === 14 || win.menu === 17)
             readonly property int openHeight: 470
             // open + launcher pill height
             // the clipboard-history menu runs 200px taller than the other panes so more
             // history is visible; every other open menu (and the launcher) uses openHeight.
-            readonly property int openPaneHeight: (open && menu === 5) ? openHeight + 200 : (open && menu === 7) ? 440 : (open && menu === 13) ? settingsHeight : (open && menu === 15) ? doneHeight : (open && menu === 12) ? brickHeight : (open && menu === 14) ? snakeHeight : (open && (menu === 9 || menu === 10)) ? tetrisHeight : (open && menu === 16) ? emojiHeight : openHeight
+            readonly property int openPaneHeight: (open && menu === 5) ? openHeight + 200 : (open && menu === 7) ? 440 : (open && menu === 13) ? settingsHeight : (open && menu === 15) ? doneHeight : (open && menu === 12) ? brickHeight : (open && menu === 14) ? snakeHeight : (open && menu === 17) ? mineHeight : (open && (menu === 9 || menu === 10)) ? tetrisHeight : (open && menu === 16) ? emojiHeight : openHeight
             // hovered dashboard geometry (its own generous, HTML-scale size — distinct
             // from the open menu's 520 so the two rows can breathe).
             readonly property int hoverWidth: 640
@@ -1700,6 +1707,21 @@ ShellRoot {
                 }
             }
 
+            // open (or toggle shut) the Minesweeper pane (menu 17) — routed from the
+            // games list (see the menuLoader Connections). Mouse-only (no keyboard
+            // grab). Mirrors openSnake.
+            function openMinesweeper() {
+                if (win.open && win.menu === 17) {
+                    win.closeMenu();
+                } else {
+                    win.launcher = false;
+                    win.ctxGroup = null;
+                    win.trayItem = null;
+                    win.menu = 17;
+                    win.open = true;
+                }
+            }
+
             onDashChanged: {
                 if (!win.dash) {
                     win.hoverItem = null;
@@ -1709,7 +1731,7 @@ ShellRoot {
             // a closed (or non-game) pane forgets the dragged park position, so
             // reopening a game starts centred again.
             onOpenChanged: if (!win.open) win.tetrisMoved = false;
-            onMenuChanged: if (win.menu !== 9 && win.menu !== 10 && win.menu !== 12 && win.menu !== 14) win.tetrisMoved = false;
+            onMenuChanged: if (win.menu !== 9 && win.menu !== 10 && win.menu !== 12 && win.menu !== 14 && win.menu !== 17) win.tetrisMoved = false;
             screen: modelData
             WlrLayershell.layer: WlrLayer.Overlay
             // take the keyboard only when the pill genuinely needs it (see
@@ -2067,7 +2089,7 @@ ShellRoot {
                 // exactly as the old body handler did.
                 // the voice recorder leads the chains: a larger resting pill (220x36,
                 // iPhone-memo style) — voiceMorph already yields to open/launcher/ctx.
-                width: win.capShow ? (captureLoader.item ? captureLoader.item.implicitWidth + theme.pad * 2 : 520) : win.voiceMorph ? 220 : win.showBurst ? (burstLoader.item ? burstLoader.item.implicitWidth : 96) : win.launcher ? win.launcherWidth : win.ctxMode ? 520 : (win.notifMorph ? (morphStack.item ? morphStack.item.implicitWidth : 420) : (win.open ? (win.menu === 13 ? win.settingsWidth : win.menu === 15 ? win.doneWidth : win.menu === 16 ? win.emojiWidth : win.menu === 6 || win.menu === 8 ? win.calWidth : win.menu === 12 ? win.brickWidth : win.menu === 14 ? win.snakeWidth : (win.menu === 9 || win.menu === 10) ? win.tetrisWidth : 520) : (win.dash ? win.hoverWidth : Math.max(56, collapsedPill.implicitWidth + 23))))
+                width: win.capShow ? (captureLoader.item ? captureLoader.item.implicitWidth + theme.pad * 2 : 520) : win.voiceMorph ? 220 : win.showBurst ? (burstLoader.item ? burstLoader.item.implicitWidth : 96) : win.launcher ? win.launcherWidth : win.ctxMode ? 520 : (win.notifMorph ? (morphStack.item ? morphStack.item.implicitWidth : 420) : (win.open ? (win.menu === 13 ? win.settingsWidth : win.menu === 15 ? win.doneWidth : win.menu === 16 ? win.emojiWidth : win.menu === 6 || win.menu === 8 ? win.calWidth : win.menu === 12 ? win.brickWidth : win.menu === 14 ? win.snakeWidth : win.menu === 17 ? win.mineWidth : (win.menu === 9 || win.menu === 10) ? win.tetrisWidth : 520) : (win.dash ? win.hoverWidth : Math.max(56, collapsedPill.implicitWidth + 23))))
                 // in ctx mode the pill sizes to whichever menu loader is active (app
                 // context menu or tray menu).
                 height: win.capShow ? (captureLoader.item ? captureLoader.item.implicitHeight + theme.pad * 2 : 120) : win.voiceMorph ? 36 : win.showBurst ? (burstLoader.item ? burstLoader.item.implicitHeight : 28) : (win.open || win.launcher) ? win.openPaneHeight : win.ctxMode ? Math.min(win.openHeight, ((ctxLoader.item || trayLoader.item) ? (ctxLoader.item || trayLoader.item).implicitHeight + theme.pad * 2 : 300)) : (win.notifMorph ? morphStack.implicitHeight : (win.dash ? win.hoverHeight : Math.max(win.restUnderline ? 48 : 28, collapsedPill.implicitHeight + 7)))
@@ -3097,7 +3119,7 @@ ShellRoot {
     
                         anchors.fill: parent
                         active: win.open
-                        sourceComponent: win.menu === 0 ? cNet : win.menu === 1 ? cVol : win.menu === 2 ? cBt : win.menu === 3 ? cBatt : win.menu === 5 ? cClip : win.menu === 6 ? cCal : win.menu === 7 ? cVoice : win.menu === 8 ? cFin : win.menu === 9 ? cTetris : win.menu === 10 ? cBlockBlast : win.menu === 11 ? cGames : win.menu === 12 ? cBrickBreaker : win.menu === 13 ? cSettings : win.menu === 14 ? cSnake : win.menu === 15 ? cDone : win.menu === 16 ? cEmoji : cNotif
+                        sourceComponent: win.menu === 0 ? cNet : win.menu === 1 ? cVol : win.menu === 2 ? cBt : win.menu === 3 ? cBatt : win.menu === 5 ? cClip : win.menu === 6 ? cCal : win.menu === 7 ? cVoice : win.menu === 8 ? cFin : win.menu === 9 ? cTetris : win.menu === 10 ? cBlockBlast : win.menu === 11 ? cGames : win.menu === 12 ? cBrickBreaker : win.menu === 13 ? cSettings : win.menu === 14 ? cSnake : win.menu === 15 ? cDone : win.menu === 16 ? cEmoji : win.menu === 17 ? cMine : cNotif
                     }
                     // chevron back -> collapse panel
     
@@ -3125,7 +3147,8 @@ ShellRoot {
                         }
 
                         // GamesMenu (menu 11) row picked → hand off to that game's own
-                        // pane (Tetris 9 / Block Blast 10 / Brick Breaker 12).
+                        // pane (Tetris 9 / Block Blast 10 / Brick Breaker 12 / Snake 14 /
+                        // Minesweeper 17).
                         function onPlayRequested(gameMenu) {
                             if (gameMenu === 9)
                                 win.openTetris();
@@ -3135,6 +3158,8 @@ ShellRoot {
                                 win.openBrickBreaker();
                             else if (gameMenu === 14)
                                 win.openSnake();
+                            else if (gameMenu === 17)
+                                win.openMinesweeper();
                         }
 
                         // game park-drag (Tetris / Block Blast header grip): translate the
@@ -3169,7 +3194,7 @@ ShellRoot {
                         z: -1
                         theme: theme
                         target: menuLoader.item
-                        active: win.kbNav && win.open && win.menu !== 4 && win.menu !== 5 && win.menu !== 9 && win.menu !== 10 && win.menu !== 12 && win.menu !== 13 && win.menu !== 15 && win.menu !== 16
+                        active: win.kbNav && win.open && win.menu !== 4 && win.menu !== 5 && win.menu !== 9 && win.menu !== 10 && win.menu !== 12 && win.menu !== 13 && win.menu !== 15 && win.menu !== 16 && win.menu !== 17
                         shortcuts: win.menu === 6
                         onEscaped: win.open = false // back to the expanded dashboard
                         onShortcutRequested: (m) => {
@@ -3627,6 +3652,7 @@ ShellRoot {
     Component { id: cGames; GamesMenu { theme: theme; settings: settings } }
     Component { id: cBrickBreaker; BrickBreakerMenu { theme: theme; settings: settings } }
     Component { id: cSnake; SnakeMenu { theme: theme; settings: settings } }
+    Component { id: cMine; MinesweeperMenu { theme: theme; settings: settings } }
     Component { id: cSettings; SettingsMenu { theme: theme; acc: accounts; settings: settings; themeSettings: themeAdapter; picker: root.pickFolder } }
     Component { id: cDone; DoneMenu { theme: theme; done: doneState } }
     Component { id: cEmoji; EmojiMenu { theme: theme; settings: settings } }

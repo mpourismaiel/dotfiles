@@ -95,6 +95,7 @@ FloatingWindow {
             "apple": { "x": 11, "y": 3 },
             "score": 14, "best": 22, "over": false
         })
+        property var minesweeper: ({ "diff": 0, "best": [ 42, 0, 0 ] })
     }
 
     // stand-in for DoneState (seeded CODE + AGENDA data, no bridge calls)
@@ -157,6 +158,7 @@ FloatingWindow {
         { name: "menu-blockblast-combo", comp: cBlockBlastCombo },
         { name: "menu-blockblast-share", comp: cBlockBlastShare },
         { name: "menu-snake",    comp: cSnake },
+        { name: "menu-minesweeper", comp: cMine },
         { name: "settings",      comp: cSettings },
         { name: "settings-productivity", comp: cSettingsProd },
         { name: "menu-emoji",    comp: cEmoji },
@@ -497,6 +499,12 @@ FloatingWindow {
     Component { id: cSnake; MenuHost { pillW: 560; pillH: 400;
         SnakeMenu { id: snk; anchors.fill: parent; theme: theme; settings: mockSettings }
         Timer { running: true; interval: 60; onTriggered: snk.paused = false }
+    } }
+    // Minesweeper — reveal a couple of cells after load so the field shows numbers /
+    // flood-filled area rather than a blank grid. Preview only.
+    Component { id: cMine; MenuHost { pillW: 560; pillH: 420;
+        MinesweeperMenu { id: mine; anchors.fill: parent; theme: theme; settings: mockSettings }
+        Timer { running: true; interval: 60; onTriggered: { mine.reveal(20); mine.toggleFlag(0); } }
     } }
     // the launcher's Settings page (Org Agenda page shown: toggle + directory field)
     Component { id: cSettings; MenuHost { pillW: 860; pillH: 580; SettingsMenu { anchors.fill: parent; theme: theme; acc: null; settings: mockSettings; themeSettings: mockThemeSettings; page: 0 } } }
