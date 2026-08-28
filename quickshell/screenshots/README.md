@@ -65,11 +65,26 @@ dashboard row layout (kept in sync by eye against `../pill/init.qml`).
 
 ## Stages rendered (stills)
 
+The authoritative list is `pill/harness.qml` `_states` (mirrored in `check.sh`
+`PILL_STATES` — keep the two in sync). Currently:
+
 - **emaqs (7):** collapsed, working, finished, permission, bar, menu, confirm
-- **pill (22):** resting, resting-rec, resting-due, deadlines, dashboard, menu-network,
-  menu-volume, menu-bluetooth, menu-battery, menu-clipboard, menu-calendar, menu-finance,
-  menu-finance-add, menu-finance-wishlist, menu-finance-forecast, menu-finance-plan,
-  menu-notifhistory, notif-stack, power-hush, power-blaze, power-ledger, power-split
+- **pill (46):** resting, resting-rec, resting-due, resting-meeting, clock-styles,
+  deadlines, dashboard, menu-network, menu-volume, menu-bluetooth, menu-battery,
+  menu-clipboard, menu-calendar, menu-finance{,-add,-wishlist,-forecast,-plan,-register,-category},
+  menu-games, menu-tetris{,-share}, menu-blockblast{,-combo,-share}, menu-brickbreaker,
+  menu-snake, menu-minesweeper, menu-invaders{,-draft,-path,-laser,-vapor}, settings,
+  settings-productivity, menu-emoji{,-search}, menu-done{,-loading}, menu-notifhistory,
+  notif-stack, power-hush, power-blaze, power-ledger, power-split
+
+**Every new game gets its own stage(s) — in the same change that adds the game.**
+Recipe: seed a *mid-game* state in `mockSettings` (`mockSettings.<game>`, matching
+the game's `save()` shape), add a `Component` + `_states` entry, and append the
+stage name to `check.sh` `PILL_STATES`. Games open paused / behind veils, so the
+stage usually needs a post-load `Timer` (unpause, reveal cells, roll a draft…) so
+the PNG shows a real board. Then *look at the PNG* — stale-render bugs load clean
+but screenshot as an empty board. This keeps the per-edit test loop at ~2s
+(`shoot.sh menu-<game>`) instead of hand-driving the live pill.
 
 ## Animation scenes (`pill/anim.qml` `_scenes`)
 

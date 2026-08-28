@@ -96,6 +96,37 @@ FloatingWindow {
             "score": 14, "best": 22, "over": false
         })
         property var minesweeper: ({ "diff": 0, "best": [ 42, 0, 0 ] })
+        // seed a mid-game Brick Breaker (round 12): a wall of mixed-health bricks
+        // with a few specials so the palette + legend icons show
+        property var brickBreaker: ({
+            "grid": (function () {
+                var g = [];
+                var specs = { "3": "spray", "8": "explode", "16": "addball", "22": "spray" };
+                for (var r = 0; r < 10; r++) {
+                    var row = [];
+                    for (var c = 0; c < 6; c++) {
+                        var i = r * 6 + c;
+                        if (r < 5 && (i % 4 !== 1 || r === 0)) {
+                            var hp = 12 - r * 2 - (c % 3);
+                            row.push({ "hp": hp, "max": hp, "special": specs[String(i)] || "" });
+                        } else
+                            row.push(null);
+                    }
+                    g.push(row);
+                }
+                return g;
+            })(),
+            "round": 12, "balls": 14, "launchX": 180, "over": false, "best": 18
+        })
+        // seed a mid-run Chicken Invaders (wave 4, bullet path, a few picks) so the
+        // formation shows tinted multi-hp chickens and the sidebar loadout renders
+        property var invaders: ({
+            "wave": 4, "score": 385, "hp": 3, "maxHp": 4,
+            "path": "bullet",
+            "lv": { "count": 2, "rapid": 1, "plating": 1, "evasion": 1 },
+            "picks": 6, "draft": false, "over": false,
+            "best": { "score": 1210, "wave": 9 }
+        })
     }
 
     // stand-in for DoneState (seeded CODE + AGENDA data, no bridge calls)
@@ -152,13 +183,20 @@ FloatingWindow {
         { name: "menu-finance-plan", comp: cFinPlan },
         { name: "menu-finance-register", comp: cFinReg },
         { name: "menu-finance-category", comp: cFinCat },
+        { name: "menu-games",    comp: cGames },
         { name: "menu-tetris",   comp: cTetris },
         { name: "menu-tetris-share", comp: cTetrisShare },
         { name: "menu-blockblast", comp: cBlockBlast },
         { name: "menu-blockblast-combo", comp: cBlockBlastCombo },
         { name: "menu-blockblast-share", comp: cBlockBlastShare },
+        { name: "menu-brickbreaker", comp: cBrick },
         { name: "menu-snake",    comp: cSnake },
         { name: "menu-minesweeper", comp: cMine },
+        { name: "menu-invaders", comp: cInvaders },
+        { name: "menu-invaders-draft", comp: cInvadersDraft },
+        { name: "menu-invaders-path", comp: cInvadersPath },
+        { name: "menu-invaders-laser", comp: cInvadersLaser },
+        { name: "menu-invaders-vapor", comp: cInvadersVapor },
         { name: "settings",      comp: cSettings },
         { name: "settings-productivity", comp: cSettingsProd },
         { name: "menu-emoji",    comp: cEmoji },
@@ -494,6 +532,14 @@ FloatingWindow {
         BlockBlastMenu { id: bsh; anchors.fill: parent; theme: theme; settings: mockSettings }
         Timer { running: true; interval: 60; onTriggered: { bsh.shotName = "blockblast-20260807-101500.png"; bsh.shareMode = true; } }
     } }
+    // the Games picker (menu 11) — six cards with seeded best scores
+    Component { id: cGames; MenuHost { pillW: 520; pillH: 524; GamesMenu { anchors.fill: parent; theme: theme; settings: mockSettings } } }
+    // Brick Breaker between rounds (seeded round-12 wall; opens paused → unpaused
+    // so the aim-ready field shows instead of the veil). Preview only.
+    Component { id: cBrick; MenuHost { pillW: 576; pillH: 416;
+        BrickBreakerMenu { id: brk; anchors.fill: parent; theme: theme; settings: mockSettings }
+        Timer { running: true; interval: 60; onTriggered: brk.paused = false }
+    } }
     // Snake — unpaused after load so the field (snake + digesting lump + apple) is
     // visible rather than under the PAUSED veil. Preview only.
     Component { id: cSnake; MenuHost { pillW: 560; pillH: 400;
@@ -505,6 +551,56 @@ FloatingWindow {
     Component { id: cMine; MenuHost { pillW: 560; pillH: 420;
         MinesweeperMenu { id: mine; anchors.fill: parent; theme: theme; settings: mockSettings }
         Timer { running: true; interval: 60; onTriggered: { mine.reveal(20); mine.toggleFlag(0); } }
+    } }
+    // Chicken Invaders mid-wave (seeded wave-4 run; unpaused so the ~800ms grab
+    // window catches the sweeping flock + autofire bullets). Preview only.
+    Component { id: cInvaders; MenuHost { pillW: 772; pillH: 556;
+        InvadersMenu { id: inv; anchors.fill: parent; theme: theme; settings: mockSettings }
+        Timer { running: true; interval: 60; onTriggered: inv.paused = false }
+    } }
+    // …its between-wave upgrade draft (three random bullet/ship cards)
+    Component { id: cInvadersDraft; MenuHost { pillW: 772; pillH: 556;
+        InvadersMenu { id: invd; anchors.fill: parent; theme: theme; settings: mockSettings }
+        Timer { running: true; interval: 60; onTriggered: invd.rollDraft() }
+    } }
+    // …the level-0 "arm your ship" path draft (fresh run, no seed)
+    Component { id: cInvadersPath; MenuHost { pillW: 772; pillH: 556;
+        QtObject { id: freshSet; property var invaders: ({}) }
+        InvadersMenu { anchors.fill: parent; theme: theme; settings: freshSet }
+    } }
+    // …the laser path mid-beam (seeded run; the beam is forced on just before the
+    // grab so the still catches it lit)
+    Component { id: cInvadersLaser; MenuHost { pillW: 772; pillH: 556;
+        QtObject {
+            id: laserSet
+            property var invaders: ({
+                "wave": 5, "score": 520, "hp": 4, "maxHp": 4,
+                "path": "laser", "lv": { "lwidth": 2, "luptime": 1, "plating": 1 },
+                "picks": 5, "draft": false, "over": false,
+                "best": { "score": 1210, "wave": 9 }
+            })
+        }
+        InvadersMenu { id: invl; anchors.fill: parent; theme: theme; settings: laserSet }
+        Timer { running: true; interval: 60; onTriggered: invl.paused = false }
+        Timer { running: true; interval: 500; onTriggered: { invl.laserX = invl.shipX; invl.laserT = 400; invl.laserHits = ({}); } }
+    } }
+    // …the vapor path with two orbs mid-flight (injected so the still shows them)
+    Component { id: cInvadersVapor; MenuHost { pillW: 772; pillH: 556;
+        QtObject {
+            id: vaporSet
+            property var invaders: ({
+                "wave": 5, "score": 470, "hp": 3, "maxHp": 3,
+                "path": "vapor", "lv": { "vsize": 2, "vdmg": 1 },
+                "picks": 4, "draft": false, "over": false,
+                "best": { "score": 1210, "wave": 9 }
+            })
+        }
+        InvadersMenu { id: invv; anchors.fill: parent; theme: theme; settings: vaporSet }
+        Timer { running: true; interval: 60; onTriggered: invv.paused = false }
+        Timer { running: true; interval: 350; onTriggered: invv.blobs = [
+            { "x": invv.shipX, "y": invv.shipY - 130 },
+            { "x": invv.shipX - 70, "y": invv.shipY - 290 }
+        ] }
     } }
     // the launcher's Settings page (Org Agenda page shown: toggle + directory field)
     Component { id: cSettings; MenuHost { pillW: 860; pillH: 580; SettingsMenu { anchors.fill: parent; theme: theme; acc: null; settings: mockSettings; themeSettings: mockThemeSettings; page: 0 } } }

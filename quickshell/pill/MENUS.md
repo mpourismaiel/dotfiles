@@ -32,16 +32,21 @@ The dispatch lives in `init.qml`:
 | 15 | cDone | DoneMenu.qml | Done button (git + agenda work history) |
 | 16 | cEmoji | EmojiMenu.qml | smiley button |
 | 17 | cMine | MinesweeperMenu.qml | Games menu (mouse-only) |
+| 18 | cInvaders | InvadersMenu.qml | Games menu (Chicken Invaders roguelike) |
 
 Notes:
 - **4 is the default** — the fallback branch of the dispatch ternary is `cNotif`.
-- Games (9, 10, 12, 14, 17) are launched *through* the Games picker (menu 11,
+- Games (9, 10, 12, 14, 17, 18) are launched *through* the Games picker (menu 11,
   `GamesMenu.qml`), which routes clicks via `playRequested(gameMenu)` →
   `openTetris` / `openBlockBlast` / etc. in `init.qml`. Add a new game by
-  dropping a row into `GamesMenu.games` **and** wiring its pane here.
-- Panes that grab the keyboard: 4, 5, 9, 12, 14, 16 (see `grabsKeyboard` in
+  dropping a row into `GamesMenu.games` **and** wiring its pane here — and give
+  it a screenshot-harness stage (`../screenshots/`, see CLAUDE.md rule 6).
+- Panes that grab the keyboard: 4, 5, 9, 12, 14, 16, 18 (see `grabsKeyboard` in
   `init.qml`). Game panes with a custom size: 9/10 (tetris), 12 (brick), 14
-  (snake), plus 13 (settings), 15 (done), 16 (emoji), 17 (minesweeper).
+  (snake), plus 11 (games list), 13 (settings), 15 (done), 16 (emoji), 17
+  (minesweeper), 18 (invaders).
 - Minesweeper (17) is mouse-only — it stays out of `grabsKeyboard` (like Block
   Blast) but is in `gamePane` (park-draggable by the header grip).
-- The next free index is **18**.
+- The Games picker (11) sizes to its card count (`gamesHeight`) — it outgrew the
+  generic `openHeight` at six games.
+- The next free index is **19**.

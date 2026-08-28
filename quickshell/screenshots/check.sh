@@ -10,10 +10,16 @@ OUT="${SHOT_DIR:-/tmp/shot}/out"
 fail=0
 
 EMAQS_STATES=(collapsed working finished permission bar menu confirm)
-PILL_STATES=(resting resting-rec resting-due deadlines dashboard menu-network menu-volume menu-bluetooth \
-             menu-battery menu-clipboard menu-calendar menu-finance menu-finance-add \
-             menu-finance-wishlist menu-finance-forecast menu-finance-plan menu-finance-register menu-finance-category menu-tetris menu-blockblast menu-blockblast-combo menu-snake settings settings-productivity menu-emoji menu-emoji-search menu-done menu-done-loading menu-notifhistory notif-stack \
-             power-hush power-blaze power-ledger power-split)
+# keep this in sync with pill/harness.qml `_states` — every stage there is asserted here
+PILL_STATES=(resting resting-rec resting-due resting-meeting clock-styles deadlines dashboard \
+             menu-network menu-volume menu-bluetooth menu-battery menu-clipboard menu-calendar \
+             menu-finance menu-finance-add menu-finance-wishlist menu-finance-forecast \
+             menu-finance-plan menu-finance-register menu-finance-category \
+             menu-games menu-tetris menu-tetris-share menu-blockblast menu-blockblast-combo \
+             menu-blockblast-share menu-brickbreaker menu-snake menu-minesweeper \
+             menu-invaders menu-invaders-draft menu-invaders-path menu-invaders-laser menu-invaders-vapor \
+             settings settings-productivity menu-emoji menu-emoji-search menu-done menu-done-loading \
+             menu-notifhistory notif-stack power-hush power-blaze power-ledger power-split)
 
 echo "==> running shoot.sh"
 if ! bash "$HERE/shoot.sh" 2>&1 | grep -iE 'error|warning' | grep -viE 'qt\.qpa'; then :; else

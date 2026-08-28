@@ -14,7 +14,7 @@ Item {
     required property var theme
     required property var settings          // shared JsonAdapter — best scores live under settings.<game>
     signal closeRequested()
-    signal playRequested(int gameMenu)      // 9 = Tetris, 10 = Block Blast, 12 = Brick Breaker, 14 = Snake, 17 = Minesweeper
+    signal playRequested(int gameMenu)      // 9 = Tetris, 10 = Block Blast, 12 = Brick Breaker, 14 = Snake, 17 = Minesweeper, 18 = Chicken Invaders
 
     // one entry per game. `glyph` is a 3×2 cell mask drawn as little squares (the
     // same identity the old clock-side buttons used); `best` reads each game's
@@ -55,6 +55,13 @@ Item {
             // best is the fastest Beginner clear (seconds); 0 until first win
             "best": (root.settings.minesweeper && root.settings.minesweeper.best && root.settings.minesweeper.best[0]) || 0,
             "glyph": [[0, 0], [2, 0], [0, 1], [2, 1]]     // scattered mines
+        },
+        {
+            "menu": 18,
+            "name": "Chicken Invaders",
+            "desc": "Dodge the eggs, blast the flock, draft upgrades.",
+            "best": (root.settings.invaders && root.settings.invaders.best && root.settings.invaders.best.score) || 0,
+            "glyph": [[0, 0], [1, 0], [2, 0], [0, 1], [2, 1]]     // invader arch
         }
     ]
 

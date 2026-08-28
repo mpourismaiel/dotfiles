@@ -66,7 +66,7 @@ if [ -z "$TARGET" ]; then
 else
   echo "==> rendering pill states matching '$TARGET' (targeted)"
 fi
-( cd "$PW" && timeout 35 bash -c 'RUN harness.qml' ) 2>&1 \
+( cd "$PW" && timeout 90 bash -c 'RUN harness.qml' ) 2>&1 \
   | sed 's/\x1b\[[0-9;]*m//g' | grep -iE 'error|warning' | grep -viE 'qt\.qpa' || true
 
 if [ -z "$TARGET" ]; then

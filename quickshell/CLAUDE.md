@@ -28,3 +28,11 @@ Rules:
    live-safe).
 5. Start with `pill/README.md` / `emaqs/README.md` for the file map and
    architecture; each source file's header comment says what it is.
+6. **Every new game pane ships with its own screenshot-harness stage, in the
+   same change.** Add a seeded mid-game mock (`mockSettings.<game>`) + a stage
+   to `screenshots/pill/harness.qml` `_states`, and the stage name to
+   `screenshots/check.sh` `PILL_STATES`. Games open paused / behind veils —
+   have the stage unpause or otherwise reveal a real board, then *look at the
+   PNG* (stale-render bugs pass the load check but show as blank boards).
+   While iterating, use the targeted loop `screenshots/shoot.sh menu-<game>`
+   (~2s) instead of a full pass; finish with one full `screenshots/check.sh`.

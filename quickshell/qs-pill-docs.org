@@ -1018,6 +1018,67 @@ saved on every step and on destruction; =best= is shown in the Games list.
 *** Code
 Code: [[file:pill/SnakeMenu.qml][=pill/SnakeMenu.qml=]]
 
+** InvadersMenu.qml
+*** Description
+*Chicken Invaders* (=win.menu === 18=), a roguelike mini shooter routed from the
+Games list (=onPlayRequested(18) → win.openInvaders()=). Same two-column game
+layout, but with a roomy 495×490 *starfield well* on the left — a fixed pool of
+72 white dots at five index-derived opacity tiers whose y *drifts down and wraps*
+(brighter = faster, a cheap parallax "travelling" effect; the wrap means nothing
+is ever instantiated off-view) — stats / loadout / rules / buttons on the right;
+the largest game pane (=invadersWidth= 772 × =invadersHeight= 556), the shared
+*park grip*, in =grabsKeyboard=, opens *paused*.
+
+*The loop.* A formation of chickens (6 columns × 2–4 rows) sweeps side-to-side and
+slowly descends, raining eggs (drop speed *steps up every 3rd wave*; eggs pop in
+and tumble as they fall). The ship *autofires* — the player only flies (←→ /
+H·L), dodging eggs and lining up shots. An egg hit or a chicken diving past the
+*hull line* costs 1 hull (1.2s blink-mercy window); at 0 hull the run ends.
+
+*The roguelike draft.* Before wave 1 an "ARM YOUR SHIP" draft picks ONE of three
+*attack paths*, locked for the run (=path=; the other two never appear again):
+- *bullet* — streams of shot; tracks: Streams (+1, max 5 total), Rapid Fire
+  (+20%/lv, max +100%), Skewers (pierce +1, max 2).
+- *laser* — an INSTANT full-height beam every 2s at the ship's x, alive
+  0.1s (+0.05s/lv, max 0.25s), 10% of a chicken wide (+20%pt/lv, max 90%),
+  damage 1→2; burns each crossing chicken once per firing (=laserHits=).
+- *vapor* — a rotating smoke orb launched every 1.2s, travelling at bullet
+  speed, 2 chickens square (+¼/lv, max 3), dealing 0.2 dps (+0.2/lv, max 1.0)
+  to everything it overlaps (fractional chicken hp — tint indexes =ceil(hp)=).
+After clearing every *even* wave (2, 4, 6 …) a draft of three offers the chosen
+path's unmaxed tracks + the always-available *ship* tracks (Hull Plating +1 max
+hull & patch, Thrusters +30% speed, Evasion +10%/lv chance to whiff an egg, max
+50%) — capped at *15 picks per run* (path pick included, =picks/maxPicks=). Odd
+waves, and clears with nothing left to offer, breathe through a 1.5s *interlude
+veil* (=wavePause= + =waveGap=) instead. Draft cards are centred over the field:
+arrows move a highlight (=draftSel=, hover follows), *Enter/Space* picks, *1/2/3*
+jump-picks, clicking works. Waves scale: chicken hp =1 + ⌊(wave−1)/2⌋=, denser
+eggs, an extra row every 3 waves capped at 4. The *sidebar loadout* lists the
+path name, the pick budget and every reachable track with its level (dim = not
+taken). Upgrades last *one run* — only =best= survives death.
+
+*Simulation.* One 16ms tick moves the ship, sweeps the formation (a single
+=(fx, fy)= origin + per-slot sine wobble — the whole flock is two properties),
+runs the armed weapon (bullet volleys / the laser window / vapor orbs),
+integrates projectiles, spawns eggs at a wave-scaled flock-wide rate, resolves
+collisions and ages kill-puffs. Everything lives in plain JS arrays rendered
+through *fixed delegate pools* re-reading positions on a per-tick =simRev= bump
+(Snake's pool pattern — no delegate churn, no stale =var=-mutation renders).
+=chickX/chickY(i)= are shared by sim and render so hitboxes match pixels.
+
+*Controls.* ←→ / *H·L* fly (held-key state via press/release, autorepeat
+ignored), *P* pause, *N* new run, arrows + *Enter/Space* (or *1/2/3*) in a
+draft, *Esc* closes; on game over ("COOP COOKED") Enter/Space restarts (into a
+fresh ARM YOUR SHIP draft).
+
+*Persistence* to =settings.invaders= (wave, score, hull, =path=, =lv= track
+levels, =picks=, draft flag, over, best) — *flight is transient*: reopening
+mid-wave restarts that wave fresh, and a run closed mid-draft re-rolls (the path
+draft if unarmed, an advancing upgrade draft otherwise). =best.score= is shown
+in the Games list.
+*** Code
+Code: [[file:pill/InvadersMenu.qml][=pill/InvadersMenu.qml=]]
+
 ** EmojiMenu.qml + emojidata.js
 *** Description
 The *emoji picker* (=win.menu === 16=), opened from the *smiley button* (=mood=
