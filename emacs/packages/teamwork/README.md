@@ -74,6 +74,21 @@ subtask, and subtasks take logs, renames, labels and `[d]` completion like any
 task. Label a task with a `:LABELS: bug, backend` property line (comma
 separated; empty clears, a missing line leaves labels untouched).
 
+- **View filters** — narrow the *already-loaded* buffer to the tasks you care
+  about, in place, with **no round-trip and no text change**. `C-c C-v t`
+  (`teamwork-view-filter-tag`) hides every task whose subtree doesn't carry the
+  chosen tag; `C-c C-v n` (`teamwork-view-filter-title`) filters on a
+  case-insensitive substring of the task title. A matching task keeps its whole
+  subtree (its subtasks come along) and its list / project headings stay as
+  scaffolding — everything else is hidden. Filters **stack (AND)**: filter on
+  `bounty`, then on `mux`, and you're left with tasks carrying **both** tags.
+  `C-c C-v r` (`teamwork-view-filter-reset`) clears them and reveals the whole
+  buffer. Because filtering only hides text with overlays (it never edits the
+  buffer), all your local edits — added / renamed / deleted tasks, changed
+  labels — are kept through filtering and fully restored on reset; a refetch
+  also clears the filters. These are distinct from the project `teamwork-filter`
+  below, which picks *which projects are fetched*.
+
 Which projects appear is a **per-account filter** (`teamwork-filter`), persisted
 in prefs — switching accounts no longer resets it. Delete a project heading to
 stop fetching it (a local preference — it is never deleted in Teamwork); it is

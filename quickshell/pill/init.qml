@@ -348,6 +348,46 @@ ShellRoot {
         // restore token) surfaces here instead of a phantom "saved" toast
         onFailed: (why) => root.captureNotify("Recording failed", why || "gpu-screen-recorder could not start")
     }
+    // ---- which monitor a screenshot grab belongs to (the "primary" overlay) ----
+    // The grabber (`spectacle -m`) captures ONLY the monitor under the cursor, but
+    // there is one capWin overlay PER monitor (the Variants below). Painting that one
+    // frozen grab on every overlay puts a STRETCHED copy of the wrong monitor on the
+    // others AND races the export: all overlays answer exportRequested, each does its
+    // own grabToImage → crops the SAME shared region coords → writes the SAME file, so
+    // whichever shell finishes last wins and the crop can land in a totally different
+    // area. It's intermittent, and a monitor hotplug reshuffles Quickshell.screens and
+    // flips which overlay wins. Fix: exactly ONE overlay is primary — the output whose
+    // physical pixel size matches the grabbed PNG (tie-broken by the focused window's
+    // monitor). Only it shows the shot, draws the region, and exports. Record is
+    // per-screen (transparent, no shared grab) so it is left untouched.
+    readonly property string captureScreenName: {
+        if (!capture.active || capture.isRecord) return "";
+        const scr = Quickshell.screens;
+        if (!scr || scr.length === 0) return "";
+        if (scr.length === 1) return scr[0].name;
+        // match each output's PHYSICAL size (logical width × dpr) to the grabbed PNG.
+        if (capture.frozenW >= 1 && capture.frozenH >= 1) {
+            let matches = [];
+            for (let i = 0; i < scr.length; i++) {
+                const s = scr[i];
+                const dpr = s.devicePixelRatio || 1;
+                if (Math.abs(Math.round(s.width * dpr) - capture.frozenW) <= 2
+                    && Math.abs(Math.round(s.height * dpr) - capture.frozenH) <= 2)
+                    matches.push(s.name);
+            }
+            if (matches.length === 1) return matches[0];
+            if (matches.length > 1)   // same-res monitors: prefer the focused one
+                return (root.activeScreen && matches.indexOf(root.activeScreen) >= 0)
+                       ? root.activeScreen : matches[0];
+            // nothing matched (fractional-scale rounding?) — fall through
+        }
+        // size unknown yet, or no match: fall back to the focused monitor so SOMETHING
+        // shows and exactly one overlay is primary; else the first screen.
+        for (let i = 0; i < scr.length; i++)
+            if (scr[i].name === root.activeScreen) return root.activeScreen;
+        return scr[0].name;
+    }
+
     // a resettable close after a screenshot copy/save lands
     Timer { id: captureReset; interval: 250; onTriggered: capture.reset() }
     Connections {
@@ -3708,10 +3748,18 @@ ShellRoot {
             required property var modelData
             screen: modelData
 
+            // this overlay is the one that owns the screenshot: for a screenshot only
+            // the monitor matching the grab is primary (see root.captureScreenName —
+            // the others would show a stretched wrong-monitor copy and race the
+            // export); record stays per-screen (transparent, no shared grab).
+            readonly property bool capPrimary: capture.isRecord
+                                               || modelData.name === root.captureScreenName
+
             // hidden while "grabbing" so the grabber captures the real desktop, not
             // our own overlay; hidden while "recording" the pill collapses but the
             // canvas stays for the webcam — mask makes all-but-webcam click-through.
-            visible: capture.active && capture.mode !== "grabbing"
+            // Non-primary screenshot overlays stay hidden (only the grabbed monitor).
+            visible: capture.active && capture.mode !== "grabbing" && capPrimary
             color: "transparent"
             // Top (NOT Overlay): the pill is Overlay and is mapped permanently, so an
             // Overlay canvas mapped on-demand would stack ABOVE the pill and hide the
@@ -3721,7 +3769,7 @@ ShellRoot {
             exclusionMode: ExclusionMode.Ignore
             // keyboard for screenshot editing + record config (Escape, Ctrl+C/S), but
             // NOT while recording (the user is working in real apps).
-            WlrLayershell.keyboardFocus: (capture.active && capture.mode !== "recording")
+            WlrLayershell.keyboardFocus: (capPrimary && capture.active && capture.mode !== "recording")
                                          ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
             anchors { top: true; bottom: true; left: true; right: true }
 
@@ -3735,6 +3783,9 @@ ShellRoot {
                 anchors.fill: parent
                 visible: !capture.isRecord
                 focus: !capture.isRecord
+                // only the grabbed monitor's overlay applies the full-screen default
+                // and exports — the guard that stops the multi-monitor crop race.
+                primary: capWin.capPrimary
                 state: capture
                 theme: theme
             }

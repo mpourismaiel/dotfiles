@@ -17,6 +17,13 @@ Item {
     id: overlay
     required property var state
     required property var theme
+    // With one overlay per monitor but a single frozen grab of ONLY the grabbed
+    // monitor, exactly one overlay is "primary" (the grabbed screen — set by the
+    // host). Non-primary overlays must never apply the full-screen region default nor
+    // export: they'd clobber the shared region with their own size and race the crop
+    // (grabToImage of a stretched wrong-monitor copy). Defaults true for the harness,
+    // which drives a single overlay against a fixture.
+    property bool primary: true
 
     property string saveDir: (Quickshell.env("HOME") || "") + "/Pictures/Screenshots"
     property string outPath: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/qs-capture-out.png"
@@ -35,7 +42,7 @@ Item {
     }
     Timer {
         interval: 16; repeat: true
-        running: overlay.state.pendingFull
+        running: overlay.state.pendingFull && overlay.primary
         onTriggered: overlay._applyFullDefault()
     }
     Keys.onEscapePressed: overlay.state.cancel()
@@ -366,6 +373,7 @@ Item {
     // the whole screen and commit → annotating (toolbar up instantly). Region lives in
     // overlay coords (export grabs `shot` at this size), so full = the overlay box.
     function _applyFullDefault() {
+        if (!overlay.primary) return;
         if (!overlay.state.pendingFull) return;
         if (overlay.width < 2 || overlay.height < 2) return;
         overlay.state.pendingFull = false;
@@ -401,6 +409,7 @@ Item {
     // driven by state.exportRequested (from the pill toolbar / Ctrl+C/S).
     property string _shotPath: ""
     function _export(savePath) {
+        if (!overlay.primary) return;         // only the grabbed monitor's overlay exports
         if (!overlay.showRegion) return;
         overlay.state.selected = null;        // drop handles before the grab
         overlay.exporting = true;             // hide the crop grips for the grab

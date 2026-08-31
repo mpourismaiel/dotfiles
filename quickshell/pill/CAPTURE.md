@@ -226,8 +226,22 @@ the FULLSCREEN part is a separate layer window.
   the check/harness) and `pill/` (production, deployed with the pill). Keep in sync —
   edit in `capture/`, run `capture/check.sh`, then copy the changed `*.qml` to `pill/`
   and run `pill/check.sh`.
+- **Multi-monitor crop fix (2026-09-01):** the grabber (`spectacle -m`) captures only
+  the monitor under the cursor, but there is one `capWin` overlay PER monitor (the
+  `Variants` over `Quickshell.screens`). Painting that single frozen grab on every
+  overlay put a STRETCHED copy of the wrong monitor on the others AND raced the export:
+  every `CaptureOverlay` answered `exportRequested`, each did its own `grabToImage` →
+  cropped the SAME shared `region` coords → wrote the SAME file, so whichever shell
+  finished last won and the crop could land in a **totally different area** — inter-
+  mittently, and a monitor hotplug reshuffled `Quickshell.screens` and flipped the
+  winner. Fix: exactly ONE overlay is `primary` — `init.qml`'s `root.captureScreenName`
+  picks the output whose physical size (`width × devicePixelRatio`) matches the grabbed
+  PNG (`frozenW/H`), tie-broken by the focused window's monitor, with a focus/first
+  fallback. Non-primary screenshot overlays stay hidden and their `CaptureOverlay`
+  skips `_applyFullDefault` + `_export` (guarded on `primary`). Record is untouched
+  (transparent, per-screen, no shared grab).
 - Remaining refinements: true second-row morph in the pill geometry, per-output
-  multi-monitor cropping, restore-annotations button.
+  multi-monitor cropping (record region), restore-annotations button.
 
 ## 0. Environment facts (probed 2026-08-03, this machine)
 

@@ -175,6 +175,9 @@ from."
     (define-key m (kbd "C-c C-r") #'teamwork-refresh)
     (define-key m (kbd "C-c C-p") #'teamwork-set-property)
     (define-key m (kbd "C-c C-b") #'teamwork-set-labels)
+    (define-key m (kbd "C-c C-v t") #'teamwork-view-filter-tag)
+    (define-key m (kbd "C-c C-v n") #'teamwork-view-filter-title)
+    (define-key m (kbd "C-c C-v r") #'teamwork-view-filter-reset)
     (define-key m (kbd "C-c C-t") #'teamwork--todo-key-disabled)  ; shadow org-todo
     m)
   "Keymap active in the timesheet buffer.")
@@ -200,6 +203,9 @@ from."
     (define-key m (kbd "C-c C-d") #'teamwork-set-due)
     (define-key m (kbd "C-c C-a") #'teamwork-set-assignee)
     (define-key m (kbd "C-c C-o") #'teamwork-load-comments)
+    (define-key m (kbd "C-c C-v t") #'teamwork-view-filter-tag)
+    (define-key m (kbd "C-c C-v n") #'teamwork-view-filter-title)
+    (define-key m (kbd "C-c C-v r") #'teamwork-view-filter-reset)
     (define-key m (kbd "C-c C-t") #'teamwork--todo-key-disabled)  ; shadow org-todo
     m)
   "Keymap active in the management buffer.")
@@ -1228,7 +1234,8 @@ marked permanent-local; the caller re-applies the banner via
       (org-mode)
       (funcall (or mode-fn #'teamwork--enable-timesheet-mode))
       (teamwork--fold-drawers)
-      (teamwork--restyle-completed))))
+      (teamwork--restyle-completed)
+      (teamwork--view-reset-state))))
 
 (defvar teamwork--range-file
   (expand-file-name "teamwork-timesheet/last-range"
@@ -1356,6 +1363,188 @@ An empty selection means all active projects."
            (when account (list "--account" account)))
     (message "Teamwork: filter set to %d project(s)%s — re-run manage/pull to apply."
              (length ids) (if account (format " [%s]" account) ""))))
+
+;; --------------------------------------------------------------------------- ;;
+;; View filters — non-destructive, stackable tag/title narrowing of the buffer
+;; --------------------------------------------------------------------------- ;;
+;; A separate idea from `teamwork-filter' (which picks *projects to fetch*):
+;; these narrow the ALREADY-loaded buffer to the tasks you care about, in place,
+;; with no round-trip.  They hide non-matching task subtrees with invisibility
+;; overlays WITHOUT changing a single character of buffer text, so local edits
+;; (added / renamed / deleted tasks, changed labels) survive filtering untouched
+;; and are fully restored on reset.
+;;
+;; Filters STACK and combine with AND: each command pushes a filter and then
+;; recomputes visibility from the whole active set over the current buffer, so a
+;; second tag narrows the first ("bounty" then "mux" = tasks with both), and any
+;; edits made while filtered are reflected the next time a filter/reset runs.
+;;
+;; Visibility model (per task heading, level >= 3): a heading *directly matches*
+;; when it satisfies every active filter (a tag filter needs the label on the
+;; task itself; a title filter is a case-insensitive substring of the title).
+;; A subtree is kept when it contains a direct match: the matching task's whole
+;; subtree stays (so its subtasks come along), and its ancestor list/project
+;; headings stay as scaffolding; every other subtree is hidden.
+
+(defvar-local teamwork--view-filters nil
+  "Active view filters, a list of (TYPE . VALUE); TYPE is `tag' or `title'.
+Applied together (AND) to narrow the buffer to matching task subtrees.")
+
+(defvar-local teamwork--view-overlays nil
+  "Invisibility overlays created by the active view filters.")
+
+(defun teamwork--view-clear-overlays ()
+  "Remove all view-filter invisibility overlays, revealing the whole buffer."
+  (mapc #'delete-overlay teamwork--view-overlays)
+  (setq teamwork--view-overlays nil)
+  (remove-overlays (point-min) (point-max) 'teamwork-view-filter t))
+
+(defun teamwork--view-reset-state ()
+  "Drop all active view filters and their overlays (also called on (re)fill)."
+  (setq teamwork--view-filters nil)
+  (teamwork--view-clear-overlays))
+
+(defun teamwork--view-hide-region (beg end)
+  "Hide BEG..END with an invisibility overlay tagged `teamwork-view-filter'."
+  (when (< beg end)
+    (let ((ov (make-overlay beg end)))
+      (overlay-put ov 'invisible 'teamwork-view-filter)
+      (overlay-put ov 'teamwork-view-filter t)
+      (push ov teamwork--view-overlays))))
+
+(defun teamwork--view-match-p (title labels)
+  "Non-nil when TITLE / LABELS satisfy every active filter (AND).
+Tag filters compare against LABELS (case-insensitive exact); title filters are a
+case-insensitive substring of TITLE."
+  (let ((ltitle (downcase (or title "")))
+        (llabels (mapcar #'downcase labels))
+        (ok t) (fs teamwork--view-filters))
+    (while (and ok fs)
+      (let ((f (car fs)))
+        (pcase (car f)
+          ('tag   (unless (member (downcase (cdr f)) llabels) (setq ok nil)))
+          ('title (unless (string-search (downcase (cdr f)) ltitle) (setq ok nil)))))
+      (setq fs (cdr fs)))
+    ok))
+
+;; Each heading record is a mutable vector [BEG LEVEL DIRECT-MATCH CONTAINS-MATCH].
+(defun teamwork--view-collect-headings ()
+  "Vector of heading records over the whole buffer, in document order.
+Each record is [BEG LEVEL MATCH nil]: BEG = heading start, LEVEL = star count,
+MATCH = t when a task heading (level >= 3) directly satisfies the filters.  The
+fourth slot is filled in later with whether the subtree contains a match."
+  (let (acc)
+    (org-with-wide-buffer
+     (goto-char (point-min))
+     (while (re-search-forward org-heading-regexp nil t)
+       (let ((beg (match-beginning 0))
+             (level (length (match-string 1))))
+         (save-excursion
+           (goto-char beg)
+           (let* ((title (car (teamwork--heading-label-prefix)))
+                  (labels (teamwork--current-labels))
+                  (match (and (>= level 3) (teamwork--view-match-p title labels))))
+             (push (vector beg level match nil) acc))))))
+    (apply #'vector (nreverse acc))))
+
+(defun teamwork--view-mark-contains (hv n)
+  "Set slot 3 of each record in HV[0..N) when its subtree contains a direct match.
+A direct match propagates up to every open ancestor heading."
+  (let ((stack nil))                    ; ancestor records, innermost first
+    (dotimes (i n)
+      (let* ((r (aref hv i)) (lvl (aref r 1)))
+        (while (and stack (>= (aref (car stack) 1) lvl)) (pop stack))
+        (when (aref r 2)
+          (aset r 3 t)
+          (dolist (a stack) (aset a 3 t)))
+        (push r stack)))))
+
+(defun teamwork--view-next-sibling (hv i n)
+  "Index in HV of the first heading after I whose level <= HV[I]'s (else N).
+That heading (or `point-max') bounds HV[I]'s subtree."
+  (let ((lvl (aref (aref hv i) 1)) (j (1+ i)))
+    (while (and (< j n) (> (aref (aref hv j) 1) lvl)) (setq j (1+ j)))
+    j))
+
+(defun teamwork--view-hide-nonmatching (hv n)
+  "Hide every subtree in HV[0..N) that contains no direct match.
+Kept-as-scaffolding ancestor headings stay visible while their non-matching
+children are hidden; a matching task keeps its whole subtree (subtasks included)."
+  (let ((i 0))
+    (while (< i n)
+      (let* ((r (aref hv i))
+             (j (teamwork--view-next-sibling hv i n))
+             (end (if (< j n) (aref (aref hv j) 0) (point-max))))
+        (cond
+         ((not (aref r 3))              ; no match in this subtree -> hide it whole
+          (teamwork--view-hide-region (aref r 0) end)
+          (setq i j))
+         ((aref r 2)                    ; direct match -> keep whole subtree
+          (setq i j))
+         (t                             ; ancestor of a match -> keep heading, descend
+          (setq i (1+ i))))))))
+
+(defun teamwork--view-apply ()
+  "Recompute and apply invisibility overlays for the active view filters.
+Return the number of directly-matching task headings."
+  (teamwork--view-clear-overlays)
+  (let ((matches 0))
+    (when teamwork--view-filters
+      (add-to-invisibility-spec 'teamwork-view-filter)
+      (let* ((hv (teamwork--view-collect-headings))
+             (n (length hv)))
+        (dotimes (i n) (when (aref (aref hv i) 2) (setq matches (1+ matches))))
+        (when (> n 0)
+          (teamwork--view-mark-contains hv n)
+          (teamwork--view-hide-nonmatching hv n)))
+      (when (invisible-p (point)) (goto-char (point-min))))
+    matches))
+
+(defun teamwork--view-desc ()
+  "Human-readable description of the active view filters (AND-joined)."
+  (mapconcat (lambda (f) (format "%s%s" (if (eq (car f) 'tag) "#" "/") (cdr f)))
+             (reverse teamwork--view-filters) " & "))
+
+(defun teamwork--view-run (filter)
+  "Push FILTER, reapply, and report matches (with a hint when nothing matches)."
+  (push filter teamwork--view-filters)
+  (let ((matches (teamwork--view-apply)))
+    (if (zerop matches)
+        (message "Teamwork: no tasks match %s — C-c C-v r resets" (teamwork--view-desc))
+      (message "Teamwork: %d %s %s — C-c C-v r resets"
+               matches (if (= matches 1) "task matches" "tasks match")
+               (teamwork--view-desc)))))
+
+;;;###autoload
+(defun teamwork-view-filter-tag (tag)
+  "Narrow the buffer to tasks tagged TAG (with their subtasks) plus the
+project / task-list scaffolding of every match, without any round-trip.
+Stackable: run again with another tag to require BOTH (AND).  Non-destructive —
+local edits are kept and `teamwork-view-filter-reset' restores the full buffer."
+  (interactive
+   (list (completing-read "Filter by tag: " (teamwork--buffer-label-values) nil nil)))
+  (setq tag (string-trim tag))
+  (when (string-empty-p tag) (user-error "No tag given"))
+  (teamwork--view-run (cons 'tag tag)))
+
+;;;###autoload
+(defun teamwork-view-filter-title (text)
+  "Narrow the buffer to tasks whose title contains TEXT (case-insensitive),
+keeping their subtasks and project / task-list scaffolding.  Stackable with tag
+filters and other title filters (AND).  Non-destructive; reset restores all."
+  (interactive (list (read-string "Filter by title substring: ")))
+  (setq text (string-trim text))
+  (when (string-empty-p text) (user-error "No title text given"))
+  (teamwork--view-run (cons 'title text)))
+
+;;;###autoload
+(defun teamwork-view-filter-reset ()
+  "Clear all active tag/title view filters and reveal the whole buffer."
+  (interactive)
+  (if teamwork--view-filters
+      (progn (teamwork--view-reset-state)
+             (message "Teamwork: view filters cleared."))
+    (message "Teamwork: no view filters active.")))
 
 ;; --------------------------------------------------------------------------- ;;
 ;; Property picker — set task properties (tags/due/priority/assignee) w/ values

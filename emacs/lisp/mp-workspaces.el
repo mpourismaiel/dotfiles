@@ -505,6 +505,29 @@ of `git status --porcelain' file lines (nil when clean / not a repo)."
           ((seq-contains-p c ?M)         'warning)                ; modified
           (t                             'default))))
 
+(defun mp/dashboard--git-dirty (root)
+  "Return `dirty' or `clean' for the git repo at ROOT, or nil.
+Nil means ROOT is not a git working tree (or git failed), so callers can
+skip the suffix entirely.  A single `git status --porcelain' call."
+  (when root
+    (let ((default-directory root))
+      (pcase (ignore-errors
+               (with-temp-buffer
+                 (cons (process-file "git" nil t nil "status" "--porcelain")
+                       (buffer-string))))
+        (`(0 . ,out) (if (string= "" (string-trim out)) 'clean 'dirty))
+        (_ nil)))))
+
+(defun mp/dashboard--dirty-icon (state)
+  "Nerd-icon glyph for git STATE (`dirty'/`clean'), tinted by STATE, or \"\"."
+  (let ((face (if (eq state 'dirty) 'warning 'success))
+        (name (if (eq state 'dirty)
+                  "nf-md-circle_edit_outline"
+                "nf-md-check_circle_outline")))
+    (if (fboundp 'nerd-icons-mdicon)
+        (or (ignore-errors (nerd-icons-mdicon name :face face)) "")
+      "")))
+
 ;;;; Agent-shell status
 
 (defvar-local mp/agent--last-prompt-time nil
@@ -792,14 +815,46 @@ here would silently fall back to *scratch*)."
           (mp/dashboard--heading
            (mp/dashboard--icon #'nerd-icons-mdicon "nf-md-view_dashboard") "Workspaces")
           (dolist (name (mp/workspace-names))
-            (let* ((n name) (act (equal n current)))
-              (mp/dashboard--item
-               (mp/workspace--label n)
-               (lambda (_) (mp/dashboard-enter n))
-               ;; `>' marker lives in the (plain) indent so the button stays
-               ;; tight to the label — nothing highlights past the text.
-               :indent (if act "  > " "    ")
-               :face (if act 'mp/dashboard-active 'mp/dashboard-item))))
+            (let* ((n name) (act (equal n current))
+                   ;; Only workspaces with an assigned (or buffer-inferred)
+                   ;; project get a git-cleanliness suffix; empty ones don't.
+                   (root (mp/workspace--project-root n))
+                   (state (and root (mp/dashboard--git-dirty root))))
+              (mp/dashboard--as-block
+                ;; `>' marker lives in the (plain) indent so the button stays
+                ;; tight to the label — nothing highlights past the text.
+                (insert (if act "  > " "    "))
+                (insert-text-button
+                 (mp/workspace--label n)
+                 'action (lambda (_) (mp/dashboard-enter n))
+                 'follow-link t 'mouse-face 'highlight
+                 'face (if act 'mp/dashboard-active 'mp/dashboard-item)
+                 'help-echo (format "Enter workspace %s" (mp/workspace--label n)))
+                ;; Git-cleanliness suffix: " - clean"/" - dirty", color-coded
+                ;; with an icon, as its OWN clickable region — clicking it
+                ;; switches to that workspace and opens magit for its project.
+                (when state
+                  (let* ((sface (if (eq state 'dirty) 'warning 'success))
+                         (icon  (mp/dashboard--dirty-icon state))
+                         (word  (if (eq state 'dirty) "dirty" "clean"))
+                         (label (concat " - "
+                                        (if (string= icon "") "" (concat icon " "))
+                                        word)))
+                    (insert-text-button
+                     label
+                     'action (lambda (_)
+                               (persp-switch n)
+                               (if (fboundp 'magit-status)
+                                   (magit-status root)
+                                 (message "magit not available")))
+                     'follow-link t 'mouse-face 'highlight
+                     'face sface
+                     'help-echo (format "%s — open magit for %s"
+                                        (if (eq state 'dirty)
+                                            "Uncommitted changes"
+                                          "Working tree clean")
+                                        (abbreviate-file-name root)))))
+                (insert "\n"))))
           ;; Trailing action: create a fresh workspace and switch to it (the
           ;; same as `SPC TAB n'); `mp/workspace-new' lands on this dashboard.
           (mp/dashboard--item
