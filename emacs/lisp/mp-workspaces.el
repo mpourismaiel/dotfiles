@@ -273,7 +273,9 @@ Shows the same `INDEX project' labels, in the same creation order, as
         (mp/open-project-root root)))))
 
 (defun mp/project-menu ()
-  "Project menu with colorized bundles plus Projectile projects."
+  "Project menu with colorized bundles plus Projectile projects.
+A pinned \"✎ Edit bundles…\" entry always sits last (the list is
+identity-sorted, so it never moves)."
   (interactive)
   (let* ((bundle-prefix "▶ Bundle: ")
          (bundle-candidates
@@ -294,12 +296,198 @@ Shows the same `INDEX project' labels, in the same creation order, as
                                    (propertize name 'face '(:foreground "#89b4fa" :weight bold)))))
                (cons label project)))
            (projectile-relevant-known-projects)))
-         (candidates (append bundle-candidates project-candidates))
-         (choice (completing-read "Project: " candidates nil t)))
+         ;; Pinned last, always.  The identity-sorted table below stops
+         ;; prescient/vertico from reordering it up into the list.
+         (edit-label "✎ Edit bundles…")
+         (edit-candidate
+          (cons (propertize edit-label
+                            'face '(:foreground "#f9e2af" :weight bold))
+                edit-label))
+         (candidates (append bundle-candidates project-candidates
+                             (list edit-candidate)))
+         (choice (completing-read "Project: " (mp/bundle--table candidates) nil t)))
     (let ((real-value (cdr (assoc choice candidates))))
-      (if (string-prefix-p bundle-prefix real-value)
-          (mp/open-project-bundle (string-remove-prefix bundle-prefix real-value))
-        (projectile-switch-project-by-name real-value)))))
+      (cond
+       ((equal real-value edit-label) (mp/manage-bundles))
+       ((string-prefix-p bundle-prefix real-value)
+        (mp/open-project-bundle (string-remove-prefix bundle-prefix real-value)))
+       (t (projectile-switch-project-by-name real-value))))))
+
+;;; Bundle persistence + management
+;;
+;; Bundles were originally seeded from `private.el' (via `mp/project-bundles' in
+;; mp-core.el).  They now live in a dedicated state file so they can be edited
+;; interactively (see `mp/manage-bundles', the pinned "✎ Edit bundles…" entry
+;; at the end of `SPC p p').  On
+;; startup, if that file exists it wins over the private.el seed; the seed thus
+;; acts only as a one-time migration for machines that never edited bundles.
+
+(defvar mp/project-bundles-file (expand-file-name "project-bundles.eld" mp/var-dir)
+  "File where `mp/project-bundles' is persisted.")
+
+(defun mp/project-bundles-load ()
+  "Load bundles from `mp/project-bundles-file' into `mp/project-bundles'.
+Does nothing (keeping any private.el seed) if the file is absent."
+  (when (file-exists-p mp/project-bundles-file)
+    (with-demoted-errors "project-bundles load: %S"
+      (with-temp-buffer
+        (insert-file-contents mp/project-bundles-file)
+        (goto-char (point-min))
+        (setq mp/project-bundles (read (current-buffer)))))))
+
+(defun mp/project-bundles-save ()
+  "Persist `mp/project-bundles' to `mp/project-bundles-file'."
+  (make-directory (file-name-directory mp/project-bundles-file) t)
+  (with-temp-file mp/project-bundles-file
+    (let ((print-length nil) (print-level nil))
+      (insert ";; -*- mode: lisp-data; -*-\n"
+              ";; Project bundles, editable via `mp/manage-bundles' (SPC p p).\n")
+      (prin1 mp/project-bundles (current-buffer))
+      (insert "\n"))))
+
+(defun mp/bundle--table (candidates)
+  "Completion table over CANDIDATES (an alist) preserving their order."
+  (let ((labels (mapcar #'car candidates)))
+    (lambda (str pred action)
+      (if (eq action 'metadata)
+          '(metadata (display-sort-function . identity))
+        (complete-with-action action labels str pred)))))
+
+(defun mp/bundle--norm-dir (dir)
+  "Normalise DIR to an absolute directory name (trailing slash)."
+  (file-name-as-directory (expand-file-name dir)))
+
+(defun mp/bundle--proj-label (dir)
+  "A `parent/NAME' label for project DIR, NAME highlighted."
+  (let* ((d      (directory-file-name dir))
+         (name   (file-name-nondirectory d))
+         (parent (abbreviate-file-name (file-name-directory d))))
+    (concat parent
+            (propertize name 'face '(:foreground "#89b4fa" :weight bold)))))
+
+(defun mp/bundle--select-projects (initial)
+  "Toggle-select project dirs, seeded from INITIAL (an alist of (WS . DIR)).
+Selected dirs float above a separator; picking a selected one removes it,
+picking an available one selects it.  \"✓ Done\" finishes.  Returns a fresh
+alist of (WORKSPACE . DIR) in selection order (workspace = dir basename)."
+  (let* ((known    (and (fboundp 'projectile-relevant-known-projects)
+                        (mapcar #'mp/bundle--norm-dir
+                                (projectile-relevant-known-projects))))
+         (selected (mapcar (lambda (p) (mp/bundle--norm-dir (cdr p))) initial))
+         (done-key "✓ Done")
+         (other-key "＋ Other directory…"))
+    (catch 'done
+      (while t
+        (let* ((available (seq-remove (lambda (d) (member d selected)) known))
+               (candidates
+                (append
+                 (list (cons done-key '(done)))
+                 (mapcar (lambda (d)
+                           (cons (concat "● " (mp/bundle--proj-label d))
+                                 (cons 'sel d)))
+                         selected)
+                 (list (cons (propertize
+                              "────────  available  ────────"
+                              'face 'shadow)
+                             '(sep)))
+                 (mapcar (lambda (d)
+                           (cons (concat "  " (mp/bundle--proj-label d))
+                                 (cons 'avail d)))
+                         available)
+                 (list (cons other-key '(other)))))
+               (choice (completing-read
+                        (format "Projects [%d selected] (RET toggles · ✓ Done): "
+                                (length selected))
+                        (mp/bundle--table candidates) nil t))
+               (entry (cdr (assoc choice candidates))))
+          (pcase (car entry)
+            ('done  (throw 'done nil))
+            ('sel   (setq selected (delete (cdr entry) selected)))
+            ('avail (setq selected (append selected (list (cdr entry)))))
+            ('other
+             (let ((d (mp/bundle--norm-dir
+                       (read-directory-name "Project directory: "))))
+               (unless (member d selected)
+                 (setq selected (append selected (list d))))
+               (unless (member d known)
+                 (setq known (append known (list d))))))
+            (_ nil)))))                  ; separator / stray input: re-loop
+    (mapcar (lambda (d)
+              (cons (file-name-nondirectory (directory-file-name d)) d))
+            selected)))
+
+(defun mp/bundle-create ()
+  "Prompt for a name, pick its projects, and save a new bundle."
+  (interactive)
+  (let ((name (string-trim (read-string "New bundle name: "))))
+    (when (string-empty-p name)
+      (user-error "Empty bundle name"))
+    (when (assoc name mp/project-bundles)
+      (user-error "Bundle already exists: %s" name))
+    (let ((projects (mp/bundle--select-projects nil)))
+      (setq mp/project-bundles
+            (append mp/project-bundles (list (cons name projects))))
+      (mp/project-bundles-save)
+      (message "Bundle “%s”: %d project%s"
+               name (length projects) (if (= (length projects) 1) "" "s")))))
+
+(defun mp/bundle-edit (name)
+  "Rename bundle NAME (if desired), then re-pick its projects, and save."
+  (interactive
+   (list (completing-read "Edit bundle: "
+                          (mapcar #'car mp/project-bundles) nil t)))
+  (let ((cell (assoc name mp/project-bundles)))
+    (unless cell (user-error "Unknown bundle: %s" name))
+    ;; 1. Rename (blank/unchanged keeps the current name).
+    (let ((new (string-trim (read-string "Bundle name: " (car cell)))))
+      (cond
+       ((string-empty-p new) (user-error "Empty bundle name"))
+       ((equal new (car cell)))
+       ((assoc new mp/project-bundles)
+        (user-error "Bundle already exists: %s" new))
+       (t (setcar cell new))))
+    ;; 2. Re-pick projects (seeded with the current set).
+    (setcdr cell (mp/bundle--select-projects (cdr cell)))
+    (mp/project-bundles-save)
+    (message "Bundle “%s”: %d project%s"
+             (car cell) (length (cdr cell))
+             (if (= (length (cdr cell)) 1) "" "s"))))
+
+(defun mp/bundle-remove ()
+  "Pick a bundle and, after confirmation, delete it (projects untouched)."
+  (interactive)
+  (let ((names (mapcar #'car mp/project-bundles)))
+    (unless names (user-error "No bundles to remove"))
+    (let ((name (completing-read "Remove bundle: "
+                                 (mp/bundle--table
+                                  (mapcar (lambda (n) (cons n n)) names))
+                                 nil t)))
+      (when (yes-or-no-p (format "Delete bundle “%s”? " name))
+        (setq mp/project-bundles (assoc-delete-all name mp/project-bundles))
+        (mp/project-bundles-save)
+        (message "Deleted bundle %s" name)))))
+
+(defun mp/manage-bundles ()
+  "Bundle management menu: add, remove, or edit a specific bundle."
+  (interactive)
+  (let* ((candidates
+          (append
+           (list (cons "＋ Add bundle…"    '(add))
+                 (cons "🗑 Remove bundle…" '(remove)))
+           (mapcar (lambda (b)
+                     (cons (format "✎ Edit  %s  (%d)" (car b) (length (cdr b)))
+                           (list 'edit (car b))))
+                   mp/project-bundles)))
+         (choice (completing-read "Edit bundles: "
+                                  (mp/bundle--table candidates) nil t))
+         (action (cdr (assoc choice candidates))))
+    (pcase (car action)
+      ('add    (mp/bundle-create))
+      ('remove (mp/bundle-remove))
+      ('edit   (mp/bundle-edit (nth 1 action))))))
+
+;; Prefer the persisted bundles over any private.el seed (see the header note).
+(mp/project-bundles-load)
 
 ;;; Persistence (new in vanilla: auto save/restore of workspaces)
 

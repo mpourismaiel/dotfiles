@@ -33,7 +33,7 @@ features live in packages.
 
 ## First launch
 
-1. Deploy: `./deploy.sh` (or `__ignore__/scripts/deploy-vanilla.sh` from the
+1. Deploy: `./deploy.sh` (or `__ignore__/scripts/deploy-emacs.sh` from the
    repo). This also seeds `private.el` + `connections.json` into the target
    once, copied from the old Doom config dir.
 2. Create the lsp-bridge backend venv (one-time):
