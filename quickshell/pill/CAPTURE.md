@@ -27,6 +27,11 @@ the FULLSCREEN part is a separate layer window.
   `grabbing`, so it only runs once the grab has landed. The dashboard capture button also drops its "active"
   tint while `grabbing` so a shot with the dashboard open doesn't catch it lit up.
 - Record = `gpu-screen-recorder -w portal` (restore token) with no-hardcode encoder.
+  A **selected area** instead uses gpsr's KMS region target: `-w region -region
+  WxH+X+Y` (the geometry is a *separate* `-region` arg — it must NOT be put on `-w`,
+  which only accepts `window_id|monitor|focused|portal|region|v4l2`; a geometry there
+  makes gpsr exit non-zero, which the pill reads as an instant failure and drops back
+  to idle). Region capture is KMS, so the portal/restore args are omitted for it.
 
 ## ANNOTATION EDITOR (2026-08-20 expansion)
 

@@ -15,6 +15,26 @@
   (load-theme 'dobri-c07 t)
   (mp/hide-window-dividers))
 
+;; Emacs 31.1 defines `gnus-group-news-low' as `:inherit
+;; gnus-group-news-low-empty', while doom-themes points
+;; `gnus-group-news-low-empty' back at `gnus-group-news-low'
+;; (doom-themes-base.el) -- a face inheritance cycle.  Realizing faces on a NEW
+;; frame then signals "Face inheritance results in inheritance cycle" and the
+;; frame is never created, so `emacsclient -c' silently opens no window once
+;; gnus is loaded (org's `ol-gnus' drags it in).  Face specs MERGE rather than
+;; replace, so both faces need an explicit `:inherit unspecified' to break the
+;; loop -- overriding just one of them, or omitting `:inherit', leaves doom's
+;; edge in place.  Colours are doom-one's own values for these faces.
+(custom-theme-set-faces 'user
+ '(gnus-group-news-low
+   ((((class color) (min-colors 257)) (:inherit unspecified :foreground "#5B6268" :weight bold))
+    (((class color) (min-colors 256)) (:inherit unspecified :foreground "#525252" :weight bold))
+    (t (:inherit unspecified :weight bold))))
+ '(gnus-group-news-low-empty
+   ((((class color) (min-colors 257)) (:inherit unspecified :foreground "#5B6268"))
+    (((class color) (min-colors 256)) (:inherit unspecified :foreground "#525252"))
+    (t (:inherit unspecified)))))
+
 ;;; Fonts
 
 ;; Doom's :ui doom module ships solaire-mode: file buffers get the "bright"

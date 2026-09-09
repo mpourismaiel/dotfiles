@@ -115,13 +115,15 @@ QtObject {
         const useR = rc.useRegion && r.width > 1 && r.height > 1;
         const a = ["gpu-screen-recorder"];
         if (useR) {
-            // sub-region = gpsr's KMS region capture. `-w` takes the geometry
-            // (WxH+X+Y) DIRECTLY — the old `-region` flag is deprecated and, more to
-            // the point, only valid with `-w region`, which is why pairing it with
-            // `-w portal` errored ("-region can only be used when -w region is used").
-            // Region capture goes through KMS, not the portal, so the portal/restore
-            // args are intentionally omitted here.
-            a.push("-w", Math.round(r.width) + "x" + Math.round(r.height)
+            // sub-region = gpsr's KMS region capture, which is its OWN capture target:
+            // `-w region` plus the geometry in a SEPARATE `-region WxH+X+Y` arg. The
+            // geometry does NOT go on `-w` (it only takes window_id|monitor|focused|
+            // portal|region|v4l2_device); passing "WxH+X+Y" there makes gpsr reject it
+            // as an unknown target and exit non-zero — which the pill reads as an
+            // instant failure and drops straight back to idle. Region capture goes
+            // through KMS, not the portal, so the portal/restore args are omitted here.
+            a.push("-w", "region",
+                   "-region", Math.round(r.width) + "x" + Math.round(r.height)
                        + "+" + Math.round(r.x) + "+" + Math.round(r.y));
         } else {
             // whole screen via the ScreenCast portal (restore token remembers the pick)
