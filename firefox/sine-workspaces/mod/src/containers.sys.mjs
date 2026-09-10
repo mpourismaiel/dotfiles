@@ -10,13 +10,30 @@
 // as a webRequest listener and will still reopen the tab into its assigned
 // container, which is exactly the "MAC wins" behavior the user asked for.
 
-const { ContextualIdentityService } = ChromeUtils.importESModule(
-  "resource://gre/modules/ContextualIdentityService.sys.mjs"
-);
+// ContextualIdentityService moved from resource://gre/modules/ to moz-src:/// in
+// Firefox 155 (the old alias was dropped). Import defensively so a single moved
+// path can't throw at module top-level and take the whole mod down with it: try
+// the current location first, fall back to the legacy one, tolerate neither.
+const ContextualIdentityService = (() => {
+  const paths = [
+    "moz-src:///toolkit/components/contextualidentity/ContextualIdentityService.sys.mjs",
+    "resource://gre/modules/ContextualIdentityService.sys.mjs",
+  ];
+  for (const path of paths) {
+    try {
+      return ChromeUtils.importESModule(path).ContextualIdentityService;
+    } catch (_e) {
+      /* try the next known location */
+    }
+  }
+  console.warn("[sine-workspaces] ContextualIdentityService unavailable — container defaults disabled");
+  return null;
+})();
 
 const Containers = {
   /** All user-visible containers: [{ userContextId, name, color, icon }]. */
   list() {
+    if (!ContextualIdentityService) return [];
     try {
       return ContextualIdentityService.getPublicIdentities().map((identity) => ({
         userContextId: identity.userContextId,
