@@ -213,9 +213,17 @@ Unlike `kill-word', this does NOT save the text to the kill ring."
 (defvar mp/workspace-project-roots (make-hash-table :test 'equal)
   "Map workspace (perspective) names to their intended project roots.")
 
+;; Eval in a temp buffer with `lexical-binding' forced rather than `load-file'.
+;; Emacs 31 warns ("Missing `lexical-binding' cookie") when `load' reads a
+;; source .el lacking the cookie, and private.el is user-private data seeded
+;; outside this repo, so we can't guarantee it carries one. Forcing the dialect
+;; here keeps startup warning-free regardless of how that file is authored.
 (let ((private-config (expand-file-name "private.el" mp/emacs-dir)))
   (when (file-exists-p private-config)
-    (load-file private-config)))
+    (with-temp-buffer
+      (insert-file-contents private-config)
+      (setq-local lexical-binding t)
+      (eval-buffer nil nil private-config))))
 
 ;;; Emacs server
 ;; So `emacsclient' — and the Godot editor's "Open in External Editor" bridge

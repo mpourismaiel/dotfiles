@@ -66,6 +66,14 @@
   :after evil :demand t
   :config (global-evil-surround-mode 1))
 
+;; `embrace' hard-requires `expand-region' (its Package-Requires), so the
+;; :demand'd evil-embrace below loads expand-region's file transitively. Declare
+;; expand-region to Elpaca *first* so it is activated before that require fires;
+;; otherwise Elpaca warns "expand-region loaded before Elpaca activation" (its
+;; own order is otherwise declared, deferred, much later in mp-tools).
+(use-package expand-region
+  :demand t)
+
 (use-package evil-embrace
   :after evil-surround :demand t
   :config (evil-embrace-enable-evil-surround-integration))

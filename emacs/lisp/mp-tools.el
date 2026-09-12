@@ -97,9 +97,9 @@
     (evil-set-initial-state 'color-rg-mode 'emacs)))
 
 ;;; Editing helpers
-
-(use-package expand-region
-  :commands (er/expand-region er/contract-region))
+;; NOTE: `expand-region' is declared in mp-evil (it must be activated before
+;; evil-embrace loads it transitively). `er/expand-region' stays bound in
+;; mp-keys; no declaration is needed here.
 
 ;;; Project environments
 
