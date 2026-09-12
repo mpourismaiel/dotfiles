@@ -19,7 +19,7 @@ export GAMEMODERUNEXEC="prime-run"
 export SUDO_EDITOR=vim
 export EDITOR=vim
 export GUI_EDITOR=code-insiders
-export RENPY_EXECUTABLE_PATH="/home/mahdi/Documents/projects/private/renpy-8.5.3-sdk/renpy.sh"
+export RENPY_EXECUTABLE_PATH="$HOME/Documents/projects/private/renpy-8.5.3-sdk/renpy.sh"
 export PATH="$BUN_INSTALL/bin:$HOME/.local/bin:$PATH:/opt/unreal-engine/Engine/Binaries/Linux:$HOME/bin/flutter/bin:$GOPATH:$ANDROID_SDK_ROOT/emulator:$HOME/Android/Sdk:$ANDROID_SDK_ROOT/platform-tools:/usr/local/go/bin:$HOME/bin:$GOPATH/bin:$GOROOT/bin:$HOME/.local/bin:$HOME/bin/eww/target/release:$HOME/.cargo/bin:$HOME/.config/emacs/bin"
 export LIQUIBASE_HOME="/opt/liquibase/"
 
@@ -39,7 +39,7 @@ alias vpn-guts-down="wg-quick down gvpn"
 
 # Turso
 export PATH="$HOME/.turso:$PATH"
-export PNPM_HOME="/home/mahdi/.local/share/pnpm"
+export PNPM_HOME="$HOME/.local/share/pnpm"
 case ":$PATH:" in
   *":$PNPM_HOME:"*) ;;
   *) export PATH="$PNPM_HOME:$PATH" ;;

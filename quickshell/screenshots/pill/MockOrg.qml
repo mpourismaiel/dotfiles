@@ -7,24 +7,24 @@ QtObject {
     id: root
     property bool enabled: true            // feature gate (mock: always on for the shot)
     property var dayItems: [
-        { text: "Ship pill + emaqs screenshots", todo: "TODO", done: false, dated: true,  type: "scheduled", priority: "A", file: "/home/mahdi/org/todo.org", pos: 120 },
-        { text: "Refactor pill: extract shared components", todo: "TODO", done: false, dated: true, type: "deadline", priority: "B", file: "/home/mahdi/org/todo.org", pos: 240 },
-        { text: "Review Quickshell 0.3 release notes", todo: "TODO", done: true, dated: false, type: "", priority: "", file: "/home/mahdi/org/todo.org", pos: 360 },
-        { text: "Weekly review", todo: "", done: false, dated: false, type: "", priority: "C", file: "/home/mahdi/org/notes.org", pos: 12 }
+        { text: "Ship pill + emaqs screenshots", todo: "TODO", done: false, dated: true,  type: "scheduled", priority: "A", file: "~/org/todo.org", pos: 120 },
+        { text: "Refactor pill: extract shared components", todo: "TODO", done: false, dated: true, type: "deadline", priority: "B", file: "~/org/todo.org", pos: 240 },
+        { text: "Review Quickshell 0.3 release notes", todo: "TODO", done: true, dated: false, type: "", priority: "", file: "~/org/todo.org", pos: 360 },
+        { text: "Weekly review", todo: "", done: false, dated: false, type: "", priority: "C", file: "~/org/notes.org", pos: 12 }
     ]
     // ---- deadline watch (mirrors OrgAgenda's deadlines buckets) ----
     // delta = deadline-day − today: <0 overdue ("late"), 0 due today, >0 ahead.
     readonly property var deadlines: [
-        { text: "Refactor pill: extract shared components", delta: -9, priority: "B", date: "2026-07-25", file: "/home/mahdi/org/todo.org",  pos: 240 },
-        { text: "Review Quickshell 0.3 release notes",      delta: -4, priority: "",  date: "2026-07-30", file: "/home/mahdi/org/todo.org",  pos: 360 },
-        { text: "Renew domain",                             delta: -1, priority: "A", date: "2026-08-02", file: "/home/mahdi/org/todo.org",  pos: 400 },
-        { text: "Ship pill + emaqs screenshots",            delta:  0, priority: "A", date: "2026-08-03", file: "/home/mahdi/org/todo.org",  pos: 120 },
-        { text: "Weekly review",                            delta:  0, priority: "C", date: "2026-08-03", file: "/home/mahdi/org/notes.org", pos:  12 },
-        { text: "Invoice for July",                         delta:  1, priority: "B", date: "2026-08-04", file: "/home/mahdi/org/todo.org",  pos: 500 },
-        { text: "Prepare board deck",                       delta:  5, priority: "A", date: "2026-08-08", file: "/home/mahdi/org/todo.org",  pos: 620 },
-        { text: "Team offsite notes",                       delta:  5, priority: "",  date: "2026-08-08", file: "/home/mahdi/org/notes.org", pos:  80 },
-        { text: "Pay rent",                                 delta:  9, priority: "A", date: "2026-08-12", file: "/home/mahdi/org/todo.org",  pos: 520 },
-        { text: "Quarterly report",                         delta: 20, priority: "C", date: "2026-08-23", file: "/home/mahdi/org/todo.org",  pos: 560 }
+        { text: "Refactor pill: extract shared components", delta: -9, priority: "B", date: "2026-07-25", file: "~/org/todo.org",  pos: 240 },
+        { text: "Review Quickshell 0.3 release notes",      delta: -4, priority: "",  date: "2026-07-30", file: "~/org/todo.org",  pos: 360 },
+        { text: "Renew domain",                             delta: -1, priority: "A", date: "2026-08-02", file: "~/org/todo.org",  pos: 400 },
+        { text: "Ship pill + emaqs screenshots",            delta:  0, priority: "A", date: "2026-08-03", file: "~/org/todo.org",  pos: 120 },
+        { text: "Weekly review",                            delta:  0, priority: "C", date: "2026-08-03", file: "~/org/notes.org", pos:  12 },
+        { text: "Invoice for July",                         delta:  1, priority: "B", date: "2026-08-04", file: "~/org/todo.org",  pos: 500 },
+        { text: "Prepare board deck",                       delta:  5, priority: "A", date: "2026-08-08", file: "~/org/todo.org",  pos: 620 },
+        { text: "Team offsite notes",                       delta:  5, priority: "",  date: "2026-08-08", file: "~/org/notes.org", pos:  80 },
+        { text: "Pay rent",                                 delta:  9, priority: "A", date: "2026-08-12", file: "~/org/todo.org",  pos: 520 },
+        { text: "Quarterly report",                         delta: 20, priority: "C", date: "2026-08-23", file: "~/org/todo.org",  pos: 560 }
     ]
     readonly property var lateItems:  deadlines.filter(function (d) { return d.delta < 0; })
     readonly property var todayItems: deadlines.filter(function (d) { return d.delta === 0; })

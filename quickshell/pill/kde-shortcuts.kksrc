@@ -1,9 +1,9 @@
 [Custom Commands][net.local.qs-10.desktop]
-Exec=qs -p /home/mahdi/.config/quickshell/pill/init.qml ipc call pill clearNotifications
+Exec=qs -p ~/.config/quickshell/pill/init.qml ipc call pill clearNotifications
 Name=Quickshell - Notifications - Clear history
 
 [Custom Commands][net.local.qs-11.desktop]
-Exec=qs -p /home/mahdi/.config/quickshell/pill/init.qml ipc call pill notifications
+Exec=qs -p ~/.config/quickshell/pill/init.qml ipc call pill notifications
 Name=Quickshell - Notifications - View History
 
 [Custom Commands][net.local.qs-12.desktop]
@@ -27,47 +27,47 @@ Exec=qs -p ~/.config/quickshell/pill/init.qml ipc call pill screenshotRegion
 Name=Quickshell - Screenshot Region
 
 [Custom Commands][net.local.qs-2.desktop]
-Exec=qs -p /home/mahdi/.config/quickshell/pill/init.qml ipc call pill brightnessUp
+Exec=qs -p ~/.config/quickshell/pill/init.qml ipc call pill brightnessUp
 Name=Quickshell - Brighness - Up
 
 [Custom Commands][net.local.qs-3.desktop]
-Exec=qs -p /home/mahdi/.config/quickshell/pill/init.qml ipc call pill brightnessDown
+Exec=qs -p ~/.config/quickshell/pill/init.qml ipc call pill brightnessDown
 Name=Quickshell - Brighness - Down
 
 [Custom Commands][net.local.qs-4.desktop]
-Exec=qs -p /home/mahdi/.config/quickshell/pill/init.qml ipc call pill volumeUp
+Exec=qs -p ~/.config/quickshell/pill/init.qml ipc call pill volumeUp
 Name=Quickshell - Volume - Up
 
 [Custom Commands][net.local.qs-5.desktop]
-Exec=qs -p /home/mahdi/.config/quickshell/pill/init.qml ipc call pill volumeDown
+Exec=qs -p ~/.config/quickshell/pill/init.qml ipc call pill volumeDown
 Name=Quickshell - Volume - Down
 
 [Custom Commands][net.local.qs-6.desktop]
-Exec=qs -p /home/mahdi/.config/quickshell/pill/init.qml ipc call pill volumeMute
+Exec=qs -p ~/.config/quickshell/pill/init.qml ipc call pill volumeMute
 Name=Quickshell - Volume - Mute
 
 [Custom Commands][net.local.qs-7.desktop]
-Exec=qs -p /home/mahdi/.config/quickshell/pill/init.qml ipc call pill voiceToggle
+Exec=qs -p ~/.config/quickshell/pill/init.qml ipc call pill voiceToggle
 Name=Quickshell - Transcribe
 
 [Custom Commands][net.local.qs-8.desktop]
-Exec=qs -p /home/mahdi/.config/quickshell/pill/init.qml ipc call pill voicePolishToggle
+Exec=qs -p ~/.config/quickshell/pill/init.qml ipc call pill voicePolishToggle
 Name=Quickshell - Transcribe and Polish
 
 [Custom Commands][net.local.qs-9.desktop]
-Exec=qs -p /home/mahdi/.config/quickshell/pill/init.qml ipc call pill dismissNotifications
+Exec=qs -p ~/.config/quickshell/pill/init.qml ipc call pill dismissNotifications
 Name=Quickshell - Notifications - Dismiss
 
 [Custom Commands][net.local.qs-voice-polish.desktop]
-Exec=qs -p /home/mahdi/.config/quickshell/pill/init.qml ipc call pill voicePolishToggle
+Exec=qs -p ~/.config/quickshell/pill/init.qml ipc call pill voicePolishToggle
 Name=Quickshell - Voice - Transcribe + Polish
 
 [Custom Commands][net.local.qs-voice.desktop]
-Exec=qs -p /home/mahdi/.config/quickshell/pill/init.qml ipc call pill voiceToggle
+Exec=qs -p ~/.config/quickshell/pill/init.qml ipc call pill voiceToggle
 Name=Quickshell - Voice - Transcribe
 
 [Custom Commands][net.local.qs.desktop]
-Exec=qs -p /home/mahdi/.config/quickshell/pill/init.qml ipc call pill clipboard
+Exec=qs -p ~/.config/quickshell/pill/init.qml ipc call pill clipboard
 Name=Quickshell - Clipboard History
 
 [net.local.qs-10.desktop][Global Shortcuts]

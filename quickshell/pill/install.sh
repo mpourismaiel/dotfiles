@@ -162,12 +162,11 @@ if [ "$is_kde" -eq 1 ] && [ -f "$KKSRC_IN" ]; then
     if [ "$do_shortcuts" -eq 1 ]; then
         mkdir -p "$DEST"
         KKSRC_OUT="$DEST/kde-shortcuts.kksrc"
-        # rewrite the maintainer's paths (absolute and ~) to this user's config,
-        # then any remaining home references, so the Exec lines point at the copy
+        # rewrite the template's pill path to this user's installed copy, then
+        # any remaining ~ home references, so the Exec lines point at the copy
         # of the pill this installer just placed.
-        sed -e "s#/home/mahdi/.config/quickshell/pill#$DEST#g" \
-            -e "s#~/.config/quickshell/pill#$DEST#g" \
-            -e "s#/home/mahdi#$HOME#g" \
+        sed -e "s#~/.config/quickshell/pill#$DEST#g" \
+            -e "s#~/#$HOME/#g" \
             "$KKSRC_IN" > "$KKSRC_OUT"
         SHORTCUTS_DONE=1
         say "Prepared the shortcut bindings for you at:

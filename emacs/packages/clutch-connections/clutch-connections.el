@@ -166,7 +166,7 @@ keys are ignored so pasted connection strings never break on extras."
          (list :password (url-unhex-string password)))
        (mp/clutch--parse-uri-query query))))
 
-   ;; SQLite:  sqlite:///home/mahdi/sqlite.db
+   ;; SQLite:  sqlite:///path/to/database.db
    ((string-match "\\`sqlite://\\(.+\\)\\'" uri)
     (list :backend 'sqlite
           :database (url-unhex-string (match-string 1 uri))))

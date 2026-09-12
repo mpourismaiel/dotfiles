@@ -7,7 +7,8 @@
 set -euo pipefail
 
 OUT="${1:-/tmp/sw.png}"
-PROFILE="/home/mahdi/.mozilla/firefox/x3iaw2cf.testing 2"
+# Override with SW_PROFILE=/path/to/profile to target a different profile dir.
+PROFILE="${SW_PROFILE:-$HOME/.mozilla/firefox/x3iaw2cf.testing 2}"
 
 lock=$(readlink "$PROFILE/lock" 2>/dev/null || true)
 tpid="${lock##*+}"
