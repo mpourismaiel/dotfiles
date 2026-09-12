@@ -189,6 +189,7 @@
 
 ;;; Custom packages
 
+(mp/require-package "macros")
 (mp/require-package "custom-shortcuts")
 (mp/require-package "project-scripts")
 (mp/require-package "clutch-connections")

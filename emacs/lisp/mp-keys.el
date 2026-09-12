@@ -887,6 +887,12 @@ Replaces Doom-era `+eval/test' (which was an unbound command)."
   "m g r s" #'mp/goto-references-split-below
   "m g f s" #'consult-imenu
 
+  ;; m k — keyboard macros (macros package; q records, this manages them)
+  "m k"   '(:ignore t :which-key "macros")
+  "m k k" #'mp/macro-run
+  "m k a" #'mp/macro-save
+  "m k d" #'mp/macro-delete
+
   ;; TAB — workspaces (perspective-backed, defined in mp-workspaces)
   "TAB" '(:ignore t :which-key "workspace")
   "TAB TAB" #'mp/workspace-display

@@ -330,5 +330,10 @@
   (define-key evil-inner-text-objects-map "o" #'evil-inner-symbol)
   (define-key evil-outer-text-objects-map "o" #'evil-a-symbol))
 
+;; Keyboard-macro recording toggle (macros package): first `q' starts, second
+;; `q' stops and stores.  Bound in the GLOBAL normal-state map, so mode-specific
+;; `q' bindings (dired/help/magit quit, provided by evil-collection) still win.
+(evil-define-key 'normal 'global "q" #'mp/macro-toggle-record)
+
 (provide 'mp-evil)
 ;;; mp-evil.el ends here

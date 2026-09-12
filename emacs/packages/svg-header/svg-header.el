@@ -630,11 +630,22 @@ syntax highlighting and a simulated line-number gutter."
          (err-pad (round (* cw 0.5)))
          (err-w (if err (+ (* (length (nth 0 err)) cw) (* 2 err-pad)) 0))
          (err-gap cw)
+         ;; Most-recent session macro chip (macros package; nil when absent).
+         (macro-label (and (fboundp 'mp/macro-header-label)
+                           (mp/macro-header-label)))
+         (macro-text (and macro-label (concat "▸ " macro-label)))
+         (macro-pad (round (* cw 0.5)))
+         (macro-w (if macro-text
+                      (+ (* (length macro-text) cw) (* 2 macro-pad)) 0))
+         (macro-gap cw)
          (nbtn (length mp/header-svg-buttons))
          (buttons-w (+ (* nbtn bw) (* (max 0 (1- nbtn)) gap-btn)))
-         (cluster-w (+ (if err (+ err-w err-gap) 0) buttons-w))
+         (err-part (if err (+ err-w err-gap) 0))
+         (macro-part (if macro-text (+ macro-w macro-gap) 0))
+         (cluster-w (+ err-part macro-part buttons-w))
          (cluster-x (max pad-x (- width pad-x cluster-w)))
-         (btn-x0 (+ cluster-x (if err (+ err-w err-gap) 0)))
+         (macro-x (+ cluster-x err-part))
+         (btn-x0 (+ cluster-x err-part macro-part))
          (button-boxes
           (let ((res nil) (bi 0))
             (dolist (bdef mp/header-svg-buttons)
@@ -642,14 +653,21 @@ syntax highlighting and a simulated line-number gutter."
                 (push (list bx (+ bx bw) (nth 3 bdef)) res))
               (setq bi (1+ bi)))
             (nreverse res)))
-         (sig (list width status project filename err
+         (sig (list width status project filename err macro-label
                     (mapcar (lambda (p)
                               (cons (car p) (substring-no-properties (cdr p))))
                             parents)
                     (mapcar #'substring-no-properties balances))))
     ;; Remember geometry so a click maps back to a parent line or a button.
+    ;; The macro chip sits left of the icon buttons; prepend its box so the
+    ;; existing row-0 click hit-testing dispatches it too.
     (setq mp/header-svg-rows
-          (list pad-y line-h (mapcar #'car parents) button-boxes))
+          (list pad-y line-h (mapcar #'car parents)
+                (if macro-text
+                    (cons (list macro-x (+ macro-x macro-w)
+                                #'mp/macro-run-most-recent-once)
+                          button-boxes)
+                  button-boxes)))
     (if (and mp/header-svg-cache (equal (car mp/header-svg-cache) sig))
         (cdr mp/header-svg-cache)
       (let* ((bg (or (mp/header-line-background) "#1a1b26"))
@@ -686,6 +704,12 @@ syntax highlighting and a simulated line-number gutter."
                          :fill (nth 1 err) :rx pill-rx)
           (mp/header-svg-cell svg (nth 0 err) (+ cluster-x err-pad) baseline0 cw
                               (nth 2 err) "bold" family font-size))
+        ;; macro chip: most-recent session macro, left of the icon buttons
+        (when macro-text
+          (svg-rectangle svg macro-x btn-y macro-w btn-h
+                         :fill btn-bg :rx pill-rx)
+          (mp/header-svg-cell svg macro-text (+ macro-x macro-pad) baseline0 cw
+                              icon-fg "bold" family font-size))
         (cl-loop for bdef in mp/header-svg-buttons
                  for box in button-boxes
                  do (let* ((bx (nth 0 box))
