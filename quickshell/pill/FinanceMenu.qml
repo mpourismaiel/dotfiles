@@ -11,8 +11,10 @@ Item {
     id: root
     required property var theme
     property var fin                          // FinanceState (may be null)
+    property var habits                       // HabitState (may be null)
     signal closeRequested()
     signal calendarRequested()
+    signal habitsRequested()                  // header plant button → habit tracker
 
     // ---- mode machine ----
     property string mode: "cal"               // cal | add | forecast | register | balances | wishlist | plan
@@ -749,6 +751,34 @@ Item {
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
                 onClicked: root.calendarRequested()
+            }
+            Behavior on color { ColorAnimation { duration: root.theme.animFast } }
+        }
+
+        // plant — the habit tracker (win.menu 19), next to the calendar button.
+        // Only present when the Habit Tracker feature is enabled (Settings).
+        Rectangle {
+            visible: root.habits && root.habits.enabled
+            readonly property bool kbFocusable: root.habits && root.habits.enabled
+            property bool kbFocused: false
+            function keyClick() { root.habitsRequested(); }
+            width: 24
+            height: 24
+            radius: root.theme.radiusBtn
+            anchors.verticalCenter: parent.verticalCenter
+            color: (habBtnMa.containsMouse || kbFocused) ? root.theme.rowHi : "transparent"
+            MSym {
+                anchors.centerIn: parent
+                icon: "potted_plant"
+                size: 16
+                color: habBtnMa.containsMouse ? root.theme.text : root.theme.textDim
+            }
+            MouseArea {
+                id: habBtnMa
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.habitsRequested()
             }
             Behavior on color { ColorAnimation { duration: root.theme.animFast } }
         }

@@ -795,6 +795,58 @@ whole dir is one repo; books are folders inside it).
 *** Code
 Code: [[file:pill/FinanceMenu.qml][=pill/FinanceMenu.qml=]]
 
+** HabitMenu.qml + HabitState.qml + JungleView.qml + treegen.js + habiqbridge.py
+*** Description
+The habit tracker (menu 19): the =habiq= CLI's plain-text journal (sibling
+repo =../habiq= — hledger-style dated entries + habit directives) rendered as
+a *jungle*. Every habit grows one tree per ISO week; within the week the tree
+climbs four L-system growth stages as the cumulative score approaches the
+week's maximum (=sizeRatio=), while its colour tracks score-over-elapsed-days
+(=healthRatio=: dead / brown / light brown / seasonal green-or-orange —
+northern-hemisphere meteorological seasons). Frozen (vacation) days grow snow
+caps — a fully frozen week is a snowed-white cluster; floor vegetation
+density is the week's total score share plus a small streak bonus. All of
+that arithmetic lives in habiq; the pill renders its =weeks --json= verbatim.
+
+Trees are deterministic and never stored: habiq hashes (config =seed=, row
+id, ISO week) into a 32-bit seed, and [[file:pill/treegen.js][=treegen.js=]]
+regrows the identical tree from it — 24 plant families (12 L-system rule
+sets × 2 foliage builds, angles 18–35°), stage = rewrite iteration depth,
+per-seed jitter from a mulberry32 PRNG. =JungleView.qml= is a ListView (one
+Canvas delegate per week, newest on top): isometric tile cluster — first
+habit on the centre tile, the rest spiralling clockwise — a separator
+terrain strip between weeks, a bottom fade to keep focus on the current
+week, and a breeze clock (=windT=, 20 fps while open) shearing branches,
+leaves and grass tufts by height. Hovering a tree pops a tooltip (habit,
+week, GitHub-style 7-dot matrix via =HabitDots.qml= — done / missed /
+missed-with-reason / frozen / offday / pending all distinct); clicking it,
+or a right-panel habit card, opens =HabitDialog.qml= (log any date, member
+switcher for grouped habits like books = reading+listening, full history
+with in-place edit/delete). =FreezeDialog.qml= (both the Freeze and
+Unfreeze header buttons) lists/edits freeze ranges + "unfreeze from today";
+=AddHabitDialog.qml= appends a habit directive via =habiq habit add=. The
+week legend on the left scrolls the jungle and tracks it back (in-view week
+enlarged + accent bar); Today jumps to the current week.
+
+=HabitState.qml= is the one bridge owner (=habiqbridge.py= → the =habiq=
+binary, =HABIQ_BIN= override, =--dir= from Settings → Habit Tracker's
+journal directory). Feature-gated like finance: =settings.habitsEnabled=
+hides the plant buttons (calendar + finance headers) and blocks the =h=
+jump (dashboard + calendar-menu shortcut level). DEMO mode serves a pinned
+fake jungle from =demodata.py= (=habiq= kind). Screenshot stages:
+=menu-habits(-dialog/-freeze/-frozenweek)=.
+*** Code
+Code: [[file:pill/HabitMenu.qml][=pill/HabitMenu.qml=]],
+[[file:pill/HabitState.qml][=pill/HabitState.qml=]],
+[[file:pill/JungleView.qml][=pill/JungleView.qml=]],
+[[file:pill/treegen.js][=pill/treegen.js=]],
+[[file:pill/HabitDots.qml][=pill/HabitDots.qml=]],
+[[file:pill/HabitDialog.qml][=pill/HabitDialog.qml=]],
+[[file:pill/FreezeDialog.qml][=pill/FreezeDialog.qml=]],
+[[file:pill/AddHabitDialog.qml][=pill/AddHabitDialog.qml=]],
+[[file:pill/HabitField.qml][=pill/HabitField.qml=]],
+[[file:pill/habiqbridge.py][=pill/habiqbridge.py=]]
+
 ** TetrisMenu.qml
 *** Description
 A very basic Tetris (=win.menu === 9=), opened from a tiny S-tetromino button

@@ -18,6 +18,7 @@ PILL_STATES=(resting resting-rec resting-due resting-meeting clock-styles deadli
              menu-games menu-tetris menu-tetris-share menu-blockblast menu-blockblast-combo \
              menu-blockblast-share menu-brickbreaker menu-snake menu-minesweeper \
              menu-invaders menu-invaders-draft menu-invaders-path menu-invaders-laser menu-invaders-vapor \
+             menu-habits menu-habits-dialog menu-habits-freeze menu-habits-frozenweek \
              settings settings-productivity menu-emoji menu-emoji-search menu-done menu-done-loading \
              menu-notifhistory notif-stack power-hush power-blaze power-ledger power-split)
 

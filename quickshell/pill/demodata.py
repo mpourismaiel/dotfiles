@@ -1154,12 +1154,191 @@ def _run_clip(argv):
     # copy / delete / wipe — no-ops in demo mode.
 
 
+# --------------------------------------------------------------------------- #
+#  habiq (habit tracker / jungle)
+# --------------------------------------------------------------------------- #
+
+_HABIQ_ROWS = [
+    # id, name, members, scheduleLabel, typeLabel, freeform, sched (0=Mon..6=Sun)
+    ("hledger", "hledger update", ["hledger"], "every day", "bool", False, list(range(7))),
+    ("coding", "coding / work", ["coding"], "Mon-Fri", "hours", False, list(range(5))),
+    ("workout", "workout", ["workout"], "Mon · Wed · Sat", "bool", False, [0, 2, 5]),
+    ("books", "books", ["reading", "listening"], "freeform", "pages + hh:mm:ss", True, list(range(7))),
+    ("stretching", "stretching", ["stretching"], "every day", "bool", False, list(range(7))),
+]
+
+_HABIQ_REWARD = {"hledger": 1, "coding": 1, "workout": 4, "books": 3, "stretching": 1}
+
+
+def _habiq_season(monday):
+    m = (monday + datetime.timedelta(days=3)).month
+    if m in (3, 4, 5):
+        return "spring"
+    if m in (6, 7, 8):
+        return "summer"
+    if m in (9, 10, 11):
+        return "fall"
+    return "winter"
+
+
+def _habiq_value(row_id, r):
+    if row_id == "coding":
+        mins = 240 + r.randrange(200)
+        return "%d:%02d" % (mins // 60, mins % 60)
+    if row_id in ("books", "reading"):
+        return str(10 + r.randrange(40))
+    if row_id == "listening":
+        s = 900 + r.randrange(4000)
+        return "%d:%02d:%02d" % (s // 3600, (s % 3600) // 60, s % 60)
+    return "done"
+
+
+def _habiq_weeks(n_weeks=8):
+    """The `weeks` report: a lush, varied jungle — one frozen (vacation) week,
+    one dead tree, the current week mid-growth. Same shape as
+    `habiq weeks --json` (see the habiq README)."""
+    t = today()
+    monday0 = t - datetime.timedelta(days=t.weekday())
+    rows_out, totals = [], []
+    week_infos = []
+    for wi in range(n_weeks - 1, -1, -1):
+        monday = monday0 - datetime.timedelta(days=7 * wi)
+        y, wnum, _ = monday.isocalendar()
+        week_infos.append((monday, "%d-W%02d" % (y, wnum), wi))
+    for (rid, name, members, sched_label, type_label, freeform, sched) in _HABIQ_ROWS:
+        weeks = []
+        streak = 0
+        for (monday, wkey, wi) in week_infos:
+            if rid == "stretching" and wi >= 1:
+                continue                    # young habit: "new this week"
+            r = rng("habiq", rid, wkey)
+            reward = _HABIQ_REWARD.get(rid, 1)
+            frozen_week = wi == 3           # one vacation week: everything snowed
+            days, net, max_full, max_elapsed, frozen_days = [], 0.0, 0.0, 0.0, 0
+            # per-row quality: workout strong, books patchy, coding steady
+            quality = {"hledger": 0.75, "coding": 0.9, "workout": 0.95,
+                       "books": 0.55, "stretching": 0.85}.get(rid, 0.7)
+            if rid == "books" and wi == 5:
+                quality = 0.0               # one dead tree in the garden
+            for di in range(7):
+                d = monday + datetime.timedelta(days=di)
+                key = iso(d)
+                state, value, reason, score = "unscheduled", "", "", 0.0
+                if frozen_week:
+                    state = "frozen"
+                    frozen_days += 1
+                elif di in sched or freeform:
+                    max_full += reward
+                    if d > t:
+                        state = "pending"
+                    else:
+                        max_elapsed += reward
+                        roll = r.random()
+                        if roll < quality:
+                            state = "done"
+                            value = _habiq_value(rid, r)
+                            score = reward
+                            net += reward
+                            streak += 1
+                        elif roll < quality + 0.12:
+                            state = "missed-reason"
+                            reason = _pick(r, ["sick", "travel", "family day"])
+                            score = 0.0 if freeform else -reward
+                            net += score
+                            streak = max(0, streak - 1) if freeform else 0
+                        else:
+                            state = "missed"
+                            score = 0.0 if freeform else -reward
+                            net += score
+                            streak = max(0, streak - 2) if freeform else 0
+                days.append({"date": key, "state": state, "value": value,
+                             "reason": reason, "score": score})
+            size = max(0.0, min(1.0, net / max_full)) if max_full else 0.0
+            health = max(0.0, min(1.0, net / max_elapsed)) if max_elapsed else (0.0 if wi else 1.0)
+            finished = wi > 0
+            stage = 1 if size < 0.25 else 2 if size < 0.5 else 3 if size < 0.75 else 4
+            if frozen_week:
+                band = "frozen"
+            elif finished and net <= 0:
+                band = "dead"
+            elif health <= 0.33:
+                band = "low"
+            elif health <= 0.66:
+                band = "mid"
+            else:
+                band = "high"
+            weeks.append({
+                "week": wkey, "start": iso(monday), "end": iso(monday + datetime.timedelta(days=6)),
+                "season": _habiq_season(monday), "seed": rng("habiq-seed", rid, wkey).randrange(2 ** 31),
+                "net": round(net, 1), "maxFull": max_full, "maxElapsed": max_elapsed,
+                "sizeRatio": round(size, 3), "healthRatio": round(health, 3),
+                "stage": stage, "band": band, "frozenDays": frozen_days,
+                "streakEnd": streak, "finished": finished, "days": days,
+            })
+        rows_out.append({
+            "id": rid, "name": name, "members": members, "scheduleLabel": sched_label,
+            "typeLabel": type_label, "freeform": freeform, "streak": streak,
+            "longestStreak": streak + 4, "weeks": weeks,
+        })
+    for (monday, wkey, wi) in week_infos:
+        net = sum(w["net"] for row in rows_out for w in row["weeks"] if w["week"] == wkey)
+        mx = sum(w["maxFull"] for row in rows_out for w in row["weeks"] if w["week"] == wkey)
+        streaks = sum(w["streakEnd"] for row in rows_out for w in row["weeks"] if w["week"] == wkey)
+        veg = max(0.0, min(1.0, (max(0.0, net) / mx if mx else 0.0) + min(0.15, 0.005 * streaks)))
+        totals.append({"week": wkey, "start": iso(monday), "season": _habiq_season(monday),
+                       "net": round(net, 1), "max": mx, "vegetation": round(veg, 3)})
+    y, wnum, _ = t.isocalendar()
+    return {"today": iso(t), "week": "%d-W%02d" % (y, wnum), "seed": "0",
+            "rows": rows_out, "weekTotals": totals}
+
+
+def _run_habiq(argv):
+    argv = list(argv)
+    if argv[:1] == ["--dir"]:
+        argv = argv[2:]
+    cmd = argv[0] if argv else ""
+    if cmd in ("weeks", "status"):
+        print(json.dumps(_habiq_weeks()))
+    elif cmd == "history" and len(argv) > 1:
+        habit = argv[1]
+        t = today()
+        out = []
+        for back in range(21, -1, -1):
+            d = t - datetime.timedelta(days=back)
+            r = rng("habiq-hist", habit, iso(d))
+            if r.random() < 0.7:
+                out.append({"date": iso(d), "habit": habit, "kind": "log",
+                            "value": _habiq_value(habit, r), "reason": "", "index": 1})
+            elif r.random() < 0.3:
+                out.append({"date": iso(d), "habit": habit, "kind": "miss",
+                            "value": "", "reason": _pick(r, ["sick", "travel"]), "index": 1})
+        print(json.dumps(out))
+    elif cmd == "habits":
+        print(json.dumps([
+            {"id": "hledger", "name": "hledger update", "schedule": "every day", "type": "bool", "reward": 1, "penalty": 1},
+            {"id": "coding", "name": "coding / work", "schedule": "Mon-Fri", "type": "hours", "target": "6:00", "reward": 1, "penalty": 1, "offdayPenalty": 2},
+            {"id": "workout", "name": "workout", "schedule": "Mon · Wed · Sat", "type": "bool", "reward": 4, "penalty": 4},
+            {"id": "reading", "name": "reading", "schedule": "freeform", "type": "pages", "target": "20", "reward": 3, "penalty": 3, "group": "books"},
+            {"id": "listening", "name": "listening", "schedule": "freeform", "type": "hh:mm:ss", "target": "0:30:00", "reward": 3, "penalty": 3, "group": "books"},
+            {"id": "stretching", "name": "stretching", "schedule": "every day", "type": "bool", "reward": 1, "penalty": 1},
+        ]))
+    elif cmd == "freezes":
+        t = today()
+        m0 = t - datetime.timedelta(days=t.weekday() + 21)
+        print(json.dumps([{"index": 1, "start": iso(m0), "end": iso(m0 + datetime.timedelta(days=6)),
+                           "habit": "", "note": "vacation"}]))
+    else:
+        # every write command succeeds without touching anything
+        print(json.dumps({"ok": True}))
+
+
 _DISPATCH = {
     "org": _run_org,
     "gcal": _run_gcal,
     "finance": _run_finance,
     "git": _run_git,
     "clip": _run_clip,
+    "habiq": _run_habiq,
 }
 
 

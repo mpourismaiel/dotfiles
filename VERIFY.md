@@ -38,6 +38,7 @@ Legend: `[ ]` awaiting live check · `[x]` confirmed live · `[~]` partially con
 - [ ] **DEMO mode** — `DEMO=true` fake-data across all 5 bridges for screen recording; taskbar/notifs/launcher stay real.
 - [ ] **Focus model** — close-on-blur + restore-focus via KWin activate; verify the pill doesn't self-clobber lastActiveWindow.
 - [ ] **Transcribe** — voice-to-text (faster-whisper + Claude polish); needs setup-transcribe.sh; SIGTERM-finalize + rnnoise untested.
+- [ ] **Habit tracker (menu 19)** — enable Settings → Habit Tracker + point it at the journal dir (needs `habiq` on PATH; empty state has a "Create starter journal" button → `habiq init`). Plant buttons appear in the calendar header (next to wallet) and finance header (next to calendar); `h` from the expanded pill (and from the calendar menu's jump level) opens it. Jungle: newest week on top, legend click scrolls + scroll enlarges the in-view week's legend, Today jumps back, trees sway in the breeze, floor tufts shiver, lower weeks fade. Hover a tree → tooltip with the 7-dot matrix (done/missed/missed-reason/frozen/offday distinct); click tree or habit card → dialog: log with any date (defaults today), member switcher on books (reading/listening), history edit/delete rewrite journal lines. Freeze + Unfreeze buttons → freeze dialog (add range, per-habit scope chip, delete rows, "Unfreeze from today"); frozen days show snow-capped white trees. + Add Habit appends a directive (new habit = "new this week", no back-history). `DEMO=true` serves a fake jungle. Headless: pill check.sh + 4 screenshot stages (incl. frozen-week scroll) PASS, PNGs eyeballed.
 
 ## quickshell/emaqs
 
@@ -65,3 +66,7 @@ Legend: `[ ]` awaiting live check · `[x]` confirmed live · `[~]` partially con
 ## shledger
 
 - [ ] **Web app** — all milestones done, mockhost-tested only; never run against a real multi-user deployment.
+
+## habiq (CLI, ../habiq)
+
+- [ ] **habiq CLI** — Go CLI, 4 commits, 17 unit tests + smoke PASS; live daily flow unverified: `habiq init` → real `~/Documents/habits` journal, `log`/`miss --reason`/`freeze`/`unfreeze`, monthly `YYYY-MM.journal` files appearing + `include *.journal` pickup, `status`/`stats`/`history` output, `edit`/`delete --index` line rewrites, reserve mechanic (reasoned miss at ≥7-day streak → next-day follow-through forgives, double miss doubles), freeform decay math (gap of n costs 1+2+…+n), weekend-coding penalty, group `books` shared streak. Scoring assumptions (penalty=reward, presence-weight 0.5, targets 6:00/20p/0:30) flagged in README + starter journal — tune per taste.

@@ -14,8 +14,10 @@ Item {
     property var org                          // OrgAgenda state (may be null)
     property var fin                          // FinanceState (may be null)
     property var cal                          // CalendarEvents state (may be null)
+    property var habits                       // HabitState (may be null)
     signal closeRequested()
     signal financeRequested()                 // header wallet button → finance menu
+    signal habitsRequested()                  // header plant button → habit tracker
 
     // ---- view state ----
     property string primary: "greg"           // "greg" | "shamsi" — which calendar drives the grid
@@ -341,6 +343,34 @@ Item {
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
                 onClicked: root.toggleCalendar()
+            }
+            Behavior on color { ColorAnimation { duration: root.theme.animFast } }
+        }
+
+        // plant — switch to the habit tracker (win.menu 19); sits next to the
+        // wallet. Only present when the Habit Tracker feature is enabled.
+        Rectangle {
+            visible: root.habits && root.habits.enabled
+            readonly property bool kbFocusable: root.habits && root.habits.enabled
+            property bool kbFocused: false
+            function keyClick() { root.habitsRequested(); }
+            width: 24
+            height: 24
+            radius: root.theme.radiusBtn
+            anchors.verticalCenter: parent.verticalCenter
+            color: (habBtnMa.containsMouse || kbFocused) ? root.theme.rowHi : "transparent"
+            MSym {
+                anchors.centerIn: parent
+                icon: "potted_plant"
+                size: 16
+                color: habBtnMa.containsMouse ? root.theme.text : root.theme.textDim
+            }
+            MouseArea {
+                id: habBtnMa
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.habitsRequested()
             }
             Behavior on color { ColorAnimation { duration: root.theme.animFast } }
         }

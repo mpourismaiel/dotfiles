@@ -203,7 +203,7 @@ Item {
             event.accepted = true;
         } else if (root.shortcuts) {
             // same first-level jumps the expanded dashboard offers
-            const m = event.key === Qt.Key_F ? 8 : event.key === Qt.Key_C ? 6 : event.key === Qt.Key_N ? 4 : event.key === Qt.Key_W ? 0 : event.key === Qt.Key_V ? 1 : event.key === Qt.Key_B ? 2 : -1;
+            const m = event.key === Qt.Key_F ? 8 : event.key === Qt.Key_H ? 19 : event.key === Qt.Key_C ? 6 : event.key === Qt.Key_N ? 4 : event.key === Qt.Key_W ? 0 : event.key === Qt.Key_V ? 1 : event.key === Qt.Key_B ? 2 : -1;
             if (m >= 0) {
                 root.shortcutRequested(m);
                 event.accepted = true;

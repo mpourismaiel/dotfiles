@@ -23,13 +23,14 @@ Item {
     property var picker: null              // root.pickFolder(cb) — native folder picker
     signal closeRequested()
 
-    property int page: 0                   // 0 appearance · 1 accounts · 2 org agenda · 3 finance · 4 productivity
+    property int page: 0                   // 0 appearance · 1 accounts · 2 org agenda · 3 finance · 4 productivity · 5 habits
     readonly property var pages: [
         { key: "appearance", label: "Appearance",      icon: "palette" },
         { key: "accounts",   label: "Online Accounts", icon: "account_circle" },
         { key: "org",        label: "Org Agenda",      icon: "event_note" },
         { key: "finance",    label: "Finance",         icon: "account_balance_wallet" },
-        { key: "productivity", label: "Productivity",  icon: "commit" }
+        { key: "productivity", label: "Productivity",  icon: "commit" },
+        { key: "habits",     label: "Habit Tracker",   icon: "forest" }
     ]
 
     // opaque backdrop so the launcher body doesn't bleed through
@@ -227,6 +228,24 @@ Item {
                 theme: root.theme
                 settings: root.settings
                 picker: root.picker
+            }
+
+            // Habit Tracker config (habiq journal dir; menu 19, the jungle)
+            FeaturePage {
+                anchors.fill: parent
+                visible: root.page === 5
+                theme: root.theme
+                title: "Habit Tracker"
+                blurb: "Track habits with habiq: plain-text journals rendered as a growing "
+                     + "jungle — one tree per habit per week. Needs the habiq CLI on PATH; "
+                     + "point it at your journal directory (the folder holding habits.journal)."
+                enableLabel: "Enable Habit Tracker"
+                pathLabel: "Journal directory"
+                pathPlaceholder: "e.g. ~/Documents/habits"
+                featureOn: root.settings ? root.settings.habitsEnabled : false
+                path: root.settings ? root.settings.habitsDir : ""
+                onFeatureToggled: (v) => { if (root.settings) root.settings.habitsEnabled = v; }
+                onPathEdited: (v) => { if (root.settings) root.settings.habitsDir = v; }
             }
         }
     }

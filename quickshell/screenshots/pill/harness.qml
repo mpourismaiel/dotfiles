@@ -39,6 +39,8 @@ FloatingWindow {
         property string orgAgendaDir: "~/org"
         property bool financeEnabled: true
         property string financeDir: "~/Documents/finance"
+        property bool habitsEnabled: true
+        property string habitsDir: "~/Documents/habits"
         // Done page config (Settings › Productivity)
         property var productivityDirs: ["~/Documents/projects/awesome", "~/Documents/projects/teamwork", "~/work/shledger"]
         property var productivityEmails: ["you@example.com", "you@work.dev"]
@@ -132,6 +134,9 @@ FloatingWindow {
     // stand-in for DoneState (seeded CODE + AGENDA data, no bridge calls)
     MockDone { id: mockDone }
 
+    // stand-in for HabitState (pinned 8-week habiq jungle, no bridge calls)
+    MockHabits { id: mockHabits }
+
     // mock clock strings so the dashboard is deterministic
     readonly property string clockShort: "09:41"
     readonly property string clockDate:  "WED, 22 JUL"
@@ -197,6 +202,10 @@ FloatingWindow {
         { name: "menu-invaders-path", comp: cInvadersPath },
         { name: "menu-invaders-laser", comp: cInvadersLaser },
         { name: "menu-invaders-vapor", comp: cInvadersVapor },
+        { name: "menu-habits",   comp: cHabits },
+        { name: "menu-habits-dialog", comp: cHabitsDialog },
+        { name: "menu-habits-freeze", comp: cHabitsFreeze },
+        { name: "menu-habits-frozenweek", comp: cHabitsFrozen },
         { name: "settings",      comp: cSettings },
         { name: "settings-productivity", comp: cSettingsProd },
         { name: "menu-emoji",    comp: cEmoji },
@@ -609,6 +618,25 @@ FloatingWindow {
         ] }
     } }
     // the launcher's Settings page (Org Agenda page shown: toggle + directory field)
+    // the habit tracker (menu 19): the jungle over MockHabits' pinned report,
+    // plus the per-habit dialog (books group → member switcher + history) and
+    // the freeze dialog. The breeze clock runs live; the grab just catches one
+    // sway frame.
+    Component { id: cHabits; MenuHost { pillW: 860; pillH: 580; HabitMenu { anchors.fill: parent; theme: theme; habits: mockHabits } } }
+    Component { id: cHabitsDialog; MenuHost { pillW: 860; pillH: 580;
+        HabitMenu { id: habMenu; anchors.fill: parent; theme: theme; habits: mockHabits }
+        Timer { running: true; interval: 60; onTriggered: habMenu.openHabit(mockHabits.report.rows[3]) }
+    } }
+    Component { id: cHabitsFreeze; MenuHost { pillW: 860; pillH: 580;
+        HabitMenu { id: habMenuF; anchors.fill: parent; theme: theme; habits: mockHabits }
+        Timer { running: true; interval: 60; onTriggered: habMenuF.freezeOpen = true }
+    } }
+    // scrolled to the W33 vacation week: snowed tiles/trees, the dead books
+    // tree (W32) and green summer weeks below it
+    Component { id: cHabitsFrozen; MenuHost { pillW: 860; pillH: 580;
+        HabitMenu { id: habMenuS; anchors.fill: parent; theme: theme; habits: mockHabits }
+        Timer { running: true; interval: 120; onTriggered: habMenuS.scrollToWeek(4) }
+    } }
     Component { id: cSettings; MenuHost { pillW: 860; pillH: 580; SettingsMenu { anchors.fill: parent; theme: theme; acc: null; settings: mockSettings; themeSettings: mockThemeSettings; page: 0 } } }
     // the Productivity settings page (project dirs + author emails)
     Component { id: cSettingsProd; MenuHost { pillW: 860; pillH: 580; SettingsMenu { anchors.fill: parent; theme: theme; acc: null; settings: mockSettings; themeSettings: mockThemeSettings; page: 4 } } }

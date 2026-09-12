@@ -33,6 +33,7 @@ The dispatch lives in `init.qml`:
 | 16 | cEmoji | EmojiMenu.qml | smiley button |
 | 17 | cMine | MinesweeperMenu.qml | Games menu (mouse-only) |
 | 18 | cInvaders | InvadersMenu.qml | Games menu (Chicken Invaders roguelike) |
+| 19 | cHabits | HabitMenu.qml | calendar/finance plant buttons · `h` jump (habiq jungle) |
 
 Notes:
 - **4 is the default** — the fallback branch of the dispatch ternary is `cNotif`.
@@ -49,4 +50,7 @@ Notes:
   Blast) but is in `gamePane` (park-draggable by the header grip).
 - The Games picker (11) sizes to its card count (`gamesHeight`) — it outgrew the
   generic `openHeight` at six games.
-- The next free index is **19**.
+- The habit tracker (19) is feature-gated like finance: `settings.habitsEnabled`
+  (Settings → Habit Tracker) hides its openers and blocks the `h` jump when off.
+  It sizes via `habitsWidth`/`habitsHeight` (860×580, like Settings).
+- The next free index is **20**.
