@@ -91,7 +91,18 @@ Item {
     property var dialogRow: null           // habit dialog target (a report row)
     property bool freezeOpen: false
     property bool addOpen: false
-    readonly property bool dialogUp: dialogRow !== null || freezeOpen || addOpen
+    property string editHabitId: ""        // definition editor target ("" = closed)
+    readonly property bool dialogUp: dialogRow !== null || freezeOpen || addOpen || editHabitId !== ""
+
+    // an active freeze covering today flips the header button to Unfreeze
+    readonly property bool frozenNow: {
+        if (!habits || !habits.freezes || !rep) return false;
+        for (var i = 0; i < habits.freezes.length; i++) {
+            var f = habits.freezes[i];
+            if (rep.today >= f.start && rep.today <= f.end) return true;
+        }
+        return false;
+    }
     property var tipCell: null
     property real tipX: 0
     property real tipY: 0
@@ -123,7 +134,9 @@ Item {
             }
             MouseArea { id: addMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.addOpen = true }
         }
-        Rectangle {                        // Freeze — edit freeze ranges
+        Rectangle {                        // Freeze ⇄ Unfreeze — one button, label
+                                           // tracks whether a freeze covers today;
+                                           // either way it opens the freeze dialog
             readonly property bool kbFocusable: true
             property bool kbFocused: false
             function keyClick() { root.freezeOpen = true; }
@@ -135,35 +148,14 @@ Item {
             Text {
                 id: frTxt
                 anchors.centerIn: parent
-                text: "Freeze"
-                color: root.theme.textDim
+                text: root.frozenNow ? "❄ Unfreeze" : "Freeze"
+                color: root.frozenNow ? "#dfe6ec" : root.theme.textDim
                 font.family: root.theme.mono
                 font.pixelSize: root.theme.fsSmall
                 font.letterSpacing: root.theme.labelSpacing
                 font.capitalization: Font.AllUppercase
             }
             MouseArea { id: frMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.freezeOpen = true }
-        }
-        Rectangle {                        // Unfreeze — same dialog, exit path
-            readonly property bool kbFocusable: true
-            property bool kbFocused: false
-            function keyClick() { root.freezeOpen = true; }
-            width: unfrTxt.implicitWidth + 20
-            height: 24
-            radius: root.theme.radiusBtn
-            anchors.verticalCenter: parent.verticalCenter
-            color: (unfrMa.containsMouse || kbFocused) ? root.theme.rowHi : root.theme.row
-            Text {
-                id: unfrTxt
-                anchors.centerIn: parent
-                text: "Unfreeze"
-                color: root.theme.textDim
-                font.family: root.theme.mono
-                font.pixelSize: root.theme.fsSmall
-                font.letterSpacing: root.theme.labelSpacing
-                font.capitalization: Font.AllUppercase
-            }
-            MouseArea { id: unfrMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.freezeOpen = true }
         }
         Rectangle {                        // Today — scroll the jungle to now
             id: todayBtn
@@ -597,6 +589,10 @@ Item {
             row: root.dialogRow
             today: root.rep ? root.rep.today : ""
             onDismissed: root.dialogRow = null
+            onEditHabitRequested: (id) => {
+                root.dialogRow = null;
+                root.editHabitId = id;
+            }
         }
     }
     Loader {
@@ -611,11 +607,15 @@ Item {
     }
     Loader {
         anchors.fill: parent
-        active: root.addOpen
+        active: root.addOpen || root.editHabitId !== ""
         sourceComponent: AddHabitDialog {
             theme: root.theme
             habits: root.habits
-            onDismissed: root.addOpen = false
+            editId: root.editHabitId
+            onDismissed: {
+                root.addOpen = false;
+                root.editHabitId = "";
+            }
         }
     }
 }

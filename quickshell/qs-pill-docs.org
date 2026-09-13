@@ -813,23 +813,54 @@ id, ISO week) into a 32-bit seed, and [[file:pill/treegen.js][=treegen.js=]]
 regrows the identical tree from it — 24 plant families (12 L-system rule
 sets × 2 foliage builds, angles 18–35°), stage = rewrite iteration depth,
 per-seed jitter from a mulberry32 PRNG. =JungleView.qml= is a ListView (one
-Canvas delegate per week, newest on top): isometric tile cluster — first
-habit on the centre tile, the rest spiralling clockwise — a separator
-terrain strip between weeks, a bottom fade to keep focus on the current
-week, and a breeze clock (=windT=, 20 fps while open) shearing branches,
-leaves and grass tufts by height. Hovering a tree pops a tooltip (habit,
+Canvas delegate per week, newest on top) rendering ONE continuous
+isometric lattice: cell (c,r) → x=(c−r)·tw/2, y=(c+r)·th/2, cluster
+centres pinned to even lattice levels, delegate heights exact multiples
+of th/2 so stacked delegates continue the same grid seamlessly. Each
+cluster puts the first habit on the centre tile, the rest spiralling
+clockwise (L1 diamond rings); between weeks sits a separator row of
+FIVE lattice cells with its middle cell at x=0 — exactly below both
+jungle centres, edge-touching the clusters' shoulder cells when parity
+allows (the gap level is the first past the cluster, bumped to even;
+seasonal tufts on the row, snow wash when the week is frozen). Trees
+overhang upward — each Canvas paints =overhang= px above its delegate,
+translated, and =z: index= stacks older weeks above so a lower jungle's
+canopy rises over the row behind it (painter's order). The garden's head rests at the vertical MIDDLE of the view (a
+half-viewport header of sky, re-pinned on geometry changes because
+ListView anchors items — not the header — across a header resize), and
+weeks are generated LAZILY: =cacheBuffer: 300= keeps only delegates
+within ~300px of the viewport alive, regrown deterministically on
+re-entry. A bottom fade keeps focus on the current week, and a breeze
+clock (=windT=, 20 fps while open) shears branches, leaves and grass
+tufts by height. DEMO mode serves 26 weeks (two frozen vacations, a few
+dead trees, seasonal drift) so all of it is visible in action. Hovering a tree pops a tooltip (habit,
 week, GitHub-style 7-dot matrix via =HabitDots.qml= — done / missed /
 missed-with-reason / frozen / offday / pending all distinct); clicking it,
 or a right-panel habit card, opens =HabitDialog.qml= (log any date, member
 switcher for grouped habits like books = reading+listening, full history
-with in-place edit/delete). =FreezeDialog.qml= (both the Freeze and
-Unfreeze header buttons) lists/edits freeze ranges + "unfreeze from today";
-=AddHabitDialog.qml= appends a habit directive via =habiq habit add=. The
+with in-place edit/delete; date inputs use
+=DateField.qml= (a masked YYYY-MM-DD field + a calendar-grid popover;
+the popup is *created imperatively into the dialog-root overlay* — never
+a child of the field's Column, where it would join the layout flow and
+shove the form around; the =datefield= harness stage renders it open over
+fixed reference rows to catch exactly that); bool habits log
+via a done/missed =PillCheckbox.qml= pair — the org-agenda checkbox pattern extracted into a
+component — and the dialog's "Edit habit" button opens the definition
+editor). =FreezeDialog.qml= opens from ONE header button whose label flips
+Freeze⇄❄ Unfreeze with the active-freeze state; it lists/edits freeze
+ranges + "unfreeze from today". =AddHabitDialog.qml= appends a habit
+directive via =habiq habit add= — or, seeded with =editId= (prefilled from
+the habit-list JSON's =scheduleSpec=/=typeRaw=), rewrites an existing
+directive block in place via =habiq habit edit=. The edit form prefills
+reactively (=_prefill()= runs on completion AND on every =habits=
+change, guarded so it fills once) because the definition list loads async. The
 week legend on the left scrolls the jungle and tracks it back (in-view week
 enlarged + accent bar); Today jumps to the current week.
 
 =HabitState.qml= is the one bridge owner (=habiqbridge.py= → the =habiq=
-binary, =HABIQ_BIN= override, =--dir= from Settings → Habit Tracker's
+binary — resolved =HABIQ_BIN= → PATH → ~/.local/bin, ~/go/bin, ~/bin,
+/usr/local/bin, because the autostarted pill runs on the stock systemd
+PATH where a terminal-visible =habiq= is invisible — =--dir= from Settings → Habit Tracker's
 journal directory). Feature-gated like finance: =settings.habitsEnabled=
 hides the plant buttons (calendar + finance headers) and blocks the =h=
 jump (dashboard + calendar-menu shortcut level). DEMO mode serves a pinned

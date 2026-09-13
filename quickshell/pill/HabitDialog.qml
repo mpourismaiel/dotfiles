@@ -14,6 +14,7 @@ Rectangle {
     property var row: null                 // report row {id, name, members, ...}
     property string today: ""
     signal dismissed()
+    signal editHabitRequested(string id)   // header "edit habit" → definition form
 
     anchors.fill: parent
     color: Qt.rgba(0, 0, 0, 0.45)
@@ -28,6 +29,7 @@ Rectangle {
         return null;
     }
     readonly property var def: memberDef(member)
+    readonly property bool isBool: def ? (def.typeRaw || def.type) === "bool" : false
     readonly property string valueHint: {
         if (!def) return "";
         if (def.type === "bool") return "done";
@@ -40,6 +42,7 @@ Rectangle {
     property var editing: null             // { date, index }
     property string error: ""
     property bool missed: false
+    property bool doneChecked: true        // bool habits: the "done" tick
 
     Connections {
         target: root.habits
@@ -48,6 +51,7 @@ Rectangle {
             if (ok) {
                 root.editing = null;
                 root.missed = false;
+                root.doneChecked = true;
                 fValue.text = "";
                 fReason.text = "";
             }
@@ -56,13 +60,18 @@ Rectangle {
 
     function submit() {
         var d = fDate.text.trim() || root.today;
+        if (root.isBool && !root.missed && !root.doneChecked) {
+            root.error = "tick done or missed";
+            return;
+        }
+        var value = root.isBool ? "done" : fValue.text.trim();
         if (root.editing) {
             root.habits.editEntry(root.member, root.editing.date, root.editing.index,
-                                  root.missed ? "miss" : fValue.text.trim(), fReason.text.trim());
+                                  root.missed ? "miss" : value, fReason.text.trim());
         } else if (root.missed) {
             root.habits.missEntry(root.member, d, fReason.text.trim());
         } else {
-            root.habits.logEntry(root.member, d, fValue.text.trim(), fReason.text.trim());
+            root.habits.logEntry(root.member, d, value, fReason.text.trim());
         }
     }
 
@@ -93,13 +102,35 @@ Rectangle {
                     font.family: root.theme.serif
                     font.pixelSize: 19
                 }
-                Text {
+                Row {
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
-                    text: "✕"
-                    color: closeMa.containsMouse ? root.theme.text : root.theme.faint
-                    font.pixelSize: 14
-                    MouseArea { id: closeMa; anchors.fill: parent; anchors.margins: -6; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.dismissed() }
+                    spacing: 10
+                    Rectangle {                // edit the definition (schedule/target/…)
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: editHabTxt.implicitWidth + 18
+                        height: 22
+                        radius: root.theme.radiusBtn
+                        color: editHabMa.containsMouse ? root.theme.rowHi : root.theme.row
+                        Text {
+                            id: editHabTxt
+                            anchors.centerIn: parent
+                            text: "Edit habit"
+                            color: root.theme.textDim
+                            font.family: root.theme.mono
+                            font.pixelSize: root.theme.fsSmall
+                            font.capitalization: Font.AllUppercase
+                            font.letterSpacing: root.theme.labelSpacing
+                        }
+                        MouseArea { id: editHabMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.editHabitRequested(root.member) }
+                    }
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "✕"
+                        color: closeMa.containsMouse ? root.theme.text : root.theme.faint
+                        font.pixelSize: 14
+                        MouseArea { id: closeMa; anchors.fill: parent; anchors.margins: -6; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.dismissed() }
+                    }
                 }
             }
 
@@ -142,21 +173,48 @@ Rectangle {
             // ---- log / edit form ----
             Row {
                 spacing: 8
-                HabitField {
+                DateField {
                     id: fDate
                     theme: root.theme
+                    overlay: root
                     label: root.editing ? "date (editing)" : "date"
-                    fieldWidth: 108
+                    fieldWidth: 138
                     placeholder: root.today
-                    input.enabled: root.editing === null
+                    editable: root.editing === null
                 }
                 HabitField {
                     id: fValue
+                    visible: !root.isBool
                     theme: root.theme
                     label: "value"
                     fieldWidth: 96
                     placeholder: root.valueHint
                     input.enabled: !root.missed
+                }
+                Column {
+                    visible: root.isBool
+                    spacing: 4
+                    Text {
+                        text: "done"
+                        color: root.theme.faint
+                        font.family: root.theme.mono
+                        font.pixelSize: root.theme.fsSmall
+                        font.capitalization: Font.AllUppercase
+                        font.letterSpacing: root.theme.labelSpacing
+                    }
+                    Item {
+                        width: 20
+                        height: 28
+                        PillCheckbox {
+                            anchors.verticalCenter: parent.verticalCenter
+                            theme: root.theme
+                            checked: root.doneChecked && !root.missed
+                            onToggled: (on) => {
+                                root.doneChecked = on;
+                                if (on) root.missed = false;
+                            }
+                        }
+                    }
                 }
                 Column {
                     spacing: 4
@@ -168,21 +226,19 @@ Rectangle {
                         font.capitalization: Font.AllUppercase
                         font.letterSpacing: root.theme.labelSpacing
                     }
-                    Rectangle {
-                        width: 52
+                    Item {
+                        width: 20
                         height: 28
-                        radius: root.theme.radiusBtn
-                        color: root.missed ? root.theme.accentSoft : root.theme.row
-                        border.width: 1
-                        border.color: root.missed ? root.theme.accent : root.theme.border
-                        Text {
-                            anchors.centerIn: parent
-                            text: root.missed ? "yes" : "no"
-                            color: root.missed ? root.theme.accent : root.theme.textDim
-                            font.family: root.theme.mono
-                            font.pixelSize: root.theme.fsSmall
+                        PillCheckbox {
+                            anchors.verticalCenter: parent.verticalCenter
+                            theme: root.theme
+                            checked: root.missed
+                            onToggled: (on) => {
+                                root.missed = on;
+                                if (on && root.isBool) root.doneChecked = false;
+                                else if (!on && root.isBool) root.doneChecked = true;
+                            }
                         }
-                        MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.missed = !root.missed }
                     }
                 }
                 HabitField {
@@ -233,7 +289,7 @@ Rectangle {
                         anchors.fill: parent
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
-                        onClicked: { root.editing = null; fValue.text = ""; fReason.text = ""; root.missed = false; }
+                        onClicked: { root.editing = null; fValue.text = ""; fReason.text = ""; root.missed = false; root.doneChecked = true; }
                     }
                 }
                 Text {
@@ -327,6 +383,7 @@ Rectangle {
                                     fDate.text = hRow.modelData.date;
                                     fValue.text = hRow.modelData.kind === "miss" ? "" : hRow.modelData.value;
                                     root.missed = hRow.modelData.kind === "miss";
+                                    root.doneChecked = hRow.modelData.kind === "log";
                                     fReason.text = hRow.modelData.reason || "";
                                 }
                             }

@@ -1,17 +1,69 @@
 pragma ComponentBehavior: Bound
-// AddHabitDialog.qml — the header's "+ Add habit": appends a `habit` directive
-// to the root journal via `habiq habit add` (config-as-data — same thing as
-// editing habits.journal by hand, which stays the canonical path; this is the
-// convenience form). Schedule/type/reward are cycle chips; target uses the
-// chosen type's own value syntax (6:00, 20, 0:30:00). New habits start
-// scoring today — no retroactive misses, no trees for prior weeks.
+// AddHabitDialog.qml — the header's "+ Add habit", and (with `editId` set, via
+// the habit dialog's "Edit habit" button) the definition editor: appends or
+// rewrites a `habit` directive via `habiq habit add` / `habiq habit edit`
+// (config-as-data — same thing as editing habits.journal by hand, which stays
+// the canonical path; this is the convenience form). Schedule/type/reward are
+// cycle chips; target uses the chosen type's own value syntax (6:00, 20,
+// 0:30:00). New habits start scoring today — no retroactive misses, no trees
+// for prior weeks.
 import QtQuick
 
 Rectangle {
     id: root
     required property var theme
     property var habits: null
+    property string editId: ""             // "" = add mode; else edit this habit
+    readonly property bool editMode: editId !== ""
     signal dismissed()
+
+    // Prefill in edit mode. The definition comes from HabitState.habits, which
+    // the bridge loads asynchronously — so this may run before the data lands.
+    // We fill once (guarded by _filled) from Component.onCompleted AND whenever
+    // the habit list changes, so the form populates as soon as the data is
+    // there without ever clobbering the user's own edits afterwards.
+    property bool _filled: false
+    function _prefill() {
+        if (!editMode || _filled) return;
+        var hs = habits && habits.habits ? habits.habits : [];
+        for (var i = 0; i < hs.length; i++) {
+            if (hs[i].id !== editId) continue;
+            var d = hs[i];
+            fId.text = d.id;
+            fName.text = (d.name && d.name !== d.id) ? d.name : "";
+            fGroup.text = d.group || "";
+            var spec = d.scheduleSpec || "";
+            var fixed = ["daily", "weekdays", "freeform"];
+            if (fixed.indexOf(spec) >= 0) {
+                schedI = fixed.indexOf(spec);
+            } else if (spec !== "") {
+                schedI = 3; // custom day list
+                var days = {};
+                var toks = spec.split(" ");
+                for (var t = 0; t < toks.length; t++)
+                    if (toks[t]) days[toks[t]] = true;
+                customDays = days;
+            }
+            typeI = Math.max(0, types.indexOf(d.typeRaw || d.type || "bool"));
+            rewardI = Math.min(3, Math.max(0, Math.round(d.reward || 1) - 1));
+            fTarget.text = d.target || "";
+            fUnit.text = d.unit || "";
+            fPenalty.text = (d.penalty !== undefined && d.penalty !== d.reward) ? String(d.penalty) : "";
+            fOffday.text = d.offdayPenalty ? String(d.offdayPenalty) : "";
+            noStreak = !!d.noStreak;
+            _filled = true;
+            return;
+        }
+    }
+    Component.onCompleted: {
+        _prefill();
+        // if the list hasn't arrived yet, ask for a fresh load so it will
+        if (editMode && !_filled && habits) habits.reload();
+    }
+    Connections {
+        target: root.habits
+        function onHabitsChanged() { root._prefill(); }
+    }
 
     anchors.fill: parent
     color: Qt.rgba(0, 0, 0, 0.45)
@@ -47,7 +99,7 @@ Rectangle {
             if (days.length === 0) { root.error = "pick at least one day"; return; }
             sched = days.join(" ");
         }
-        root.habits.addHabit({
+        var spec = {
             id: id,
             name: fName.text.trim(),
             schedule: sched,
@@ -59,7 +111,11 @@ Rectangle {
             offdayPenalty: fOffday.text.trim(),
             group: fGroup.text.trim(),
             noStreak: root.noStreak
-        });
+        };
+        if (root.editMode)
+            root.habits.editHabit(spec);
+        else
+            root.habits.addHabit(spec);
     }
 
     component Chip: Rectangle {
@@ -117,7 +173,7 @@ Rectangle {
                 Text {
                     anchors.left: parent.left
                     anchors.verticalCenter: parent.verticalCenter
-                    text: "Add habit"
+                    text: root.editMode ? "Edit habit — " + root.editId : "Add habit"
                     color: root.theme.text
                     font.family: root.theme.serif
                     font.pixelSize: 19
@@ -134,7 +190,7 @@ Rectangle {
 
             Row {
                 spacing: 8
-                HabitField { id: fId; theme: root.theme; label: "id (one word)"; fieldWidth: 130; placeholder: "stretching" }
+                HabitField { id: fId; theme: root.theme; label: "id (one word)"; fieldWidth: 130; placeholder: "stretching"; input.enabled: !root.editMode }
                 HabitField { id: fName; theme: root.theme; label: "display name"; fieldWidth: 170; placeholder: "optional" }
                 HabitField { id: fGroup; theme: root.theme; label: "group"; fieldWidth: 110; placeholder: "optional" }
             }
@@ -217,7 +273,7 @@ Rectangle {
                     Text {
                         id: createTxt
                         anchors.centerIn: parent
-                        text: "Create habit"
+                        text: root.editMode ? "Save habit" : "Create habit"
                         color: createMa.containsMouse ? "#ffffff" : root.theme.accent
                         font.family: root.theme.mono
                         font.pixelSize: root.theme.fsSmall
@@ -240,7 +296,10 @@ Rectangle {
 
             Text {
                 width: parent.width
-                text: "Habits are directives in habits.journal — this form just appends one. "
+                text: root.editMode
+                    ? "Saving rewrites this habit's directive block in habits.journal in place. "
+                      + "Edit the file for anything the form doesn't cover (presence-weight, start date …)."
+                    : "Habits are directives in habits.journal — this form just appends one. "
                       + "Edit the file for anything the form doesn't cover (presence-weight, start date …)."
                 color: root.theme.faint
                 font.family: root.theme.family

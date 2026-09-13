@@ -204,7 +204,11 @@ FloatingWindow {
         { name: "menu-invaders-vapor", comp: cInvadersVapor },
         { name: "menu-habits",   comp: cHabits },
         { name: "menu-habits-dialog", comp: cHabitsDialog },
+        { name: "menu-habits-dialog-bool", comp: cHabitsDialogBool },
+        { name: "menu-habits-edit", comp: cHabitsEdit },
         { name: "menu-habits-freeze", comp: cHabitsFreeze },
+        { name: "menu-habits-datepicker", comp: cHabitsDatepicker },
+        { name: "datefield", comp: cDateFieldView },
         { name: "menu-habits-frozenweek", comp: cHabitsFrozen },
         { name: "settings",      comp: cSettings },
         { name: "settings-productivity", comp: cSettingsProd },
@@ -627,9 +631,89 @@ FloatingWindow {
         HabitMenu { id: habMenu; anchors.fill: parent; theme: theme; habits: mockHabits }
         Timer { running: true; interval: 60; onTriggered: habMenu.openHabit(mockHabits.report.rows[3]) }
     } }
+    // bool habit (workout) dialog: done/missed as PillCheckboxes, no text value
+    Component { id: cHabitsDialogBool; MenuHost { pillW: 860; pillH: 580;
+        HabitMenu { id: habMenuB; anchors.fill: parent; theme: theme; habits: mockHabits }
+        Timer { running: true; interval: 60; onTriggered: habMenuB.openHabit(mockHabits.report.rows[2]) }
+    } }
+    // the definition editor (Edit habit) prefilled from the workout directive
+    Component { id: cHabitsEdit; MenuHost { pillW: 860; pillH: 580;
+        HabitMenu { id: habMenuE; anchors.fill: parent; theme: theme; habits: mockHabits }
+        Timer { running: true; interval: 60; onTriggered: habMenuE.editHabitId = "workout" }
+    } }
     Component { id: cHabitsFreeze; MenuHost { pillW: 860; pillH: 580;
         HabitMenu { id: habMenuF; anchors.fill: parent; theme: theme; habits: mockHabits }
         Timer { running: true; interval: 60; onTriggered: habMenuF.freezeOpen = true }
+    } }
+    // standalone DateField exercise view: the reusable date input in a bare
+    // form — rows around and BELOW the field, with the popover OPEN. Any
+    // layout displacement caused by opening the calendar (the bug class where
+    // the popup joined the Column flow) shows immediately against the fixed
+    // reference rows.
+    Component { id: cDateFieldView; MenuHost { pillW: 560; pillH: 470;
+        Item {
+            id: dfHost
+            anchors.fill: parent
+            Column {
+                x: 20; y: 16
+                spacing: 12
+                Text { text: "DateField"; color: theme.text; font.family: theme.serif; font.pixelSize: 19 }
+                Row {
+                    spacing: 10
+                    DateField { id: dfA; theme: theme; overlay: dfHost; label: "from"; text: "2026-09-12"; fieldWidth: 130 }
+                    DateField { theme: theme; overlay: dfHost; label: "to"; fieldWidth: 130 }
+                    HabitField { theme: theme; label: "note"; fieldWidth: 110; placeholder: "vacation" }
+                }
+                Row {
+                    spacing: 10
+                    DateField { theme: theme; overlay: dfHost; label: "locked"; text: "2026-09-01"; editable: false; fieldWidth: 130 }
+                    HabitField { theme: theme; label: "value"; fieldWidth: 110; placeholder: "6:00" }
+                }
+                Rectangle { width: 380; height: 1; color: theme.divider }
+                Text {
+                    text: "reference rows — must not move while the popover is open"
+                    color: theme.faint; font.family: theme.mono; font.pixelSize: theme.fsSmall
+                }
+                Row {
+                    spacing: 6
+                    Repeater {
+                        model: 8
+                        Rectangle { width: 36; height: 22; radius: 6; color: theme.row; border.width: 1; border.color: theme.border }
+                    }
+                }
+            }
+            Timer { running: true; interval: 120; onTriggered: dfA.open = true }
+        }
+    } }
+    // the freeze dialog with the "from" date-picker popover dropped open — proves
+    // the reusable DateField calendar renders above the dialog content
+    Component { id: cHabitsDatepicker; MenuHost { pillW: 860; pillH: 580;
+        HabitMenu { id: habMenuD; anchors.fill: parent; theme: theme; habits: mockHabits }
+        Timer {
+            running: true; interval: 60
+            onTriggered: {
+                habMenuD.freezeOpen = true;
+                openTimer.start();
+            }
+        }
+        Timer {
+            id: openTimer; interval: 120
+            // reach into the freeze dialog's first DateField and open its calendar
+            onTriggered: {
+                var fd = _findDateField(habMenuD);
+                if (fd) fd.open = true;
+            }
+            function _findDateField(obj) {
+                if (!obj || !obj.children) return null;
+                for (var i = 0; i < obj.children.length; i++) {
+                    var c = obj.children[i];
+                    if (c && c.hasOwnProperty("editable") && c.hasOwnProperty("open")) return c;
+                    var deep = _findDateField(c);
+                    if (deep) return deep;
+                }
+                return null;
+            }
+        }
     } }
     // scrolled to the W33 vacation week: snowed tiles/trees, the dead books
     // tree (W32) and green summer weeks below it

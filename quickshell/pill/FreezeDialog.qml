@@ -73,8 +73,8 @@ Rectangle {
 
             Row {
                 spacing: 8
-                HabitField { id: fStart; theme: root.theme; label: "from"; fieldWidth: 104; placeholder: root.today }
-                HabitField { id: fEnd; theme: root.theme; label: "to"; fieldWidth: 104; placeholder: "YYYY-MM-DD" }
+                DateField { id: fStart; theme: root.theme; overlay: root; label: "from"; fieldWidth: 120; placeholder: root.today }
+                DateField { id: fEnd; theme: root.theme; overlay: root; label: "to"; fieldWidth: 120; placeholder: "YYYY-MM-DD" }
                 Column {
                     spacing: 4
                     Text {

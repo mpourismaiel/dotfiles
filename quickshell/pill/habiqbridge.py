@@ -22,18 +22,43 @@
 #   habit-add JSON                {id, name?, schedule, type, unit?, target?,
 #                                  reward, penalty?, offdayPenalty?, group?,
 #                                  noStreak?} → habiq habit add …
+#   habit-edit JSON               same payload → habiq habit edit … (rewrites
+#                                  the directive block in place; ""s clear)
 #   init                          create the starter journal (empty-state button)
 #
 # A LEADING `--dir DIR` points at the journal directory (Settings → Habit
 # Tracker); it becomes `habiq --file DIR/habits.journal`. Without it habiq uses
-# its own default (~/Documents/habits). The habiq binary is found on PATH
-# (override: HABIQ_BIN).
+# its own default (~/Documents/habits).
+#
+# Binary resolution: HABIQ_BIN env wins, then PATH, then common install spots.
+# The probing matters because the autostarted pill (systemd user session /
+# login autostart) runs with the stock PATH — no ~/.local/bin, no ~/go/bin —
+# so `which habiq` succeeds from a terminal but fails at boot.
 import sys
 import os
 import json
+import shutil
 import subprocess
 
-HABIQ = os.environ.get("HABIQ_BIN", "habiq")
+
+def _find_habiq():
+    env = os.environ.get("HABIQ_BIN")
+    if env:
+        return os.path.expanduser(env)
+    found = shutil.which("habiq")
+    if found:
+        return found
+    home = os.path.expanduser("~")
+    for cand in (os.path.join(home, ".local", "bin", "habiq"),
+                 os.path.join(home, "go", "bin", "habiq"),
+                 os.path.join(home, "bin", "habiq"),
+                 "/usr/local/bin/habiq"):
+        if os.access(cand, os.X_OK):
+            return cand
+    return "habiq"  # let the OSError surface as the UI hint
+
+
+HABIQ = _find_habiq()
 
 
 def run_habiq(args, journal):
@@ -152,6 +177,26 @@ def main():
                 args += [flag, str(v)]
         if spec.get("noStreak"):
             args.append("--no-streak")
+        write(args, journal)
+    elif cmd == "habit-edit" and a:
+        try:
+            spec = json.loads(a[0])
+        except ValueError as e:
+            print(json.dumps({"ok": False, "error": "bad payload: %s" % e}))
+            return
+        args = ["habit", "edit", spec.get("id", "")]
+        # every present key is passed, empty strings included — the CLI treats
+        # '' as "clear back to default" (penalty→reward, no target, no group…)
+        for key, flag in (("name", "--name"), ("schedule", "--schedule"),
+                          ("type", "--type"), ("unit", "--unit"),
+                          ("target", "--target"), ("reward", "--reward"),
+                          ("penalty", "--penalty"),
+                          ("offdayPenalty", "--offday-penalty"),
+                          ("group", "--group")):
+            if key in spec:
+                args += [flag, str(spec[key])]
+        if "noStreak" in spec:
+            args += ["--streak", "off" if spec.get("noStreak") else "on"]
         write(args, journal)
     elif cmd == "init":
         write(["init"], journal)

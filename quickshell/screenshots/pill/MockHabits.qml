@@ -26,25 +26,42 @@ QtObject {
     function removeFreeze() { writeDone(true, ""); }
     function unfreeze() { writeDone(true, ""); }
     function addHabit() { writeDone(true, ""); }
+    function editHabit() { writeDone(true, ""); }
 
     property string historyHabit: "reading"
-    property var history: [
-        { date: "2026-09-01", habit: "reading", kind: "log", value: "24", reason: "", index: 1 },
-        { date: "2026-09-03", habit: "reading", kind: "log", value: "31", reason: "", index: 1 },
-        { date: "2026-09-05", habit: "reading", kind: "miss", value: "", reason: "travel", index: 1 },
-        { date: "2026-09-07", habit: "reading", kind: "log", value: "18", reason: "", index: 1 },
-        { date: "2026-09-09", habit: "reading", kind: "log", value: "42", reason: "long evening", index: 1 },
-        { date: "2026-09-11", habit: "reading", kind: "log", value: "32", reason: "", index: 1 }
+    readonly property var _histBase: [
+        { date: "2026-09-01", kind: "log", value: "24", reason: "" },
+        { date: "2026-09-03", kind: "log", value: "31", reason: "" },
+        { date: "2026-09-05", kind: "miss", value: "", reason: "travel" },
+        { date: "2026-09-07", kind: "log", value: "18", reason: "" },
+        { date: "2026-09-09", kind: "log", value: "42", reason: "long evening" },
+        { date: "2026-09-11", kind: "log", value: "32", reason: "" }
     ]
-    function loadHistory(id) { historyHabit = id; }
+    property var history: []
+    function loadHistory(id) {
+        // reshape the canned history to the habit's value type (bool → "done")
+        var boolish = id === "workout" || id === "hledger" || id === "stretching";
+        var out = [];
+        for (var i = 0; i < _histBase.length; i++) {
+            var e = _histBase[i];
+            out.push({
+                date: e.date, habit: id, kind: e.kind,
+                value: e.kind === "log" ? (boolish ? "done" : e.value) : "",
+                reason: e.reason, index: 1
+            });
+        }
+        history = out;
+        historyHabit = id;
+    }
+    Component.onCompleted: loadHistory("reading")
 
     property var habits: [
-        { id: "hledger", name: "hledger update", schedule: "every day", type: "bool", reward: 1, penalty: 1 },
-        { id: "coding", name: "coding / work", schedule: "Mon-Fri", type: "hours", target: "6:00", reward: 1, penalty: 1, offdayPenalty: 2 },
-        { id: "workout", name: "workout", schedule: "Mon · Wed · Sat", type: "bool", reward: 4, penalty: 4 },
-        { id: "reading", name: "reading", schedule: "freeform", type: "pages", target: "20", reward: 3, penalty: 3, group: "books" },
-        { id: "listening", name: "listening", schedule: "freeform", type: "hh:mm:ss", target: "0:30:00", reward: 3, penalty: 3, group: "books" },
-        { id: "stretching", name: "stretching", schedule: "every day", type: "bool", reward: 1, penalty: 1 }
+        { id: "hledger", name: "hledger update", schedule: "every day", scheduleSpec: "daily", type: "bool", typeRaw: "bool", reward: 1, penalty: 1 },
+        { id: "coding", name: "coding / work", schedule: "Mon-Fri", scheduleSpec: "weekdays", type: "hours", typeRaw: "hours", target: "6:00", reward: 1, penalty: 1, offdayPenalty: 2 },
+        { id: "workout", name: "workout", schedule: "Mon · Wed · Sat", scheduleSpec: "mon wed sat", type: "bool", typeRaw: "bool", reward: 4, penalty: 4 },
+        { id: "reading", name: "reading", schedule: "freeform", scheduleSpec: "freeform", type: "pages", typeRaw: "count", unit: "pages", target: "20", reward: 3, penalty: 3, group: "books" },
+        { id: "listening", name: "listening", schedule: "freeform", scheduleSpec: "freeform", type: "hh:mm:ss", typeRaw: "duration", target: "0:30:00", reward: 3, penalty: 3, group: "books" },
+        { id: "stretching", name: "stretching", schedule: "every day", scheduleSpec: "daily", type: "bool", typeRaw: "bool", reward: 1, penalty: 1 }
     ]
     property var freezes: [
         { index: 1, start: "2026-08-17", end: "2026-08-23", habit: "", note: "vacation" }

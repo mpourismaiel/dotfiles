@@ -1193,9 +1193,10 @@ def _habiq_value(row_id, r):
     return "done"
 
 
-def _habiq_weeks(n_weeks=8):
-    """The `weeks` report: a lush, varied jungle — one frozen (vacation) week,
-    one dead tree, the current week mid-growth. Same shape as
+def _habiq_weeks(n_weeks=26):
+    """The `weeks` report: a lush, varied half-year garden — two frozen
+    (vacation) weeks, a couple of dead trees, strong and weak patches, the
+    current week mid-growth, seasons shifting down the scroll. Same shape as
     `habiq weeks --json` (see the habiq README)."""
     t = today()
     monday0 = t - datetime.timedelta(days=t.weekday())
@@ -1213,13 +1214,15 @@ def _habiq_weeks(n_weeks=8):
                 continue                    # young habit: "new this week"
             r = rng("habiq", rid, wkey)
             reward = _HABIQ_REWARD.get(rid, 1)
-            frozen_week = wi == 3           # one vacation week: everything snowed
+            frozen_week = wi in (3, 15)     # two vacation weeks: everything snowed
             days, net, max_full, max_elapsed, frozen_days = [], 0.0, 0.0, 0.0, 0
-            # per-row quality: workout strong, books patchy, coding steady
+            # per-row quality: workout strong, books patchy, coding steady —
+            # wobbled per week so the garden has strong and weak patches
             quality = {"hledger": 0.75, "coding": 0.9, "workout": 0.95,
                        "books": 0.55, "stretching": 0.85}.get(rid, 0.7)
-            if rid == "books" and wi == 5:
-                quality = 0.0               # one dead tree in the garden
+            quality = max(0.1, min(0.98, quality + (r.random() - 0.5) * 0.45))
+            if (rid == "books" and wi == 5) or (rid == "hledger" and wi == 12):
+                quality = 0.0               # a couple of dead trees in the garden
             for di in range(7):
                 d = monday + datetime.timedelta(days=di)
                 key = iso(d)
@@ -1298,7 +1301,12 @@ def _run_habiq(argv):
         argv = argv[2:]
     cmd = argv[0] if argv else ""
     if cmd in ("weeks", "status"):
-        print(json.dumps(_habiq_weeks()))
+        # honor the requested horizon (the pill asks for 26 weeks)
+        try:
+            n = int(argv[1])
+        except (IndexError, ValueError):
+            n = 26
+        print(json.dumps(_habiq_weeks(max(1, min(n, 52)))))
     elif cmd == "history" and len(argv) > 1:
         habit = argv[1]
         t = today()
@@ -1315,12 +1323,12 @@ def _run_habiq(argv):
         print(json.dumps(out))
     elif cmd == "habits":
         print(json.dumps([
-            {"id": "hledger", "name": "hledger update", "schedule": "every day", "type": "bool", "reward": 1, "penalty": 1},
-            {"id": "coding", "name": "coding / work", "schedule": "Mon-Fri", "type": "hours", "target": "6:00", "reward": 1, "penalty": 1, "offdayPenalty": 2},
-            {"id": "workout", "name": "workout", "schedule": "Mon · Wed · Sat", "type": "bool", "reward": 4, "penalty": 4},
-            {"id": "reading", "name": "reading", "schedule": "freeform", "type": "pages", "target": "20", "reward": 3, "penalty": 3, "group": "books"},
-            {"id": "listening", "name": "listening", "schedule": "freeform", "type": "hh:mm:ss", "target": "0:30:00", "reward": 3, "penalty": 3, "group": "books"},
-            {"id": "stretching", "name": "stretching", "schedule": "every day", "type": "bool", "reward": 1, "penalty": 1},
+            {"id": "hledger", "name": "hledger update", "schedule": "every day", "scheduleSpec": "daily", "type": "bool", "typeRaw": "bool", "reward": 1, "penalty": 1},
+            {"id": "coding", "name": "coding / work", "schedule": "Mon-Fri", "scheduleSpec": "weekdays", "type": "hours", "typeRaw": "hours", "target": "6:00", "reward": 1, "penalty": 1, "offdayPenalty": 2},
+            {"id": "workout", "name": "workout", "schedule": "Mon · Wed · Sat", "scheduleSpec": "mon wed sat", "type": "bool", "typeRaw": "bool", "reward": 4, "penalty": 4},
+            {"id": "reading", "name": "reading", "schedule": "freeform", "scheduleSpec": "freeform", "type": "pages", "typeRaw": "count", "unit": "pages", "target": "20", "reward": 3, "penalty": 3, "group": "books"},
+            {"id": "listening", "name": "listening", "schedule": "freeform", "scheduleSpec": "freeform", "type": "hh:mm:ss", "typeRaw": "duration", "target": "0:30:00", "reward": 3, "penalty": 3, "group": "books"},
+            {"id": "stretching", "name": "stretching", "schedule": "every day", "scheduleSpec": "daily", "type": "bool", "typeRaw": "bool", "reward": 1, "penalty": 1},
         ]))
     elif cmd == "freezes":
         t = today()

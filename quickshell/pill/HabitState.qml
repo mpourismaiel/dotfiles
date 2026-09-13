@@ -75,6 +75,9 @@ QtObject {
     function addHabit(spec) {
         _write(["habit-add", JSON.stringify(spec)]);
     }
+    function editHabit(spec) {
+        _write(["habit-edit", JSON.stringify(spec)]);
+    }
     function initJournal() {
         _write(["init"]);
     }
