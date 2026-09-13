@@ -115,14 +115,22 @@ ListView {
             return m;
         }
         readonly property bool hasSep: index < jungle.count - 1
-        // separator level below this center: first level past the cluster,
-        // bumped to EVEN so the middle separator cell can sit at x = 0
+        // separator level below this centre: first level past the cluster,
+        // bumped to EVEN so the middle separator cell sits at x = 0
         readonly property int sepGap: ((lDn + 1) % 2 === 0) ? (lDn + 1) : (lDn + 2)
-        // delegate spans from the cluster's top tile edge to the separator's
-        // bottom edge (or the cluster's bottom edge on the last week) — always
-        // an exact number of tileH/2 lattice bands, so stacked delegates
-        // continue one seamless grid
-        height: ((lUp + 1) + (hasSep ? sepGap + 1 : lDn + 1)) * jungle.tileH / 2
+        // centre-to-centre advance to the next week. The separator sits at level
+        // sepGap; the next cluster's TOP row must land one level past it (sepGap
+        // + 1), so the next centre is lUp + sepGap + 1 levels down — no empty
+        // level between the separator and the next jungle, no overlap. Kept even
+        // so every cluster centre stays on an even lattice level (valid x = 0);
+        // for the habit set here lUp is odd, so it already comes out even.
+        readonly property int advance: {
+            var a = lUp + sepGap + 1;
+            return (a % 2 === 0) ? a : a + 1;
+        }
+        // the delegate height IS that advance (for the last week, just enough to
+        // hold the cluster) — so stacked delegates continue one seamless lattice
+        height: (hasSep ? advance : (lUp + 1 + lDn + 1)) * jungle.tileH / 2
         width: jungle.width
         readonly property real centerY: (lUp + 1) * jungle.tileH / 2
         // older (lower, nearer the viewer) weeks paint over newer ones' rows —
@@ -165,10 +173,12 @@ ListView {
             id: cv
             // extends `overhang` px above the delegate so canopies can rise
             // into the previous week's rows; painting is translated to keep
-            // item-local coordinates
+            // item-local coordinates. Also + tileH below, because the separator
+            // sits ON the delegate's bottom edge — its lower half crosses into
+            // the next week and would otherwise be clipped.
             y: -jungle.overhang
             width: parent.width
-            height: parent.height + jungle.overhang
+            height: parent.height + jungle.overhang + (block.hasSep ? jungle.tileH : 0)
             renderStrategy: Canvas.Cooperative
             property real wt: jungle.windT
             onWtChanged: requestPaint()

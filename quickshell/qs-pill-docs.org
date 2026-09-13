@@ -821,7 +821,11 @@ cluster puts the first habit on the centre tile, the rest spiralling
 clockwise (L1 diamond rings); between weeks sits a separator row of
 FIVE lattice cells with its middle cell at x=0 — exactly below both
 jungle centres, edge-touching the clusters' shoulder cells when parity
-allows (the gap level is the first past the cluster, bumped to even;
+allows (the delegate height equals the centre-to-centre advance lUp+sepGap+1, so
+the next cluster's top row lands exactly one level below the separator —
+no empty band between them; the separator sits on the delegate's bottom
+edge and the canvas overdraws tileH downward so its lower half isn't
+clipped;
 seasonal tufts on the row, snow wash when the week is frozen). Trees
 overhang upward — each Canvas paints =overhang= px above its delegate,
 translated, and =z: index= stacks older weeks above so a lower jungle's
