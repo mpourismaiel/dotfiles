@@ -33,6 +33,16 @@
 
 ;;; Elpaca bootstrap (official installer, v0.12)
 
+;; Emacs 31.1 isn't in elpaca's `elpaca--emacs-releases' table yet (it stops at
+;; 30.2) AND this build reports a nil `emacs-build-time', so elpaca has no way to
+;; derive `elpaca-core-date' and warns "Unable to determine elpaca-core-date" on
+;; every startup. Seed it ourselves (as (YYYYMMDD), the 31.1 binary's build date)
+;; so elpaca can still date built-in packages when comparing them to fetched
+;; recipes. Only kicks in on such a build: a future Emacs with a real build-time,
+;; or a newer elpaca that already sets the var, keeps its own value.
+(unless (or (boundp 'elpaca-core-date) emacs-build-time)
+  (setq elpaca-core-date '(20260825)))
+
 (defvar elpaca-installer-version 0.12)
 (defvar elpaca-directory (expand-file-name "elpaca/" user-emacs-directory))
 (defvar elpaca-builds-directory (expand-file-name "builds/" elpaca-directory))

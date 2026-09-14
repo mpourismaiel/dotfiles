@@ -14,7 +14,13 @@ Rectangle {
     property string today: ""
     signal dismissed()
 
+    // the scrim covers the pill's padding ring too (the menu content box is
+    // inset theme.pad inside the pill surface — filling only the parent left
+    // an un-dimmed frame that read as a sharp box) and rounds its corners to
+    // match the pill surface
     anchors.fill: parent
+    anchors.margins: -theme.pad
+    radius: theme.radiusPanel
     color: Qt.rgba(0, 0, 0, 0.45)
     MouseArea { anchors.fill: parent; onClicked: root.dismissed() }
 
@@ -36,8 +42,8 @@ Rectangle {
 
     Rectangle {
         anchors.centerIn: parent
-        width: 440
-        height: Math.min(root.height - 24, 380)
+        width: 540
+        height: Math.min(root.height - 24, 420)
         radius: root.theme.radiusPanel
         color: root.theme.bgElevated
         border.width: 1
@@ -61,20 +67,20 @@ Rectangle {
                     font.family: root.theme.serif
                     font.pixelSize: 19
                 }
-                Text {
+                MSym {
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
-                    text: "✕"
+                    icon: "close"
+                    size: 16
                     color: fcloseMa.containsMouse ? root.theme.text : root.theme.faint
-                    font.pixelSize: 14
                     MouseArea { id: fcloseMa; anchors.fill: parent; anchors.margins: -6; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.dismissed() }
                 }
             }
 
             Row {
                 spacing: 8
-                DateField { id: fStart; theme: root.theme; overlay: root; label: "from"; fieldWidth: 120; placeholder: root.today }
-                DateField { id: fEnd; theme: root.theme; overlay: root; label: "to"; fieldWidth: 120; placeholder: "YYYY-MM-DD" }
+                DateField { id: fStart; theme: root.theme; overlay: root; label: "from"; fieldWidth: 128; placeholder: root.today }
+                DateField { id: fEnd; theme: root.theme; overlay: root; label: "to"; fieldWidth: 128; placeholder: "YYYY-MM-DD" }
                 Column {
                     spacing: 4
                     Text {
@@ -105,7 +111,7 @@ Rectangle {
                         MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.cycleScope() }
                     }
                 }
-                HabitField { id: fNote; theme: root.theme; label: "note"; fieldWidth: 90; placeholder: "vacation" }
+                HabitField { id: fNote; theme: root.theme; label: "note"; fieldWidth: 128; placeholder: "vacation" }
             }
 
             Row {
@@ -200,14 +206,13 @@ Rectangle {
                         anchors.right: parent.right
                         anchors.rightMargin: 6
                         anchors.verticalCenter: parent.verticalCenter
-                        width: 40; height: 20; radius: 6
+                        width: 24; height: 20; radius: 6
                         color: fdelMa.containsMouse ? root.theme.danger : root.theme.row
-                        Text {
+                        MSym {
                             anchors.centerIn: parent
-                            text: "del"
+                            icon: "delete"
+                            size: 13
                             color: fdelMa.containsMouse ? "#ffffff" : root.theme.textDim
-                            font.family: root.theme.mono
-                            font.pixelSize: root.theme.fsSmall
                         }
                         MouseArea {
                             id: fdelMa

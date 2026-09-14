@@ -810,9 +810,25 @@ that arithmetic lives in habiq; the pill renders its =weeks --json= verbatim.
 
 Trees are deterministic and never stored: habiq hashes (config =seed=, row
 id, ISO week) into a 32-bit seed, and [[file:pill/treegen.js][=treegen.js=]]
-regrows the identical tree from it — 24 plant families (12 L-system rule
-sets × 2 foliage builds, angles 18–35°), stage = rewrite iteration depth,
-per-seed jitter from a mulberry32 PRNG. =JungleView.qml= is a ListView (one
+regrows the identical tree from it — twelve stylized SPECIES (oak, maple,
+willow, pine, spruce, birch, poplar, cypress, acacia, olive, shrub, fern),
+each a parametric recursive branching system: curved tapered limbs with
+per-species lean/curl/spread, canopies from clustered multi-tone soft
+blobs (centroid-gathered + domed), stacked conifer tiers, tall columns,
+tip-pad acacia umbrellas, thick drooping willow curtains or arching fern
+fronds. A species =hMul= height class keeps shrubs/ferns as modest ground
+plants instead of normalizing them to full tree height; stage deepens the
+same skeleton; per-seed jitter from a mulberry32 PRNG. Species are dealt
+per jungle by =Tg.assignSpecies(seeds)= — every cell draws a seed-shuffled
+preference order and species already granted that week sink a full lap
+down it, so no two trees of the same kind share a jungle until all twelve
+are on the field (the habit cards run the same draft, so minis match). =Tg.render()= is
+the ONE shared painter (jungle + habit-card minis): taper, three foliage
+tones, seasonal palette, snow share, dead trees as bare thickened
+scraggles with clinging scraps, and per-species wind multipliers (willow
+strands sway hardest). Grass tufts are curved quadratic blades in two
+tones with occasional gold blooms (snow berries when frozen), rendered by
+=Tg.renderTuft()=. =JungleView.qml= is a ListView (one
 Canvas delegate per week, newest on top) rendering ONE continuous
 isometric lattice: cell (c,r) → x=(c−r)·tw/2, y=(c+r)·th/2, cluster
 centres pinned to even lattice levels, delegate heights exact multiples
@@ -840,7 +856,10 @@ tufts by height. DEMO mode serves 26 weeks (two frozen vacations, a few
 dead trees, seasonal drift) so all of it is visible in action. Hovering a tree pops a tooltip (habit,
 week, GitHub-style 7-dot matrix via =HabitDots.qml= — done / missed /
 missed-with-reason / frozen / offday / pending all distinct); clicking it,
-or a right-panel habit card, opens =HabitDialog.qml= (log any date, member
+or a right-panel habit card, opens =HabitDialog.qml= (dialog scrims stretch =-theme.pad= beyond the
+menu content box with the panel radius, dimming the whole pill surface
+instead of leaving a sharp un-dimmed frame; edit/delete/close/add/freeze
+actions carry Material Symbols icons; log any date, member
 switcher for grouped habits like books = reading+listening, full history
 with in-place edit/delete; date inputs use
 =DateField.qml= (a masked YYYY-MM-DD field + a calendar-grid popover;

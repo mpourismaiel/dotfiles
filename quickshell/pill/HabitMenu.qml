@@ -117,20 +117,30 @@ Item {
             readonly property bool kbFocusable: true
             property bool kbFocused: false
             function keyClick() { root.addOpen = true; }
-            width: addTxt.implicitWidth + 20
+            width: addRow.implicitWidth + 20
             height: 24
             radius: root.theme.radiusBtn
             anchors.verticalCenter: parent.verticalCenter
             color: (addMa.containsMouse || kbFocused) ? root.theme.rowHi : root.theme.row
-            Text {
-                id: addTxt
+            Row {
+                id: addRow
                 anchors.centerIn: parent
-                text: "+ Add habit"
-                color: root.theme.textDim
-                font.family: root.theme.mono
-                font.pixelSize: root.theme.fsSmall
-                font.letterSpacing: root.theme.labelSpacing
-                font.capitalization: Font.AllUppercase
+                spacing: 5
+                MSym {
+                    anchors.verticalCenter: parent.verticalCenter
+                    icon: "add"
+                    size: 13
+                    color: root.theme.textDim
+                }
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: "Add habit"
+                    color: root.theme.textDim
+                    font.family: root.theme.mono
+                    font.pixelSize: root.theme.fsSmall
+                    font.letterSpacing: root.theme.labelSpacing
+                    font.capitalization: Font.AllUppercase
+                }
             }
             MouseArea { id: addMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.addOpen = true }
         }
@@ -140,20 +150,30 @@ Item {
             readonly property bool kbFocusable: true
             property bool kbFocused: false
             function keyClick() { root.freezeOpen = true; }
-            width: frTxt.implicitWidth + 20
+            width: frRow.implicitWidth + 20
             height: 24
             radius: root.theme.radiusBtn
             anchors.verticalCenter: parent.verticalCenter
             color: (frMa.containsMouse || kbFocused) ? root.theme.rowHi : root.theme.row
-            Text {
-                id: frTxt
+            Row {
+                id: frRow
                 anchors.centerIn: parent
-                text: root.frozenNow ? "❄ Unfreeze" : "Freeze"
-                color: root.frozenNow ? "#dfe6ec" : root.theme.textDim
-                font.family: root.theme.mono
-                font.pixelSize: root.theme.fsSmall
-                font.letterSpacing: root.theme.labelSpacing
-                font.capitalization: Font.AllUppercase
+                spacing: 5
+                MSym {
+                    anchors.verticalCenter: parent.verticalCenter
+                    icon: "ac_unit"
+                    size: 13
+                    color: root.frozenNow ? "#dfe6ec" : root.theme.textDim
+                }
+                Text {
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: root.frozenNow ? "Unfreeze" : "Freeze"
+                    color: root.frozenNow ? "#dfe6ec" : root.theme.textDim
+                    font.family: root.theme.mono
+                    font.pixelSize: root.theme.fsSmall
+                    font.letterSpacing: root.theme.labelSpacing
+                    font.capitalization: Font.AllUppercase
+                }
             }
             MouseArea { id: frMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.freezeOpen = true }
         }
@@ -384,47 +404,36 @@ Item {
                         renderStrategy: Canvas.Cooperative
                         property real wt: root.windT
                         onWtChanged: requestPaint()
+                        // same per-week species draft the jungle runs, so the
+                        // card mini is the same tree; geometry cached outside
+                        // the paint loop (breeze repaints shouldn't regrow it)
+                        readonly property var treeGeo: {
+                            if (!card.wk) return null;
+                            var seeds = [], idx = -1;
+                            for (var r = 0; r < root.rows.length; r++) {
+                                var wkr = root.weekOf(root.rows[r], root.rep ? root.rep.week : "");
+                                if (!wkr) continue;
+                                seeds.push(wkr.seed);
+                                if (root.rows[r].id === card.modelData.id) idx = seeds.length - 1;
+                            }
+                            var sp = idx >= 0 ? Tg.assignSpecies(seeds)[idx] : undefined;
+                            return Tg.build(card.wk.seed, card.wk.stage, sp);
+                        }
                         onPaint: {
                             var ctx = getContext("2d");
                             ctx.reset();
-                            if (!card.wk) return;
-                            var geo = Tg.build(card.wk.seed, card.wk.stage);
+                            if (!card.wk || !mini.treeGeo) return;
+                            var geo = mini.treeGeo;
                             var targetH = 14 + (card.wk.stage - 1) * 12 + card.wk.sizeRatio * 8;
-                            var sc = targetH / geo.h;
-                            var cx = width / 2, cy = height - 6;
-                            var warm = card.wk.season === "fall" || card.wk.season === "winter";
-                            var lc = card.wk.band === "dead" ? "#655a4b"
-                                   : card.wk.band === "low" ? "#8a6a45"
-                                   : card.wk.band === "mid" ? "#b59a63"
-                                   : warm ? "#d78f3c" : "#74b06a";
-                            var snowFrac = card.wk.band === "frozen" ? 1 : Math.min(1, (card.wk.frozenDays || 0) / 7);
-                            for (var s = 0; s < geo.segs.length; s++) {
-                                var seg = geo.segs[s];
-                                ctx.strokeStyle = seg.d === 0 ? "#5d4630" : "#6d5638";
-                                ctx.lineWidth = Math.max(1, 2.4 - seg.d * 0.6);
-                                ctx.beginPath();
-                                var sw1 = Math.sin(wt * 1.4 + (-seg.y1) * 0.05 * sc) * (-seg.y1 * sc / targetH);
-                                var sw2 = Math.sin(wt * 1.4 + (-seg.y2) * 0.05 * sc) * (-seg.y2 * sc / targetH);
-                                ctx.moveTo(cx + seg.x1 * sc + sw1, cy + seg.y1 * sc);
-                                ctx.lineTo(cx + seg.x2 * sc + sw2, cy + seg.y2 * sc);
-                                ctx.stroke();
-                            }
-                            for (var l = 0; l < geo.leaves.length; l++) {
-                                if (card.wk.band === "dead" && l % 3 !== 0) continue;
-                                var leaf = geo.leaves[l];
-                                var lr = Math.max(1.2, leaf.r * sc * 0.8);
-                                var lx = cx + leaf.x * sc + Math.sin(wt * 1.4 + (-leaf.y) * 0.05 * sc) * (-leaf.y * sc / targetH);
-                                var ly = cy + leaf.y * sc;
-                                var snowy = snowFrac > 0 && (l % 7) < snowFrac * 7;
-                                ctx.fillStyle = card.wk.band === "dead" ? "#5a5148" : (snowy ? "#e6ebf0" : lc);
-                                ctx.beginPath();
-                                ctx.moveTo(lx, ly - lr);
-                                ctx.lineTo(lx + lr, ly);
-                                ctx.lineTo(lx, ly + lr);
-                                ctx.lineTo(lx - lr, ly);
-                                ctx.closePath();
-                                ctx.fill();
-                            }
+                            Tg.render(ctx, geo, {
+                                x: width / 2, y: height - 6,
+                                scale: targetH / geo.h, targetH: targetH,
+                                windT: wt, phase: (card.wk.seed % 628) / 100,
+                                leaf: Tg.leafBase(card.wk.band, card.wk.season),
+                                dead: card.wk.band === "dead",
+                                snowFrac: card.wk.band === "frozen" ? 1
+                                        : Math.min(1, (card.wk.frozenDays || 0) / 7)
+                            });
                         }
                     }
 

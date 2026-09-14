@@ -160,12 +160,20 @@ ListView {
             return best;
         }
 
-        // per-row tree geometry, cached per (seed, stage) — regrown only when
-        // the report changes, not on every breeze repaint
+        // per-jungle species draft: no two trees of the same kind share a week
+        // (until every species is on the field) — deterministic from the seeds
+        readonly property var speciesMap: {
+            var seeds = [];
+            for (var i = 0; i < cells.length; i++) seeds.push(cells[i].week.seed);
+            return Tg.assignSpecies(seeds);
+        }
+        // per-row tree geometry, cached per (seed, stage, species) — regrown
+        // only when the report changes, not on every breeze repaint
         property var _trees: ({})
-        function treeFor(cell) {
-            var k = cell.week.seed + ":" + cell.week.stage;
-            if (!_trees[k]) _trees[k] = Tg.build(cell.week.seed, cell.week.stage);
+        function treeFor(i) {
+            var cell = cells[i];
+            var k = cell.week.seed + ":" + cell.week.stage + ":" + speciesMap[i];
+            if (!_trees[k]) _trees[k] = Tg.build(cell.week.seed, cell.week.stage, speciesMap[i]);
             return _trees[k];
         }
 
@@ -183,14 +191,6 @@ ListView {
             property real wt: jungle.windT
             onWtChanged: requestPaint()
             Component.onCompleted: requestPaint()
-
-            function leafColor(week, season) {
-                if (week.band === "dead") return "#655a4b";
-                if (week.band === "low") return "#8a6a45";
-                if (week.band === "mid") return "#b59a63";
-                var green = season === "spring" || season === "summer";
-                return green ? "#74b06a" : "#d78f3c";
-            }
 
             onPaint: {
                 var ctx = getContext("2d");
@@ -231,16 +231,8 @@ ListView {
                     }
                 }
                 function tuftAt(seed, tx, ty, frozen) {
-                    var t = Tg.tuft(seed);
-                    var sway = Math.sin(cv.wt * 2.1 + tx * 0.3) * 0.9;
-                    ctx.strokeStyle = frozen ? "#c9d2da" : (warm ? "#6b5a35" : "#55663d");
-                    ctx.lineWidth = 1;
-                    for (var b = 0; b < t.blades.length; b++) {
-                        ctx.beginPath();
-                        ctx.moveTo(tx, ty);
-                        ctx.lineTo(tx + t.blades[b].x2 + sway, ty + t.blades[b].y2);
-                        ctx.stroke();
-                    }
+                    Tg.renderTuft(ctx, Tg.tuft(seed), tx, ty, cv.wt,
+                                  warm ? "#6b5a35" : "#55663d", frozen);
                 }
 
                 // ---- cluster tiles ----
@@ -281,54 +273,23 @@ ListView {
                     }
                 }
 
-                // ---- trees ----
+                // ---- trees (species render shared with the habit cards) ----
                 for (oi = 0; oi < order.length; oi++) {
                     i = order[oi];
                     var cell = block.cells[i];
                     var cw = cell.week;
-                    var geo = block.treeFor(cell);
+                    var geo = block.treeFor(i);
                     var c2 = block.cellCenter(i);
                     // scale to a stage-appropriate height inside the canopy room
                     var targetH = 16 + (cw.stage - 1) * 16 + cw.sizeRatio * 10;
-                    var sc = targetH / geo.h;
-                    var phase = (cw.seed % 628) / 100;
-                    var lc = leafColor(cw, wk.season);
-                    var dead = cw.band === "dead";
-                    var snowFrac = cw.band === "frozen" ? 1 : Math.min(1, (cw.frozenDays || 0) / 7);
-
-                    // trunk + branches (depth-shaded, wind-sheared by height)
-                    for (var s = 0; s < geo.segs.length; s++) {
-                        var seg = geo.segs[s];
-                        var w1 = Math.max(1, (3.4 - seg.d * 0.8) * sc * 0.5 + 0.6);
-                        var sway1 = Math.sin(cv.wt * 1.4 + phase + (-seg.y1) * 0.05 * sc) * 1.6 * (-seg.y1 * sc / targetH);
-                        var sway2 = Math.sin(cv.wt * 1.4 + phase + (-seg.y2) * 0.05 * sc) * 1.6 * (-seg.y2 * sc / targetH);
-                        ctx.strokeStyle = dead ? "#4a4038" : (seg.d === 0 ? "#5d4630" : "#6d5638");
-                        ctx.lineWidth = w1;
-                        ctx.beginPath();
-                        ctx.moveTo(c2.x + seg.x1 * sc + sway1, c2.y + seg.y1 * sc);
-                        ctx.lineTo(c2.x + seg.x2 * sc + sway2, c2.y + seg.y2 * sc);
-                        ctx.stroke();
-                    }
-                    // foliage: diamonds (dead trees keep only sparse dark stubs)
-                    for (var l = 0; l < geo.leaves.length; l++) {
-                        if (dead && l % 3 !== 0) continue;
-                        var leaf = geo.leaves[l];
-                        var lr = Math.max(1.6, leaf.r * sc * 0.9);
-                        var lx = c2.x + leaf.x * sc
-                               + Math.sin(cv.wt * 1.4 + phase + (-leaf.y) * 0.05 * sc) * 1.8 * (-leaf.y * sc / targetH);
-                        var ly = c2.y + leaf.y * sc;
-                        var snowy = snowFrac > 0 && (l % 7) < snowFrac * 7;
-                        ctx.fillStyle = dead ? "#5a5148" : (snowy ? "#e6ebf0" : lc);
-                        ctx.globalAlpha = dead ? 0.8 : 0.95 - (leaf.d * 0.04);
-                        ctx.beginPath();
-                        ctx.moveTo(lx, ly - lr);
-                        ctx.lineTo(lx + lr, ly);
-                        ctx.lineTo(lx, ly + lr);
-                        ctx.lineTo(lx - lr, ly);
-                        ctx.closePath();
-                        ctx.fill();
-                        ctx.globalAlpha = 1;
-                    }
+                    Tg.render(ctx, geo, {
+                        x: c2.x, y: c2.y,
+                        scale: targetH / geo.h, targetH: targetH,
+                        windT: cv.wt, phase: (cw.seed % 628) / 100,
+                        leaf: Tg.leafBase(cw.band, wk.season),
+                        dead: cw.band === "dead",
+                        snowFrac: cw.band === "frozen" ? 1 : Math.min(1, (cw.frozenDays || 0) / 7)
+                    });
                 }
             }
         }

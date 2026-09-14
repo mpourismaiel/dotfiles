@@ -65,7 +65,10 @@ Rectangle {
         function onHabitsChanged() { root._prefill(); }
     }
 
+    // scrim covers the pill's padding ring and rounds to match the surface
     anchors.fill: parent
+    anchors.margins: -theme.pad
+    radius: theme.radiusPanel
     color: Qt.rgba(0, 0, 0, 0.45)
     MouseArea { anchors.fill: parent; onClicked: root.dismissed() }
 
@@ -154,8 +157,8 @@ Rectangle {
 
     Rectangle {
         anchors.centerIn: parent
-        width: 470
-        height: Math.min(root.height - 24, 400)
+        width: 540
+        height: Math.min(root.height - 24, 430)
         radius: root.theme.radiusPanel
         color: root.theme.bgElevated
         border.width: 1
@@ -178,21 +181,21 @@ Rectangle {
                     font.family: root.theme.serif
                     font.pixelSize: 19
                 }
-                Text {
+                MSym {
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
-                    text: "✕"
+                    icon: "close"
+                    size: 16
                     color: acloseMa.containsMouse ? root.theme.text : root.theme.faint
-                    font.pixelSize: 14
                     MouseArea { id: acloseMa; anchors.fill: parent; anchors.margins: -6; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.dismissed() }
                 }
             }
 
             Row {
                 spacing: 8
-                HabitField { id: fId; theme: root.theme; label: "id (one word)"; fieldWidth: 130; placeholder: "stretching"; input.enabled: !root.editMode }
-                HabitField { id: fName; theme: root.theme; label: "display name"; fieldWidth: 170; placeholder: "optional" }
-                HabitField { id: fGroup; theme: root.theme; label: "group"; fieldWidth: 110; placeholder: "optional" }
+                HabitField { id: fId; theme: root.theme; label: "id (one word)"; fieldWidth: 140; placeholder: "stretching"; input.enabled: !root.editMode }
+                HabitField { id: fName; theme: root.theme; label: "display name"; fieldWidth: 210; placeholder: "optional" }
+                HabitField { id: fGroup; theme: root.theme; label: "group"; fieldWidth: 130; placeholder: "optional" }
             }
 
             Row {

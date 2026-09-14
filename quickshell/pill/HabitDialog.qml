@@ -16,7 +16,11 @@ Rectangle {
     signal dismissed()
     signal editHabitRequested(string id)   // header "edit habit" → definition form
 
+    // scrim covers the pill's padding ring (not just the inset content box)
+    // and matches the pill surface's rounding — no sharp box behind the dialog
     anchors.fill: parent
+    anchors.margins: -theme.pad
+    radius: theme.radiusPanel
     color: Qt.rgba(0, 0, 0, 0.45)
     MouseArea { anchors.fill: parent; onClicked: root.dismissed() }
 
@@ -77,8 +81,8 @@ Rectangle {
 
     Rectangle {
         anchors.centerIn: parent
-        width: 470
-        height: Math.min(root.height - 24, 440)
+        width: 540
+        height: Math.min(root.height - 24, 470)
         radius: root.theme.radiusPanel
         color: root.theme.bgElevated
         border.width: 1
@@ -108,27 +112,37 @@ Rectangle {
                     spacing: 10
                     Rectangle {                // edit the definition (schedule/target/…)
                         anchors.verticalCenter: parent.verticalCenter
-                        width: editHabTxt.implicitWidth + 18
+                        width: editHabRow.implicitWidth + 18
                         height: 22
                         radius: root.theme.radiusBtn
                         color: editHabMa.containsMouse ? root.theme.rowHi : root.theme.row
-                        Text {
-                            id: editHabTxt
+                        Row {
+                            id: editHabRow
                             anchors.centerIn: parent
-                            text: "Edit habit"
-                            color: root.theme.textDim
-                            font.family: root.theme.mono
-                            font.pixelSize: root.theme.fsSmall
-                            font.capitalization: Font.AllUppercase
-                            font.letterSpacing: root.theme.labelSpacing
+                            spacing: 5
+                            MSym {
+                                anchors.verticalCenter: parent.verticalCenter
+                                icon: "edit"
+                                size: 12
+                                color: root.theme.textDim
+                            }
+                            Text {
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: "Edit habit"
+                                color: root.theme.textDim
+                                font.family: root.theme.mono
+                                font.pixelSize: root.theme.fsSmall
+                                font.capitalization: Font.AllUppercase
+                                font.letterSpacing: root.theme.labelSpacing
+                            }
                         }
                         MouseArea { id: editHabMa; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.editHabitRequested(root.member) }
                     }
-                    Text {
+                    MSym {
                         anchors.verticalCenter: parent.verticalCenter
-                        text: "✕"
+                        icon: "close"
+                        size: 16
                         color: closeMa.containsMouse ? root.theme.text : root.theme.faint
-                        font.pixelSize: 14
                         MouseArea { id: closeMa; anchors.fill: parent; anchors.margins: -6; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.dismissed() }
                     }
                 }
@@ -364,14 +378,13 @@ Rectangle {
                         spacing: 4
                         visible: hMa.containsMouse
                         Rectangle {
-                            width: 40; height: 20; radius: 6
+                            width: 24; height: 20; radius: 6
                             color: editMa.containsMouse ? root.theme.rowHi : root.theme.row
-                            Text {
+                            MSym {
                                 anchors.centerIn: parent
-                                text: "edit"
-                                color: root.theme.textDim
-                                font.family: root.theme.mono
-                                font.pixelSize: root.theme.fsSmall
+                                icon: "edit"
+                                size: 13
+                                color: editMa.containsMouse ? root.theme.text : root.theme.textDim
                             }
                             MouseArea {
                                 id: editMa
@@ -389,14 +402,13 @@ Rectangle {
                             }
                         }
                         Rectangle {
-                            width: 40; height: 20; radius: 6
+                            width: 24; height: 20; radius: 6
                             color: delMa.containsMouse ? root.theme.danger : root.theme.row
-                            Text {
+                            MSym {
                                 anchors.centerIn: parent
-                                text: "del"
+                                icon: "delete"
+                                size: 13
                                 color: delMa.containsMouse ? "#ffffff" : root.theme.textDim
-                                font.family: root.theme.mono
-                                font.pixelSize: root.theme.fsSmall
                             }
                             MouseArea {
                                 id: delMa
