@@ -804,9 +804,11 @@ climbs four L-system growth stages as the cumulative score approaches the
 week's maximum (=sizeRatio=), while its colour tracks score-over-elapsed-days
 (=healthRatio=: dead / brown / light brown / seasonal green-or-orange —
 northern-hemisphere meteorological seasons). Frozen (vacation) days grow snow
-caps — a fully frozen week is a snowed-white cluster; floor vegetation
-density is the week's total score share plus a small streak bonus. All of
-that arithmetic lives in habiq; the pill renders its =weeks --json= verbatim.
+caps — a fully frozen week is a snowed-white cluster; every tile stays lush,
+with floor vegetation (grass tufts, rocks, flowers) scaling by the plant's
+mood band — happier plants get denser turf and more blooms — plus a small
+total-score bonus. All of that arithmetic lives in habiq; the pill renders its
+=weeks --json= verbatim.
 
 Trees are deterministic and never stored: habiq hashes (config =seed=, row
 id, ISO week) into a 32-bit seed, and [[file:pill/treegen.js][=treegen.js=]]
@@ -828,7 +830,9 @@ tones, seasonal palette, snow share, dead trees as bare thickened
 scraggles with clinging scraps, and per-species wind multipliers (willow
 strands sway hardest). Grass tufts are curved quadratic blades in two
 tones with occasional gold blooms (snow berries when frozen), rendered by
-=Tg.renderTuft()=. =JungleView.qml= is a ListView (one
+=Tg.renderTuft()=; alongside them =Tg.renderRock()= drops soft pebbles and
+=Tg.renderFlower()= scatters five-petal blooms in a warm/cool seasonal palette
+(skipped on frozen weeks). =JungleView.qml= is a ListView (one
 Canvas delegate per week, newest on top) rendering ONE continuous
 isometric lattice: cell (c,r) → x=(c−r)·tw/2, y=(c+r)·th/2, cluster
 centres pinned to even lattice levels, delegate heights exact multiples
@@ -841,13 +845,15 @@ allows (the delegate height equals the centre-to-centre advance lUp+sepGap+1, so
 the next cluster's top row lands exactly one level below the separator —
 no empty band between them; the separator sits on the delegate's bottom
 edge and the canvas overdraws =underhang= px downward so its lower half —
-and every bottom tile's dirt — isn't clipped;
+and every bottom tile's earth clump — isn't clipped;
 seasonal tufts on the row, snow wash when the week is frozen). Tiles are
-not flat diamonds but extruded dirt blocks: left/right soil faces
-(=tileDepth= tall, the left one shadowed) dressed with seeded strata
-seams, embedded pebbles and a few roots dangling off the underside, all
+not flat diamonds but chunks of earth: a grassy surface diamond riding an
+organic underside clump — a seeded lumpy mound that bulges out and down
+below the two front edges, deepest under the centre, studded with crumbling
+clods, embedded pebbles and roots poking out and hanging — topped with grass
+speckle and a fringe of blades spilling over the front faces, all
 deterministic per tile seed. Back-to-front neighbours cover each other's
-faces, so dirt and roots only show along a cluster's outer rim — each
+clumps, so dirt and roots only show along a cluster's outer rim — each
 week reads as a chunky floating island; frozen tiles swap to cold grey
 dirt and greyed roots under the snow wash. Trees
 overhang upward — each Canvas paints =overhang= px above its delegate,
@@ -885,7 +891,16 @@ directive block in place via =habiq habit edit=. The edit form prefills
 reactively (=_prefill()= runs on completion AND on every =habits=
 change, guarded so it fills once) because the definition list loads async. The
 week legend on the left scrolls the jungle and tracks it back (in-view week
-enlarged + accent bar); Today jumps to the current week.
+enlarged + accent bar); Today jumps to the current week. When the journal
+directory is a git repo, a *sync* control sits in the header (leftmost of the
+trailing buttons, hidden otherwise): a status label reporting remote (=N↓=) and
+local (=N↑= / =N unsaved=) changes so you know a sync is due, plus ONE button
+that pulls THEN pushes — it commits local edits, rebases them onto the remote
+(so pulled changes come in and history stays linear) and pushes. A rebase that
+hits a real conflict is aborted untouched and reported ("conflicts — pull and
+resolve in a terminal"); clean divergences (edits to different lines) sync in
+one press. No merge markers ever land in the journal — messy states stay a
+terminal job, matching the finance strip's philosophy.
 
 =HabitState.qml= is the one bridge owner (=habiqbridge.py= → the =habiq=
 binary — resolved =HABIQ_BIN= → PATH → ~/.local/bin, ~/go/bin, ~/bin,
@@ -893,9 +908,13 @@ binary — resolved =HABIQ_BIN= → PATH → ~/.local/bin, ~/go/bin, ~/bin,
 PATH where a terminal-visible =habiq= is invisible — =--dir= from Settings → Habit Tracker's
 journal directory). Feature-gated like finance: =settings.habitsEnabled=
 hides the plant buttons (calendar + finance headers) and blocks the =h=
-jump (dashboard + calendar-menu shortcut level). DEMO mode serves a pinned
-fake jungle from =demodata.py= (=habiq= kind). Screenshot stages:
-=menu-habits(-dialog/-freeze/-frozenweek)=.
+jump (dashboard + calendar-menu shortcut level). It also owns the git plumbing
+(=gitInfo/gitBusy/gitError=, =loadGit()= + =gitSync()=): =git-status= runs a
+best-effort fetch first so the =behind= count is current, refreshed on open and
+after each write; =git-sync= is the commit→rebase→push above, with =--dir= (or
+the =~/Documents/habits= default) as the git repo. DEMO mode serves a pinned
+fake jungle from =demodata.py= (=habiq= kind), incl. a stub git status.
+Screenshot stages: =menu-habits(-dialog/-freeze/-frozenweek)=.
 *** Code
 Code: [[file:pill/HabitMenu.qml][=pill/HabitMenu.qml=]],
 [[file:pill/HabitState.qml][=pill/HabitState.qml=]],

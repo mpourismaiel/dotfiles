@@ -17,6 +17,14 @@ QtObject {
     signal writeDone(bool ok, string error)
 
     function reload() {}
+    function loadGit() {}
+    function gitSync() {}
+    // stand-in git state: a repo with a couple of changes to sync, so the
+    // header's sync strip renders its status text ("1↓ · 2↑ · 1 unsaved")
+    property var gitInfo: ({ repo: true, branch: "main", dirty: 1, ahead: 2, behind: 1,
+                            last: "a1b2c3d pill: habit entries 2026-09-12" })
+    property bool gitBusy: false
+    property string gitError: ""
     function initJournal() {}
     function logEntry() { writeDone(true, ""); }
     function missEntry() { writeDone(true, ""); }

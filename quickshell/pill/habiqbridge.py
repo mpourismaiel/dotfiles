@@ -25,10 +25,15 @@
 #   habit-edit JSON               same payload → habiq habit edit … (rewrites
 #                                  the directive block in place; ""s clear)
 #   init                          create the starter journal (empty-state button)
+#   git-status                    JSON {repo, branch, dirty, ahead, behind, last}
+#                                 (best-effort fetch first so `behind` is current)
+#   git-sync                      pull (ff-only) THEN push; {ok, pulled, committed,
+#                                 pushed, changed} or {ok:false, error}
 #
 # A LEADING `--dir DIR` points at the journal directory (Settings → Habit
-# Tracker); it becomes `habiq --file DIR/habits.journal`. Without it habiq uses
-# its own default (~/Documents/habits).
+# Tracker); it becomes `habiq --file DIR/habits.journal`, and that same DIR is
+# the git repo the sync commands operate on. Without it habiq (and git) use the
+# default ~/Documents/habits.
 #
 # Binary resolution: HABIQ_BIN env wins, then PATH, then common install spots.
 # The probing matters because the autostarted pill (systemd user session /
@@ -39,6 +44,7 @@ import os
 import json
 import shutil
 import subprocess
+import datetime
 
 
 def _find_habiq():
@@ -59,6 +65,100 @@ def _find_habiq():
 
 
 HABIQ = _find_habiq()
+
+# the journal directory doubles as the git repo the sync button operates on;
+# `--dir` overrides it in main(), otherwise it matches habiq's default
+GIT_DIR = os.path.expanduser("~/Documents/habits")
+
+
+def run_git(args, timeout=30):
+    """(rc, stdout, stderr) of a git run inside GIT_DIR. Never raises."""
+    try:
+        r = subprocess.run(["git", "-C", GIT_DIR] + args,
+                           capture_output=True, text=True, timeout=timeout)
+        return r.returncode, r.stdout.strip(), r.stderr.strip()
+    except Exception as e:
+        return 1, "", str(e)
+
+
+def git_counts():
+    """(ahead, behind) vs the upstream branch; (0, 0) if there's no upstream."""
+    rc, counts, _ = run_git(["rev-list", "--left-right", "--count",
+                             "HEAD...@{upstream}"])
+    if rc == 0 and counts:
+        parts = counts.split()
+        if len(parts) == 2:
+            return int(parts[0]), int(parts[1])
+    return 0, 0
+
+
+def cmd_git_status():
+    """Snapshot for the pill's sync strip: branch, dirty file count, ahead/behind
+    the upstream, last commit subject. A best-effort fetch runs first so `behind`
+    reflects the real remote (that's the point — telling you a sync is due); an
+    offline fetch just falls back to the last-known counts."""
+    rc, _, _ = run_git(["rev-parse", "--git-dir"])
+    if rc != 0:
+        return {"repo": False}
+    run_git(["fetch", "--quiet"], timeout=20)   # best-effort; ignore failure
+    _, branch, _ = run_git(["rev-parse", "--abbrev-ref", "HEAD"])
+    _, porcelain, _ = run_git(["status", "--porcelain"])
+    dirty = len([l for l in porcelain.splitlines() if l.strip()])
+    ahead, behind = git_counts()
+    _, last, _ = run_git(["log", "-1", "--format=%h %s"])
+    return {"repo": True, "branch": branch, "dirty": dirty,
+            "ahead": ahead, "behind": behind, "last": last}
+
+
+def cmd_git_sync():
+    """One-button sync: pull first, then push. Local edits are committed, then
+    replayed on top of the remote with a rebase (so pulled changes come in and
+    history stays linear). It NEVER writes conflict markers: a rebase that hits a
+    real conflict is aborted — restoring the tree untouched — and reported for
+    the user to resolve in a terminal. Clean divergences (edits to different
+    lines) rebase through and sync in one press."""
+    rc, _, _ = run_git(["rev-parse", "--git-dir"])
+    if rc != 0:
+        return {"ok": False, "error": "not a git repo"}
+    rc, _, err = run_git(["fetch", "--quiet"], timeout=60)
+    if rc != 0:
+        return {"ok": False, "error": err[-200:] or "fetch failed"}
+    _, before, _ = run_git(["rev-parse", "HEAD"])
+    # commit local edits first so the working tree is clean for the rebase
+    _, porcelain, _ = run_git(["status", "--porcelain"])
+    committed = False
+    if porcelain.strip():
+        run_git(["add", "-A"])
+        today = datetime.date.today().isoformat()
+        rc, _, err = run_git(["commit", "-m", "pill: habit entries %s" % today])
+        if rc != 0:
+            return {"ok": False, "error": err[-200:] or "commit failed"}
+        committed = True
+    # ---- pull first: rebase local commits onto the remote. On a real conflict
+    #      abort cleanly (tree back to exactly here) so the user handles it. ----
+    ahead, behind = git_counts()
+    pulled = False
+    if behind:
+        rc, _, err = run_git(["rebase", "@{upstream}"], timeout=60)
+        if rc != 0:
+            run_git(["rebase", "--abort"])
+            return {"ok": False, "committed": committed,
+                    "error": "conflicts — pull and resolve in a terminal"}
+        pulled = True
+    # ---- push whatever we're now ahead by ----
+    ahead, _ = git_counts()
+    pushed = False
+    if ahead or committed:
+        rc, _, err = run_git(["push", "--quiet"], timeout=60)
+        if rc != 0:
+            tail = err[-200:]
+            if "rejected" in err or "non-fast-forward" in err or "fetch first" in err:
+                tail = "push rejected — remote moved, sync again"
+            return {"ok": False, "committed": committed, "error": tail}
+        pushed = True
+    _, after, _ = run_git(["rev-parse", "HEAD"])
+    return {"ok": True, "pulled": pulled, "committed": committed,
+            "pushed": pushed, "changed": before != after}
 
 
 def run_habiq(args, journal):
@@ -103,11 +203,14 @@ def write(args, journal):
 
 
 def main():
+    global GIT_DIR
     argv = sys.argv[1:]
     journal = ""
     if argv and argv[0] == "--dir":
         d = os.path.expanduser(argv[1])
         journal = os.path.join(d, "habits.journal") if d else ""
+        if d:
+            GIT_DIR = d
         argv = argv[2:]
     if not argv:
         print(json.dumps({"ok": False, "error": "no command"}))
@@ -200,6 +303,10 @@ def main():
         write(args, journal)
     elif cmd == "init":
         write(["init"], journal)
+    elif cmd == "git-status":
+        print(json.dumps(cmd_git_status()))
+    elif cmd == "git-sync":
+        print(json.dumps(cmd_git_sync()))
     else:
         print(json.dumps({"ok": False, "error": "unknown command %r" % cmd}))
 

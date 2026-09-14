@@ -1335,6 +1335,12 @@ def _run_habiq(argv):
         m0 = t - datetime.timedelta(days=t.weekday() + 21)
         print(json.dumps([{"index": 1, "start": iso(m0), "end": iso(m0 + datetime.timedelta(days=6)),
                            "habit": "", "note": "vacation"}]))
+    elif cmd == "git-status":
+        print(json.dumps({"repo": True, "branch": "main", "dirty": 0, "ahead": 0,
+                          "behind": 0, "last": "a1b2c3d pill: habit entries " + iso(today())}))
+    elif cmd == "git-sync":
+        print(json.dumps({"ok": True, "pulled": False, "committed": False,
+                          "pushed": False, "changed": False}))
     else:
         # every write command succeeds without touching anything
         print(json.dumps({"ok": True}))

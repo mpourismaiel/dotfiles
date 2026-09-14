@@ -428,3 +428,77 @@ function renderTuft(ctx, t, x, y, windT, base, frozen) {
         ctx.fill();
     }
 }
+
+// filled ellipse from a left/top/right/bottom box — Qt Canvas has no ellipse(),
+// so build the unit circle under a scale transform, restore, then fill (the
+// same trick render() uses for foliage blobs)
+function ovalLTRB(ctx, l, t, r, b) {
+    var cx = (l + r) / 2, cy = (t + b) / 2;
+    var rx = Math.max(0.1, (r - l) / 2), ry = Math.max(0.1, (b - t) / 2);
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.scale(rx, ry);
+    ctx.beginPath();
+    ctx.arc(0, 0, 1, 0, Math.PI * 2);
+    ctx.restore();
+    ctx.fill();
+}
+
+// Warm/cool flower palettes — spring/summer stay bright and varied, fall/winter
+// lean gold/rust to sit under the autumn canopies.
+var FLOWER_COOL = ["#eef0ee", "#e8c14a", "#e18aa8", "#a98ad0", "#d0574e", "#6fb0d6"];
+var FLOWER_WARM = ["#e0a641", "#c85a3c", "#ecd9a8", "#d07a3a", "#9c6fae"];
+
+// A small five-petal flower on a swaying stem sitting on the soil.
+function renderFlower(ctx, seed, x, y, windT, warm, frozen) {
+    if (frozen) return;   // snowy weeks keep their snow-berry tufts, no blooms
+    var rng = rng32(seed >>> 0);
+    var sway = Math.sin(windT * 2.0 + x * 0.3) * 1.0;
+    var stem = 3.0 + rng() * 3.5;
+    var tipx = x + sway;
+    var tipy = y - stem;
+    ctx.strokeStyle = shade(hexRgb("#4f7a3a"), -0.05, 0.9);
+    ctx.lineWidth = 1;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.quadraticCurveTo(x + sway * 0.5, y - stem * 0.5, tipx, tipy);
+    ctx.stroke();
+    var pal = warm ? FLOWER_WARM : FLOWER_COOL;
+    var idx = Math.floor(rng() * pal.length);
+    if (idx < 0) idx = 0;
+    if (idx > pal.length - 1) idx = pal.length - 1;
+    var col = hexRgb(pal[idx]);
+    var prad = 1.2 + rng() * 0.7;
+    var petals = 5;
+    var a0 = rng() * Math.PI;
+    ctx.fillStyle = shade(col, -0.02, 0.95);
+    for (var k = 0; k < petals; k++) {
+        var a = a0 + k * (2 * Math.PI / petals);
+        ctx.beginPath();
+        ctx.arc(tipx + Math.cos(a) * prad * 1.3, tipy + Math.sin(a) * prad * 1.3, prad, 0, Math.PI * 2);
+        ctx.fill();
+    }
+    ctx.fillStyle = warm ? "#8a5a2a" : "#f2d24a";
+    ctx.beginPath();
+    ctx.arc(tipx, tipy, prad * 0.9, 0, Math.PI * 2);
+    ctx.fill();
+}
+
+// A little rounded pebble resting on the soil, with a soft contact shadow.
+function renderRock(ctx, seed, x, y, frozen) {
+    var rng = rng32(seed >>> 0);
+    var r = 1.5 + rng() * 2.0;
+    var rx = r * (1.0 + rng() * 0.4);
+    var ry = r * (0.7 + rng() * 0.2);
+    // contact shadow, offset a touch downward
+    ctx.fillStyle = "rgba(0,0,0,0.22)";
+    ovalLTRB(ctx, x - rx * 1.15, y - ry * 0.15, x + rx * 1.15, y + ry * 0.95);
+    var baseHex = frozen ? "#c2cad2" : (rng() < 0.5 ? "#8b9099" : "#787d84");
+    var base = hexRgb(baseHex);
+    ctx.fillStyle = shade(base, -0.06);
+    ovalLTRB(ctx, x - rx, y - ry, x + rx, y + ry);
+    // lit cap
+    ctx.fillStyle = shade(base, 0.25);
+    ovalLTRB(ctx, x - rx * 0.55, y - ry * 0.7, x + rx * 0.1, y - ry * 0.05);
+}

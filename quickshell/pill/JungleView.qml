@@ -14,16 +14,20 @@ pragma ComponentBehavior: Bound
 // delegate heights are exact multiples of tileH/2, and consecutive
 // delegates continue the lattice seamlessly.
 //
-// Every tile is an extruded dirt block, not a flat diamond: left/right soil
-// faces (tileDepth tall) with seeded strata, pebbles and dangling roots,
-// so each cluster reads as a chunky floating island — neighbours cover each
-// other's faces, dirt only shows on the rim. Trees overhang upward past
-// their delegate (each Canvas extends `overhang` px above and paints
-// translated, plus `underhang` below for the bottom tiles' dirt + roots);
-// `z: index` stacks older (lower) weeks above, the classic painter's order
-// — a lower jungle's canopy rises over the row above it. Floor vegetation density = the week's total score
-// share; separator tiles carry a little season-palette vegetation and are
-// snow-washed when the week is frozen. The garden's head (newest week) rests
+// Every tile is a chunk of earth torn from the ground, not a flat diamond: a
+// grassy surface diamond riding an organic underside clump (a seeded lumpy
+// mound bulging out and down below the front edges, deepest under the centre,
+// studded with crumbling clods, pebbles and roots), with grass speckle and a
+// fringe spilling over the front faces — so each cluster reads as a chunky
+// floating island, neighbours cover each other's clumps and dirt only shows on
+// the rim. Trees overhang upward past their delegate (each Canvas extends
+// `overhang` px above and paints translated, plus `underhang` below for the
+// bottom tiles' clump + roots); `z: index` stacks older (lower) weeks above,
+// the classic painter's order — a lower jungle's canopy rises over the row
+// above it. Every tile stays lush: baseline floor tufts scale with the week's
+// mood band (happier plants get denser turf, rocks and more flowers) plus a
+// small total-score bonus; separator tiles carry a little season-palette
+// vegetation and everything is snow-washed when the week is frozen. The garden's head (newest week) rests
 // at the vertical middle of the view — half a viewport of sky above it — and
 // weeks are generated lazily: only delegates within ~300px of the viewport
 // exist (cacheBuffer), regrown deterministically when scrolled back. A soft
@@ -216,95 +220,129 @@ ListView {
                 order.sort(function (a, b) { return block.cellCenter(a).y - block.cellCenter(b).y; });
 
                 var warm = wk.season === "fall" || wk.season === "winter";
-                var soil = warm ? "#33291e" : "#2c2f20";
-                var soilHi = warm ? "#41332a" : "#3a3d2a";
+                // grassy-green turf on top; fall/winter lean a touch olive/gold
+                var soil = warm ? "#6f7d3c" : "#4e7f42";
+                var soilHi = warm ? "#8a9a4c" : "#63a054";
+                var tuftBase = warm ? "#7c7b3c" : "#4f7a3a";
 
-                // each tile is a little extruded dirt block: the surface
-                // diamond sits on left/right soil faces (tileDepth tall,
-                // meeting under the bottom vertex) dressed with strata lines,
-                // pebbles and a few roots dangling off the underside — all
-                // deterministic from the tile's seed. Neighbours drawn
-                // back-to-front cover each other's faces, so dirt only shows
-                // on a cluster's outer rim, like a chunky floating island.
+                // each tile is a chunk of earth torn from the ground: the grassy
+                // surface diamond rides an organic underside clump — a lumpy
+                // mound bulging out and down below the diamond's two front edges,
+                // deepest under the centre, studded with crumbling clods, pebbles
+                // and roots poking out — then the turf gets grass speckle and a
+                // fringe spilling over the front faces. All deterministic from
+                // the tile's seed. Neighbours drawn back-to-front cover each
+                // other's clumps, so dirt only shows on a cluster's outer rim.
                 function tile(cx2, cy2, frozen, seed) {
                     var tw = jungle.tileW / 2, th = jungle.tileH / 2, td = jungle.tileDepth;
                     var pr = Tg.rng32(((seed || 1) ^ 0x9e3779b9) >>> 0);
+                    var soilRgb = Tg.hexRgb(soil);
                     var dirtL = frozen ? "#3a4049" : (warm ? "#211910" : "#1d2012");
                     var dirtR = frozen ? "#454c55" : (warm ? "#2a1f15" : "#242717");
                     var rootC = frozen ? "#5c646e" : (warm ? "#4d3a24" : "#43402a");
-                    // left (shadowed) face
+
+                    // ---- organic earth clump under the tile ----
+                    var lx = cx2 - tw;
+                    var rx0 = cx2 + tw;
+                    var bvy = cy2 + th;                    // bottom vertex y (seam low point)
+                    var mound = td + 8 + pr() * 9;         // how far the clump hangs below the vertex
+                    var belly = tw * (0.74 + pr() * 0.14); // clump half-width at its widest
+                    var cornDrop = 3 + pr() * 5;           // slight hang past the side corners
+                    var dcx = cx2 + (pr() - 0.5) * 5;      // centre of the deepest point (wobbled)
+                    var dby = bvy + mound;                 // deepest y
+
+                    // Bulging underside for one half: from the seam corner it
+                    // drops with a rounded shoulder, bows out to a wide waist,
+                    // then curls back into the deepest centre point.
+                    function underside(side, sx, sy) {
+                        var wx = cx2 + side * belly * (0.62 + pr() * 0.1);  // waist (widest bulge)
+                        var wy = dby - mound * (0.12 + pr() * 0.1);
+                        ctx.quadraticCurveTo(cx2 + side * belly * 1.02, sy + mound * 0.5, wx, wy);
+                        ctx.quadraticCurveTo(cx2 + side * belly * 0.26, dby + 2 + pr() * 4, dcx, dby);
+                    }
+
+                    // right (lit) half: seam B→R, bulging underside R→D, inner drop D→B
                     ctx.beginPath();
-                    ctx.moveTo(cx2 - tw, cy2);
-                    ctx.lineTo(cx2, cy2 + th);
-                    ctx.lineTo(cx2, cy2 + th + td);
-                    ctx.lineTo(cx2 - tw, cy2 + td);
-                    ctx.closePath();
-                    ctx.fillStyle = dirtL;
-                    ctx.fill();
-                    // right (lit) face
-                    ctx.beginPath();
-                    ctx.moveTo(cx2 + tw, cy2);
-                    ctx.lineTo(cx2, cy2 + th);
-                    ctx.lineTo(cx2, cy2 + th + td);
-                    ctx.lineTo(cx2 + tw, cy2 + td);
+                    ctx.moveTo(cx2, bvy);
+                    ctx.lineTo(rx0, cy2);
+                    underside(1, rx0, cy2);
+                    ctx.lineTo(cx2, bvy);
                     ctx.closePath();
                     ctx.fillStyle = dirtR;
                     ctx.fill();
-                    // strata: short darker seams parallel to the face's top
-                    // edge, sunk a little into the dirt
-                    ctx.strokeStyle = "rgba(0,0,0,0.18)";
+                    // left (shadowed) half, mirrored
+                    ctx.beginPath();
+                    ctx.moveTo(cx2, bvy);
+                    ctx.lineTo(lx, cy2);
+                    underside(-1, lx, cy2);
+                    ctx.lineTo(cx2, bvy);
+                    ctx.closePath();
+                    ctx.fillStyle = dirtL;
+                    ctx.fill();
+
+                    // parabola following the belly: y at horizontal fraction u (0 = centre)
+                    function bellyY(u) { return dby - (dby - (cy2 + cornDrop)) * (u * u); }
+
+                    // faint strata seams curving with the earth
+                    ctx.strokeStyle = "rgba(0,0,0,0.16)";
                     ctx.lineWidth = 1;
-                    for (var s = 0; s < 3; s++) {
-                        var side = pr() < 0.5 ? -1 : 1;
-                        var ly = 3 + pr() * (td - 5);
-                        var t0 = pr() * 0.5, t1 = t0 + 0.25 + pr() * 0.3;
+                    ctx.lineCap = "round";
+                    for (var s = 0; s < 2; s++) {
+                        var ss = pr() < 0.5 ? -1 : 1;
+                        var u0 = 0.25 + pr() * 0.45;
+                        var ex0 = cx2 + ss * belly * u0;
+                        var ey0 = cy2 + (bvy - cy2) * u0 + 2 + pr() * 4;
                         ctx.beginPath();
-                        ctx.moveTo(cx2 + side * tw * t0, cy2 + th * (1 - t0) + ly);
-                        ctx.lineTo(cx2 + side * tw * t1, cy2 + th * (1 - t1) + ly);
+                        ctx.moveTo(ex0 - ss * belly * 0.26, ey0);
+                        ctx.quadraticCurveTo(ex0, ey0 + 2, ex0 + ss * belly * 0.26, ey0);
                         ctx.stroke();
                     }
-                    // pebbles embedded in the faces
-                    ctx.fillStyle = frozen ? "rgba(200,210,220,0.35)" : "rgba(163,132,92,0.3)";
-                    for (var pn = 0; pn < 2; pn++) {
+                    // pebbles / dry crumbs studding the earth
+                    ctx.fillStyle = frozen ? Tg.shade(Tg.hexRgb("#c8d2dc"), 0, 0.3)
+                                           : Tg.shade(Tg.hexRgb("#a3845c"), 0, 0.28);
+                    for (var pn = 0; pn < 3; pn++) {
                         var ps = pr() < 0.5 ? -1 : 1;
-                        var pt = 0.15 + pr() * 0.7;
+                        var pt = 0.2 + pr() * 0.65;
                         ctx.beginPath();
-                        ctx.arc(cx2 + ps * tw * pt, cy2 + th * (1 - pt) + 3 + pr() * (td - 6),
-                                1 + pr() * 0.8, 0, Math.PI * 2);
+                        ctx.arc(cx2 + ps * belly * pt * 0.85, cy2 + 4 + pr() * (mound * 0.75),
+                                0.9 + pr() * 0.9, 0, Math.PI * 2);
                         ctx.fill();
                     }
-                    // bottom silhouette of the block
-                    ctx.strokeStyle = "rgba(0,0,0,0.35)";
-                    ctx.beginPath();
-                    ctx.moveTo(cx2 - tw, cy2 + td);
-                    ctx.lineTo(cx2, cy2 + th + td);
-                    ctx.lineTo(cx2 + tw, cy2 + td);
-                    ctx.stroke();
-                    // roots dangling off the underside, thick arc + finer tail
+                    // crumbling clods hanging just under the belly
+                    var nClods = 1 + Math.floor(pr() * 2);
+                    for (var cn = 0; cn < nClods; cn++) {
+                        var cs = (pr() - 0.5) * belly * 1.3;
+                        ctx.fillStyle = cs < 0 ? dirtL : dirtR;
+                        ctx.beginPath();
+                        ctx.arc(dcx + cs, dby - 2 + pr() * 4, 2.0 + pr() * 2.4, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                    // roots poking out of the underside and hanging down, thick arc + tail
                     ctx.strokeStyle = rootC;
                     ctx.lineCap = "round";
-                    var nr = 2 + Math.floor(pr() * 2);
+                    var nr = 3 + Math.floor(pr() * 3);
                     for (var rn = 0; rn < nr; rn++) {
-                        var rs = pr() < 0.5 ? -1 : 1;
-                        var rt = 0.2 + pr() * 0.6;
-                        var rx = cx2 + rs * tw * rt;
-                        var ry = cy2 + th * (1 - rt) + td - 1;
-                        var len = 6 + pr() * 9;
-                        var drift = (pr() - 0.5) * 7;
-                        ctx.lineWidth = 1.3;
+                        var u = (pr() - 0.5) * 1.7;   // -0.85..0.85 across the belly
+                        var rx = dcx + u * belly;
+                        var ry = bellyY(u) - 1;
+                        var len = 8 + pr() * 14;
+                        var drift = (pr() - 0.5) * 9;
+                        ctx.lineWidth = 1.4 + pr() * 0.8;
                         ctx.beginPath();
                         ctx.moveTo(rx, ry);
-                        ctx.quadraticCurveTo(rx + drift * 0.3, ry + len * 0.5, rx + drift, ry + len);
+                        ctx.quadraticCurveTo(rx + drift * 0.3, ry + len * 0.55, rx + drift, ry + len);
                         ctx.stroke();
                         ctx.lineWidth = 0.7;
                         ctx.beginPath();
                         ctx.moveTo(rx + drift, ry + len);
-                        ctx.quadraticCurveTo(rx + drift + (pr() - 0.5) * 4, ry + len + 3,
-                                             rx + drift + (pr() - 0.5) * 6, ry + len + 4 + pr() * 4);
+                        ctx.quadraticCurveTo(rx + drift + (pr() - 0.5) * 5, ry + len + 4,
+                                             rx + drift + (pr() - 0.5) * 7, ry + len + 6 + pr() * 5);
                         ctx.stroke();
                     }
                     ctx.lineCap = "butt";
-                    // surface diamond on top
+                    ctx.lineWidth = 1;
+
+                    // surface diamond on top — grassy green
                     ctx.beginPath();
                     ctx.moveTo(cx2, cy2 - th);
                     ctx.lineTo(cx2 + tw, cy2);
@@ -317,15 +355,43 @@ ListView {
                     ctx.lineWidth = 1;
                     ctx.stroke();
                     if (frozen) {   // snow wash
-                        ctx.globalAlpha = 0.55;
-                        ctx.fillStyle = "#dfe6ec";
+                        ctx.fillStyle = Tg.shade(Tg.hexRgb("#dfe6ec"), 0, 0.55);
                         ctx.fill();
-                        ctx.globalAlpha = 1;
+                        return;
                     }
+                    // grass speckle: scattered lighter/darker flecks so the turf isn't flat
+                    for (var sp = 0; sp < 5; sp++) {
+                        var a = pr(), b = pr();
+                        var gx = cx2 + (a - b) * tw * 0.82;
+                        var gy = cy2 + (a + b - 1) * th * 0.82;
+                        ctx.fillStyle = Tg.shade(soilRgb, pr() < 0.5 ? 0.16 : -0.12, 0.7);
+                        ctx.beginPath();
+                        ctx.arc(gx, gy, 0.8 + pr() * 0.7, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                    // grass fringe overhanging the two front faces (turf spilling over dirt)
+                    ctx.lineCap = "round";
+                    ctx.lineWidth = 1;
+                    for (var si = 0; si < 2; si++) {
+                        var fside = si === 0 ? -1 : 1;
+                        var nb = 5 + Math.floor(pr() * 3);
+                        for (var bn = 0; bn < nb; bn++) {
+                            var ft0 = 0.08 + pr() * 0.84;   // along the front edge, corner→bottom vertex
+                            var fex = cx2 + fside * tw * (1 - ft0);
+                            var fey = cy2 + th * ft0;
+                            var flen = 2.5 + pr() * 3.0;
+                            var fdrift = fside * (0.4 + pr() * 1.2);
+                            ctx.strokeStyle = Tg.shade(soilRgb, pr() < 0.4 ? 0.14 : -0.08, 0.92);
+                            ctx.beginPath();
+                            ctx.moveTo(fex, fey);
+                            ctx.quadraticCurveTo(fex + fdrift * 0.5, fey + flen * 0.6, fex + fdrift, fey + flen);
+                            ctx.stroke();
+                        }
+                    }
+                    ctx.lineCap = "butt";
                 }
                 function tuftAt(seed, tx, ty, frozen) {
-                    Tg.renderTuft(ctx, Tg.tuft(seed), tx, ty, cv.wt,
-                                  warm ? "#6b5a35" : "#55663d", frozen);
+                    Tg.renderTuft(ctx, Tg.tuft(seed), tx, ty, cv.wt, tuftBase, frozen);
                 }
 
                 // ---- cluster tiles ----
@@ -354,16 +420,43 @@ ListView {
                     }
                 }
 
-                // ---- floor vegetation (density = week total score share) ----
+                // ---- floor vegetation: every tile stays lush (even empty/dead
+                //      plants keep a grassy base), and the happier the plant the
+                //      denser it gets; rocks and flowers are scattered on top ----
                 var veg = wk.vegetation || 0;
+                var vtw = jungle.tileW / 2, vth = jungle.tileH / 2;
+                // sample a point uniformly inside a tile's surface diamond (inset)
+                function spot(vr, center, inset) {
+                    var a = vr(), b = vr();
+                    return { x: center.x + (a - b) * vtw * inset,
+                             y: center.y + (a + b - 1) * vth * inset };
+                }
                 for (i = 0; i < block.cells.length; i++) {
                     var center = block.cellCenter(i);
-                    var n = Math.round(veg * 7);
+                    var band = block.cells[i].week.band;
+                    var seed = block.cells[i].week.seed;
+                    // baseline tufts by mood + a small shared score bonus
+                    var base = band === "frozen" ? 3 : band === "dead" ? 4
+                             : band === "low" ? 5 : band === "mid" ? 6 : 8; // "high" — lushest
+                    var n = base + Math.round(veg * 3);
+                    var vr = Tg.rng32((seed ^ 0x51ed270b) >>> 0);
                     for (var v = 0; v < n; v++) {
-                        var rr = Tg.rng32(block.cells[i].week.seed + v * 131);
-                        tuftAt(block.cells[i].week.seed * 31 + v * 7 + 1,
-                               center.x + (rr() - 0.5) * (jungle.tileW - 16),
-                               center.y + (rr() - 0.5) * (jungle.tileH - 8), frozenWeek);
+                        var sp = spot(vr, center, 0.86);
+                        tuftAt(seed * 31 + v * 7 + 1, sp.x, sp.y, frozenWeek);
+                    }
+                    // a couple of small rocks per tile
+                    var rocks = 1 + Math.floor(vr() * 2);
+                    for (var rn = 0; rn < rocks; rn++) {
+                        var rsp = spot(vr, center, 0.7);
+                        Tg.renderRock(ctx, seed * 53 + rn * 17 + 3, rsp.x, rsp.y, frozenWeek);
+                    }
+                    // flowers — a scatter that blooms more for happier plants
+                    var flowers = band === "frozen" ? 0 : band === "dead" ? 1
+                                : band === "low" ? 1 : band === "mid" ? 2 : 3; // "high"
+                    for (var fn = 0; fn < flowers; fn++) {
+                        var fsp = spot(vr, center, 0.78);
+                        Tg.renderFlower(ctx, seed * 71 + fn * 29 + 5, fsp.x, fsp.y,
+                                        cv.wt, warm, band === "frozen");
                     }
                 }
 

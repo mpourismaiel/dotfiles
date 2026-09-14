@@ -30,7 +30,7 @@ Item {
         onTriggered: root.windT += 0.05
     }
 
-    Component.onCompleted: if (habits) habits.reload()
+    Component.onCompleted: if (habits) { habits.reload(); habits.loadGit(); }
 
     // ---- weekly jungle dataset: newest week first, one cell per habit ----
     readonly property var weeksList: {
@@ -112,6 +112,79 @@ Item {
         theme: root.theme
         title: "Habit Tracker"
         onBack: root.closeRequested()
+
+        // git sync — shown only when the journal dir is a git repo. ONE button
+        // pulls (fast-forward only) then pushes; the label reports remote (↓)
+        // and local (↑ / unsaved) changes so you know when a sync is due.
+        // Diverged branches / conflicts stay a terminal job — reported, not
+        // resolved (see HabitState.gitSync + habiqbridge git-sync).
+        Row {
+            id: gitRow
+            visible: !!(root.habits && root.habits.gitInfo && root.habits.gitInfo.repo)
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: 8
+            Text {                         // status: "3↓ · 2↑ · 1 unsaved" / error
+                id: gitStatus
+                anchors.verticalCenter: parent.verticalCenter
+                visible: text.length > 0
+                width: Math.min(implicitWidth, 190)
+                elide: Text.ElideRight
+                text: {
+                    var h = root.habits;
+                    if (!h || !h.gitInfo || !h.gitInfo.repo) return "";
+                    if (h.gitError) return h.gitError;
+                    var g = h.gitInfo, bits = [];
+                    if (g.behind) bits.push(g.behind + "↓");
+                    if (g.ahead) bits.push(g.ahead + "↑");
+                    if (g.dirty) bits.push(g.dirty + " unsaved");
+                    return bits.join(" · ");   // "" when up to date → hidden
+                }
+                color: (root.habits && root.habits.gitError) ? root.theme.danger : root.theme.money
+                font.family: root.theme.mono
+                font.pixelSize: root.theme.fsSmall - 1
+            }
+            Rectangle {                    // Sync — pull (ff) then push
+                id: syncBtn
+                readonly property bool kbFocusable: gitRow.visible
+                property bool kbFocused: false
+                function keyClick() { if (root.habits && !root.habits.gitBusy) root.habits.gitSync(); }
+                readonly property var g: (root.habits && root.habits.gitInfo) || ({})
+                readonly property bool pending: !!(g.behind || g.ahead || g.dirty)
+                width: syncRow.implicitWidth + 20
+                height: 24
+                radius: root.theme.radiusBtn
+                anchors.verticalCenter: parent.verticalCenter
+                color: (syncMa.containsMouse || kbFocused) ? root.theme.rowHi : root.theme.row
+                opacity: (root.habits && root.habits.gitBusy) ? 0.5 : 1
+                Row {
+                    id: syncRow
+                    anchors.centerIn: parent
+                    spacing: 5
+                    MSym {
+                        anchors.verticalCenter: parent.verticalCenter
+                        icon: "sync"
+                        size: 13
+                        color: syncBtn.pending ? root.theme.money : root.theme.textDim
+                    }
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: (root.habits && root.habits.gitBusy) ? "Syncing" : "Sync"
+                        color: root.theme.textDim
+                        font.family: root.theme.mono
+                        font.pixelSize: root.theme.fsSmall
+                        font.letterSpacing: root.theme.labelSpacing
+                        font.capitalization: Font.AllUppercase
+                    }
+                }
+                MouseArea {
+                    id: syncMa
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: if (root.habits && !root.habits.gitBusy) root.habits.gitSync()
+                }
+            }
+        }
 
         Rectangle {                        // + Add Habit
             readonly property bool kbFocusable: true

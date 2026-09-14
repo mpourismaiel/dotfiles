@@ -87,8 +87,54 @@ QtObject {
         writeProc.running = true;
     }
 
-    onEnabledChanged: reload()
-    onHabitsDirChanged: if (enabled) reload()
+    // ---- git sync: the journal directory may be a git repo. The pill offers a
+    // status snapshot (dirty / ahead↑ / behind↓) + ONE sync button that pulls
+    // (fast-forward only) then pushes. Diverged branches / conflicts are left
+    // for a terminal — the strip only reports them. gitInfo.repo === false
+    // (the default, and whenever the dir isn't a repo) hides the whole strip. --
+    property var gitInfo: ({ repo: false })
+    property bool gitBusy: false
+    property string gitError: ""
+    function loadGit() {
+        if (!root.enabled) { root.gitInfo = ({ repo: false }); return; }
+        gitStatusProc.command = root.bridge(["git-status"]);
+        gitStatusProc.running = false;
+        gitStatusProc.running = true;
+    }
+    function gitSync() {
+        if (root.gitBusy || !root.enabled) return;
+        root.gitBusy = true;
+        root.gitError = "";
+        gitSyncProc.command = root.bridge(["git-sync"]);
+        gitSyncProc.running = false;
+        gitSyncProc.running = true;
+    }
+    property Process gitStatusProc: Process {
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try { root.gitInfo = JSON.parse(this.text) || { repo: false }; }
+                catch (e) { root.gitInfo = { repo: false }; }
+            }
+        }
+    }
+    property Process gitSyncProc: Process {
+        stdout: StdioCollector {
+            onStreamFinished: {
+                root.gitBusy = false;
+                var r = null;
+                try { r = JSON.parse(this.text); } catch (e) { r = null; }
+                if (r && r.ok) {
+                    if (r.pulled) root.reload();   // remote brought new entries → re-render
+                } else {
+                    root.gitError = (r && r.error) ? r.error : "sync failed";
+                }
+                root.loadGit();
+            }
+        }
+    }
+
+    onEnabledChanged: { reload(); loadGit(); }
+    onHabitsDirChanged: if (enabled) { reload(); loadGit(); }
 
     property Process weeksProc: Process {
         stdout: StdioCollector {
@@ -138,6 +184,7 @@ QtObject {
                 }
                 if (ok) {
                     root.reload();
+                    root.loadGit();   // logging left the repo dirty / ahead
                     if (root.historyHabit) root.loadHistory(root.historyHabit);
                 }
                 root.writeDone(ok, err);
