@@ -14,10 +14,14 @@ pragma ComponentBehavior: Bound
 // delegate heights are exact multiples of tileH/2, and consecutive
 // delegates continue the lattice seamlessly.
 //
-// Trees overhang upward past their delegate (each Canvas extends `overhang`
-// px above and paints translated); `z: index` stacks older (lower) weeks
-// above, the classic painter's order — a lower jungle's canopy rises over
-// the row above it. Floor vegetation density = the week's total score
+// Every tile is an extruded dirt block, not a flat diamond: left/right soil
+// faces (tileDepth tall) with seeded strata, pebbles and dangling roots,
+// so each cluster reads as a chunky floating island — neighbours cover each
+// other's faces, dirt only shows on the rim. Trees overhang upward past
+// their delegate (each Canvas extends `overhang` px above and paints
+// translated, plus `underhang` below for the bottom tiles' dirt + roots);
+// `z: index` stacks older (lower) weeks above, the classic painter's order
+// — a lower jungle's canopy rises over the row above it. Floor vegetation density = the week's total score
 // share; separator tiles carry a little season-palette vegetation and are
 // snow-washed when the week is frozen. The garden's head (newest week) rests
 // at the vertical middle of the view — half a viewport of sky above it — and
@@ -58,7 +62,11 @@ ListView {
     // isometric grid metrics (shared by delegate paint + hit-testing)
     readonly property int tileW: 56
     readonly property int tileH: 28
+    readonly property int tileDepth: 12  // dirt-block extrusion below each tile's surface
     readonly property int overhang: 84   // canopy allowance painted above each delegate
+    // room painted BELOW each delegate: the bottom tiles' lower diamond half
+    // (tileH/2) + the dirt block (tileDepth) + dangling roots
+    readonly property int underhang: 50
     // the top of the garden rests at the vertical MIDDLE of the view (not the
     // top edge): the header pads half a viewport of sky above the newest week,
     // which also gives its canopy room
@@ -181,12 +189,12 @@ ListView {
             id: cv
             // extends `overhang` px above the delegate so canopies can rise
             // into the previous week's rows; painting is translated to keep
-            // item-local coordinates. Also + tileH below, because the separator
-            // sits ON the delegate's bottom edge — its lower half crosses into
-            // the next week and would otherwise be clipped.
+            // item-local coordinates. Also `underhang` below: the separator
+            // sits ON the delegate's bottom edge, and every bottom tile's
+            // dirt block + roots reach past it — both would otherwise clip.
             y: -jungle.overhang
             width: parent.width
-            height: parent.height + jungle.overhang + (block.hasSep ? jungle.tileH : 0)
+            height: parent.height + jungle.overhang + jungle.underhang
             renderStrategy: Canvas.Cooperative
             property real wt: jungle.windT
             onWtChanged: requestPaint()
@@ -211,12 +219,97 @@ ListView {
                 var soil = warm ? "#33291e" : "#2c2f20";
                 var soilHi = warm ? "#41332a" : "#3a3d2a";
 
-                function tile(cx2, cy2, frozen) {
+                // each tile is a little extruded dirt block: the surface
+                // diamond sits on left/right soil faces (tileDepth tall,
+                // meeting under the bottom vertex) dressed with strata lines,
+                // pebbles and a few roots dangling off the underside — all
+                // deterministic from the tile's seed. Neighbours drawn
+                // back-to-front cover each other's faces, so dirt only shows
+                // on a cluster's outer rim, like a chunky floating island.
+                function tile(cx2, cy2, frozen, seed) {
+                    var tw = jungle.tileW / 2, th = jungle.tileH / 2, td = jungle.tileDepth;
+                    var pr = Tg.rng32(((seed || 1) ^ 0x9e3779b9) >>> 0);
+                    var dirtL = frozen ? "#3a4049" : (warm ? "#211910" : "#1d2012");
+                    var dirtR = frozen ? "#454c55" : (warm ? "#2a1f15" : "#242717");
+                    var rootC = frozen ? "#5c646e" : (warm ? "#4d3a24" : "#43402a");
+                    // left (shadowed) face
                     ctx.beginPath();
-                    ctx.moveTo(cx2, cy2 - jungle.tileH / 2);
-                    ctx.lineTo(cx2 + jungle.tileW / 2, cy2);
-                    ctx.lineTo(cx2, cy2 + jungle.tileH / 2);
-                    ctx.lineTo(cx2 - jungle.tileW / 2, cy2);
+                    ctx.moveTo(cx2 - tw, cy2);
+                    ctx.lineTo(cx2, cy2 + th);
+                    ctx.lineTo(cx2, cy2 + th + td);
+                    ctx.lineTo(cx2 - tw, cy2 + td);
+                    ctx.closePath();
+                    ctx.fillStyle = dirtL;
+                    ctx.fill();
+                    // right (lit) face
+                    ctx.beginPath();
+                    ctx.moveTo(cx2 + tw, cy2);
+                    ctx.lineTo(cx2, cy2 + th);
+                    ctx.lineTo(cx2, cy2 + th + td);
+                    ctx.lineTo(cx2 + tw, cy2 + td);
+                    ctx.closePath();
+                    ctx.fillStyle = dirtR;
+                    ctx.fill();
+                    // strata: short darker seams parallel to the face's top
+                    // edge, sunk a little into the dirt
+                    ctx.strokeStyle = "rgba(0,0,0,0.18)";
+                    ctx.lineWidth = 1;
+                    for (var s = 0; s < 3; s++) {
+                        var side = pr() < 0.5 ? -1 : 1;
+                        var ly = 3 + pr() * (td - 5);
+                        var t0 = pr() * 0.5, t1 = t0 + 0.25 + pr() * 0.3;
+                        ctx.beginPath();
+                        ctx.moveTo(cx2 + side * tw * t0, cy2 + th * (1 - t0) + ly);
+                        ctx.lineTo(cx2 + side * tw * t1, cy2 + th * (1 - t1) + ly);
+                        ctx.stroke();
+                    }
+                    // pebbles embedded in the faces
+                    ctx.fillStyle = frozen ? "rgba(200,210,220,0.35)" : "rgba(163,132,92,0.3)";
+                    for (var pn = 0; pn < 2; pn++) {
+                        var ps = pr() < 0.5 ? -1 : 1;
+                        var pt = 0.15 + pr() * 0.7;
+                        ctx.beginPath();
+                        ctx.arc(cx2 + ps * tw * pt, cy2 + th * (1 - pt) + 3 + pr() * (td - 6),
+                                1 + pr() * 0.8, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                    // bottom silhouette of the block
+                    ctx.strokeStyle = "rgba(0,0,0,0.35)";
+                    ctx.beginPath();
+                    ctx.moveTo(cx2 - tw, cy2 + td);
+                    ctx.lineTo(cx2, cy2 + th + td);
+                    ctx.lineTo(cx2 + tw, cy2 + td);
+                    ctx.stroke();
+                    // roots dangling off the underside, thick arc + finer tail
+                    ctx.strokeStyle = rootC;
+                    ctx.lineCap = "round";
+                    var nr = 2 + Math.floor(pr() * 2);
+                    for (var rn = 0; rn < nr; rn++) {
+                        var rs = pr() < 0.5 ? -1 : 1;
+                        var rt = 0.2 + pr() * 0.6;
+                        var rx = cx2 + rs * tw * rt;
+                        var ry = cy2 + th * (1 - rt) + td - 1;
+                        var len = 6 + pr() * 9;
+                        var drift = (pr() - 0.5) * 7;
+                        ctx.lineWidth = 1.3;
+                        ctx.beginPath();
+                        ctx.moveTo(rx, ry);
+                        ctx.quadraticCurveTo(rx + drift * 0.3, ry + len * 0.5, rx + drift, ry + len);
+                        ctx.stroke();
+                        ctx.lineWidth = 0.7;
+                        ctx.beginPath();
+                        ctx.moveTo(rx + drift, ry + len);
+                        ctx.quadraticCurveTo(rx + drift + (pr() - 0.5) * 4, ry + len + 3,
+                                             rx + drift + (pr() - 0.5) * 6, ry + len + 4 + pr() * 4);
+                        ctx.stroke();
+                    }
+                    ctx.lineCap = "butt";
+                    // surface diamond on top
+                    ctx.beginPath();
+                    ctx.moveTo(cx2, cy2 - th);
+                    ctx.lineTo(cx2 + tw, cy2);
+                    ctx.lineTo(cx2, cy2 + th);
+                    ctx.lineTo(cx2 - tw, cy2);
                     ctx.closePath();
                     ctx.fillStyle = frozen ? "#5a6068" : soil;
                     ctx.fill();
@@ -239,7 +332,8 @@ ListView {
                 for (var oi = 0; oi < order.length; oi++) {
                     i = order[oi];
                     var cc = block.cellCenter(i);
-                    tile(cc.x, cc.y, block.cells[i].week.band === "frozen");
+                    tile(cc.x, cc.y, block.cells[i].week.band === "frozen",
+                         block.cells[i].week.seed);
                 }
 
                 // ---- separator row: 5 lattice cells on the level between this
@@ -249,7 +343,7 @@ ListView {
                     var rowSeed = block.cells.length ? block.cells[0].week.seed : 1;
                     for (var k = -2; k <= 2; k++) {
                         var sx = block.width / 2 + k * jungle.tileW;
-                        tile(sx, sy, frozenWeek);
+                        tile(sx, sy, frozenWeek, rowSeed + (k + 2) * 211);
                         // a little random vegetation in the season's palette
                         var pr = Tg.rng32(rowSeed + (k + 2) * 211);
                         var tufts = 1 + Math.floor(pr() * 2);

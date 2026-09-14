@@ -840,9 +840,16 @@ jungle centres, edge-touching the clusters' shoulder cells when parity
 allows (the delegate height equals the centre-to-centre advance lUp+sepGap+1, so
 the next cluster's top row lands exactly one level below the separator —
 no empty band between them; the separator sits on the delegate's bottom
-edge and the canvas overdraws tileH downward so its lower half isn't
-clipped;
-seasonal tufts on the row, snow wash when the week is frozen). Trees
+edge and the canvas overdraws =underhang= px downward so its lower half —
+and every bottom tile's dirt — isn't clipped;
+seasonal tufts on the row, snow wash when the week is frozen). Tiles are
+not flat diamonds but extruded dirt blocks: left/right soil faces
+(=tileDepth= tall, the left one shadowed) dressed with seeded strata
+seams, embedded pebbles and a few roots dangling off the underside, all
+deterministic per tile seed. Back-to-front neighbours cover each other's
+faces, so dirt and roots only show along a cluster's outer rim — each
+week reads as a chunky floating island; frozen tiles swap to cold grey
+dirt and greyed roots under the snow wash. Trees
 overhang upward — each Canvas paints =overhang= px above its delegate,
 translated, and =z: index= stacks older weeks above so a lower jungle's
 canopy rises over the row behind it (painter's order). The garden's head rests at the vertical MIDDLE of the view (a
