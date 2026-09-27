@@ -11,9 +11,27 @@
 //     survives restart through normal session restore),
 //   - a tiny change-notification channel so the Manage page can poke live windows.
 
-const { SessionStore } = ChromeUtils.importESModule(
-  "resource:///modules/sessionstore/SessionStore.sys.mjs"
-);
+// SessionStore's module URL moved in Firefox 156 (resource:///modules/… →
+// moz-src:///browser/components/…). Importing a missing path throws at module
+// eval, which would take the whole mod down (strip + engine), so try the known
+// locations in order — newest first — and fall back across Firefox versions.
+const SessionStore = (() => {
+  const paths = [
+    "moz-src:///browser/components/sessionstore/SessionStore.sys.mjs", // Firefox 156+
+    "resource:///modules/sessionstore/SessionStore.sys.mjs", // Firefox ≤155
+  ];
+  for (const path of paths) {
+    try {
+      return ChromeUtils.importESModule(path).SessionStore;
+    } catch (_e) {
+      /* try the next known location */
+    }
+  }
+  throw new Error(
+    "[sine-workspaces] SessionStore module not found at any known path: " +
+      paths.join(", ")
+  );
+})();
 
 const MOD_DIR = ["chrome", "sine-mods", "sine-workspaces", "config"];
 const CONFIG_PATH = PathUtils.join(PathUtils.profileDir, ...MOD_DIR, "workspaces.json");

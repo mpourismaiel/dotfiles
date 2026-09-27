@@ -213,10 +213,21 @@ killing a middle workspace renumbers the ones after it).  With no project:
 (defun mp/workspace-switch ()
   "Switch to a workspace picked from a labelled list.
 Shows the same `INDEX project' labels, in the same creation order, as
-`mp/workspace-display' (SPC TAB TAB) — not raw perspective names."
+`mp/workspace-display' (SPC TAB TAB) — not raw perspective names.  Each
+labelled row carries the same git/agent status suffix as `SPC p p' (dirty,
+↑unpushed, agent) for the workspace's project — see
+`mp/project-menu--status-suffix'."
   (interactive)
   (let* ((names  (mp/workspace-names))
-         (labels (mapcar #'mp/workspace--label names))
+         (agent-roots (mp/project-menu--agent-roots))
+         (labels (mapcar
+                  (lambda (name)
+                    (let* ((root   (mp/workspace--project-root name))
+                           (suffix (if root
+                                       (mp/project-menu--status-suffix root agent-roots)
+                                     "")))
+                      (concat (mp/workspace--label name) suffix)))
+                  names))
          ;; A table with `display-sort-function' identity keeps creation order
          ;; (prescient won't reorder it: vertico-prescient-override-sorting nil).
          (table  (lambda (str pred action)
@@ -262,22 +273,123 @@ Shows the same `INDEX project' labels, in the same creation order, as
   "Open project bundle BUNDLE-NAME in separate workspaces."
   (interactive
    (list (completing-read "Bundle: " (mapcar #'car mp/project-bundles) nil t)))
-  (let ((projects (cdr (assoc bundle-name mp/project-bundles))))
-    (unless projects
+  (let ((bundle (assoc bundle-name mp/project-bundles)))
+    (unless bundle
       (user-error "Unknown bundle: %s" bundle-name))
-    (dolist (project projects)
+    (dolist (project (mp/bundle-projects bundle))
       (let* ((workspace (car project))
              (root (file-name-as-directory (expand-file-name (cdr project)))))
         (persp-switch workspace)
         (puthash workspace root mp/workspace-project-roots)
         (mp/open-project-root root)))))
 
+(defun mp/switch-to-bundle-main-workspace (bundle)
+  "Switch to (creating if needed) the workspace of BUNDLE's main project.
+When the workspace does not exist yet it is created and the project opened in
+it.  Return the main project root, or nil when BUNDLE has no projects."
+  (when-let* ((entry (mp/bundle-main-entry bundle))
+              (workspace (car entry))
+              (root (mp/bundle--norm-dir (cdr entry))))
+    (if (member workspace (persp-names))
+        (persp-switch workspace)
+      (persp-switch workspace)
+      (puthash workspace root mp/workspace-project-roots)
+      (mp/open-project-root root))
+    root))
+
+(defun mp/current-project-root ()
+  "Best guess at the current project's root directory (normalised), or nil.
+Prefers the workspace's explicit project, falling back to Projectile."
+  (when-let* ((root (or (mp/current-workspace-project-root)
+                        (and (fboundp 'projectile-project-root)
+                             (projectile-project-root)))))
+    (mp/bundle--norm-dir root)))
+
+(defun mp/bundle-for-project (dir)
+  "Return the first bundle whose projects include DIR (normalised), or nil."
+  (when dir
+    (let ((dir (mp/bundle--norm-dir dir)))
+      (seq-find (lambda (bundle)
+                  (seq-find (lambda (p)
+                              (equal (mp/bundle--norm-dir (cdr p)) dir))
+                            (mp/bundle-projects bundle)))
+                mp/project-bundles))))
+
+(defun mp/agent-shell-bundle-main ()
+  "Open agent-shell in the main project's workspace of the current bundle.
+If the current project belongs to a bundle, switch to (creating if needed)
+that bundle's main project workspace and open agent-shell there.  Otherwise,
+open agent-shell in the current context as usual."
+  (interactive)
+  (let* ((root   (mp/current-project-root))
+         (bundle (mp/bundle-for-project root))
+         (target (if bundle
+                     (mp/switch-to-bundle-main-workspace bundle)
+                   root)))
+    (let ((default-directory (or target default-directory)))
+      (call-interactively #'agent-shell))))
+
+;; `SPC p p' status annotations
+;;
+;; Each project row is suffixed with the same at-a-glance signals the
+;; dashboard (`SPC b h') shows separately: uncommitted changes (dirty),
+;; unpushed commits (↑N) and whether a live agent-shell buffer is working
+;; in that project.  Reuses the dashboard's git helpers (defined further
+;; down); one `git status' call per project covers dirty + unpushed.
+
+(defun mp/project-menu--agent-roots ()
+  "Normalised `default-directory' of every live agent-shell buffer.
+These are the directories agents are working in, used to flag which
+projects currently have an agent attached."
+  (delq nil
+        (mapcar (lambda (buf)
+                  (when (mp/dashboard--agent-p buf)
+                    (ignore-errors
+                      (file-name-as-directory
+                       (expand-file-name
+                        (buffer-local-value 'default-directory buf))))))
+                (buffer-list))))
+
+(defun mp/project-menu--has-agent-p (dir agent-roots)
+  "Non-nil when some directory in AGENT-ROOTS sits within project DIR."
+  (let ((d (file-name-as-directory (expand-file-name dir))))
+    (seq-some (lambda (a) (string-prefix-p d a)) agent-roots)))
+
+(defun mp/project-menu--status-suffix (dir agent-roots)
+  "Propertized status suffix for project DIR: dirty / unpushed / agent flags.
+Returns \"\" when there is nothing to flag (or DIR is remote, missing, or
+not a git working tree).  AGENT-ROOTS comes from `mp/project-menu--agent-roots'."
+  (let* ((d      (expand-file-name dir))
+         (agent  (mp/project-menu--has-agent-p d agent-roots))
+         (st     (and (not (file-remote-p d))
+                      (file-directory-p d)
+                      (mp/dashboard--git-status d)))
+         (branch (and st (plist-get st :branch)))
+         (dirty  (and branch (plist-get st :changes)))
+         (ahead  (and branch (plist-get st :ahead)))
+         (parts
+          (delq nil
+                (list
+                 (when dirty
+                   (let ((icon (mp/dashboard--dirty-icon 'dirty)))
+                     (concat (unless (string= icon "") (concat icon " "))
+                             (propertize "dirty" 'face 'warning))))
+                 (when (and ahead (> ahead 0))
+                   (propertize (format "↑%d" ahead) 'face 'success))
+                 (when agent
+                   (let ((icon (mp/dashboard--icon #'nerd-icons-mdicon "nf-md-robot")))
+                     (concat (unless (string= icon "") (concat icon " "))
+                             (propertize "agent" 'face 'font-lock-keyword-face))))))))
+    (if parts (concat "  " (string-join parts "  ")) "")))
+
 (defun mp/project-menu ()
   "Project menu with colorized bundles plus Projectile projects.
-A pinned \"✎ Edit bundles…\" entry always sits last (the list is
-identity-sorted, so it never moves)."
+Project rows are suffixed with git/agent status (dirty, ↑unpushed, agent) —
+see `mp/project-menu--status-suffix'.  A pinned \"✎ Edit bundles…\" entry
+always sits last (the list is identity-sorted, so it never moves)."
   (interactive)
   (let* ((bundle-prefix "▶ Bundle: ")
+         (agent-roots (mp/project-menu--agent-roots))
          (bundle-candidates
           (mapcar
            (lambda (bundle)
@@ -292,8 +404,10 @@ identity-sorted, so it never moves)."
              (let* ((dir (directory-file-name project))
                     (name (file-name-nondirectory dir))
                     (parent (file-name-directory dir))
+                    (suffix (mp/project-menu--status-suffix project agent-roots))
                     (label (concat parent
-                                   (propertize name 'face '(:foreground "#89b4fa" :weight bold)))))
+                                   (propertize name 'face '(:foreground "#89b4fa" :weight bold))
+                                   suffix)))
                (cons label project)))
            (projectile-relevant-known-projects)))
          ;; Pinned last, always.  The identity-sorted table below stops
@@ -327,13 +441,50 @@ identity-sorted, so it never moves)."
 
 (defun mp/project-bundles-load ()
   "Load bundles from `mp/project-bundles-file' into `mp/project-bundles'.
-Does nothing (keeping any private.el seed) if the file is absent."
+Keeps any private.el seed if the file is absent.  Either way the result is
+normalised to the current bundle shape (see `mp/bundle--normalize')."
   (when (file-exists-p mp/project-bundles-file)
     (with-demoted-errors "project-bundles load: %S"
       (with-temp-buffer
         (insert-file-contents mp/project-bundles-file)
         (goto-char (point-min))
-        (setq mp/project-bundles (read (current-buffer)))))))
+        (setq mp/project-bundles (read (current-buffer))))))
+  (setq mp/project-bundles (mapcar #'mp/bundle--normalize mp/project-bundles)))
+
+;;; Bundle shape + accessors
+;;
+;; A bundle is stored as (NAME :projects ((WORKSPACE . DIR) ...) :main DIR).
+;; :main designates the bundle's "main" project — the one `SPC d a'
+;; (`mp/agent-shell-bundle-main') opens an agent-shell in.  It is optional; when
+;; nil the first project is the default main.  The legacy shape,
+;; (NAME (WORKSPACE . DIR) ...), is upgraded on load by `mp/bundle--normalize'.
+
+(defun mp/bundle--normalize (bundle)
+  "Return BUNDLE in the (NAME :projects (...) :main DIR) plist form.
+Upgrades the legacy (NAME (WORKSPACE . DIR) ...) shape; a no-op otherwise."
+  (if (keywordp (cadr bundle))
+      bundle
+    (list (car bundle) :projects (cdr bundle) :main nil)))
+
+(defun mp/bundle-projects (bundle)
+  "The (WORKSPACE . DIR) project list of BUNDLE."
+  (plist-get (cdr bundle) :projects))
+
+(defun mp/bundle-main-dir (bundle)
+  "The DIR designated main in BUNDLE, or nil when none is set."
+  (plist-get (cdr bundle) :main))
+
+(defun mp/bundle-main-entry (bundle)
+  "The (WORKSPACE . DIR) entry that is BUNDLE's main project.
+Falls back to the first project when no main is designated."
+  (let ((projects (mp/bundle-projects bundle))
+        (main (mp/bundle-main-dir bundle)))
+    (or (and main
+             (seq-find (lambda (p)
+                         (equal (mp/bundle--norm-dir (cdr p))
+                                (mp/bundle--norm-dir main)))
+                       projects))
+        (car projects))))
 
 (defun mp/project-bundles-save ()
   "Persist `mp/project-bundles' to `mp/project-bundles-file'."
@@ -365,27 +516,57 @@ Does nothing (keeping any private.el seed) if the file is absent."
     (concat parent
             (propertize name 'face '(:foreground "#89b4fa" :weight bold)))))
 
-(defun mp/bundle--select-projects (initial)
+(defun mp/bundle--choose-main (selected current)
+  "Pick a main project among SELECTED dirs (or clear it).
+CURRENT is the dir currently marked main (highlighted with ★).  Returns the
+chosen dir, or nil to leave the bundle without an explicit main (defaults to
+its first project)."
+  (let* ((none-key "✗ No main (default: first project)")
+         (candidates
+          (cons (cons (propertize none-key 'face 'shadow) nil)
+                (mapcar (lambda (d)
+                          (cons (concat (if (equal d current) "★ " "  ")
+                                        (mp/bundle--proj-label d))
+                                d))
+                        selected)))
+         (choice (completing-read "Main project: "
+                                  (mp/bundle--table candidates) nil t)))
+    (cdr (assoc choice candidates))))
+
+(defun mp/bundle--select-projects (initial &optional initial-main)
   "Toggle-select project dirs, seeded from INITIAL (an alist of (WS . DIR)).
 Selected dirs float above a separator; picking a selected one removes it,
-picking an available one selects it.  \"✓ Done\" finishes.  Returns a fresh
-alist of (WORKSPACE . DIR) in selection order (workspace = dir basename)."
+picking an available one selects it.  \"★ Set main project…\" designates the
+bundle's main project (marked ★ in the selected list, seeded from INITIAL-MAIN);
+\"✓ Done\" finishes.  Returns a cons (PROJECTS . MAIN) where PROJECTS is a fresh
+alist of (WORKSPACE . DIR) in selection order (workspace = dir basename) and
+MAIN is the chosen main DIR (or nil when none is set)."
   (let* ((known    (and (fboundp 'projectile-relevant-known-projects)
                         (mapcar #'mp/bundle--norm-dir
                                 (projectile-relevant-known-projects))))
          (selected (mapcar (lambda (p) (mp/bundle--norm-dir (cdr p))) initial))
+         (main     (and initial-main (mp/bundle--norm-dir initial-main)))
          (done-key "✓ Done")
+         (main-key "★ Set main project…")
          (other-key "＋ Other directory…"))
     (catch 'done
       (while t
+        ;; A main that is no longer selected is stale — drop it.
+        (when (and main (not (member main selected)))
+          (setq main nil))
         (let* ((available (seq-remove (lambda (d) (member d selected)) known))
                (candidates
                 (append
                  (list (cons done-key '(done)))
                  (mapcar (lambda (d)
-                           (cons (concat "● " (mp/bundle--proj-label d))
+                           (cons (concat (if (equal d main) "★ " "● ")
+                                         (mp/bundle--proj-label d))
                                  (cons 'sel d)))
                          selected)
+                 (when selected
+                   (list (cons (propertize main-key
+                                           'face '(:foreground "#f9e2af"))
+                               '(main))))
                  (list (cons (propertize
                               "────────  available  ────────"
                               'face 'shadow)
@@ -404,6 +585,7 @@ alist of (WORKSPACE . DIR) in selection order (workspace = dir basename)."
             ('done  (throw 'done nil))
             ('sel   (setq selected (delete (cdr entry) selected)))
             ('avail (setq selected (append selected (list (cdr entry)))))
+            ('main  (setq main (mp/bundle--choose-main selected main)))
             ('other
              (let ((d (mp/bundle--norm-dir
                        (read-directory-name "Project directory: "))))
@@ -412,9 +594,10 @@ alist of (WORKSPACE . DIR) in selection order (workspace = dir basename)."
                (unless (member d known)
                  (setq known (append known (list d))))))
             (_ nil)))))                  ; separator / stray input: re-loop
-    (mapcar (lambda (d)
-              (cons (file-name-nondirectory (directory-file-name d)) d))
-            selected)))
+    (cons (mapcar (lambda (d)
+                    (cons (file-name-nondirectory (directory-file-name d)) d))
+                  selected)
+          main)))
 
 (defun mp/bundle-create ()
   "Prompt for a name, pick its projects, and save a new bundle."
@@ -424,9 +607,12 @@ alist of (WORKSPACE . DIR) in selection order (workspace = dir basename)."
       (user-error "Empty bundle name"))
     (when (assoc name mp/project-bundles)
       (user-error "Bundle already exists: %s" name))
-    (let ((projects (mp/bundle--select-projects nil)))
+    (let* ((result (mp/bundle--select-projects nil))
+           (projects (car result))
+           (main (cdr result)))
       (setq mp/project-bundles
-            (append mp/project-bundles (list (cons name projects))))
+            (append mp/project-bundles
+                    (list (list name :projects projects :main main))))
       (mp/project-bundles-save)
       (message "Bundle “%s”: %d project%s"
                name (length projects) (if (= (length projects) 1) "" "s")))))
@@ -446,12 +632,16 @@ alist of (WORKSPACE . DIR) in selection order (workspace = dir basename)."
        ((assoc new mp/project-bundles)
         (user-error "Bundle already exists: %s" new))
        (t (setcar cell new))))
-    ;; 2. Re-pick projects (seeded with the current set).
-    (setcdr cell (mp/bundle--select-projects (cdr cell)))
+    ;; 2. Re-pick projects (seeded with the current set + main).
+    (let* ((result (mp/bundle--select-projects (mp/bundle-projects cell)
+                                               (mp/bundle-main-dir cell)))
+           (projects (car result))
+           (main (cdr result)))
+      (setcdr cell (list :projects projects :main main)))
     (mp/project-bundles-save)
     (message "Bundle “%s”: %d project%s"
-             (car cell) (length (cdr cell))
-             (if (= (length (cdr cell)) 1) "" "s"))))
+             (car cell) (length (mp/bundle-projects cell))
+             (if (= (length (mp/bundle-projects cell)) 1) "" "s"))))
 
 (defun mp/bundle-remove ()
   "Pick a bundle and, after confirmation, delete it (projects untouched)."
@@ -475,7 +665,8 @@ alist of (WORKSPACE . DIR) in selection order (workspace = dir basename)."
            (list (cons "＋ Add bundle…"    '(add))
                  (cons "🗑 Remove bundle…" '(remove)))
            (mapcar (lambda (b)
-                     (cons (format "✎ Edit  %s  (%d)" (car b) (length (cdr b)))
+                     (cons (format "✎ Edit  %s  (%d)"
+                                   (car b) (length (mp/bundle-projects b)))
                            (list 'edit (car b))))
                    mp/project-bundles)))
          (choice (completing-read "Edit bundles: "
@@ -797,6 +988,25 @@ stamp this on `agent-shell-submit' instead.")
                      (when since (format "%s since prompt" (mp/dashboard--duration since)))))))
         (mapconcat #'identity (delete "" segs) "  ·  ")))))
 
+;;;; Workspace scripts (project __ignore__/scripts/)
+
+(defun mp/dashboard--script-files (root)
+  "Return the .sh scripts under ROOT/__ignore__/scripts/ (full paths), or nil."
+  (when root
+    (let ((dir (expand-file-name "__ignore__/scripts/" root)))
+      (when (file-directory-p dir)
+        (directory-files dir t "\\.sh\\'")))))
+
+(defun mp/dashboard--script-running-p (file)
+  "Non-nil when script FILE currently has a live, busy Ghostel terminal.
+Mirrors `my/run-project-script-file's `*project:NAME*' buffer naming and
+uses the same `ghostel--command-running' signal as the Terminals section."
+  (when-let* ((buf (get-buffer (format "*project:%s*" (file-name-base file))))
+              ((buffer-live-p buf)))
+    (with-current-buffer buf
+      (and (bound-and-true-p ghostel--term)
+           (bound-and-true-p ghostel--command-running)))))
+
 (cl-defun mp/dashboard--item (label action &key (indent "    ") (face 'mp/dashboard-item) help-echo)
   "Insert INDENT then a tight clickable LABEL running ACTION on RET/click.
 The newline lives outside the button so its underline (if any) and the
@@ -1005,9 +1215,14 @@ here would silently fall back to *scratch*)."
           (dolist (name (mp/workspace-names))
             (let* ((n name) (act (equal n current))
                    ;; Only workspaces with an assigned (or buffer-inferred)
-                   ;; project get a git-cleanliness suffix; empty ones don't.
+                   ;; project get git info; empty ones don't.  A single
+                   ;; `git status --porcelain --branch' gives cleanliness,
+                   ;; branch and ahead/behind together (branch = nil when the
+                   ;; root isn't a git working tree, so no suffix is shown).
                    (root (mp/workspace--project-root n))
-                   (state (and root (mp/dashboard--git-dirty root))))
+                   (st   (and root (mp/dashboard--git-status root)))
+                   (branch (and st (plist-get st :branch)))
+                   (state (and branch (if (plist-get st :changes) 'dirty 'clean))))
               (mp/dashboard--as-block
                 ;; `>' marker lives in the (plain) indent so the button stays
                 ;; tight to the label — nothing highlights past the text.
@@ -1042,6 +1257,18 @@ here would silently fall back to *scratch*)."
                                             "Uncommitted changes"
                                           "Working tree clean")
                                         (abbreviate-file-name root)))))
+                ;; Active branch + ahead/behind, matching the Git section's
+                ;; colours (branch = function-name, ↑ ahead = success,
+                ;; ↓ behind = warning).
+                (when branch
+                  (insert (propertize (format "  %s" branch)
+                                      'face 'font-lock-function-name-face))
+                  (let ((ahead (plist-get st :ahead))
+                        (behind (plist-get st :behind)))
+                    (when (> ahead 0)
+                      (insert (propertize (format " ↑%d" ahead) 'face 'success)))
+                    (when (> behind 0)
+                      (insert (propertize (format " ↓%d" behind) 'face 'warning)))))
                 (insert "\n"))))
           ;; Trailing action: create a fresh workspace and switch to it (the
           ;; same as `SPC TAB n'); `mp/workspace-new' lands on this dashboard.
@@ -1050,6 +1277,35 @@ here would silently fall back to *scratch*)."
                    " New workspace")
            (lambda (_) (mp/workspace-new))
            :help-echo "Create a new empty workspace and switch to it (SPC TAB n)")
+          (insert "\n"))
+
+        ;; Workspace Scripts: runnable scripts from the current project's
+        ;; __ignore__/scripts/.  RET/click runs one in a named Ghostel (the
+        ;; same path as SPC p S); a script whose terminal is live and busy is
+        ;; flagged "● running".
+        (when-let* ((scripts (mp/dashboard--script-files root)))
+          (mp/dashboard--heading
+           (mp/dashboard--icon #'nerd-icons-mdicon "nf-md-script_text_outline")
+           "Workspace Scripts")
+          (dolist (file scripts)
+            (let* ((f       file)
+                   (running (mp/dashboard--script-running-p f)))
+              (mp/dashboard--as-block
+                (insert "    ")
+                (insert-text-button
+                 (file-name-nondirectory f)
+                 'action (let ((sf f) (dir root))
+                           (lambda (_)
+                             (if (fboundp 'my/run-project-script-file)
+                                 (let ((default-directory dir))
+                                   (my/run-project-script-file sf))
+                               (message "project-scripts not available"))))
+                 'follow-link t 'mouse-face 'highlight
+                 'face 'mp/dashboard-item
+                 'help-echo (format "Run %s" (abbreviate-file-name f)))
+                (when running
+                  (insert "  " (propertize "● running" 'face 'success)))
+                (insert "\n"))))
           (insert "\n"))
 
         ;; Agents: each agent-shell with its own title header + live status

@@ -9,10 +9,19 @@
   display: none !important;
 }
 
+/* The chip strip sits above the pinned-tabs section inside the vertical-tabs
+   sidebar. A translucent #333 panel sets it apart from the tab list below; flex
+   wrapping keeps the chips visible when the sidebar is narrow/collapsed. */
 #sine-workspaces-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: start;
   gap: 5px;
-  -moz-box-align: center;
-  margin-inline: 8px;
+  margin: 4px;
+  padding: 5px;
+  border-radius: 8px;
+  background: rgba(21, 21, 21, 0.3);
   min-height: 0;
 }
 

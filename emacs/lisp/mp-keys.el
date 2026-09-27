@@ -636,7 +636,7 @@ Replaces Doom-era `+eval/test' (which was an unbound command)."
 
   ;; d — agent
   "d"   '(:ignore t :which-key "agent")
-  "d a" #'agent-shell
+  "d a" #'mp/agent-shell-bundle-main  ; mp-workspaces
   "d e" #'eca
   "d E" #'eca-stop
   "d c" #'eca-completion-mode

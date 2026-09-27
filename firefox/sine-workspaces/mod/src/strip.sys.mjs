@@ -25,28 +25,38 @@ export class WorkspacesStrip {
   }
 
   build() {
-    // Toolbar items live inside #nav-bar-customization-target, not directly under
-    // #nav-bar, so we inject there. (Natsumi single-toolbar also relocates the
-    // urlbar, so we anchor only against nodes that are real children of the host.)
-    const host =
-      this.doc.getElementById("nav-bar-customization-target") ||
-      this.doc.getElementById("nav-bar");
-    if (!host || this.doc.getElementById(STRIP_ID)) return;
+    if (this.doc.getElementById(STRIP_ID)) return;
 
     const strip = this.doc.createXULElement("hbox");
     strip.id = STRIP_ID;
     strip.setAttribute("align", "center");
 
-    // Right-align: place the strip just before the right-hand toolbar cluster so
-    // the flexible spring/spacer in front of it pushes the chips to the right.
-    const kids = [...host.children];
-    const anchor =
-      kids.find((c) => c.id === "downloads-button") ||
-      kids.find((c) => c.id === "fxa-toolbar-menu-button") ||
-      kids.find((c) => c.id === "unified-extensions-button") ||
-      kids.find((c) => c.id === "urlbar-container");
-    if (anchor) host.insertBefore(strip, anchor);
-    else host.appendChild(strip);
+    // Preferred home: inside the vertical-tabs list, directly above the pinned-
+    // tabs section, so the chips always sit atop the sidebar's own tab area. This
+    // is deliberately NOT the nav-bar — Natsumi rearranges/breaks the nav-bar on
+    // Firefox updates, which kept knocking the strip out. #tabbrowser-tabs already
+    // holds several non-tab children (drop indicators, promo card, splitter), so
+    // one more sibling is fine.
+    const tabsHost = this.doc.getElementById("tabbrowser-tabs");
+    const pinned = this.doc.getElementById("pinned-tabs-container");
+    if (tabsHost && pinned && pinned.parentNode === tabsHost) {
+      tabsHost.insertBefore(strip, pinned);
+    } else {
+      // Fallback (no vertical tabs / unexpected DOM): the old nav-bar placement,
+      // right-aligned before the right-hand toolbar cluster.
+      const host =
+        this.doc.getElementById("nav-bar-customization-target") ||
+        this.doc.getElementById("nav-bar");
+      if (!host) return;
+      const kids = [...host.children];
+      const anchor =
+        kids.find((c) => c.id === "downloads-button") ||
+        kids.find((c) => c.id === "fxa-toolbar-menu-button") ||
+        kids.find((c) => c.id === "unified-extensions-button") ||
+        kids.find((c) => c.id === "urlbar-container");
+      if (anchor) host.insertBefore(strip, anchor);
+      else host.appendChild(strip);
+    }
     this.strip = strip;
 
     this.#buildMenu();
