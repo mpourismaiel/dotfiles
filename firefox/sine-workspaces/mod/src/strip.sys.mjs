@@ -22,50 +22,104 @@ export class WorkspacesStrip {
     this.strip = null;
     this.menuTargetWs = null;
     this._unsub = null;
+    this._observer = null;
+    this._reattachQueued = false;
   }
 
   build() {
-    if (this.doc.getElementById(STRIP_ID)) return;
-
-    const strip = this.doc.createXULElement("hbox");
-    strip.id = STRIP_ID;
-    strip.setAttribute("align", "center");
-
-    // Preferred home: inside the vertical-tabs list, directly above the pinned-
-    // tabs section, so the chips always sit atop the sidebar's own tab area. This
-    // is deliberately NOT the nav-bar — Natsumi rearranges/breaks the nav-bar on
-    // Firefox updates, which kept knocking the strip out. #tabbrowser-tabs already
-    // holds several non-tab children (drop indicators, promo card, splitter), so
-    // one more sibling is fine.
-    const tabsHost = this.doc.getElementById("tabbrowser-tabs");
-    const pinned = this.doc.getElementById("pinned-tabs-container");
-    if (tabsHost && pinned && pinned.parentNode === tabsHost) {
-      tabsHost.insertBefore(strip, pinned);
-    } else {
-      // Fallback (no vertical tabs / unexpected DOM): the old nav-bar placement,
-      // right-aligned before the right-hand toolbar cluster.
-      const host =
-        this.doc.getElementById("nav-bar-customization-target") ||
-        this.doc.getElementById("nav-bar");
-      if (!host) return;
-      const kids = [...host.children];
-      const anchor =
-        kids.find((c) => c.id === "downloads-button") ||
-        kids.find((c) => c.id === "fxa-toolbar-menu-button") ||
-        kids.find((c) => c.id === "unified-extensions-button") ||
-        kids.find((c) => c.id === "urlbar-container");
-      if (anchor) host.insertBefore(strip, anchor);
-      else host.appendChild(strip);
+    const existing = this.doc.getElementById(STRIP_ID);
+    if (existing?.isConnected) {
+      this.strip = existing;
+      return;
     }
-    this.strip = strip;
+
+    // The strip element is created once and reused; placement happens separately
+    // so we can re-attach it if the sidebar/toolbar is rebuilt.
+    this.strip = this.doc.createXULElement("hbox");
+    this.strip.id = STRIP_ID;
+    this.strip.setAttribute("align", "center");
 
     this.#buildMenu();
     this._unsub = this.controller.onChange(() => this.render());
     this.render();
+
+    // Attach into the DOM, then keep watching so it survives update hiccups:
+    // on a real session the sidebar/pinned-tabs container can be built AFTER this
+    // runs, or torn down and recreated (Natsumi/Firefox do this across updates),
+    // which is how the strip kept "disappearing". The observer re-attaches it
+    // whenever it ends up detached.
+    this.#place();
+    this.#watch();
+  }
+
+  // Insert the strip into its preferred home: inside the vertical-tabs list,
+  // directly above the pinned-tabs section, so the chips always sit atop the
+  // sidebar's own tab area — deliberately NOT the nav-bar, which Natsumi
+  // rearranges/breaks on Firefox updates. Returns true once attached.
+  #place() {
+    if (!this.strip || this.strip.isConnected) return this.strip?.isConnected;
+
+    const tabsHost = this.doc.getElementById("tabbrowser-tabs");
+    const pinned = this.doc.getElementById("pinned-tabs-container");
+    if (tabsHost && pinned && pinned.parentNode === tabsHost) {
+      // #tabbrowser-tabs already holds several non-tab children (drop indicators,
+      // promo card, splitter), so one more sibling is fine.
+      tabsHost.insertBefore(this.strip, pinned);
+      return true;
+    }
+
+    // Fallback (no vertical tabs / anchor not ready): the old nav-bar placement,
+    // right-aligned before the right-hand toolbar cluster.
+    const host =
+      this.doc.getElementById("nav-bar-customization-target") ||
+      this.doc.getElementById("nav-bar");
+    if (!host) return false;
+    const kids = [...host.children];
+    const anchor =
+      kids.find((c) => c.id === "downloads-button") ||
+      kids.find((c) => c.id === "fxa-toolbar-menu-button") ||
+      kids.find((c) => c.id === "unified-extensions-button") ||
+      kids.find((c) => c.id === "urlbar-container");
+    if (anchor) host.insertBefore(this.strip, anchor);
+    else host.appendChild(this.strip);
+    return true;
+  }
+
+  // Watch the chrome document so the strip re-attaches itself if it is ever
+  // detached (sidebar/toolbar rebuild) or if its preferred anchor appears late.
+  // Also hops out of the nav-bar fallback into the sidebar once that's available.
+  #watch() {
+    if (this._observer) return;
+    const reattach = () => {
+      if (this._reattachQueued) return;
+      this._reattachQueued = true;
+      this.win.requestAnimationFrame(() => {
+        this._reattachQueued = false;
+        if (!this.strip) return;
+        const tabsHost = this.doc.getElementById("tabbrowser-tabs");
+        const pinned = this.doc.getElementById("pinned-tabs-container");
+        const sidebarReady = tabsHost && pinned && pinned.parentNode === tabsHost;
+        // Re-place when detached, or when still parked in the nav-bar fallback
+        // but the sidebar anchor has since become available.
+        const parkedInFallback =
+          this.strip.isConnected && this.strip.parentNode !== tabsHost;
+        if (!this.strip.isConnected || (sidebarReady && parkedInFallback)) {
+          if (sidebarReady && parkedInFallback) this.strip.remove();
+          this.#place();
+        }
+      });
+    };
+    this._observer = new this.win.MutationObserver(reattach);
+    this._observer.observe(this.doc.documentElement, {
+      childList: true,
+      subtree: true,
+    });
   }
 
   destroy() {
     if (this._unsub) this._unsub();
+    this._observer?.disconnect();
+    this._observer = null;
     this.strip?.remove();
     this.doc.getElementById(MENU_ID)?.remove();
   }

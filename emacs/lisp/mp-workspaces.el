@@ -178,12 +178,17 @@ doubling the prefix in that case."
   "Display label for workspace NAME.
 With a project assigned: \"INDEX project\", where INDEX is the 1-based
 position in `persp-names' (matching the SPC TAB 1..9 switch keys, so
-killing a middle workspace renumbers the ones after it).  With no project:
+killing a middle workspace renumbers the ones after it).  A linked git
+worktree reads \"INDEX repo⎇worktree\".  With no project:
 `empty workspace - NAME'."
   (let ((idx (1+ (or (seq-position (mp/workspace-names) name) 0)))
-        (root (mp/workspace--project-root name)))
+        (root (mp/workspace--project-root name))
+        (base (lambda (dir) (file-name-nondirectory (directory-file-name dir)))))
     (if root
-        (format "%d %s" idx (file-name-nondirectory (directory-file-name root)))
+        (format "%d %s" idx
+                (if-let* ((main (mp/git-worktree-main-root root)))
+                    (format "%s⎇%s" (funcall base main) (funcall base root))
+                  (funcall base root)))
       (mp/workspace--empty-name name))))
 
 ;; Opening a project via `SPC p p' (projectile) assigns it to the current
@@ -382,10 +387,99 @@ not a git working tree).  AGENT-ROOTS comes from `mp/project-menu--agent-roots'.
                              (propertize "agent" 'face 'font-lock-keyword-face))))))))
     (if parts (concat "  " (string-join parts "  ")) "")))
 
+;; `SPC p p' git worktrees
+;;
+;; The project list shows each repository once — a linked worktree folds
+;; under its main checkout — and picking a repo that has more than one
+;; worktree asks which one before Projectile's file picker opens.  Worktrees
+;; come from `git worktree list', so any on-disk layout works (siblings like
+;; `repo-wt-x/' as well as `~/Documents/.worktrees/repo/x/').
+
+(defun mp/git-worktree-main-root (dir)
+  "Main checkout of DIR when DIR is a linked git worktree, else nil.
+Cheap: reads the `gitdir:' line of DIR's `.git' file, no git process."
+  (let ((dotgit (expand-file-name ".git" dir)))
+    (when (and (not (file-remote-p dir))
+               (file-regular-p dotgit))
+      (with-temp-buffer
+        (insert-file-contents dotgit)
+        (when (re-search-forward
+               "^gitdir: \\(.+\\)/\\.git/worktrees/[^/\n]+/?$" nil t)
+          (file-name-as-directory (match-string 1)))))))
+
+(defun mp/project-menu--main-root (dir)
+  "Normalised DIR, or its main checkout when DIR is a linked worktree."
+  (mp/bundle--norm-dir (or (mp/git-worktree-main-root dir) dir)))
+
+(defun mp/git-worktrees (dir)
+  "Worktrees of the repository at DIR, main checkout first.
+Each is a plist (:path DIR :branch NAME :main BOOL); NAME is nil when HEAD
+is detached.  Bare entries and worktrees whose directory is gone are
+dropped.  Returns nil when DIR is remote or not in a git repository."
+  (unless (file-remote-p dir)
+    (let* ((default-directory (mp/bundle--norm-dir dir))
+           (lines (ignore-errors
+                    (process-lines "git" "worktree" "list" "--porcelain")))
+           (result nil) (cur nil))
+      ;; Blocks of "worktree PATH" / "HEAD SHA" / "branch REF" | "detached"
+      ;; | "bare" | "prunable …", separated by blank lines.
+      (dolist (line (append lines '("")))
+        (cond
+         ((string-prefix-p "worktree " line)
+          (setq cur (list :path (mp/bundle--norm-dir (substring line 9)))))
+         ((string-prefix-p "branch " line)
+          (setq cur (plist-put cur :branch
+                               (string-remove-prefix "refs/heads/"
+                                                     (substring line 7)))))
+         ((string= line "bare") (setq cur (plist-put cur :bare t)))
+         ((string= line "")
+          (when (and cur (not (plist-get cur :bare))
+                     (file-directory-p (plist-get cur :path)))
+            (push (plist-put cur :main (null result)) result))
+          (setq cur nil))))
+      (nreverse result))))
+
+(defun mp/project-menu--pick-worktree (root agent-roots)
+  "Worktree directory to open for the repository at ROOT.
+Returns ROOT itself when it has a single checkout; otherwise prompts.
+The worktree the current buffer is in comes first (Enter keeps it), else
+the main checkout."
+  (let ((trees (mp/git-worktrees root)))
+    (if (< (length trees) 2)
+        root
+      (let* ((here (and (fboundp 'projectile-project-root)
+                        (ignore-errors (projectile-project-root))))
+             (here (and here (mp/bundle--norm-dir here)))
+             (current (seq-find (lambda (tr) (equal (plist-get tr :path) here))
+                                trees))
+             (trees (if current (cons current (delq current trees)) trees))
+             (candidates
+              (mapcar
+               (lambda (tr)
+                 (let* ((path (plist-get tr :path))
+                        (branch (or (plist-get tr :branch) "(detached)")))
+                   (cons (concat
+                          (propertize branch 'face '(:foreground "#89b4fa" :weight bold))
+                          (when (plist-get tr :main)
+                            (propertize "  main checkout" 'face 'font-lock-keyword-face))
+                          "  "
+                          (propertize (abbreviate-file-name path)
+                                      'face 'font-lock-comment-face)
+                          (mp/project-menu--status-suffix path agent-roots))
+                         path)))
+               trees))
+             (choice (completing-read
+                      (format "Worktree of %s: "
+                              (file-name-nondirectory (directory-file-name root)))
+                      (mp/bundle--table candidates) nil t)))
+        (cdr (assoc choice candidates))))))
+
 (defun mp/project-menu ()
   "Project menu with colorized bundles plus Projectile projects.
-Project rows are suffixed with git/agent status (dirty, ↑unpushed, agent) —
-see `mp/project-menu--status-suffix'.  A pinned \"✎ Edit bundles…\" entry
+Linked git worktrees are listed under their main checkout; picking a repo
+with several worktrees asks which one (`mp/project-menu--pick-worktree')
+before the file picker.  Project rows are suffixed with git/agent status
+(dirty, ↑unpushed, agent) — see `mp/project-menu--status-suffix'.  A pinned \"✎ Edit bundles…\" entry
 always sits last (the list is identity-sorted, so it never moves)."
   (interactive)
   (let* ((bundle-prefix "▶ Bundle: ")
@@ -409,7 +503,11 @@ always sits last (the list is identity-sorted, so it never moves)."
                                    (propertize name 'face '(:foreground "#89b4fa" :weight bold))
                                    suffix)))
                (cons label project)))
-           (projectile-relevant-known-projects)))
+           ;; Every known project, current one included (so its other
+           ;; worktrees stay reachable), with linked worktrees folded into
+           ;; their main checkout.
+           (delete-dups
+            (mapcar #'mp/project-menu--main-root projectile-known-projects))))
          ;; Pinned last, always.  The identity-sorted table below stops
          ;; prescient/vertico from reordering it up into the list.
          (edit-label "✎ Edit bundles…")
@@ -425,7 +523,8 @@ always sits last (the list is identity-sorted, so it never moves)."
        ((equal real-value edit-label) (mp/manage-bundles))
        ((string-prefix-p bundle-prefix real-value)
         (mp/open-project-bundle (string-remove-prefix bundle-prefix real-value)))
-       (t (projectile-switch-project-by-name real-value))))))
+       (t (projectile-switch-project-by-name
+           (mp/project-menu--pick-worktree real-value agent-roots)))))))
 
 ;;; Bundle persistence + management
 ;;
