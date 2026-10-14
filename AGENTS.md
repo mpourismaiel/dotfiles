@@ -10,7 +10,14 @@ active, actively developed sub-projects worth understanding:
 - **`quickshell/emaqs/`** — a small sibling overlay: Emacs Doom workspace bar +
   agent-shell surface.
 - **`emacs/`** — vanilla Emacs 30.2 config (Doom migration, elpaca).
-- Everything else (`zsh/`, `starship/`, `mpv/`) is ordinary config — no build
+- **`mpv/`** — mpv config (`~/.config/mpv` is a symlink to it, so edits are
+  live immediately). UI = uosc (timeline/controls/menus) + `scripts/shelf/`
+  (media-library grid on idle, top-left ☰ Actions dropdown, click-to-pause).
+  Every `input.conf` binding carries a `#! Section > Item` comment that both
+  uosc's menu and the shelf dropdown read — keep them when adding keys.
+  Validate with `mpv/shoot.sh` (Xvfb + synthetic clips → PNGs in
+  `/tmp/mpv-shots`; never points at `~/Videos`). Lua syntax: `luac -p`.
+- Everything else (`zsh/`, `starship/`) is ordinary config — no build
   system, no tests.
 
 ---

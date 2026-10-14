@@ -62,4 +62,4 @@ function openURL()
   mp.commandv("loadfile", url, "replace")
 end
 
-mp.add_key_binding("ctrl+v", openURL)
+mp.add_key_binding("ctrl+v", "paste-url", openURL)
