@@ -9,10 +9,19 @@
 #
 # Usage:  ./run-pill.sh            (runs quickshell/init.qml next to this script)
 #         ./run-pill.sh <args>     (extra args are forwarded to qs)
+#         ./run-pill.sh -r [args]  (kill any running instance of this config,
+#                                   relaunch detached in the background)
 
 set -eu
 
 dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+
+if [ "${1:-}" = "-r" ]; then
+    shift
+    qs kill -p "$dir/init.qml" >/dev/null 2>&1 || true
+    setsid -f "$0" "$@" >/dev/null 2>&1
+    exit 0
+fi
 
 # XDG_RUNTIME_DIR is where the wayland socket lives; derive it if absent.
 : "${XDG_RUNTIME_DIR:=/run/user/$(id -u)}"
