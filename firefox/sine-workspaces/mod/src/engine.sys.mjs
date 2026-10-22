@@ -8,6 +8,12 @@
 // tabs (pinned + normal + grouped) that don't belong to the active workspace and
 // shows the ones that do. It also routes new tabs, evaluates URL rules on tab
 // creation, and applies per-workspace container defaults.
+//
+// Tab groups (folders) are workspace-bound: every tab in a group carries the
+// group's workspace. A tab joining a group (drag, "Move to group") is retagged
+// to that group's workspace, and moving a grouped tab to another workspace
+// takes it out of the group — so a folder never straddles workspaces and its
+// tabs show wherever the folder shows.
 
 import Store from "./store.sys.mjs";
 import Rules from "./rules.sys.mjs";
@@ -34,6 +40,11 @@ export class WorkspacesController {
   // ---- lifecycle -----------------------------------------------------------
 
   init() {
+    // Heal folders that already straddle workspaces (tabs moved into another
+    // workspace's group before groups were workspace-bound) so their stray
+    // tabs show up in the folder instead of staying hidden.
+    this.#normalizeGroups();
+
     // Choose the initial active workspace. Normally it's the restored selected
     // tab's workspace. But on a cold start triggered by an external link (a
     // Slack message, etc.), Firefox creates and selects that tab before this
@@ -67,6 +78,7 @@ export class WorkspacesController {
     c.removeEventListener("TabOpen", this._boundHandlers.open);
     c.removeEventListener("TabClose", this._boundHandlers.close);
     c.removeEventListener("TabSelect", this._boundHandlers.select);
+    c.removeEventListener("TabGrouped", this._boundHandlers.grouped);
     if (this._tabsProgress) this.gBrowser.removeTabsProgressListener(this._tabsProgress);
     this.listeners.clear();
   }
@@ -76,9 +88,13 @@ export class WorkspacesController {
     this._boundHandlers.open = (e) => this.#onTabOpen(e.target);
     this._boundHandlers.close = (e) => this.#onTabClose(e.target);
     this._boundHandlers.select = (e) => this.#onTabSelect(e.target);
+    // Firefox dispatches TabGrouped on the GROUP (bubbling) with the tab in
+    // `detail` — see tab.js #updateOnTabGrouped.
+    this._boundHandlers.grouped = (e) => this.#onTabGrouped(e.detail);
     c.addEventListener("TabOpen", this._boundHandlers.open);
     c.addEventListener("TabClose", this._boundHandlers.close);
     c.addEventListener("TabSelect", this._boundHandlers.select);
+    c.addEventListener("TabGrouped", this._boundHandlers.grouped);
 
     // One-shot URL-rule evaluation on a new tab's first committed top-level URL.
     this._tabsProgress = {
@@ -183,6 +199,66 @@ export class WorkspacesController {
     }
   }
 
+  // ---- tab groups ----------------------------------------------------------
+
+  // A group's workspace = the workspace of its first tagged tab (ignoring
+  // `exclude`, the tab that is just joining). Null for a group with no other
+  // tagged tabs — e.g. a brand-new group, which then takes its tabs' workspace.
+  #groupWorkspace(group, exclude = null) {
+    if (!group) return null;
+    for (const t of group.tabs || []) {
+      if (t === exclude || t.closing) continue;
+      const wid = Store.getTabWorkspace(t);
+      if (wid && Store.hasWorkspace(wid)) return wid;
+    }
+    return null;
+  }
+
+  // Retag any tab whose workspace differs from its group's.
+  #normalizeGroups() {
+    let groups = [];
+    try {
+      groups = this.gBrowser.tabGroups || [];
+    } catch (_e) {
+      return;
+    }
+    for (const group of groups) {
+      const wid = this.#groupWorkspace(group);
+      if (!wid) continue;
+      for (const t of group.tabs || []) {
+        if (Store.getTabWorkspace(t) && Store.getTabWorkspace(t) !== wid) {
+          Store.setTabWorkspace(t, wid);
+        }
+      }
+    }
+  }
+
+  // A tab joined a group: it now lives in that group's workspace. Untagged tabs
+  // (still opening) are left to #onTabOpen, which reads the group itself.
+  #onTabGrouped(tab) {
+    if (!tab || tab.closing || !this.gBrowser.tabs.includes(tab)) return;
+    const tag = Store.getTabWorkspace(tab);
+    if (!tag) return;
+    const wid = this.#groupWorkspace(tab.group, tab);
+    if (wid && wid !== tag) this.moveTabsToWorkspace([tab], wid);
+  }
+
+  // Take tabs that are leaving for another workspace out of their group,
+  // unless the whole group is going with them.
+  #detachFromGroups(tabs, wsId) {
+    const moving = new Set(tabs);
+    for (const tab of tabs) {
+      const group = tab.group;
+      if (!group || this.#groupWorkspace(group, tab) === wsId) continue;
+      if ((group.tabs || []).every((t) => moving.has(t))) continue;
+      try {
+        this.gBrowser.ungroupTab(tab);
+      } catch (e) {
+        console.warn("[sine-workspaces] ungroupTab failed:", e);
+      }
+    }
+  }
+
   // ---- switching -----------------------------------------------------------
 
   switchTo(wsId) {
@@ -266,7 +342,9 @@ export class WorkspacesController {
     // Restored / duplicated tabs already carry a persisted tag — keep it.
     if (Store.getTabWorkspace(tab)) return;
 
-    Store.setTabWorkspace(tab, this.activeId);
+    // A tab opened inside a folder (e.g. a link from a grouped tab) belongs to
+    // the folder's workspace.
+    Store.setTabWorkspace(tab, this.#groupWorkspace(tab.group, tab) || this.activeId);
     Store.setManual(tab, false);
     this._pendingRule.add(tab);
 
@@ -434,6 +512,7 @@ export class WorkspacesController {
   // Move a tab into a workspace. `manual` marks it sticky (rules stop touching it).
   assignTab(tab, wsId, manual = true) {
     if (!Store.hasWorkspace(wsId)) return;
+    this.#detachFromGroups([tab], wsId);
     Store.setTabWorkspace(tab, wsId);
     if (manual) Store.setManual(tab, true);
     this.#setTabHidden(tab, wsId !== this.activeId);
@@ -455,6 +534,7 @@ export class WorkspacesController {
     const movedActive = list.includes(this.gBrowser.selectedTab);
     const refIndex = this.gBrowser.selectedTab?._tPos ?? 0;
 
+    this.#detachFromGroups(list, wsId);
     for (const tab of list) {
       Store.setTabWorkspace(tab, wsId);
       Store.setManual(tab, true);
@@ -516,6 +596,7 @@ export class WorkspacesController {
   // Called when the config changes on disk (Manage page edits).
   onConfigReloaded() {
     if (!Store.hasWorkspace(this.activeId)) this.activeId = Store.defaultId;
+    this.#normalizeGroups();
     this.applyVisibility();
     this.emit();
   }

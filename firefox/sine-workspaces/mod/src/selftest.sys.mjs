@@ -178,7 +178,31 @@ export function runSelfTest(win, controller, strip) {
       console.error(`${P} group test threw:`, e);
     }
 
-    console.log(`${P} DONE ${ok1 && ok2 && ok3 && ok4 && ok5 ? "ALL PASS" : "SOME FAIL"}`);
+    // 10. Folders are workspace-bound: a tab from targetId moved into a group in
+    //     firstId is retagged to firstId; moving it back to targetId ungroups it.
+    let ok6 = false;
+    try {
+      controller.switchTo(firstId);
+      const gtabs = [];
+      for (let i = 0; i < 2; i++) gtabs.push(controller.newTabInWorkspace(firstId, { select: false }));
+      const stray = controller.newTabInWorkspace(targetId, { select: false });
+      const group = win.gBrowser.addTabGroup(gtabs, { label: "SW Bound" });
+      win.gBrowser.moveTabToExistingGroup(stray, group);
+      const joinedTag = Store.getTabWorkspace(stray);
+      const joinedVisible = !stray.hasAttribute("sine-ws-hidden");
+      controller.moveTabsToWorkspace([stray], targetId);
+      const leftGroup = !stray.group && Store.getTabWorkspace(stray) === targetId;
+      ok6 = joinedTag === firstId && joinedVisible && leftGroup;
+      console.log(
+        `${P} group-bound: joinedTag=${joinedTag} visible=${joinedVisible} ` +
+          `leftGroup=${leftGroup} ${ok6 ? "PASS" : "FAIL"}`
+      );
+      for (const t of [...gtabs, stray]) win.gBrowser.removeTab(t);
+    } catch (e) {
+      console.error(`${P} group-bound test threw:`, e);
+    }
+
+    console.log(`${P} DONE ${ok1 && ok2 && ok3 && ok4 && ok5 && ok6 ? "ALL PASS" : "SOME FAIL"}`);
   } catch (e) {
     console.error(`${P} threw:`, e);
   }

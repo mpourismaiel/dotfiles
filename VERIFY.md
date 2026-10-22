@@ -66,6 +66,7 @@ Legend: `[ ]` awaiting live check · `[x]` confirmed live · `[~]` partially con
 ## firefox/sine-workspaces
 
 - [~] **Sidebery-style workspaces** — reproduced external-link + Ctrl+Shift+N fixes via isolated Xvfb harness; full live behavior on profile "testing 2" still broadly unverified.
+- [x] **Folders are workspace-bound (2026-10-22)** — moving a tab into a folder that lives in another workspace ("Move to group" or drag) retags it to the folder's workspace (it disappears from the current one and shows inside the folder there). "Move to workspace" on a grouped tab pulls it out of the folder (unless the whole folder is selected). On first start after deploy, the tabs you already moved should reappear inside their folders (healed to the folder's first tab's workspace).
 
 ## shledger
 
