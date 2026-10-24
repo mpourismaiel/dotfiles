@@ -1489,7 +1489,7 @@ here would silently fall back to *scratch*)."
                               (bound-and-true-p ghostel--command-running)))
                    (ws    (mp/dashboard--buffer-workspace-label tbuf))
                    (title (with-current-buffer tbuf
-                            (or (bound-and-true-p ghostel--title) (buffer-name tbuf)))))
+                            (or (bound-and-true-p ghostel-title) (buffer-name tbuf)))))
               (mp/dashboard--as-block
                 (insert "    ")
                 (insert-text-button

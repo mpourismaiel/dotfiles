@@ -24,6 +24,13 @@ while IFS= read -r -d '' f; do
   fi
 done < <(find . -type f -name '*.json' -not -path './mod/config/workspaces.json' -print0)
 
+echo "== ffws CLI (python syntax) =="
+if python3 -c 'import ast,sys; ast.parse(open(sys.argv[1]).read())' bin/ffws 2>/tmp/sw-check.err; then
+  echo "  ok   bin/ffws"
+else
+  echo "  FAIL bin/ffws"; sed 's/^/       /' /tmp/sw-check.err; fail=1
+fi
+
 echo "== entry script referenced in mod.entry.json exists =="
 entry=$(jq -r '.scripts.src | keys[0]' mod.entry.json)
 if [[ -f "mod/src/$entry" ]]; then

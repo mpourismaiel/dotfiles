@@ -86,3 +86,14 @@
 tab-group:not(:has(.tabbrowser-tab:not([sine-ws-hidden="true"]))) {
   display: none !important;
 }
+
+/* Compat shim, not workspace-related: Firefox 158 renamed the pinned-tab
+   tokens below (tab.tokens.css), but Natsumi (≤ 6.12.4, injected/pinned-tabs.css)
+   still reads the old names inside a calc(). The undefined var makes its
+   `grid-template-columns … !important` invalid, which also defeats Firefox's
+   own grid — every pinned tab then takes a full-width row. Mapping the old
+   names onto the new ones restores the grid. Drop once Natsumi catches up. */
+#pinned-tabs-container, #vertical-pinned-tabs-container {
+  --tab-pinned-margin-inline-expanded: var(--tab-margin-inline-pinned-expanded);
+  --tab-pinned-expanded-background-width: var(--tab-background-width-pinned-expanded);
+}

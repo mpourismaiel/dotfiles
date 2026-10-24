@@ -9,6 +9,8 @@
 // only a DEFAULT: Firefox Multi-Account Containers' own per-site assignments run
 // as a webRequest listener and will still reopen the tab into its assigned
 // container, which is exactly the "MAC wins" behavior the user asked for.
+// URL rules can name a container too (Rules.containerFor); for external links
+// the engine enforces it over Firefox's own same-host container guess.
 
 // ContextualIdentityService moved from resource://gre/modules/ to moz-src:/// in
 // Firefox 155 (the old alias was dropped). Import defensively so a single moved

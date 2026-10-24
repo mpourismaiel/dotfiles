@@ -170,13 +170,16 @@ function updateTestResult() {
   if (!r) return;
   const url = testUrl.trim();
   if (!url) { r.textContent = ""; r.className = "test-result"; return; }
-  const id = Rules.firstMatch(state.workspaces, url);
-  if (id) {
-    const ws = state.workspaces.find((w) => w.id === id);
-    r.textContent = `→ ${ws?.icon || ""} ${ws?.name || id}`;
+  const hit = Rules.match(state.workspaces, url);
+  if (hit) {
+    const ws = hit.workspace;
+    const cid = Rules.containerFor(hit);
+    const ct = containers.find((c) => c.userContextId === cid);
+    const where = cid ? ` · ${ct?.name || `container ${cid}`}` : " · no container";
+    r.textContent = `→ ${ws.icon || ""} ${ws.name || ws.id}${where}`;
     r.className = "test-result match";
   } else {
-    r.textContent = "→ no rule matches (stays in the active workspace)";
+    r.textContent = "→ no rule matches (active workspace, its default container)";
     r.className = "test-result nomatch";
   }
 }
@@ -338,6 +341,7 @@ function rulesBlock(ws) {
             updateTestResult();
           },
         }),
+        ruleContainerSelect(rule),
         el("button", {
           class: "icon danger",
           title: "Remove rule",
@@ -347,9 +351,32 @@ function rulesBlock(ws) {
     );
   });
   rules.append(
-    el("button", { class: "small", onclick: () => { ws.rules = ws.rules || []; ws.rules.push({ type: "glob", pattern: "" }); render(); } }, "＋ Add rule")
+    el("button", { class: "small", onclick: () => { ws.rules = ws.rules || []; ws.rules.push({ type: "glob", pattern: "", containerId: null }); render(); } }, "＋ Add rule")
   );
   return rules;
+}
+
+// Per-rule container: inherit the workspace default, force none, or pick one.
+function ruleContainerSelect(rule) {
+  const sel = el("select", {
+    class: "rule-container",
+    title: "Container a matching link opens in",
+    onchange: (e) => {
+      const v = e.target.value;
+      rule.containerId = v === "" ? null : v === "none" ? "none" : Number(v);
+      updateTestResult();
+    },
+  });
+  const cur = rule.containerId == null ? "" : String(rule.containerId);
+  const opts = [["", "Workspace default"], ["none", "No container"]].concat(
+    containers.map((ct) => [String(ct.userContextId), ct.name])
+  );
+  for (const [value, label] of opts) {
+    const opt = el("option", { value }, label);
+    if (value === cur) opt.selected = true;
+    sel.append(opt);
+  }
+  return sel;
 }
 
 // ---- mutations -----------------------------------------------------------

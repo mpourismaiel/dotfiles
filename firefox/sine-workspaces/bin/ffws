@@ -1,0 +1,237 @@
+#!/usr/bin/env python3
+"""ffws — drive the sine-workspaces Firefox mod from a script or an agent.
+
+Talks to the mod through a file mailbox in the Firefox profile
+(<profile>/sine-workspaces-ipc/{requests,responses}); nothing listens on the
+network. Stdlib only.
+
+  ffws ping
+  ffws state [--tree] [--workspace WS]      JSON (default) or a readable tree
+  ffws apply PLAN.json|- [--dry-run] [--focus]
+  ffws open URL... [-w WS] [-c CONTAINER] [-g FOLDER | --new-folder LABEL
+                   [--color C]] [--load] [--focus] [--dry-run]
+  ffws ops                                  print the op reference
+
+Nothing is ever selected / brought to the front unless --focus is given.
+The profile is found automatically (the running profile with the mod loaded);
+override with --profile DIR or $FFWS_PROFILE.
+"""
+
+import argparse
+import json
+import os
+import sys
+import time
+import uuid
+from pathlib import Path
+
+OPS_DOC = """\
+A plan is {"ops": [...]} (or a bare list). Ops run in order; all are
+validated first and NOTHING changes if any op is invalid. Tab ids come from
+`ffws state` and are valid for the current browser session. A tab ref may be
+"id" or {"id": ..., "url": ...} — with a url the op fails if the tab no longer
+shows it (stale plan). Workspaces / containers accept an id or a name.
+Folder refs: a group id from state, an exact unique label, or "$name" for a
+folder created earlier in the same plan.
+
+  {"op":"open", "urls":[url | {"url","title"}], "workspace"?, "container"?,
+   "group"?: folder, "newGroup"?: {"label","color"?,"ref"?: "$name"},
+   "load"?: false}
+      Open tabs (unloaded unless load:true). Container defaults to the
+      workspace's default. A folder's workspace wins; a conflicting
+      `workspace` is an error.
+  {"op":"group", "tabs":[...], "label", "color"?, "workspace"?, "ref"?: "$name"}
+      New folder from tabs (moved to `workspace` first if given).
+  {"op":"move", "tabs":[...], "workspace"?, "group"?: folder | null,
+   "position"?: "end"}
+      Move to a workspace (leaves its folder unless the whole folder moves),
+      into a folder (takes the folder's workspace), out of a folder (null),
+      and/or to the end of its workspace in the given order.
+  {"op":"close", "tabs":[...]}
+  {"op":"unload", "tabs":[...]}                  free memory, keep the tab
+  {"op":"container", "tabs":[...], "container"}  reopens: history is lost
+  {"op":"editGroup", "group", "label"?, "color"?, "collapsed"?}
+  {"op":"ungroup", "group"}                     dissolve; tabs stay open
+  {"op":"createWorkspace", "name", "icon"?, "container"?, "id"?}
+
+Colors: blue purple cyan orange yellow pink green gray red.
+Top-level: "dryRun" (or --dry-run), "focus" (or --focus: select the last
+touched tab and switch to its workspace), "window" (index from state).
+"""
+
+PROFILE_ROOTS = [
+    Path.home() / ".mozilla" / "firefox",
+    Path.home() / ".config" / "mozilla" / "firefox",
+]
+
+
+def die(msg, code=2):
+    print(f"ffws: {msg}", file=sys.stderr)
+    sys.exit(code)
+
+
+def pid_alive(pid):
+    try:
+        os.kill(int(pid), 0)
+        return True
+    except (OSError, ValueError, TypeError):
+        return False
+
+
+def find_profile(explicit):
+    if explicit:
+        p = Path(explicit).expanduser()
+        if not (p / "sine-workspaces-ipc").is_dir():
+            die(f"{p} has no sine-workspaces-ipc/ — is the mod deployed and Firefox running?")
+        return p
+    live = []
+    for root in PROFILE_ROOTS:
+        if not root.is_dir():
+            continue
+        for alive in root.glob("*/sine-workspaces-ipc/alive.json"):
+            try:
+                pid = json.loads(alive.read_text()).get("pid")
+            except (OSError, ValueError):
+                continue
+            if pid_alive(pid):
+                live.append(alive.parent.parent)
+    if not live:
+        die("no running Firefox with sine-workspaces found (deploy the mod, start Firefox)")
+    if len(live) > 1:
+        die("several running profiles have the mod — pick one with --profile:\n  "
+            + "\n  ".join(map(str, live)))
+    return live[0]
+
+
+def call(profile, req, timeout):
+    ipc = profile / "sine-workspaces-ipc"
+    rid = uuid.uuid4().hex
+    req = {"id": rid, **req}
+    tmp = ipc / "requests" / f"{rid}.json.tmp"
+    tmp.write_text(json.dumps(req))
+    tmp.rename(ipc / "requests" / f"{rid}.json")
+    res = ipc / "responses" / f"{rid}.json"
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if res.exists():
+            try:
+                body = json.loads(res.read_text())
+            except ValueError:
+                time.sleep(0.05)
+                continue
+            res.unlink(missing_ok=True)
+            return body
+        time.sleep(0.05)
+    (ipc / "requests" / f"{rid}.json").unlink(missing_ok=True)
+    die(f"no answer within {timeout}s — is Firefox running with the mod "
+        "(and sine-workspaces.api.enabled true)?", 3)
+
+
+def emit(body):
+    print(json.dumps(body, indent=2, ensure_ascii=False))
+    sys.exit(0 if body.get("ok") else 1)
+
+
+def print_tree(body, only_ws):
+    names = {w["id"]: f'{w["icon"]} {w["name"]}' for w in body["workspaces"]}
+    cnames = {c["id"]: c["name"] for c in body["containers"]}
+    for win in body["windows"]:
+        print(f'window {win["index"]}{" (front)" if win["front"] else ""} — '
+              f'active: {names.get(win["activeWorkspace"], win["activeWorkspace"])}')
+        groups = {g["id"]: g for g in win["groups"]}
+        for ws in body["workspaces"]:
+            if only_ws and only_ws not in (ws["id"], ws["name"]):
+                continue
+            tabs = [t for t in win["tabs"] if t["workspace"] == ws["id"]]
+            print(f'  {names[ws["id"]]}  ({len(tabs)} tabs)')
+            seen = set()
+            for t in tabs:
+                g = t["group"]
+                if g and g not in seen:
+                    seen.add(g)
+                    gg = groups.get(g, {})
+                    print(f'    ▸ {gg.get("label") or "(unnamed)"}  [{g}] {gg.get("color", "")}')
+                pad = "      " if g else "    "
+                flags = ("📌" if t["pinned"] else "") + ("●" if t["selected"] else "") \
+                    + ("" if t["loaded"] else "◌")
+                ct = f' «{cnames.get(t["container"], t["container"])}»' if t["container"] else ""
+                print(f'{pad}{t["id"]} {flags} {t["title"][:60]}{ct}\n{pad}   {t["url"]}')
+
+
+def main():
+    ap = argparse.ArgumentParser(prog="ffws", description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--profile", default=os.environ.get("FFWS_PROFILE"))
+    ap.add_argument("--timeout", type=float, default=60.0)
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    sub.add_parser("ping")
+    sp = sub.add_parser("state")
+    sp.add_argument("--tree", action="store_true")
+    sp.add_argument("--workspace")
+    sp = sub.add_parser("apply")
+    sp.add_argument("plan")
+    sp.add_argument("--dry-run", action="store_true")
+    sp.add_argument("--focus", action="store_true")
+    sp = sub.add_parser("open")
+    sp.add_argument("urls", nargs="+")
+    sp.add_argument("-w", "--workspace")
+    sp.add_argument("-c", "--container")
+    sp.add_argument("-g", "--folder")
+    sp.add_argument("--new-folder")
+    sp.add_argument("--color")
+    sp.add_argument("--load", action="store_true")
+    sp.add_argument("--focus", action="store_true")
+    sp.add_argument("--dry-run", action="store_true")
+    sub.add_parser("ops")
+    a = ap.parse_args()
+
+    if a.cmd == "ops":
+        print(OPS_DOC)
+        return
+    profile = find_profile(a.profile)
+
+    if a.cmd == "ping":
+        emit(call(profile, {"cmd": "ping"}, a.timeout))
+    if a.cmd == "state":
+        body = call(profile, {"cmd": "state"}, a.timeout)
+        if not body.get("ok"):
+            emit(body)
+        if a.tree:
+            print_tree(body, a.workspace)
+            return
+        if a.workspace:
+            ids = {w["id"] for w in body["workspaces"] if a.workspace in (w["id"], w["name"])}
+            for win in body["windows"]:
+                win["tabs"] = [t for t in win["tabs"] if t["workspace"] in ids]
+                win["groups"] = [g for g in win["groups"] if g["workspace"] in ids]
+        emit(body)
+    if a.cmd == "apply":
+        raw = sys.stdin.read() if a.plan == "-" else Path(a.plan).read_text()
+        try:
+            plan = json.loads(raw)
+        except ValueError as e:
+            die(f"plan is not JSON: {e}")
+        if isinstance(plan, list):
+            plan = {"ops": plan}
+        req = {"cmd": "apply", "ops": plan.get("ops", []),
+               "dryRun": a.dry_run or bool(plan.get("dryRun")),
+               "focus": a.focus or bool(plan.get("focus"))}
+        if "window" in plan:
+            req["window"] = plan["window"]
+        emit(call(profile, req, a.timeout))
+    if a.cmd == "open":
+        op = {"op": "open", "urls": a.urls, "load": a.load}
+        if a.workspace:
+            op["workspace"] = a.workspace
+        if a.container:
+            op["container"] = a.container
+        if a.folder:
+            op["group"] = a.folder
+        if a.new_folder:
+            op["newGroup"] = {"label": a.new_folder, **({"color": a.color} if a.color else {})}
+        emit(call(profile, {"cmd": "apply", "ops": [op], "dryRun": a.dry_run,
+                            "focus": a.focus}, a.timeout))
+
+
+if __name__ == "__main__":
+    main()

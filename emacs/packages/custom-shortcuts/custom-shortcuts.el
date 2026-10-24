@@ -7,7 +7,7 @@
 
 (declare-function ghostel "ghostel")
 (declare-function ghostel-project "ghostel")
-(declare-function ghostel--project-buffers "ghostel")
+(declare-function ghostel-project-buffer-list "ghostel")
 (declare-function consult--read "consult")
 (declare-function consult--multi "consult")
 (declare-function consult--buffer-preview "consult")
@@ -82,13 +82,15 @@ the section keys `a' / `t' / `s' (after `consult-narrow-key')."
 
 Even with no terminal open the menu still shows; its top, default \"New
 Ghostel\" entry makes one on a bare RET.  Terminals and scripts are
-project-scoped (`ghostel--project-buffers' — governed by
+project-scoped (`ghostel-project-buffer-list' — governed by
 `ghostel-project-buffer-scope' — and `my/project-script-files'); both
 degrade to empty outside a project, where \"New Ghostel\" falls back to a
 non-project terminal."
   (interactive)
   (mp/ghostel-menu
-   (ignore-errors (ghostel--project-buffers))
+   ;; Guarded: `ghostel-project-buffer-list' prompts for a project outside one.
+   (when (project-current nil)
+     (ignore-errors (ghostel-project-buffer-list)))
    (ignore-errors (my/project-script-files))))
 
 ;; Line-moving helpers (mp/line-move-bounds, mp/move-lines--apply) removed:

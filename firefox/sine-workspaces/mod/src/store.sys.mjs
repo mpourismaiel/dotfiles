@@ -115,7 +115,13 @@ const Store = {
       ws.icon = ws.icon || "•";
       ws.color = ws.color || "";
       ws.containerId = ws.containerId ?? null;
-      ws.rules = Array.isArray(ws.rules) ? ws.rules : [];
+      ws.rules = (Array.isArray(ws.rules) ? ws.rules : []).map((r) => ({
+        ...r,
+        type: r?.type === "regex" ? "regex" : "glob",
+        pattern: String(r?.pattern ?? ""),
+        // Rule container: an id, "none", or null = the workspace's default.
+        containerId: r?.containerId ?? null,
+      }));
     }
     return cfg;
   },

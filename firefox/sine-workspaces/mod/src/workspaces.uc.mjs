@@ -15,6 +15,12 @@ import { WorkspacesStrip } from "./strip.sys.mjs";
 import { WorkspacesShortcuts } from "./shortcuts.sys.mjs";
 import { WorkspaceTabMenu } from "./tabmenu.sys.mjs";
 
+// The script API must be ONE instance per browser process, but Sine imports
+// this file's graph per window — so load it as a system module instead.
+const { default: Api } = ChromeUtils.importESModule(
+  "chrome://sine/content/sine-workspaces/src/api.sys.mjs"
+);
+
 (() => {
   const win = window;
   if (win.__sineWorkspaces) return;
@@ -64,6 +70,12 @@ import { WorkspaceTabMenu } from "./tabmenu.sys.mjs";
         strip.render();
       });
 
+      try {
+        Api.register(controller);
+      } catch (e) {
+        console.error("[sine-workspaces] script API register failed:", e);
+      }
+
       win.__sineWorkspacesAPI = { controller, strip, shortcuts, tabMenu };
       console.log(
         `[sine-workspaces] ready — ${Store.workspaces.length} workspaces, active=${controller.activeId}`
@@ -82,6 +94,7 @@ import { WorkspaceTabMenu } from "./tabmenu.sys.mjs";
       const cleanup = () => {
         try {
           unobserve();
+          Api.unregister(controller);
           shortcuts.detach();
           tabMenu.destroy();
           strip.destroy();

@@ -134,8 +134,9 @@
         clutch-jdbc-rpc-timeout-seconds 15))
 
 ;; Libraries clutch uses for PostgreSQL/MySQL connections.
-(use-package pg
-  :ensure (:host github :repo "emarsden/pg-el")
+;; Clutch dropped pg-el for its own pgsql.el wire client (Oct 2026).
+(use-package pgsql
+  :ensure (:host github :repo "LuciusChen/pgsql.el")
   :defer t)
 
 (use-package mysql

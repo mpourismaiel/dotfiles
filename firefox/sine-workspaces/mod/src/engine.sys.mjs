@@ -6,8 +6,11 @@
 //
 // One instance per browser window. Owns tab visibility for that window: it hides
 // tabs (pinned + normal + grouped) that don't belong to the active workspace and
-// shows the ones that do. It also routes new tabs, evaluates URL rules on tab
-// creation, and applies per-workspace container defaults.
+// shows the ones that do. It also routes new tabs: URL rules on tab creation
+// pick a workspace + container, otherwise the active workspace's default
+// container applies. A new tab that is in front of you (an external link from
+// Slack/Telegram, or a selected tab a rule moves) takes you to its workspace;
+// background tabs move quietly.
 //
 // Tab groups (folders) are workspace-bound: every tab in a group carries the
 // group's workspace. A tab joining a group (drag, "Move to group") is retagged
@@ -32,6 +35,7 @@ export class WorkspacesController {
     this.lastActiveByWs = new Map(); // wsId -> tab (remembered active tab)
     this.listeners = new Set();
     this._pendingRule = new WeakSet(); // brand-new tabs awaiting one-shot rule eval
+    this._adopt = null; // { wsId, manual } for the next tab WE open (see #openTab)
     this._switching = false;
     this._boundHandlers = {};
     this._tabsProgress = null;
@@ -85,7 +89,7 @@ export class WorkspacesController {
 
   #wire() {
     const c = this.gBrowser.tabContainer;
-    this._boundHandlers.open = (e) => this.#onTabOpen(e.target);
+    this._boundHandlers.open = (e) => this.#onTabOpen(e.target, e.detail);
     this._boundHandlers.close = (e) => this.#onTabClose(e.target);
     this._boundHandlers.select = (e) => this.#onTabSelect(e.target);
     // Firefox dispatches TabGrouped on the GROUP (bubbling) with the tab in
@@ -96,16 +100,29 @@ export class WorkspacesController {
     c.addEventListener("TabSelect", this._boundHandlers.select);
     c.addEventListener("TabGrouped", this._boundHandlers.grouped);
 
-    // One-shot URL-rule evaluation on a new tab's first committed top-level URL.
+    // Rule fallback for new tabs whose URL wasn't known when they opened (a
+    // Ctrl+T tab the user then types into): evaluate once, on the first real
+    // top-level URL. New-tab pages don't count — they'd use the one shot up.
     this._tabsProgress = {
       onLocationChange: (browser, webProgress, _request, location, _flags) => {
         if (!webProgress?.isTopLevel) return;
         const tab = this.gBrowser.getTabForBrowser(browser);
         if (!tab || !this._pendingRule.has(tab)) return;
+        const spec = location?.spec || "";
+        if (!spec || spec === "about:blank" || NEWTAB.has(spec)) return;
         this._pendingRule.delete(tab); // creation-only: evaluate exactly once
         if (Store.isManual(tab)) return;
-        const wsId = Rules.firstMatch(Store.workspaces, location?.spec || "");
-        if (wsId && wsId !== Store.getTabWorkspace(tab)) this.assignTab(tab, wsId, false);
+        const hit = Rules.match(Store.workspaces, spec);
+        if (!hit) return;
+        // The page has committed, so reopening it in the rule's container
+        // reloads it — fine for the first navigation of a fresh tab.
+        this.#route(tab, {
+          wsId: hit.workspace.id,
+          containerId: Rules.containerFor(hit),
+          url: spec,
+          follow: tab.selected,
+        });
+        this.emit();
       },
     };
     this.gBrowser.addTabsProgressListener(this._tabsProgress);
@@ -139,7 +156,7 @@ export class WorkspacesController {
     // Pinned first, then by tab position — the order the shortcuts count from.
     return [...this.gBrowser.tabs]
       .filter((t) => !t.closing && (Store.getTabWorkspace(t) || Store.defaultId) === wsId)
-      .sort((a, b) => (b.pinned - a.pinned) || (a._tPos - b._tPos));
+      .sort((a, b) => (b.pinned - a.pinned) || (a.index - b.index));
   }
 
   count(wsId) {
@@ -266,7 +283,7 @@ export class WorkspacesController {
     if (wsId === this.activeId) return;
 
     const prevSel = this.gBrowser.selectedTab;
-    const prevIndex = prevSel?._tPos ?? 0;
+    const prevIndex = prevSel?.index ?? 0;
     if (prevSel && Store.getTabWorkspace(prevSel) === this.activeId) {
       this.lastActiveByWs.set(this.activeId, prevSel);
     }
@@ -332,13 +349,22 @@ export class WorkspacesController {
   #closest(tabs, refIndex) {
     if (!tabs.length) return null;
     return tabs.reduce((best, t) =>
-      Math.abs(t._tPos - refIndex) < Math.abs(best._tPos - refIndex) ? t : best
+      Math.abs(t.index - refIndex) < Math.abs(best.index - refIndex) ? t : best
     );
   }
 
   // ---- tab lifecycle -------------------------------------------------------
 
-  #onTabOpen(tab) {
+  #onTabOpen(tab, detail) {
+    // A tab we opened ourselves (#openTab: the API, container reopens) comes
+    // pre-routed — tag it and skip rules / container defaults / placement.
+    const adopt = this._adopt;
+    if (adopt) {
+      this._adopt = null;
+      Store.setTabWorkspace(tab, adopt.wsId);
+      Store.setManual(tab, adopt.manual);
+      return;
+    }
     // Restored / duplicated tabs already carry a persisted tag — keep it.
     if (Store.getTabWorkspace(tab)) return;
 
@@ -348,35 +374,143 @@ export class WorkspacesController {
     Store.setManual(tab, false);
     this._pendingRule.add(tab);
 
-    // A tab opened FROM a page (middle-click, "open in new tab") has an
-    // openerTab and inherits that page's container — leave those alone. Every
-    // other new tab (Ctrl+T, the new-tab button, a link from an external app
-    // like Telegram) has no opener, so give it the workspace's default
-    // container. Captured now because Firefox can clear openerTab as related
-    // tabs chain.
+    // Captured now because Firefox can clear openerTab as related tabs chain.
     const opener = tab.openerTab || null;
-    const ws = Store.getWorkspace(this.activeId);
-    if (!opener && ws?.containerId && Containers.exists(ws.containerId)) {
-      this.win.setTimeout(() => this.#applyContainerDefault(tab, Number(ws.containerId)), 0);
-    }
-    // Position the new tab within its workspace. A blank tab (Ctrl+T / new-tab
-    // button) goes to the END; a tab opened FROM a link goes right after the tab
-    // it came from. Deferred so it runs after Firefox finishes inserting the tab.
-    this.win.setTimeout(() => this.#placeNewTab(tab, opener), 0);
+    const external = !!detail?.fromExternal;
+    // Deferred so it runs after Firefox finishes inserting the tab and has
+    // put the destination URL in userTypedValue.
+    this.win.setTimeout(() => this.#routeNewTab(tab, opener, external), 0);
     this.emit();
   }
 
+  // Decide where a fresh tab lives. Its URL is known now for links (external
+  // or from a page): the first matching rule picks workspace + container.
+  // With no match it stays in its workspace (the active one, or its folder's)
+  // and — unless it was opened FROM a page, which inherits that page's
+  // container — gets the workspace's default container. External links always
+  // take you to wherever they land; so does a selected tab a rule moves.
+  // For external links the container is authoritative (none if neither rule
+  // nor workspace names one): Firefox otherwise guesses one from tabs already
+  // open on the same host (URILoadingHelper.guessUserContextId).
+  #routeNewTab(tab, opener, external) {
+    try {
+      if (!tab || tab.closing || !this.gBrowser.tabs.includes(tab)) return;
+      const browser = tab.linkedBrowser;
+      const pending = browser?.userTypedValue || "";
+      const spec = browser?.currentURI?.spec ?? "";
+      const url = pending || (spec !== "about:blank" && !NEWTAB.has(spec) ? spec : "");
+
+      let wsId = Store.getTabWorkspace(tab) || this.activeId;
+      let containerId = null;
+      let matched = false;
+      if (url) {
+        this._pendingRule.delete(tab); // the one-shot rule evaluation is now
+        const hit = Store.isManual(tab) ? null : Rules.match(Store.workspaces, url);
+        if (hit) {
+          matched = true;
+          wsId = hit.workspace.id;
+          containerId = Rules.containerFor(hit);
+        }
+      }
+      if (!matched && !opener) {
+        const def = Store.getWorkspace(wsId)?.containerId;
+        containerId = def ? Number(def) : null;
+      }
+      // A reopen needs a destination that hasn't committed yet: the typed /
+      // external URL, or a genuine new-tab page. A bare about:blank with no
+      // destination is a special trusted tab (Customize Toolbar, view-source)
+      // and is left alone.
+      const reopenUrl = pending || (NEWTAB.has(spec) ? "about:newtab" : "");
+
+      const t = this.#route(tab, {
+        wsId,
+        containerId: external ? containerId ?? 0 : containerId,
+        force: external,
+        url: reopenUrl,
+        follow: external || (matched && tab.selected),
+      });
+      this.#placeNewTab(t, opener);
+      this.emit();
+    } catch (e) {
+      console.warn("[sine-workspaces] routeNewTab failed:", e);
+    }
+  }
+
+  // Put a tab in workspace `wsId` and (if it has none yet) container
+  // `containerId`. A tab's container can't change in place, so that reopens
+  // `url` in a new tab at the same spot and closes the old one. A tab that
+  // already has a container (a Multi-Account-Containers site assignment, an
+  // explicit "open in container") keeps it — that also rules out reopen
+  // ping-pong with MAC — unless `force` (external links: containerId is then
+  // exact, 0 meaning none). `follow` selects the tab and switches to its
+  // workspace; otherwise a tab landing in another workspace is hidden.
+  // Returns the (possibly new) tab.
+  #route(tab, { wsId, containerId, url, follow, force = false }) {
+    let t = tab;
+    const current = parseInt(tab.getAttribute("usercontextid") || "0", 10);
+    const wanted = force
+      ? containerId !== current && (containerId === 0 || Containers.exists(containerId))
+      : containerId > 0 && current === 0 && Containers.exists(containerId);
+    if (wanted && url) {
+      t = this.#reopen(tab, url, { userContextId: containerId, wsId, manual: false }) || tab;
+    }
+    if (Store.getTabWorkspace(t) !== wsId) {
+      this.#detachFromGroups([t], wsId);
+      Store.setTabWorkspace(t, wsId);
+    }
+    if (follow) {
+      if (!t.selected) this.gBrowser.selectedTab = t; // #onTabSelect switches
+      else if (wsId !== this.activeId) this.#activate(wsId, t);
+    } else {
+      this.#setTabHidden(t, wsId !== this.activeId);
+    }
+    this.#updateGroups();
+    return t;
+  }
+
+  // Replace `tab` with a fresh one loading `url` in another container: same
+  // position, same folder, same selection. Returns the new tab (null on error).
+  #reopen(tab, url, { userContextId, wsId, manual }) {
+    const newTab = this.#openTab(url, {
+      wsId,
+      manual,
+      userContextId,
+      tabIndex: tab.index + 1,
+      tabGroup: tab.group || undefined,
+      inBackground: !tab.selected,
+    });
+    if (!newTab) return null;
+    if (tab.selected) this.gBrowser.selectedTab = newTab;
+    this.gBrowser.removeTab(tab);
+    return newTab;
+  }
+
+  // Open a tab that is already routed: tagged `wsId` (and `manual`) before
+  // TabOpen handlers run, so rules / container defaults / placement skip it.
+  // Remaining options go to gBrowser.addTab (userContextId, tabIndex,
+  // tabGroup, createLazyBrowser, lazyTabTitle, inBackground, ...).
+  #openTab(url, { wsId, manual = false, ...opts }) {
+    this._adopt = { wsId, manual };
+    try {
+      return this.#addTab(url, { skipAnimation: true, ...opts });
+    } finally {
+      this._adopt = null;
+    }
+  }
+
   // Place a freshly-opened tab within its workspace. Skips pinned and grouped
-  // tabs (respect the group). Link-opened tabs (an opener) go next to the opener;
-  // blank tabs go to the end of the workspace.
+  // tabs (respect the group). A link-opened tab goes next to its opener when
+  // both share a workspace; otherwise (blank tabs, rule-moved tabs) it goes to
+  // the end of its workspace.
   #placeNewTab(tab, opener) {
     try {
       if (!tab || tab.closing || tab.pinned || tab.group) return;
       if (!this.gBrowser.tabs.includes(tab)) return;
-      if (opener && !opener.closing && this.gBrowser.tabs.includes(opener)) {
+      const wsOf = (t) => Store.getTabWorkspace(t) || Store.defaultId;
+      if (opener && !opener.closing && this.gBrowser.tabs.includes(opener) && wsOf(opener) === wsOf(tab)) {
         this.#placeAfterOpener(tab, opener);
       } else {
-        this.#moveToWorkspaceEnd(tab);
+        this.moveToWorkspaceEnd(tab);
       }
     } catch (e) {
       console.warn("[sine-workspaces] placeNewTab failed:", e);
@@ -391,58 +525,26 @@ export class WorkspacesController {
     if (opener.pinned) {
       const normals = this.#tabsFor(wsId).filter((t) => t !== tab && !t.pinned);
       if (!normals.length) return; // tab is the only non-pinned one — already fine
-      const first = normals[0]; // #tabsFor sorts by _tPos ascending
-      if (tab._tPos > first._tPos) this.gBrowser.moveTabTo(tab, { tabIndex: first._tPos });
+      const first = normals[0]; // #tabsFor sorts by index ascending
+      if (tab.index > first.index) this.gBrowser.moveTabTo(tab, { tabIndex: first.index });
     } else {
-      const target = tab._tPos > opener._tPos ? opener._tPos + 1 : opener._tPos;
-      if (tab._tPos !== target) this.gBrowser.moveTabTo(tab, { tabIndex: target });
+      const target = tab.index > opener.index ? opener.index + 1 : opener.index;
+      if (tab.index !== target) this.gBrowser.moveTabTo(tab, { tabIndex: target });
     }
   }
 
-  // Move a freshly-opened blank tab so it sits just after the last (non-pinned)
-  // tab of its workspace. No-op when there are no other normal tabs (Firefox
-  // already appends at the end).
-  #moveToWorkspaceEnd(tab) {
+  // Move a tab so it sits just after the last (non-pinned) tab of its
+  // workspace. No-op when there are no other normal tabs (Firefox already
+  // appends at the end). Public: the script API uses it to order tabs.
+  moveToWorkspaceEnd(tab) {
     const wsId = Store.getTabWorkspace(tab) || Store.defaultId;
     const peers = this.#tabsFor(wsId).filter((t) => t !== tab && !t.pinned);
     if (!peers.length) return;
-    const last = peers[peers.length - 1]; // #tabsFor sorts by _tPos ascending
-    const target = tab._tPos > last._tPos ? last._tPos + 1 : last._tPos;
-    if (tab._tPos !== target) this.gBrowser.moveTabTo(tab, { tabIndex: target });
-  }
-
-  // Reopen a new tab in the workspace's default container (a tab's container
-  // can't be changed in place). The destination is preserved so nothing is lost:
-  // an external link (from Telegram/Slack) reports currentURI="about:blank" for
-  // the first tick but carries its target in userTypedValue, so the container
-  // tab reloads that URL; a genuinely blank tab reopens about:newtab. A tab that
-  // has already committed a real page is left alone (we'd otherwise lose state).
-  #applyContainerDefault(tab, userContextId) {
-    if (!tab || tab.closing || !this.gBrowser.tabs.includes(tab)) return;
-    const current = parseInt(tab.getAttribute("usercontextid") || "0", 10);
-    // Respect any container the tab already has — a Multi-Account-Containers
-    // site assignment or an explicit "open in container" wins over the
-    // workspace default. Only tabs with no container (0) get the default.
-    if (current !== 0) return;
-    const browser = tab.linkedBrowser;
-    const pending = browser?.userTypedValue || "";
-    const spec = browser?.currentURI?.spec ?? "";
-    // With a typed destination (e.g. an external link that reports about:blank
-    // for a tick but carries its target in userTypedValue) we reload it into the
-    // container. With none, only a genuine new-tab page qualifies — a bare
-    // about:blank is a special/trusted tab (Customize Toolbar, view-source, a
-    // script-opened blank) that must be left alone, not replaced with a new tab.
-    if (!pending && !NEWTAB.has(spec)) return;
-    const url = pending || "about:newtab";
-
-    const index = tab._tPos + 1;
-    const newTab = this.#addTab(url, { userContextId, index });
-    if (!newTab) return;
-    Store.setTabWorkspace(newTab, this.activeId);
-    Store.setManual(newTab, false);
-    const wasSelected = tab.selected;
-    this.gBrowser.removeTab(tab);
-    if (wasSelected) this.gBrowser.selectedTab = newTab;
+    const last = peers[peers.length - 1]; // #tabsFor sorts by index ascending
+    const target = tab.index > last.index ? last.index + 1 : last.index;
+    if (tab.index !== target) {
+      this.gBrowser.moveTabTo(tab, { tabIndex: target, forceUngrouped: !tab.group });
+    }
   }
 
   #onTabClose(tab) {
@@ -460,7 +562,7 @@ export class WorkspacesController {
       this.win.setTimeout(() => {
         const sel = this.gBrowser.selectedTab;
         if (!sel || (Store.getTabWorkspace(sel) || Store.defaultId) !== this.activeId) {
-          this.#pickAndSelect(this.activeId, tab._tPos);
+          this.#pickAndSelect(this.activeId, tab.index);
           this.applyVisibility();
         }
         this.emit();
@@ -483,8 +585,8 @@ export class WorkspacesController {
       if (!tab || tab.closing) return;
       const wsId = Store.getTabWorkspace(tab) || Store.defaultId;
       const peers = this.#tabsFor(wsId).filter((t) => t !== tab && !t.closing);
-      let succ = this.#closest(peers.filter((t) => this.#isLoaded(t)), tab._tPos);
-      if (!succ) succ = this.#closest(peers, tab._tPos);
+      let succ = this.#closest(peers.filter((t) => this.#isLoaded(t)), tab.index);
+      if (!succ) succ = this.#closest(peers, tab.index);
       this.gBrowser.setSuccessor(tab, succ || null);
     } catch (e) {
       console.warn("[sine-workspaces] refreshSuccessor failed:", e);
@@ -496,15 +598,20 @@ export class WorkspacesController {
     // Selecting a tab that lives in another workspace switches to that workspace.
     const wid = Store.getTabWorkspace(tab) || Store.defaultId;
     if (wid !== this.activeId && Store.hasWorkspace(wid)) {
-      this.lastActiveByWs.set(wid, tab);
-      this.activeId = wid;
-      Store.setLastActiveId(wid);
-      this.applyVisibility();
-      this.emit();
+      this.#activate(wid, tab);
     } else {
       this.lastActiveByWs.set(this.activeId, tab);
       this.#refreshSuccessor();
     }
+  }
+
+  // Make `wsId` the active workspace with `tab` (already selected) in front.
+  #activate(wsId, tab) {
+    this.lastActiveByWs.set(wsId, tab);
+    this.activeId = wsId;
+    Store.setLastActiveId(wsId);
+    this.applyVisibility();
+    this.emit();
   }
 
   // ---- assignment / creation ----------------------------------------------
@@ -532,7 +639,7 @@ export class WorkspacesController {
     if (!list.length) return;
 
     const movedActive = list.includes(this.gBrowser.selectedTab);
-    const refIndex = this.gBrowser.selectedTab?._tPos ?? 0;
+    const refIndex = this.gBrowser.selectedTab?.index ?? 0;
 
     this.#detachFromGroups(list, wsId);
     for (const tab of list) {
@@ -565,6 +672,46 @@ export class WorkspacesController {
     }
     this.emit();
     return tab;
+  }
+
+  // ---- script API (api.sys.mjs) ------------------------------------------
+
+  groupWorkspace(group) {
+    return this.#groupWorkspace(group);
+  }
+
+  // Open URLs straight into a workspace (+ container, + folder) without
+  // touching selection. `lazy` tabs don't load until clicked. Returns the tabs.
+  openTabs(entries, { wsId, userContextId = 0, group = null, lazy = true }) {
+    const tabs = [];
+    for (const { url, title } of entries) {
+      const lazyOk = lazy && !/^about:/i.test(url);
+      const tab = this.#openTab(url, {
+        wsId,
+        manual: true,
+        userContextId,
+        tabGroup: group || undefined,
+        inBackground: true,
+        createLazyBrowser: lazyOk,
+        lazyTabTitle: lazyOk ? title || url : undefined,
+      });
+      if (!tab) continue;
+      if (!group) this.moveToWorkspaceEnd(tab);
+      this.#setTabHidden(tab, wsId !== this.activeId);
+      tabs.push(tab);
+    }
+    this.#updateGroups();
+    return tabs;
+  }
+
+  // Move a tab to another container (reopens it: back/forward history is lost).
+  reopenInContainer(tab, userContextId) {
+    const browser = tab.linkedBrowser;
+    const url = browser?.currentURI?.spec || browser?.userTypedValue || "about:newtab";
+    const wsId = Store.getTabWorkspace(tab) || Store.defaultId;
+    const t = this.#reopen(tab, url, { userContextId, wsId, manual: Store.isManual(tab) });
+    if (t) this.#setTabHidden(t, wsId !== this.activeId);
+    return t;
   }
 
   #addTab(url, opts = {}) {
