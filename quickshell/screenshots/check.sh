@@ -23,6 +23,7 @@ PILL_STATES=(resting resting-rec resting-due resting-meeting clock-styles deadli
              settings settings-productivity menu-emoji menu-emoji-search menu-done menu-done-loading \
              resting-updates dashboard-updates notif-updates menu-updates menu-updates-hold menu-updates-run \
              menu-updates-ask menu-updates-key menu-updates-done menu-updates-failed \
+             disk-overview disk-projects disk-caches disk-games-veiled disk-files disk-review disk-done \
              menu-notifhistory notif-stack power-hush power-blaze power-ledger power-split)
 
 echo "==> running shoot.sh"

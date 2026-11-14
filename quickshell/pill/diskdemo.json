@@ -1,0 +1,2252 @@
+{
+ "version": 1,
+ "at": 1794660514,
+ "took": 93.0,
+ "disk": {
+  "mounts": [
+   {
+    "mount": "/",
+    "fstype": "ext4",
+    "device": "/dev/nvme0n1p2",
+    "total": 549755813888,
+    "free": 68719476736,
+    "used": 474593886208,
+    "dev": 1
+   }
+  ],
+  "home": "/home/you",
+  "main": {
+   "mount": "/",
+   "fstype": "ext4",
+   "device": "/dev/nvme0n1p2",
+   "total": 549755813888,
+   "free": 68719476736,
+   "used": 474593886208,
+   "dev": 1
+  }
+ },
+ "overview": {
+  "categories": [
+   {
+    "key": "src",
+    "label": "Project source",
+    "bytes": 5798205842,
+    "page": "projects"
+   },
+   {
+    "key": "dep",
+    "label": "Dependencies",
+    "bytes": 18575733552,
+    "page": "projects"
+   },
+   {
+    "key": "bld",
+    "label": "Build output",
+    "bytes": 13207024433,
+    "page": "projects"
+   },
+   {
+    "key": "dock",
+    "label": "Docker",
+    "bytes": 43916040601,
+    "page": "docker"
+   },
+   {
+    "key": "vid",
+    "label": "Videos",
+    "bytes": 47029891891,
+    "page": "videos"
+   },
+   {
+    "key": "game",
+    "label": "Games",
+    "bytes": 140660178941,
+    "page": "games"
+   },
+   {
+    "key": "dl",
+    "label": "Downloads",
+    "bytes": 31569190739,
+    "page": "downloads"
+   },
+   {
+    "key": "cache",
+    "label": "Caches",
+    "bytes": 51539607549,
+    "page": "caches"
+   },
+   {
+    "key": "pkg",
+    "label": "Package caches",
+    "bytes": 19649475379,
+    "page": "packages"
+   },
+   {
+    "key": "sys",
+    "label": "System",
+    "bytes": 31138512896,
+    "page": "system"
+   },
+   {
+    "key": "other",
+    "label": "Everything else",
+    "bytes": 71510024385,
+    "page": "files"
+   }
+  ],
+  "used": 474593886208,
+  "best": [
+   "3706a4ddbfab",
+   "5ddb63b1956f",
+   "402439b1e92d",
+   "31e4cc822840",
+   "b0ad3e866967",
+   "106f64ac57fb",
+   "3246719195ab",
+   "f0be9307d5c8",
+   "99557ffdfa13",
+   "7bf3034a2449",
+   "84cffb77f49d",
+   "9c0dd038ac2b",
+   "bdfacde28ca4",
+   "4f63a379dd3d"
+  ],
+  "offered": {
+   "cost": {
+    "count": 5,
+    "bytes": 26199300503
+   },
+   "free": {
+    "count": 11,
+    "bytes": 58626303585
+   }
+  },
+  "offered_bytes": 84825604088,
+  "libraries": [
+   "/home/you/Games/loose"
+  ]
+ },
+ "sections": {
+  "projects": {
+   "roots": [
+    "/home/you/Documents/projects"
+   ],
+   "totals": {
+    "count": 8,
+    "bytes": 37580963836,
+    "deps": 18575733552,
+    "build": 13207024433,
+    "git": 1717986914,
+    "src": 4080218928,
+    "reclaim": 27380416508,
+    "stale": 5,
+    "stale_reclaim": 17931488458,
+    "worktrees": 0,
+    "loose": 125829120
+   },
+   "projects": [
+    {
+     "path": "/home/you/Documents/projects/work/atlas-web",
+     "name": "atlas-web",
+     "rel": "work/atlas-web",
+     "root": "/home/you/Documents/projects",
+     "eco": [
+      "node"
+     ],
+     "bytes": 10307921510,
+     "deps": 7194070220,
+     "build": 2147483648,
+     "git": 429496729,
+     "src": 536870912,
+     "reclaim": 9341553868,
+     "last": 1730724754,
+     "commit": 1730724754,
+     "status": "dormant",
+     "dirty": 0,
+     "unpushed": 0,
+     "stash": 0,
+     "remote": "git@github.com:acme/atlas-web.git",
+     "nogit": false,
+     "worktree_of": "",
+     "branch": "main",
+     "docker": false,
+     "keep": [],
+     "verdict": "deps and build output can go",
+     "tone": "safe",
+     "items": [
+      "31e4cc822840",
+      "7bf3034a2449"
+     ],
+     "whole": "a81f0edc4f43",
+     "tracked_skips": 0
+    },
+    {
+     "path": "/home/you/Documents/projects/play/ledgerd",
+     "name": "ledgerd",
+     "rel": "play/ledgerd",
+     "root": "/home/you/Documents/projects",
+     "eco": [
+      "rust"
+     ],
+     "bytes": 7623566950,
+     "deps": 0,
+     "build": 7194070220,
+     "git": 214748364,
+     "src": 214748364,
+     "reclaim": 7194070220,
+     "last": 1786452754,
+     "commit": 1786452754,
+     "status": "recent",
+     "dirty": 0,
+     "unpushed": 0,
+     "stash": 0,
+     "remote": "git@github.com:you/ledgerd.git",
+     "nogit": false,
+     "worktree_of": "",
+     "branch": "main",
+     "docker": false,
+     "keep": [],
+     "verdict": "deps and build output can go",
+     "tone": "safe",
+     "items": [
+      "b0ad3e866967"
+     ],
+     "whole": "d878a2cd9439",
+     "tracked_skips": 0
+    },
+    {
+     "path": "/home/you/Documents/projects/work/mux-api",
+     "name": "mux-api",
+     "rel": "work/mux-api",
+     "root": "/home/you/Documents/projects",
+     "eco": [
+      "node"
+     ],
+     "bytes": 5798205849,
+     "deps": 4402341478,
+     "build": 644245094,
+     "git": 322122547,
+     "src": 429496729,
+     "reclaim": 5046586572,
+     "last": 1757508754,
+     "commit": 1757508754,
+     "status": "stale",
+     "dirty": 0,
+     "unpushed": 0,
+     "stash": 0,
+     "remote": "git@github.com:acme/mux-api.git",
+     "nogit": false,
+     "worktree_of": "",
+     "branch": "main",
+     "docker": true,
+     "keep": [],
+     "verdict": "deps and build output can go",
+     "tone": "safe",
+     "items": [
+      "3246719195ab",
+      "0a5ece737c24"
+     ],
+     "whole": "32b938380a7c",
+     "tracked_skips": 0
+    },
+    {
+     "path": "/home/you/Documents/projects/old/portfolio-v2",
+     "name": "portfolio-v2",
+     "rel": "old/portfolio-v2",
+     "root": "/home/you/Documents/projects",
+     "eco": [
+      "node"
+     ],
+     "bytes": 2576980377,
+     "deps": 1395864371,
+     "build": 966367641,
+     "git": 107374182,
+     "src": 107374182,
+     "reclaim": 2362232012,
+     "last": 1709124754,
+     "commit": 1709124754,
+     "status": "dormant",
+     "dirty": 0,
+     "unpushed": 3,
+     "stash": 0,
+     "remote": "git@github.com:you/portfolio.git",
+     "nogit": false,
+     "worktree_of": "",
+     "branch": "main",
+     "docker": false,
+     "keep": [
+      "3 unpushed commits"
+     ],
+     "verdict": "deps and build output can go",
+     "tone": "safe",
+     "items": [
+      "bdfacde28ca4",
+      "6fe716457a05"
+     ],
+     "whole": "c7dd5cd09fa2",
+     "tracked_skips": 0
+    },
+    {
+     "path": "/home/you/Documents/projects/play/habit-android",
+     "name": "habit-android",
+     "rel": "play/habit-android",
+     "root": "/home/you/Documents/projects",
+     "eco": [
+      "gradle"
+     ],
+     "bytes": 4724464025,
+     "deps": 1825361100,
+     "build": 2254857830,
+     "git": 214748364,
+     "src": 429496729,
+     "reclaim": 2254857830,
+     "last": 1789303954,
+     "commit": 1789303954,
+     "status": "recent",
+     "dirty": 4,
+     "unpushed": 0,
+     "stash": 1,
+     "remote": "git@github.com:you/habit-android.git",
+     "nogit": false,
+     "worktree_of": "",
+     "branch": "main",
+     "docker": false,
+     "keep": [
+      "4 uncommitted files",
+      "1 stash"
+     ],
+     "verdict": "deps can go · some output needs a look",
+     "tone": "warn",
+     "items": [
+      "4e800f5b09c1",
+      "99557ffdfa13"
+     ],
+     "whole": "bf59d282a37b",
+     "tracked_skips": 0
+    },
+    {
+     "path": "/home/you/Documents/projects/work/billing",
+     "name": "billing",
+     "rel": "work/billing",
+     "root": "/home/you/Documents/projects",
+     "eco": [
+      "python"
+     ],
+     "bytes": 1717986918,
+     "deps": 1181116006,
+     "build": 0,
+     "git": 214748364,
+     "src": 322122547,
+     "reclaim": 1181116006,
+     "last": 1768740754,
+     "commit": 1768740754,
+     "status": "stale",
+     "dirty": 0,
+     "unpushed": 0,
+     "stash": 0,
+     "remote": "git@github.com:acme/billing.git",
+     "nogit": false,
+     "worktree_of": "",
+     "branch": "main",
+     "docker": false,
+     "keep": [],
+     "verdict": "deps and build output can go",
+     "tone": "safe",
+     "items": [
+      "4f63a379dd3d"
+     ],
+     "whole": "27d402632f21",
+     "tracked_skips": 0
+    },
+    {
+     "path": "/home/you/Documents/projects/old/thesis-sim",
+     "name": "thesis-sim",
+     "rel": "old/thesis-sim",
+     "root": "/home/you/Documents/projects",
+     "eco": [
+      "python"
+     ],
+     "bytes": 4187593113,
+     "deps": 2576980377,
+     "build": 0,
+     "git": 0,
+     "src": 1610612736,
+     "reclaim": 0,
+     "last": 1665060754,
+     "commit": 1665060754,
+     "status": "dormant",
+     "dirty": 0,
+     "unpushed": 0,
+     "stash": 0,
+     "remote": "",
+     "nogit": true,
+     "worktree_of": "",
+     "branch": "main",
+     "docker": false,
+     "keep": [
+      "not in git — this folder is the only copy"
+     ],
+     "verdict": "look before removing",
+     "tone": "stop",
+     "items": [
+      "c0ca954d4560"
+     ],
+     "whole": "e0f7d98ca178",
+     "tracked_skips": 0
+    },
+    {
+     "path": "/home/you/Documents/projects/play/dotfiles",
+     "name": "dotfiles",
+     "rel": "play/dotfiles",
+     "root": "/home/you/Documents/projects",
+     "eco": [],
+     "bytes": 644245094,
+     "deps": 0,
+     "build": 0,
+     "git": 214748364,
+     "src": 429496729,
+     "reclaim": 0,
+     "last": 1794643474,
+     "commit": 1794643474,
+     "status": "active",
+     "dirty": 2,
+     "unpushed": 0,
+     "stash": 0,
+     "remote": "git@github.com:you/dotfiles.git",
+     "nogit": false,
+     "worktree_of": "",
+     "branch": "main",
+     "docker": false,
+     "keep": [
+      "2 uncommitted files"
+     ],
+     "verdict": "active · leave",
+     "tone": "leave",
+     "items": [],
+     "whole": "",
+     "tracked_skips": 0
+    }
+   ],
+   "staleDays": 180,
+   "took": 14.2
+  },
+  "caches": {
+   "known": [
+    {
+     "id": "3706a4ddbfab",
+     "key": "go-build",
+     "label": "Go build cache",
+     "path": "/home/you/.cache/go-build",
+     "bytes": 19542101196,
+     "reclaim": 19542101196,
+     "newest": 1794401554,
+     "tier": "free",
+     "note": "Rebuilt on the next go build; costs CPU only.",
+     "heavy": false
+    },
+    {
+     "id": "e419f2e05ee7",
+     "key": "npm",
+     "label": "npm cache",
+     "path": "/home/you/.npm/_cacache",
+     "bytes": 10093173145,
+     "reclaim": 10093173145,
+     "newest": 1794574354,
+     "tier": "cost",
+     "note": "Packages download again on the next install.",
+     "heavy": false
+    },
+    {
+     "id": "8c435669cd87",
+     "key": "uv",
+     "label": "uv cache",
+     "path": "/home/you/.cache/uv",
+     "bytes": 6549825126,
+     "reclaim": 2292438794,
+     "newest": 1794617554,
+     "tier": "cost",
+     "note": "Prune drops unused entries; venvs hardlink into this cache.",
+     "heavy": false
+    },
+    {
+     "id": "f07e6392b1e4",
+     "key": "cargo-registry",
+     "label": "Cargo registry",
+     "path": "/home/you/.cargo/registry",
+     "bytes": 5368709120,
+     "reclaim": 5368709120,
+     "newest": 1791204754,
+     "tier": "cost",
+     "note": "Crates download again on the next build.",
+     "heavy": false
+    },
+    {
+     "id": "84cffb77f49d",
+     "key": "firefox",
+     "label": "Firefox cache",
+     "path": "/home/you/.cache/mozilla",
+     "bytes": 2040109465,
+     "reclaim": 2040109465,
+     "newest": 1794652114,
+     "tier": "free",
+     "note": "Close Firefox first. Pages load from the network again.",
+     "heavy": false
+    }
+   ],
+   "other": [
+    {
+     "id": "f0965f48ca9e",
+     "key": "other:old-rice-installer",
+     "label": "old-rice-installer",
+     "path": "/home/you/.cache/old-rice-installer",
+     "bytes": 3006477107,
+     "reclaim": 3006477107,
+     "newest": 1749732754,
+     "tier": "free",
+     "stale": true,
+     "note": "Unrecognised cache folder, untouched for 520 days.",
+     "heavy": false
+    }
+   ],
+   "tools": [
+    {
+     "key": "android-sdk",
+     "label": "Android SDK",
+     "path": "/home/you/Android/Sdk",
+     "bytes": 9019431321,
+     "newest": 1789476754,
+     "note": "Platforms and build-tools; manage with sdkmanager."
+    },
+    {
+     "key": "ollama",
+     "label": "Ollama models",
+     "path": "/home/you/.ollama",
+     "bytes": 12455405158,
+     "newest": 1793623954,
+     "note": "Remove single models with `ollama rm <name>`."
+    }
+   ],
+   "bytes": 46600395159,
+   "reclaim": 42343008827,
+   "took": 8.1
+  },
+  "packages": {
+   "groups": [
+    {
+     "key": "pacman",
+     "title": "Pacman package cache",
+     "bytes": 19649475379,
+     "note": "3104 files for 1210 packages",
+     "rows": [
+      {
+       "id": "402439b1e92d",
+       "label": "Keep the 2 newest versions of each package",
+       "bytes": 12025908428,
+       "note": "sudo paccache -rk2",
+       "tier": "cost"
+      },
+      {
+       "id": "09076da1ada7",
+       "label": "Keep only the newest version",
+       "bytes": 15998753177,
+       "note": "sudo paccache -rk1",
+       "tier": "cost"
+      }
+     ]
+    },
+    {
+     "key": "orphans",
+     "title": "Orphan packages",
+     "bytes": 1503238553,
+     "note": "23 packages nothing depends on",
+     "rows": [
+      {
+       "id": "cc33d3b1e8f1",
+       "label": "electron31, rust-docs, qt5-webengine …",
+       "bytes": 1503238553,
+       "note": "sudo pacman -Rns $(pacman -Qdtq) — review the list in the terminal first",
+       "tier": "state"
+      }
+     ]
+    },
+    {
+     "key": "trash",
+     "title": "Trash",
+     "bytes": 3328599654,
+     "note": "212 items waiting in the Trash",
+     "rows": [
+      {
+       "id": "937d1d64c440",
+       "label": "Empty the Trash",
+       "bytes": 3328599654,
+       "note": "gio trash --empty",
+       "tier": "data"
+      }
+     ]
+    }
+   ],
+   "bytes": 24481313586,
+   "pacman": {
+    "bytes": 19649475379
+   },
+   "took": 1.2
+  },
+  "docker": {
+   "available": true,
+   "totals": {
+    "images": 22978075033,
+    "containers": 644245094,
+    "volumes": 6764573491,
+    "cache": 13529146982
+   },
+   "bytes": 43916040601,
+   "rows": [
+    {
+     "id": "5ddb63b1956f",
+     "label": "Build cache",
+     "sub": "412 layers not in use",
+     "bytes": 13529146982,
+     "tier": "free",
+     "note": "docker builder prune -f"
+    },
+    {
+     "id": "106f64ac57fb",
+     "label": "Dangling images",
+     "sub": "96 untagged images",
+     "bytes": 4509715660,
+     "tier": "free",
+     "note": "docker image prune -f"
+    },
+    {
+     "id": "3abf962f79f4",
+     "label": "Anonymous volumes no container uses",
+     "sub": "17 volumes",
+     "bytes": 3113851289,
+     "tier": "state",
+     "note": "docker volume prune -f"
+    }
+   ],
+   "counts": {
+    "images": 141,
+    "dangling": 96,
+    "containers": 22,
+    "running": 4,
+    "volumes": 31,
+    "named_unused": 3,
+    "named_unused_bytes": 1932735283
+   },
+   "compose": [
+    {
+     "name": "mux-api",
+     "dir": "/home/you/Documents/projects/work/mux-api",
+     "containers": 3,
+     "running": 0,
+     "orphaned": false
+    },
+    {
+     "name": "old-shop",
+     "dir": "/home/you/Documents/projects/work/old-shop",
+     "containers": 2,
+     "running": 0,
+     "orphaned": true
+    }
+   ],
+   "took": 6.4
+  },
+  "games": {
+   "steam": {
+    "root": "/home/you/.local/share/Steam",
+    "libraries": [
+     "/home/you/.local/share/Steam"
+    ],
+    "games": [
+     {
+      "appid": "1",
+      "name": "Star Hauler",
+      "path": "/home/you/.local/share/Steam/steamapps/common/Star Hauler",
+      "bytes": 66571993088,
+      "played": 1792932754,
+      "updated": 1768740754,
+      "id": "64a4bbf9c422"
+     },
+     {
+      "appid": "2",
+      "name": "Deep Vaults II",
+      "path": "/home/you/.local/share/Steam/steamapps/common/Deep Vaults II",
+      "bytes": 44560285696,
+      "played": 1760100754,
+      "updated": 1768740754,
+      "id": "6ad3cdb92595"
+     },
+     {
+      "appid": "3",
+      "name": "Tiny Kingdoms",
+      "path": "/home/you/.local/share/Steam/steamapps/common/Tiny Kingdoms",
+      "bytes": 10522669875,
+      "played": 0,
+      "updated": 1768740754,
+      "id": "53ca1e929c48"
+     },
+     {
+      "appid": "4",
+      "name": "Orbit Golf",
+      "path": "/home/you/.local/share/Steam/steamapps/common/Orbit Golf",
+      "bytes": 3435973836,
+      "played": 1788180754,
+      "updated": 1768740754,
+      "id": "5f6b1f29f0c9"
+     }
+    ],
+    "never": 1,
+    "bytes": 125090922495,
+    "tools": [
+     {
+      "name": "Proton 10.0",
+      "path": "",
+      "bytes": 1503238553
+     },
+     {
+      "name": "GE-Proton9-20",
+      "path": "/home/you/.local/share/Steam/compatibilitytools.d/GE-Proton9-20",
+      "bytes": 1395864371,
+      "id": "",
+      "custom": true,
+      "used": false
+     }
+    ],
+    "extras": [
+     {
+      "key": "compatdata",
+      "label": "Compatibility data (Proton prefix)",
+      "bytes": 4402341478,
+      "orphan_bytes": 0,
+      "orphans": 0,
+      "id": ""
+     },
+     {
+      "key": "shadercache",
+      "label": "Shader cache",
+      "bytes": 2469606195,
+      "orphan_bytes": 1610612736,
+      "orphans": 3,
+      "id": "9c0dd038ac2b"
+     }
+    ]
+   },
+   "other": [
+    {
+     "id": "923279796d20",
+     "name": "Lantern Road v0.9",
+     "path": "/home/you/Games/loose/Lantern Road v0.9",
+     "bytes": 6871947673,
+     "newest": 1777380754,
+     "engine": "Ren'Py",
+     "stem": "lantern road",
+     "versions": 2
+    },
+    {
+     "id": "f98d1583dba1",
+     "name": "Lantern Road v0.7",
+     "path": "/home/you/Games/loose/Lantern Road v0.7",
+     "bytes": 6335076761,
+     "newest": 1758372754,
+     "engine": "Ren'Py",
+     "stem": "lantern road",
+     "versions": 2
+    },
+    {
+     "id": "a123d4ca2753",
+     "name": "Moss & Gears",
+     "path": "/home/you/Games/loose/Moss & Gears",
+     "bytes": 2362232012,
+     "newest": 1742820754,
+     "engine": "Unity",
+     "stem": "moss",
+     "versions": 1
+    }
+   ],
+   "libraries": [
+    "/home/you/Games/loose"
+   ],
+   "misc": [
+    {
+     "key": "wine",
+     "label": "Wine prefix",
+     "path": "/home/you/.wine",
+     "bytes": 5153960755,
+     "newest": 1786884754
+    }
+   ],
+   "count": 7,
+   "bytes": 140660178941,
+   "took": 0.9
+  },
+  "thumbnails": {
+   "root": "/home/you/.cache/thumbnails",
+   "buckets": [
+    {
+     "name": "x-large",
+     "count": 31110,
+     "bytes": 3865470566
+    },
+    {
+     "name": "large",
+     "count": 9820,
+     "bytes": 858993459
+    },
+    {
+     "name": "normal",
+     "count": 12640,
+     "bytes": 214748364
+    }
+   ],
+   "bytes": 4939212390,
+   "count": 53570,
+   "state": {
+    "orphan": {
+     "count": 41208,
+     "bytes": 4166118277
+    },
+    "stale": {
+     "count": 311,
+     "bytes": 21474836
+    },
+    "ok": {
+     "count": 11890,
+     "bytes": 730144440
+    },
+    "away": {
+     "count": 161,
+     "bytes": 21474836
+    },
+    "unknown": {
+     "count": 0,
+     "bytes": 0
+    }
+   },
+   "dead_bytes": 4187593113,
+   "ids": {
+    "dead": "f0be9307d5c8",
+    "all": "52dd3e66bbd5"
+   },
+   "where": [
+    {
+     "path": "/home/you/Downloads/camera-import",
+     "count": 30120,
+     "bytes": 3328599654
+    },
+    {
+     "path": "/home/you/Pictures/2019",
+     "count": 11088,
+     "bytes": 837518622
+    }
+   ],
+   "extra": [
+    {
+     "label": "mpv thumbnails and shader cache",
+     "path": "/home/you/.cache/mpv",
+     "bytes": 77594624,
+     "newest": 1794574354
+    }
+   ],
+   "took": 21.0
+  },
+  "downloads": {
+   "root": "/home/you/Downloads",
+   "bytes": 31569190739,
+   "count": 6,
+   "rows": [
+    {
+     "name": "ubuntu-24.04.iso",
+     "path": "/home/you/Downloads/ubuntu-24.04.iso",
+     "dir": false,
+     "bytes": 6227702579,
+     "mtime": 1744548754,
+     "newest": 1744548754,
+     "kind": "diskimage",
+     "secret": false,
+     "claimed": false,
+     "id": "d933ea96a145"
+    },
+    {
+     "name": "lecture-recordings",
+     "path": "/home/you/Downloads/lecture-recordings",
+     "dir": true,
+     "bytes": 13314398617,
+     "mtime": 1773924754,
+     "newest": 1773924754,
+     "kind": "folder",
+     "secret": false,
+     "claimed": false,
+     "id": "3f8d7051e435"
+    },
+    {
+     "name": "dataset.tar.zst",
+     "path": "/home/you/Downloads/dataset.tar.zst",
+     "dir": false,
+     "bytes": 3328599654,
+     "mtime": 1786884754,
+     "newest": 1786884754,
+     "kind": "archive",
+     "secret": false,
+     "claimed": false,
+     "id": "a27587317aae"
+    },
+    {
+     "name": "dataset",
+     "path": "/home/you/Downloads/dataset",
+     "dir": true,
+     "bytes": 8267812044,
+     "mtime": 1786884754,
+     "newest": 1786884754,
+     "kind": "folder",
+     "secret": false,
+     "claimed": false,
+     "id": "fee6622f67c3"
+    },
+    {
+     "name": "installer-linux-x64.AppImage",
+     "path": "/home/you/Downloads/installer-linux-x64.AppImage",
+     "dir": false,
+     "bytes": 429496729,
+     "mtime": 1792068754,
+     "newest": 1792068754,
+     "kind": "installer",
+     "secret": false,
+     "claimed": false,
+     "id": "441510b4ac67"
+    },
+    {
+     "name": "backup-codes.txt",
+     "path": "/home/you/Downloads/backup-codes.txt",
+     "dir": false,
+     "bytes": 1181116,
+     "mtime": 1725540754,
+     "newest": 1725540754,
+     "kind": "document",
+     "secret": true,
+     "claimed": false,
+     "id": ""
+    }
+   ],
+   "secrets": 1,
+   "ages": {
+    "month": 0,
+    "year": 25340307046,
+    "older": 6227702579
+   },
+   "kinds": [
+    [
+     "folder",
+     21582210662
+    ],
+    [
+     "diskimage",
+     6227702579
+    ]
+   ],
+   "archives": [
+    {
+     "name": "dataset.tar.zst",
+     "path": "/home/you/Downloads/dataset.tar.zst",
+     "bytes": 3328599654,
+     "id": "a27587317aae",
+     "unpacked": "/home/you/Downloads/dataset"
+    }
+   ],
+   "dups": [
+    {
+     "size": 2362232012,
+     "keep": "/home/you/Videos/talks/keynote.mp4",
+     "extra": [
+      "/home/you/Videos/talks/keynote (1).mp4"
+     ],
+     "ids": [
+      "01a5b6479054"
+     ]
+    }
+   ],
+   "dup_bytes": 2362232012,
+   "took": 0.3
+  },
+  "bins": {
+   "groups": [
+    {
+     "path": "/home/you/bin",
+     "system": false,
+     "bytes": 2040109465,
+     "repo": false,
+     "note": "",
+     "rows": [
+      {
+       "name": "blender-4.1",
+       "path": "/home/you/bin/blender-4.1",
+       "dir": true,
+       "bytes": 1288490188,
+       "mtime": 1760100754,
+       "shadow": true,
+       "appimage": false,
+       "id": "33c1114d821c"
+      },
+      {
+       "name": "notes.AppImage",
+       "path": "/home/you/bin/notes.AppImage",
+       "dir": false,
+       "bytes": 751619276,
+       "mtime": 1790340754,
+       "shadow": false,
+       "appimage": true,
+       "id": ""
+      }
+     ]
+    }
+   ],
+   "bytes": 2040109465,
+   "took": 0.4
+  },
+  "system": {
+   "rows": [
+    {
+     "path": "/var/cache",
+     "bytes": 20401094656,
+     "denied": 0
+    },
+    {
+     "path": "/usr/lib",
+     "bytes": 15247133900,
+     "denied": 0
+    },
+    {
+     "path": "/usr/share",
+     "bytes": 8912057139,
+     "denied": 0
+    },
+    {
+     "path": "/opt",
+     "bytes": 3328599654,
+     "denied": 0
+    },
+    {
+     "path": "/var/lib",
+     "bytes": 2899102924,
+     "denied": 4
+    }
+   ],
+   "bytes": 50787988275,
+   "kernels": [
+    {
+     "name": "7.3.4-arch1-1",
+     "running": true,
+     "owned": true,
+     "bytes": 146800640
+    }
+   ],
+   "denied": 1,
+   "took": 11.0
+  },
+  "home": {
+   "bytes": 355408543744,
+   "files": 2914332,
+   "top": [
+    {
+     "path": "/home/you/.local",
+     "name": ".local",
+     "bytes": 140660178944,
+     "newest": 1794574354,
+     "kids": []
+    },
+    {
+     "path": "/home/you/Documents",
+     "name": "Documents",
+     "bytes": 55834574848,
+     "newest": 1794574354,
+     "kids": []
+    },
+    {
+     "path": "/home/you/.cache",
+     "name": ".cache",
+     "bytes": 51539607552,
+     "newest": 1794574354,
+     "kids": []
+    },
+    {
+     "path": "/home/you/Videos",
+     "name": "Videos",
+     "bytes": 33715493273,
+     "newest": 1794574354,
+     "kids": []
+    },
+    {
+     "path": "/home/you/Downloads",
+     "name": "Downloads",
+     "bytes": 31568009625,
+     "newest": 1794574354,
+     "kids": []
+    },
+    {
+     "path": "/home/you/Games",
+     "name": "Games",
+     "bytes": 15569256448,
+     "newest": 1794574354,
+     "kids": []
+    }
+   ],
+   "videos": {
+    "count": 195,
+    "bytes": 47029891891,
+    "dirs": [
+     {
+      "path": "/home/you/Videos/talks",
+      "count": 41,
+      "bytes": 23622320128,
+      "newest": 1792068754
+     },
+     {
+      "path": "/home/you/Videos/screen-recordings",
+      "count": 118,
+      "bytes": 10093173145,
+      "newest": 1794401554
+     },
+     {
+      "path": "/home/you/Downloads/lecture-recordings",
+      "count": 36,
+      "bytes": 13314398617,
+      "newest": 1773924754
+     }
+    ],
+    "files": [
+     {
+      "bytes": 4402341478,
+      "path": "/home/you/Videos/talks/keynote.mp4",
+      "mtime": 1777380754,
+      "kind": "video"
+     },
+     {
+      "bytes": 2362232012,
+      "path": "/home/you/Videos/talks/keynote (1).mp4",
+      "mtime": 1777467154,
+      "kind": "video"
+     },
+     {
+      "bytes": 1717986918,
+      "path": "/home/you/Videos/screen-recordings/demo-take-7.mkv",
+      "mtime": 1794401554,
+      "kind": "video"
+     }
+    ]
+   },
+   "big": [],
+   "took": 64.0
+  }
+ },
+ "items": {
+  "31e4cc822840": {
+   "id": "31e4cc822840",
+   "section": "projects",
+   "kind": "deps",
+   "title": "node_modules",
+   "sub": "work/atlas-web",
+   "paths": [
+    "/home/you/Documents/projects/work/atlas-web/node_modules"
+   ],
+   "bytes": 7194070220,
+   "reclaim": 7194070220,
+   "mtime": 1730724754,
+   "tier": "cost",
+   "why": "Dependencies pinned by pnpm-lock.yaml.",
+   "restore": "pnpm install --frozen-lockfile",
+   "method": "rm",
+   "cmd": "rm -rf -- /home/you/Documents/projects/work/atlas-web/node_modules",
+   "argv": null,
+   "warn": [],
+   "offer": true,
+   "project": "/home/you/Documents/projects/work/atlas-web"
+  },
+  "7bf3034a2449": {
+   "id": "7bf3034a2449",
+   "section": "projects",
+   "kind": "build",
+   "title": ".next",
+   "sub": "work/atlas-web",
+   "paths": [
+    "/home/you/Documents/projects/work/atlas-web/.next"
+   ],
+   "bytes": 2147483648,
+   "reclaim": 2147483648,
+   "mtime": 1730724754,
+   "tier": "free",
+   "why": "Build output; the project's build writes it again.",
+   "restore": "",
+   "method": "rm",
+   "cmd": "rm -rf -- /home/you/Documents/projects/work/atlas-web/.next",
+   "argv": null,
+   "warn": [],
+   "offer": true,
+   "project": "/home/you/Documents/projects/work/atlas-web"
+  },
+  "a81f0edc4f43": {
+   "id": "a81f0edc4f43",
+   "section": "projects",
+   "kind": "project",
+   "title": "Whole project",
+   "sub": "work/atlas-web",
+   "paths": [
+    "/home/you/Documents/projects/work/atlas-web"
+   ],
+   "bytes": 10307921510,
+   "reclaim": 10307921510,
+   "mtime": 1730724754,
+   "tier": "cost",
+   "why": "Clean and fully pushed to git@github.com:acme/atlas-web.git.",
+   "restore": "git clone git@github.com:acme/atlas-web.git",
+   "method": "trash",
+   "cmd": "gio trash -- /home/you/Documents/projects/work/atlas-web",
+   "argv": null,
+   "warn": [],
+   "offer": false,
+   "project": "/home/you/Documents/projects/work/atlas-web"
+  },
+  "3246719195ab": {
+   "id": "3246719195ab",
+   "section": "projects",
+   "kind": "deps",
+   "title": "node_modules",
+   "sub": "work/mux-api",
+   "paths": [
+    "/home/you/Documents/projects/work/mux-api/node_modules"
+   ],
+   "bytes": 4402341478,
+   "reclaim": 4402341478,
+   "mtime": 1757508754,
+   "tier": "cost",
+   "why": "Dependencies pinned by package-lock.json.",
+   "restore": "npm ci",
+   "method": "rm",
+   "cmd": "rm -rf -- /home/you/Documents/projects/work/mux-api/node_modules",
+   "argv": null,
+   "warn": [],
+   "offer": true,
+   "project": "/home/you/Documents/projects/work/mux-api"
+  },
+  "0a5ece737c24": {
+   "id": "0a5ece737c24",
+   "section": "projects",
+   "kind": "build",
+   "title": ".next",
+   "sub": "work/mux-api",
+   "paths": [
+    "/home/you/Documents/projects/work/mux-api/.next"
+   ],
+   "bytes": 644245094,
+   "reclaim": 644245094,
+   "mtime": 1757508754,
+   "tier": "free",
+   "why": "Build output; the project's build writes it again.",
+   "restore": "",
+   "method": "rm",
+   "cmd": "rm -rf -- /home/you/Documents/projects/work/mux-api/.next",
+   "argv": null,
+   "warn": [],
+   "offer": true,
+   "project": "/home/you/Documents/projects/work/mux-api"
+  },
+  "32b938380a7c": {
+   "id": "32b938380a7c",
+   "section": "projects",
+   "kind": "project",
+   "title": "Whole project",
+   "sub": "work/mux-api",
+   "paths": [
+    "/home/you/Documents/projects/work/mux-api"
+   ],
+   "bytes": 5798205849,
+   "reclaim": 5798205849,
+   "mtime": 1757508754,
+   "tier": "cost",
+   "why": "Clean and fully pushed to git@github.com:acme/mux-api.git.",
+   "restore": "git clone git@github.com:acme/mux-api.git",
+   "method": "trash",
+   "cmd": "gio trash -- /home/you/Documents/projects/work/mux-api",
+   "argv": null,
+   "warn": [],
+   "offer": false,
+   "project": "/home/you/Documents/projects/work/mux-api"
+  },
+  "b0ad3e866967": {
+   "id": "b0ad3e866967",
+   "section": "projects",
+   "kind": "build",
+   "title": "target",
+   "sub": "play/ledgerd",
+   "paths": [
+    "/home/you/Documents/projects/play/ledgerd/target"
+   ],
+   "bytes": 7194070220,
+   "reclaim": 7194070220,
+   "mtime": 1786452754,
+   "tier": "free",
+   "why": "Build output; the project's build writes it again.",
+   "restore": "",
+   "method": "rm",
+   "cmd": "rm -rf -- /home/you/Documents/projects/play/ledgerd/target",
+   "argv": null,
+   "warn": [],
+   "offer": true,
+   "project": "/home/you/Documents/projects/play/ledgerd"
+  },
+  "d878a2cd9439": {
+   "id": "d878a2cd9439",
+   "section": "projects",
+   "kind": "project",
+   "title": "Whole project",
+   "sub": "play/ledgerd",
+   "paths": [
+    "/home/you/Documents/projects/play/ledgerd"
+   ],
+   "bytes": 7623566950,
+   "reclaim": 7623566950,
+   "mtime": 1786452754,
+   "tier": "cost",
+   "why": "Clean and fully pushed to git@github.com:you/ledgerd.git.",
+   "restore": "git clone git@github.com:you/ledgerd.git",
+   "method": "trash",
+   "cmd": "gio trash -- /home/you/Documents/projects/play/ledgerd",
+   "argv": null,
+   "warn": [],
+   "offer": false,
+   "project": "/home/you/Documents/projects/play/ledgerd"
+  },
+  "4e800f5b09c1": {
+   "id": "4e800f5b09c1",
+   "section": "projects",
+   "kind": "deps",
+   "title": ".gradle",
+   "sub": "play/habit-android",
+   "paths": [
+    "/home/you/Documents/projects/play/habit-android/.gradle"
+   ],
+   "bytes": 1825361100,
+   "reclaim": 1825361100,
+   "mtime": 1789303954,
+   "tier": "state",
+   "why": "Dependencies with nothing pinning their versions.",
+   "restore": "",
+   "method": "rm",
+   "cmd": "rm -rf -- /home/you/Documents/projects/play/habit-android/.gradle",
+   "argv": null,
+   "warn": [
+    "No lockfile next to it: the exact versions installed here are not recorded anywhere."
+   ],
+   "offer": false,
+   "project": "/home/you/Documents/projects/play/habit-android"
+  },
+  "99557ffdfa13": {
+   "id": "99557ffdfa13",
+   "section": "projects",
+   "kind": "build",
+   "title": "app/build",
+   "sub": "play/habit-android",
+   "paths": [
+    "/home/you/Documents/projects/play/habit-android/app/build"
+   ],
+   "bytes": 2254857830,
+   "reclaim": 2254857830,
+   "mtime": 1789303954,
+   "tier": "free",
+   "why": "Build output; the project's build writes it again.",
+   "restore": "",
+   "method": "rm",
+   "cmd": "rm -rf -- /home/you/Documents/projects/play/habit-android/app/build",
+   "argv": null,
+   "warn": [],
+   "offer": true,
+   "project": "/home/you/Documents/projects/play/habit-android"
+  },
+  "bf59d282a37b": {
+   "id": "bf59d282a37b",
+   "section": "projects",
+   "kind": "project",
+   "title": "Whole project",
+   "sub": "play/habit-android",
+   "paths": [
+    "/home/you/Documents/projects/play/habit-android"
+   ],
+   "bytes": 4724464025,
+   "reclaim": 4724464025,
+   "mtime": 1789303954,
+   "tier": "data",
+   "why": "The project folder itself.",
+   "restore": "git clone git@github.com:you/habit-android.git",
+   "method": "trash",
+   "cmd": "gio trash -- /home/you/Documents/projects/play/habit-android",
+   "argv": null,
+   "warn": [
+    "4 uncommitted files.",
+    "1 stash."
+   ],
+   "offer": false,
+   "project": "/home/you/Documents/projects/play/habit-android"
+  },
+  "c0ca954d4560": {
+   "id": "c0ca954d4560",
+   "section": "projects",
+   "kind": "deps",
+   "title": ".venv",
+   "sub": "old/thesis-sim",
+   "paths": [
+    "/home/you/Documents/projects/old/thesis-sim/.venv"
+   ],
+   "bytes": 2576980377,
+   "reclaim": 2576980377,
+   "mtime": 1665060754,
+   "tier": "state",
+   "why": "Dependencies with nothing pinning their versions.",
+   "restore": "",
+   "method": "rm",
+   "cmd": "rm -rf -- /home/you/Documents/projects/old/thesis-sim/.venv",
+   "argv": null,
+   "warn": [
+    "No lockfile next to it: the exact versions installed here are not recorded anywhere."
+   ],
+   "offer": false,
+   "project": "/home/you/Documents/projects/old/thesis-sim"
+  },
+  "e0f7d98ca178": {
+   "id": "e0f7d98ca178",
+   "section": "projects",
+   "kind": "project",
+   "title": "Whole project",
+   "sub": "old/thesis-sim",
+   "paths": [
+    "/home/you/Documents/projects/old/thesis-sim"
+   ],
+   "bytes": 4187593113,
+   "reclaim": 4187593113,
+   "mtime": 1665060754,
+   "tier": "data",
+   "why": "The project folder itself.",
+   "restore": "",
+   "method": "trash",
+   "cmd": "gio trash -- /home/you/Documents/projects/old/thesis-sim",
+   "argv": null,
+   "warn": [
+    "Not in git — this folder is the only copy."
+   ],
+   "offer": false,
+   "project": "/home/you/Documents/projects/old/thesis-sim"
+  },
+  "bdfacde28ca4": {
+   "id": "bdfacde28ca4",
+   "section": "projects",
+   "kind": "deps",
+   "title": "node_modules",
+   "sub": "old/portfolio-v2",
+   "paths": [
+    "/home/you/Documents/projects/old/portfolio-v2/node_modules"
+   ],
+   "bytes": 1395864371,
+   "reclaim": 1395864371,
+   "mtime": 1709124754,
+   "tier": "cost",
+   "why": "Dependencies pinned by yarn.lock.",
+   "restore": "yarn install --frozen-lockfile",
+   "method": "rm",
+   "cmd": "rm -rf -- /home/you/Documents/projects/old/portfolio-v2/node_modules",
+   "argv": null,
+   "warn": [],
+   "offer": true,
+   "project": "/home/you/Documents/projects/old/portfolio-v2"
+  },
+  "6fe716457a05": {
+   "id": "6fe716457a05",
+   "section": "projects",
+   "kind": "build",
+   "title": "dist",
+   "sub": "old/portfolio-v2",
+   "paths": [
+    "/home/you/Documents/projects/old/portfolio-v2/dist"
+   ],
+   "bytes": 966367641,
+   "reclaim": 966367641,
+   "mtime": 1709124754,
+   "tier": "free",
+   "why": "Build output; the project's build writes it again.",
+   "restore": "",
+   "method": "rm",
+   "cmd": "rm -rf -- /home/you/Documents/projects/old/portfolio-v2/dist",
+   "argv": null,
+   "warn": [],
+   "offer": true,
+   "project": "/home/you/Documents/projects/old/portfolio-v2"
+  },
+  "c7dd5cd09fa2": {
+   "id": "c7dd5cd09fa2",
+   "section": "projects",
+   "kind": "project",
+   "title": "Whole project",
+   "sub": "old/portfolio-v2",
+   "paths": [
+    "/home/you/Documents/projects/old/portfolio-v2"
+   ],
+   "bytes": 2576980377,
+   "reclaim": 2576980377,
+   "mtime": 1709124754,
+   "tier": "data",
+   "why": "The project folder itself.",
+   "restore": "git clone git@github.com:you/portfolio.git",
+   "method": "trash",
+   "cmd": "gio trash -- /home/you/Documents/projects/old/portfolio-v2",
+   "argv": null,
+   "warn": [
+    "3 unpushed commits."
+   ],
+   "offer": false,
+   "project": "/home/you/Documents/projects/old/portfolio-v2"
+  },
+  "4f63a379dd3d": {
+   "id": "4f63a379dd3d",
+   "section": "projects",
+   "kind": "deps",
+   "title": ".venv",
+   "sub": "work/billing",
+   "paths": [
+    "/home/you/Documents/projects/work/billing/.venv"
+   ],
+   "bytes": 1181116006,
+   "reclaim": 1181116006,
+   "mtime": 1768740754,
+   "tier": "cost",
+   "why": "Dependencies pinned by uv.lock.",
+   "restore": "uv sync",
+   "method": "rm",
+   "cmd": "rm -rf -- /home/you/Documents/projects/work/billing/.venv",
+   "argv": null,
+   "warn": [],
+   "offer": true,
+   "project": "/home/you/Documents/projects/work/billing"
+  },
+  "27d402632f21": {
+   "id": "27d402632f21",
+   "section": "projects",
+   "kind": "project",
+   "title": "Whole project",
+   "sub": "work/billing",
+   "paths": [
+    "/home/you/Documents/projects/work/billing"
+   ],
+   "bytes": 1717986918,
+   "reclaim": 1717986918,
+   "mtime": 1768740754,
+   "tier": "cost",
+   "why": "Clean and fully pushed to git@github.com:acme/billing.git.",
+   "restore": "git clone git@github.com:acme/billing.git",
+   "method": "trash",
+   "cmd": "gio trash -- /home/you/Documents/projects/work/billing",
+   "argv": null,
+   "warn": [],
+   "offer": false,
+   "project": "/home/you/Documents/projects/work/billing"
+  },
+  "3706a4ddbfab": {
+   "id": "3706a4ddbfab",
+   "section": "caches",
+   "kind": "cache",
+   "title": "Go build cache",
+   "sub": "~/.cache/go-build",
+   "paths": [
+    "/home/you/.cache/go-build"
+   ],
+   "bytes": 19542101196,
+   "reclaim": 19542101196,
+   "mtime": 1794401554,
+   "tier": "free",
+   "why": "Rebuilt on the next go build; costs CPU only.",
+   "restore": "",
+   "method": "cmd",
+   "cmd": "go clean -cache",
+   "argv": [
+    "go",
+    "clean",
+    "-cache"
+   ],
+   "warn": [],
+   "offer": true
+  },
+  "e419f2e05ee7": {
+   "id": "e419f2e05ee7",
+   "section": "caches",
+   "kind": "cache",
+   "title": "npm cache",
+   "sub": "~/.npm/_cacache",
+   "paths": [
+    "/home/you/.npm/_cacache"
+   ],
+   "bytes": 10093173145,
+   "reclaim": 10093173145,
+   "mtime": 1794574354,
+   "tier": "cost",
+   "why": "Packages download again on the next install.",
+   "restore": "",
+   "method": "cmd",
+   "cmd": "npm cache clean --force",
+   "argv": [
+    "npm",
+    "cache",
+    "clean",
+    "--force"
+   ],
+   "warn": [],
+   "offer": false
+  },
+  "8c435669cd87": {
+   "id": "8c435669cd87",
+   "section": "caches",
+   "kind": "cache",
+   "title": "uv cache",
+   "sub": "~/.cache/uv",
+   "paths": [
+    "/home/you/.cache/uv"
+   ],
+   "bytes": 6549825126,
+   "reclaim": 2292438794,
+   "mtime": 1794617554,
+   "tier": "cost",
+   "why": "Prune drops unused entries; venvs hardlink into this cache.",
+   "restore": "",
+   "method": "cmd",
+   "cmd": "uv cache prune",
+   "argv": [
+    "uv",
+    "cache",
+    "prune"
+   ],
+   "warn": [
+    "Only part of this frees up: the rest is hardlinked into project folders."
+   ],
+   "offer": false
+  },
+  "f07e6392b1e4": {
+   "id": "f07e6392b1e4",
+   "section": "caches",
+   "kind": "cache",
+   "title": "Cargo registry",
+   "sub": "~/.cargo/registry",
+   "paths": [
+    "/home/you/.cargo/registry"
+   ],
+   "bytes": 5368709120,
+   "reclaim": 5368709120,
+   "mtime": 1791204754,
+   "tier": "cost",
+   "why": "Crates download again on the next build.",
+   "restore": "",
+   "method": "contents",
+   "cmd": "find /home/you/.cargo/registry -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +",
+   "argv": null,
+   "warn": [],
+   "offer": false
+  },
+  "84cffb77f49d": {
+   "id": "84cffb77f49d",
+   "section": "caches",
+   "kind": "cache",
+   "title": "Firefox cache",
+   "sub": "~/.cache/mozilla",
+   "paths": [
+    "/home/you/.cache/mozilla"
+   ],
+   "bytes": 2040109465,
+   "reclaim": 2040109465,
+   "mtime": 1794652114,
+   "tier": "free",
+   "why": "Close Firefox first. Pages load from the network again.",
+   "restore": "",
+   "method": "contents",
+   "cmd": "find /home/you/.cache/mozilla -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +",
+   "argv": null,
+   "warn": [],
+   "offer": true
+  },
+  "f0965f48ca9e": {
+   "id": "f0965f48ca9e",
+   "section": "caches",
+   "kind": "cache",
+   "title": "old-rice-installer",
+   "sub": "~/.cache/old-rice-installer",
+   "paths": [
+    "/home/you/.cache/old-rice-installer"
+   ],
+   "bytes": 3006477107,
+   "reclaim": 3006477107,
+   "mtime": 1749732754,
+   "tier": "free",
+   "why": "In the cache folder, so its owner is expected to cope with it vanishing. I do not know this one specifically.",
+   "restore": "",
+   "method": "contents",
+   "cmd": "find /home/you/.cache/old-rice-installer -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +",
+   "argv": null,
+   "warn": [],
+   "offer": false
+  },
+  "402439b1e92d": {
+   "id": "402439b1e92d",
+   "section": "packages",
+   "kind": "pkgcache",
+   "title": "Package cache: keep the 2 newest versions of each package",
+   "sub": "/var/cache/pacman/pkg/",
+   "paths": [],
+   "bytes": 12025908428,
+   "reclaim": 12025908428,
+   "mtime": 0,
+   "tier": "cost",
+   "why": "Old versions are only needed to downgrade; they download again on demand.",
+   "restore": "",
+   "method": "terminal",
+   "cmd": "sudo paccache -rk2",
+   "argv": null,
+   "warn": [
+    "Needs administrator rights."
+   ],
+   "offer": true
+  },
+  "09076da1ada7": {
+   "id": "09076da1ada7",
+   "section": "packages",
+   "kind": "pkgcache",
+   "title": "Package cache: keep only the newest version",
+   "sub": "/var/cache/pacman/pkg/",
+   "paths": [],
+   "bytes": 15998753177,
+   "reclaim": 15998753177,
+   "mtime": 0,
+   "tier": "cost",
+   "why": "Old versions are only needed to downgrade; they download again on demand.",
+   "restore": "",
+   "method": "terminal",
+   "cmd": "sudo paccache -rk1",
+   "argv": null,
+   "warn": [
+    "Needs administrator rights."
+   ],
+   "offer": false
+  },
+  "cc33d3b1e8f1": {
+   "id": "cc33d3b1e8f1",
+   "section": "packages",
+   "kind": "orphans",
+   "title": "23 orphan packages",
+   "sub": "installed as dependencies, no longer required",
+   "paths": [],
+   "bytes": 1503238553,
+   "reclaim": 1503238553,
+   "mtime": 0,
+   "tier": "state",
+   "why": "Installed as a dependency of something that is gone.",
+   "restore": "",
+   "method": "terminal",
+   "cmd": "sudo pacman -Rns $(pacman -Qdtq)",
+   "argv": null,
+   "warn": [
+    "Needs administrator rights.",
+    "Read the list first: tools you use directly can show up here if they were first installed as a dependency."
+   ],
+   "offer": false,
+   "detail": [
+    "electron31  412.0 MB",
+    "rust-docs  388.1 MB",
+    "qt5-webengine  201.7 MB"
+   ]
+  },
+  "937d1d64c440": {
+   "id": "937d1d64c440",
+   "section": "packages",
+   "kind": "trash",
+   "title": "Empty the Trash",
+   "sub": "212 items",
+   "paths": [
+    "/home/you/.local/share/Trash"
+   ],
+   "bytes": 3328599654,
+   "reclaim": 3328599654,
+   "mtime": 1794487954,
+   "tier": "data",
+   "why": "Things you already threw away. Emptying is what actually frees the space.",
+   "restore": "",
+   "method": "cmd",
+   "cmd": "gio trash --empty",
+   "argv": [
+    "gio",
+    "trash",
+    "--empty"
+   ],
+   "warn": [
+    "After this they cannot be restored from the Trash."
+   ],
+   "offer": false
+  },
+  "5ddb63b1956f": {
+   "id": "5ddb63b1956f",
+   "section": "docker",
+   "kind": "docker",
+   "title": "Build cache",
+   "sub": "412 layers not in use",
+   "paths": [],
+   "bytes": 13529146982,
+   "reclaim": 13529146982,
+   "mtime": 0,
+   "tier": "free",
+   "why": "Cached build steps. The next build of each image is slower once.",
+   "restore": "",
+   "method": "cmd",
+   "cmd": "docker builder prune -f",
+   "argv": [
+    "docker",
+    "builder",
+    "prune",
+    "-f"
+   ],
+   "warn": [],
+   "offer": true
+  },
+  "106f64ac57fb": {
+   "id": "106f64ac57fb",
+   "section": "docker",
+   "kind": "docker",
+   "title": "Dangling images",
+   "sub": "96 untagged images",
+   "paths": [],
+   "bytes": 4509715660,
+   "reclaim": 4509715660,
+   "mtime": 0,
+   "tier": "free",
+   "why": "Untagged layers left behind when an image was rebuilt. No container uses them.",
+   "restore": "",
+   "method": "cmd",
+   "cmd": "docker image prune -f",
+   "argv": [
+    "docker",
+    "image",
+    "prune",
+    "-f"
+   ],
+   "warn": [],
+   "offer": true
+  },
+  "3abf962f79f4": {
+   "id": "3abf962f79f4",
+   "section": "docker",
+   "kind": "docker",
+   "title": "Anonymous volumes no container uses",
+   "sub": "17 volumes",
+   "paths": [],
+   "bytes": 3113851289,
+   "reclaim": 3113851289,
+   "mtime": 0,
+   "tier": "state",
+   "why": "Unnamed volumes left by removed containers.",
+   "restore": "",
+   "method": "cmd",
+   "cmd": "docker volume prune -f",
+   "argv": [
+    "docker",
+    "volume",
+    "prune",
+    "-f"
+   ],
+   "warn": [
+    "Volumes hold data — a database that ran in a removed container may be in one of these."
+   ],
+   "offer": false
+  },
+  "64a4bbf9c422": {
+   "id": "64a4bbf9c422",
+   "section": "games",
+   "kind": "steam-game",
+   "title": "Star Hauler",
+   "sub": "Steam · last played 20 days ago",
+   "paths": [
+    "/home/you/.local/share/Steam/steamapps/common/Star Hauler"
+   ],
+   "bytes": 66571993088,
+   "reclaim": 66571993088,
+   "mtime": 1792932754,
+   "tier": "cost",
+   "why": "A Steam game; Steam downloads it again whenever you want it back.",
+   "restore": "",
+   "method": "cmd",
+   "cmd": "steam steam://uninstall/1",
+   "argv": [
+    "steam",
+    "steam://uninstall/1"
+   ],
+   "warn": [
+    "This opens Steam's own uninstall dialog — Steam does the removing.",
+    "Saves that are not in Steam Cloud stay in the game's compatibility folder until that is removed too."
+   ],
+   "offer": false
+  },
+  "6ad3cdb92595": {
+   "id": "6ad3cdb92595",
+   "section": "games",
+   "kind": "steam-game",
+   "title": "Deep Vaults II",
+   "sub": "Steam · last played 400 days ago",
+   "paths": [
+    "/home/you/.local/share/Steam/steamapps/common/Deep Vaults II"
+   ],
+   "bytes": 44560285696,
+   "reclaim": 44560285696,
+   "mtime": 1760100754,
+   "tier": "cost",
+   "why": "A Steam game; Steam downloads it again whenever you want it back.",
+   "restore": "",
+   "method": "cmd",
+   "cmd": "steam steam://uninstall/2",
+   "argv": [
+    "steam",
+    "steam://uninstall/2"
+   ],
+   "warn": [
+    "This opens Steam's own uninstall dialog — Steam does the removing.",
+    "Saves that are not in Steam Cloud stay in the game's compatibility folder until that is removed too."
+   ],
+   "offer": false
+  },
+  "53ca1e929c48": {
+   "id": "53ca1e929c48",
+   "section": "games",
+   "kind": "steam-game",
+   "title": "Tiny Kingdoms",
+   "sub": "Steam · never played",
+   "paths": [
+    "/home/you/.local/share/Steam/steamapps/common/Tiny Kingdoms"
+   ],
+   "bytes": 10522669875,
+   "reclaim": 10522669875,
+   "mtime": 1768740754,
+   "tier": "cost",
+   "why": "A Steam game; Steam downloads it again whenever you want it back.",
+   "restore": "",
+   "method": "cmd",
+   "cmd": "steam steam://uninstall/3",
+   "argv": [
+    "steam",
+    "steam://uninstall/3"
+   ],
+   "warn": [
+    "This opens Steam's own uninstall dialog — Steam does the removing.",
+    "Saves that are not in Steam Cloud stay in the game's compatibility folder until that is removed too."
+   ],
+   "offer": false
+  },
+  "5f6b1f29f0c9": {
+   "id": "5f6b1f29f0c9",
+   "section": "games",
+   "kind": "steam-game",
+   "title": "Orbit Golf",
+   "sub": "Steam · last played 75 days ago",
+   "paths": [
+    "/home/you/.local/share/Steam/steamapps/common/Orbit Golf"
+   ],
+   "bytes": 3435973836,
+   "reclaim": 3435973836,
+   "mtime": 1788180754,
+   "tier": "cost",
+   "why": "A Steam game; Steam downloads it again whenever you want it back.",
+   "restore": "",
+   "method": "cmd",
+   "cmd": "steam steam://uninstall/4",
+   "argv": [
+    "steam",
+    "steam://uninstall/4"
+   ],
+   "warn": [
+    "This opens Steam's own uninstall dialog — Steam does the removing.",
+    "Saves that are not in Steam Cloud stay in the game's compatibility folder until that is removed too."
+   ],
+   "offer": false
+  },
+  "9c0dd038ac2b": {
+   "id": "9c0dd038ac2b",
+   "section": "games",
+   "kind": "steam-shadercache",
+   "title": "Shader cache of games that are not installed",
+   "sub": "3 folders",
+   "paths": [
+    "/home/you/.local/share/Steam/steamapps/shadercache/9"
+   ],
+   "bytes": 1610612736,
+   "reclaim": 1610612736,
+   "mtime": 0,
+   "tier": "free",
+   "why": "Compiled shaders; Steam rebuilds them.",
+   "restore": "",
+   "method": "rm",
+   "cmd": "rm -rf -- /home/you/.local/share/Steam/steamapps/shadercache/9",
+   "argv": null,
+   "warn": [],
+   "offer": true
+  },
+  "923279796d20": {
+   "id": "923279796d20",
+   "section": "games",
+   "kind": "game",
+   "title": "Lantern Road v0.9",
+   "sub": "Ren'Py · ~/Games/loose",
+   "paths": [
+    "/home/you/Games/loose/Lantern Road v0.9"
+   ],
+   "bytes": 6871947673,
+   "reclaim": 6871947673,
+   "mtime": 1777380754,
+   "tier": "data",
+   "why": "A game folder outside any launcher. Nothing can download it again for you.",
+   "restore": "",
+   "method": "trash",
+   "cmd": "gio trash -- '/home/you/Games/loose/Lantern Road v0.9'",
+   "argv": null,
+   "warn": [
+    "Saves may be inside the folder."
+   ],
+   "offer": false
+  },
+  "f98d1583dba1": {
+   "id": "f98d1583dba1",
+   "section": "games",
+   "kind": "game",
+   "title": "Lantern Road v0.7",
+   "sub": "Ren'Py · ~/Games/loose",
+   "paths": [
+    "/home/you/Games/loose/Lantern Road v0.7"
+   ],
+   "bytes": 6335076761,
+   "reclaim": 6335076761,
+   "mtime": 1758372754,
+   "tier": "data",
+   "why": "A game folder outside any launcher. Nothing can download it again for you.",
+   "restore": "",
+   "method": "trash",
+   "cmd": "gio trash -- '/home/you/Games/loose/Lantern Road v0.7'",
+   "argv": null,
+   "warn": [
+    "Saves may be inside the folder."
+   ],
+   "offer": false
+  },
+  "a123d4ca2753": {
+   "id": "a123d4ca2753",
+   "section": "games",
+   "kind": "game",
+   "title": "Moss & Gears",
+   "sub": "Unity · ~/Games/loose",
+   "paths": [
+    "/home/you/Games/loose/Moss & Gears"
+   ],
+   "bytes": 2362232012,
+   "reclaim": 2362232012,
+   "mtime": 1742820754,
+   "tier": "data",
+   "why": "A game folder outside any launcher. Nothing can download it again for you.",
+   "restore": "",
+   "method": "trash",
+   "cmd": "gio trash -- '/home/you/Games/loose/Moss & Gears'",
+   "argv": null,
+   "warn": [
+    "Saves may be inside the folder."
+   ],
+   "offer": false
+  },
+  "f0be9307d5c8": {
+   "id": "f0be9307d5c8",
+   "section": "thumbnails",
+   "kind": "thumbs-dead",
+   "title": "Thumbnails of files that are gone or changed",
+   "sub": "41208 orphaned · 311 outdated",
+   "paths": [
+    "/home/you/.cache/thumbnails"
+   ],
+   "bytes": 4187593113,
+   "reclaim": 4187593113,
+   "mtime": 0,
+   "tier": "free",
+   "why": "Previews of files that no longer exist, or changed since the preview was made. Nothing can ever show them again.",
+   "restore": "",
+   "method": "list",
+   "cmd": "xargs -d '\\n' rm -f -- < ~/.cache/pill/disk/thumbnails-dead.list",
+   "argv": null,
+   "warn": [],
+   "offer": true,
+   "listing": ""
+  },
+  "52dd3e66bbd5": {
+   "id": "52dd3e66bbd5",
+   "section": "thumbnails",
+   "kind": "thumbs-all",
+   "title": "Every thumbnail",
+   "sub": "~/.cache/thumbnails",
+   "paths": [
+    "/home/you/.cache/thumbnails"
+   ],
+   "bytes": 4939212390,
+   "reclaim": 4939212390,
+   "mtime": 0,
+   "tier": "free",
+   "why": "All previews. File managers and image viewers draw them again as you browse — folders open slower the first time.",
+   "restore": "",
+   "method": "contents",
+   "cmd": "find /home/you/.cache/thumbnails -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +",
+   "argv": null,
+   "warn": [],
+   "offer": false
+  },
+  "d933ea96a145": {
+   "id": "d933ea96a145",
+   "section": "downloads",
+   "kind": "download",
+   "title": "ubuntu-24.04.iso",
+   "sub": "downloaded 580 days ago",
+   "paths": [
+    "/home/you/Downloads/ubuntu-24.04.iso"
+   ],
+   "bytes": 6227702579,
+   "reclaim": 6227702579,
+   "mtime": 1744548754,
+   "tier": "data",
+   "why": "Something you downloaded. Installers and packages can usually be downloaded again.",
+   "restore": "",
+   "method": "trash",
+   "cmd": "gio trash -- /home/you/Downloads/ubuntu-24.04.iso",
+   "argv": null,
+   "warn": [],
+   "offer": false
+  },
+  "3f8d7051e435": {
+   "id": "3f8d7051e435",
+   "section": "downloads",
+   "kind": "download",
+   "title": "lecture-recordings",
+   "sub": "downloaded 240 days ago",
+   "paths": [
+    "/home/you/Downloads/lecture-recordings"
+   ],
+   "bytes": 13314398617,
+   "reclaim": 13314398617,
+   "mtime": 1773924754,
+   "tier": "data",
+   "why": "Something you downloaded.",
+   "restore": "",
+   "method": "trash",
+   "cmd": "gio trash -- /home/you/Downloads/lecture-recordings",
+   "argv": null,
+   "warn": [],
+   "offer": false
+  },
+  "a27587317aae": {
+   "id": "a27587317aae",
+   "section": "downloads",
+   "kind": "download",
+   "title": "dataset.tar.zst",
+   "sub": "downloaded 90 days ago",
+   "paths": [
+    "/home/you/Downloads/dataset.tar.zst"
+   ],
+   "bytes": 3328599654,
+   "reclaim": 3328599654,
+   "mtime": 1786884754,
+   "tier": "data",
+   "why": "Something you downloaded.",
+   "restore": "",
+   "method": "trash",
+   "cmd": "gio trash -- /home/you/Downloads/dataset.tar.zst",
+   "argv": null,
+   "warn": [],
+   "offer": false
+  },
+  "fee6622f67c3": {
+   "id": "fee6622f67c3",
+   "section": "downloads",
+   "kind": "download",
+   "title": "dataset",
+   "sub": "downloaded 90 days ago",
+   "paths": [
+    "/home/you/Downloads/dataset"
+   ],
+   "bytes": 8267812044,
+   "reclaim": 8267812044,
+   "mtime": 1786884754,
+   "tier": "data",
+   "why": "Something you downloaded.",
+   "restore": "",
+   "method": "trash",
+   "cmd": "gio trash -- /home/you/Downloads/dataset",
+   "argv": null,
+   "warn": [],
+   "offer": false
+  },
+  "441510b4ac67": {
+   "id": "441510b4ac67",
+   "section": "downloads",
+   "kind": "download",
+   "title": "installer-linux-x64.AppImage",
+   "sub": "downloaded 30 days ago",
+   "paths": [
+    "/home/you/Downloads/installer-linux-x64.AppImage"
+   ],
+   "bytes": 429496729,
+   "reclaim": 429496729,
+   "mtime": 1792068754,
+   "tier": "data",
+   "why": "Something you downloaded. Installers and packages can usually be downloaded again.",
+   "restore": "",
+   "method": "trash",
+   "cmd": "gio trash -- /home/you/Downloads/installer-linux-x64.AppImage",
+   "argv": null,
+   "warn": [],
+   "offer": false
+  },
+  "01a5b6479054": {
+   "id": "01a5b6479054",
+   "section": "downloads",
+   "kind": "duplicate",
+   "title": "keynote (1).mp4",
+   "sub": "same content as ~/Videos/talks/keynote.mp4",
+   "paths": [
+    "/home/you/Videos/talks/keynote (1).mp4"
+   ],
+   "bytes": 2362232012,
+   "reclaim": 2362232012,
+   "mtime": 0,
+   "tier": "data",
+   "why": "Same size and matching samples as ~/Videos/talks/keynote.mp4; compared byte for byte before it is removed.",
+   "restore": "",
+   "method": "trash",
+   "cmd": "gio trash -- '/home/you/Videos/talks/keynote (1).mp4'",
+   "argv": null,
+   "warn": [],
+   "offer": false,
+   "verify_same": "/home/you/Videos/talks/keynote.mp4"
+  },
+  "33c1114d821c": {
+   "id": "33c1114d821c",
+   "section": "bins",
+   "kind": "binary",
+   "title": "blender-4.1",
+   "sub": "~/bin",
+   "paths": [
+    "/home/you/bin/blender-4.1"
+   ],
+   "bytes": 1288490188,
+   "reclaim": 1288490188,
+   "mtime": 1760100754,
+   "tier": "data",
+   "why": "A program you installed by hand. The system also has a command with this name from a package.",
+   "restore": "",
+   "method": "trash",
+   "cmd": "gio trash -- /home/you/bin/blender-4.1",
+   "argv": null,
+   "warn": [],
+   "offer": false
+  }
+ },
+ "demo": true
+}

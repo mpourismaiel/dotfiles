@@ -2716,6 +2716,51 @@ the pill's brightness burst.
 Code: [[file:pill/pill-volume.sh][=pill/pill-volume.sh=]]
 Code: [[file:pill/pill-brightness.sh][=pill/pill-brightness.sh=]]
 
+** Disk manager (DiskState / DiskWindow / diskbridge.py)
+*** Description
+A disk-usage and cleanup tool that answers "what is holding my storage hostage"
+without visiting every directory. It is deliberately *not* a pill pane: the
+dashboard gets a hard-drive button (right of the settings gear) that opens
+=DiskWindow=, an ordinary decorated toplevel (=FloatingWindow= inside a
+=LazyLoader=). The pill folds away, the window stays until it is closed, and it
+can be minimised, covered and focused like any other window.
+
+Why three Python files: =diskrules.py= is data (what counts as a dependency or
+build directory, which lockfile restores it, where each tool keeps its cache and
+how that cache is cleaned), =diskscan.py= is the scanners and never writes, and
+=diskbridge.py= is the CLI plus the only code that removes anything. Keeping
+removal in one small file makes it reviewable.
+
+Design decisions:
+- Sizes are allocated blocks with hardlinks counted once; =reclaim= leaves out
+  bytes other hardlinks keep alive (pnpm / uv / bun stores), so "can go" figures
+  are what really frees up.
+- A directory is a dependency / build directory by name only when the name is
+  unambiguous (=node_modules=, =.venv=, =.next= …); =build= / =dist= / =out= /
+  =vendor= / =target= / =venv= need a manifest or marker, and anything git tracks
+  is source. =tmp=, =logs=, =data= are never guessed.
+- A "build" directory that is mostly media written over many days is flagged as
+  data (a real case: a game project keeping downloaded mods under =dist/=).
+- access times are useless on relatime with bulk readers, so age is mtime, the
+  last commit, or the launcher's own "last played".
+- Game folders are recognised by engine fingerprint and a folder whose children
+  are mostly games is a library; their video files do not count as Videos.
+- Thumbnails: the source URI is in tEXt *or zTXt* (Qt compresses long values);
+  orphan = source gone, stale = mtime differs, sources on unmounted media are
+  left alone. The dead list is re-checked file by file at removal time.
+- Every removable thing carries a tier: free (comes back by itself), cost
+  (download / rebuild), state, data (your files). Suggestions (=offer=) are only
+  free / cost and never from a project touched in the last 30 days.
+- Removal protocol: tick → plan → =verify= (fresh sizes, git state, a token) →
+  acknowledge each tier in a way that fits its cost → =apply TOKEN --ack=. The
+  bridge enforces the acknowledgment and the token itself, runs =guard()= on
+  every path right before touching it, trashes user files instead of unlinking,
+  never runs root commands (they open in a terminal that waits for Enter), and
+  writes a Markdown + JSON report.
+- Names of games, downloads and loose files are dotted out by default
+  ("Names hidden") because media libraries are private; =DEMO=true= goes
+  further and serves an invented scan.
+
 * Editing & deploying
 
 The code lives in [[file:pill/][=pill/=]] (this repo); the live config at

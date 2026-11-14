@@ -53,6 +53,8 @@ active, actively developed sub-projects worth understanding:
 ```
 - Runs: Python `ast` parse of all `*.py`, `bash -n` of all `*.sh`, headless `qs`
   offscreen load of `init.qml`.
+- Disk manager logic has offline tests: `python3 quickshell/tests/test_disk.py` (fake `$HOME`
+  in a temp dir — the only place its `apply` may ever be exercised by an agent).
 - A **correct** config stops with exactly two ERROR lines:
   - `Failed to load configuration`
   - `No PanelWindow backend loaded`
@@ -132,6 +134,9 @@ init.qml (root, one PanelWindow/screen)
       updatebridge.py — system updates: twice-daily check + the update run
                         (root part = updatehelper.py via pkexec, a pty relay only)
       voicebridge.py — faster-whisper transcription (own venv)
+      diskbridge.py  — Disk manager: one-shot scan / verify / apply (diskscan.py = read-only
+                        scanners, diskrules.py = rule tables). Drives DiskWindow, which is a
+                        real FloatingWindow, NOT a pane. Agents never run `apply` outside tests.
   → IpcHandler "pill" (qs ipc call pill <cmd>)
 ```
 

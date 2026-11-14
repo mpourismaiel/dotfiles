@@ -6,6 +6,7 @@ pragma ComponentBehavior: Bound
 // cannot touch the live pill. A grabber steps through each stage and saves a PNG.
 import QtQuick
 import Quickshell
+import Quickshell.Io
 
 FloatingWindow {
     id: win
@@ -44,6 +45,12 @@ FloatingWindow {
         property bool updatesEnabled: true
         property var updateSources: ["pacman", "flatpak"]
         property string updatesDir: ""
+        // Disk window (DiskState reads these; the plan is seeded per stage)
+        property var diskProjectDirs: []
+        property var diskGameDirs: []
+        property int diskStaleDays: 180
+        property bool diskDiscreet: false
+        property var diskPlan: []
         // Done page config (Settings › Productivity)
         property var productivityDirs: ["~/Documents/projects/awesome", "~/Documents/projects/teamwork", "~/work/shledger"]
         property var productivityEmails: ["you@example.com", "you@work.dev"]
@@ -258,6 +265,60 @@ FloatingWindow {
         UpdateState { id: uhState; enabled: true; Component.onCompleted: win.seedUpd(uhState, uh.variant) }
         UpdatesMenu { anchors.fill: parent; theme: theme; upd: uhState }
     }
+    // ---- the Disk window's content (DiskView) on the invented demo scan
+    //      (pill/diskdemo.json — see tests/make_diskdemo.py). The real DiskState
+    //      is used; its bridge is neutered by shoot.sh, so nothing is scanned. ----
+    FileView { id: diskDemoFile; path: Qt.resolvedUrl("diskdemo.json"); blockLoading: true }
+    function seedDisk(d, view, variant) {
+        d._loadScan(JSON.parse(diskDemoFile.text()));
+        var best = d.overview.best;
+        d.plan = best.slice(0, 4);
+        if (variant === "projects") { d.page = "projects"; Qt.callLater(function () {
+            var p = d.sections.projects.projects[0]; view.pageItem.sel = p; view.pageItem.selItem = p.items[0]; }); }
+        else if (variant === "caches") { d.page = "caches"; Qt.callLater(function () { view.pageItem.sel = view.pageItem.entries[1].r; }); }
+        else if (variant === "games") { d.discreet = true; d.page = "games"; }
+        else if (variant === "files") {
+            var H = d.disk.home, rows = [], src = d.sections.home.top;
+            for (var i = 0; i < src.length; i++)
+                rows.push({ name: src[i].name, path: src[i].path, dir: true, link: "", mode: "drwxr-xr-x", bytes: src[i].bytes, mtime: src[i].newest, kind: "dir", partial: false, cached: true });
+            rows.push({ name: "node_modules", path: H + "/node_modules", dir: true, link: "", mode: "drwxr-xr-x", bytes: 3.4e9, mtime: src[0].newest - 4e7, kind: "deps", partial: false, cached: false });
+            rows.push({ name: "holiday-2019.mkv", path: H + "/holiday-2019.mkv", dir: false, link: "", mode: "-rw-r--r--", bytes: 6.1e9, mtime: src[0].newest - 9e7, kind: "video", partial: false, cached: false });
+            rows.push({ name: "old-backup.tar.zst", path: H + "/old-backup.tar.zst", dir: false, link: "", mode: "-rw-r--r--", bytes: 2.2e9, mtime: src[0].newest - 6e7, kind: "archive", partial: false, cached: false });
+            d.listing = { path: H, parent: "/home", rows: rows, bytes: 3.4e11, error: "" };
+            d.flagged = [H + "/node_modules", H + "/old-backup.tar.zst"];
+            d.page = "files";
+        }
+        else if (variant === "review" || variant === "done") {
+            // one item of every risk tier, as `diskbridge.py verify` would answer
+            var want = { free: 2, cost: 2, state: 1, data: 2 }, items = [], ids = [], bytes = 0;
+            var keys = Object.keys(d.items).sort(function (a, b) { return d.items[b].bytes - d.items[a].bytes; });
+            for (var k = 0; k < keys.length; k++) {
+                var it = d.items[keys[k]];
+                if (!want[it.tier] || it.kind === "project") continue;
+                want[it.tier]--;
+                var v = Object.assign({}, it, { status: "ok", reason: "", bytes_now: it.bytes });
+                items.push(v); ids.push(it.id); bytes += it.bytes;
+            }
+            d.plan = ids;
+            d.page = "plan";
+            if (variant === "review")
+                d.review = { token: "demo", items: items, missing: [], bytes: bytes,
+                             script: "#!/bin/sh\n# Cleanup plan from the pill's Disk window\nset -eu\n\n" + items.map(function (x) { return "# " + x.title + "\n" + x.cmd; }).join("\n") };
+            else
+                d.result = { ok: true, freed: bytes * 0.9, free: d.disk.main.free + bytes * 0.9, report: "/home/you/.local/state/pill/disk/reports/2026-11-14_101500.md",
+                             results: items.map(function (x, n) { return { id: x.id, title: x.title, sub: x.sub, tier: x.tier, method: x.method, bytes: x.bytes,
+                                 status: x.method === "terminal" ? "manual" : n === 3 ? "skipped" : x.method === "trash" ? "trashed" : x.method === "cmd" ? "ran" : "removed",
+                                 detail: x.method === "terminal" ? "run in a terminal: " + x.cmd : n === 3 ? "no longer looks like a dependency folder" : "" }; }) };
+        }
+        else d.page = "overview";
+    }
+    component DiskHost: Item {
+        id: dh
+        property string variant: "overview"
+        width: 1220; height: 780
+        DiskState { id: dhState; settings: mockSettings; Component.onCompleted: win.seedDisk(dhState, dhView, dh.variant) }
+        DiskView { id: dhView; anchors.fill: parent; theme: theme; disk: dhState }
+    }
     // one resting pill wearing the lip in a given mood
     component LipPill: Item {
         id: lp
@@ -369,6 +430,13 @@ FloatingWindow {
         { name: "menu-updates-key", comp: cUpdatesKey },
         { name: "menu-updates-done", comp: cUpdatesDone },
         { name: "menu-updates-failed", comp: cUpdatesFailed },
+        { name: "disk-overview", comp: cDiskOverview },
+        { name: "disk-projects", comp: cDiskProjects },
+        { name: "disk-caches", comp: cDiskCaches },
+        { name: "disk-games-veiled", comp: cDiskGames },
+        { name: "disk-files", comp: cDiskFiles },
+        { name: "disk-review", comp: cDiskReview },
+        { name: "disk-done", comp: cDiskDone },
         { name: "menu-done",     comp: cDone },
         { name: "menu-done-loading", comp: cDoneLoading },
         { name: "menu-notifhistory", comp: cNotifHist },
@@ -886,6 +954,14 @@ FloatingWindow {
         EmojiMenu { id: emo; anchors.fill: parent; theme: theme; settings: mockSettings }
         Timer { running: true; interval: 60; onTriggered: emo.query = "heart" }
     } }
+    // ---- the Disk manager window (not a menu: a real toplevel; DiskView is its content) ----
+    Component { id: cDiskOverview; DiskHost { variant: "overview" } }
+    Component { id: cDiskProjects; DiskHost { variant: "projects" } }
+    Component { id: cDiskCaches;   DiskHost { variant: "caches" } }
+    Component { id: cDiskGames;    DiskHost { variant: "games" } }
+    Component { id: cDiskFiles;    DiskHost { variant: "files" } }
+    Component { id: cDiskReview;   DiskHost { variant: "review" } }
+    Component { id: cDiskDone;     DiskHost { variant: "done" } }
     // ---- system updates (menu 20 + the resting lip + the status icon) ----
     Component { id: cUpdates;       UpdHost { variant: "pending" } }
     Component { id: cUpdatesHold;   UpdHost { variant: "hold" } }

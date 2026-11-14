@@ -77,6 +77,10 @@ ShellRoot {
         function updates(): void { root.updatesShortcut("", ""); }
         // (via root: inside this handler `updates` is the function above, not the state id)
         function updatesCheck(): void { root.updateCheckNow(); }
+        // open the Disk manager window (a normal window: it stays until you close
+        // it); `diskScan` also starts a fresh scan.
+        function disk(): void { root.openDisk(""); }
+        function diskScan(): void { root.openDisk(""); diskState.scan(""); }
         function notificationsOn(screen: string): void { root.notifShortcut(screen); }
         // open (or toggle shut) the expanded dashboard in keyboard-nav mode — bind to
         // a KDE custom shortcut to drive the whole pill from the keyboard (arrows /
@@ -349,6 +353,17 @@ ShellRoot {
         onAskingChanged: if (!updates.asking) notifs.dropLocal("update-ask")
     }
     function updateCheckNow() { updates.checkNow(); }
+    // ---- disk manager (diskbridge.py): a real window, not a pane. DiskState holds
+    //      the scan + cleanup plan; DiskWindow only exists while it is open. ----
+    DiskState {
+        id: diskState
+        settings: settings
+    }
+    DiskWindow {
+        theme: theme
+        disk: diskState
+    }
+    function openDisk(page) { diskState.open(page); }
     // Turn a bridge notify cue into a card in the pill's own notification deck
     // (same NotificationView as any app's): click the card → the Updates page on
     // that entry, the round ✕ dismisses it. Dismissing only removes the card — the
@@ -1147,6 +1162,12 @@ ShellRoot {
             property bool updatesEnabled: true         // twice-daily check + lip line + Updates page
             property var updateSources: ["pacman", "flatpak"]   // what the Update button installs
             property string updatesDir: ""             // logs/state dir ("" → ~/.local/state/pill/updates)
+            // ---- disk manager window (DiskState / DiskWindow) ----
+            property var diskProjectDirs: []           // where projects live ([] → the usual places, see diskrules.py)
+            property var diskGameDirs: []              // folders to treat as game libraries on top of the detected ones
+            property int diskStaleDays: 180            // a project untouched this long counts as stale
+            property bool diskDiscreet: true           // dot out file / game names until asked
+            property var diskPlan: []                  // the cleanup plan (item ids), kept across restarts
             // ---- productivity / Done page (Settings → Productivity, see DoneState) ----
             property var productivityDirs: []          // project dirs scanned for git activity
             property var productivityEmails: []        // commit-author emails counted as yours
@@ -3056,6 +3077,49 @@ ShellRoot {
                                     hoverEnabled: true
                                     cursorShape: Qt.PointingHandCursor
                                     onClicked: win.openSettings()
+                                }
+
+                                Behavior on color {
+                                    ColorAnimation {
+                                        duration: theme.animFast
+                                    }
+
+                                }
+
+                            }
+
+                            // disk button — opens the Disk manager, which is a real
+                            // window (DiskWindow), not a pane: the pill folds away and
+                            // the window stays until it is closed. Sits right of the
+                            // settings gear; lit while the window is open.
+                            Rectangle {
+                                id: diskMenuBtn
+
+                                anchors.left: settingsMenuBtn.right
+                                anchors.leftMargin: 8
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: 22
+                                height: 22
+                                radius: theme.radiusSmall
+                                color: (diskMa.containsMouse || diskState.shown) ? theme.accentSoft : "transparent"
+
+                                MSym {
+                                    anchors.centerIn: parent
+                                    icon: "hard_drive"
+                                    size: 16
+                                    fill: diskState.shown ? 1 : 0
+                                    color: (diskMa.containsMouse || diskState.shown) ? theme.text : theme.accent
+                                }
+
+                                MouseArea {
+                                    id: diskMa
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        root.openDisk("");
+                                        win.dismiss();
+                                    }
                                 }
 
                                 Behavior on color {

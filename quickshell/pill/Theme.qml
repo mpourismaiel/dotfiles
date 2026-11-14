@@ -46,6 +46,9 @@ QtObject {
         "success":       "#a8d5a4",
         "money":         "#d9a441",
         "event":         "#6ea8d8",
+        "plum":          "#b08ac9",
+        "umber":         "#8b7a5c",
+        "slate":         "#4b443a",
         "bgTranslucent": "rgba(27, 23, 18, 0.72)",
         "bgGradTop":     "rgba(42, 36, 27, 0.82)",
         "bgGradBottom":  "rgba(21, 17, 12, 0.66)"
@@ -85,6 +88,9 @@ QtObject {
     readonly property color success:      _col("success")      // pastel green (all-done / completed cue)
     readonly property color money:        _col("money")        // gold (finance dots / figures)
     readonly property color event:        _col("event")        // soft blue (Google-calendar event dot / times)
+    readonly property color plum:         _col("plum")         // Disk window: games
+    readonly property color umber:        _col("umber")        // Disk window: caches
+    readonly property color slate:        _col("slate")        // Disk window: system
     readonly property color track:        _col("track")        // toggle / slider track
 
     // resting (collapsed, un-hovered) pill: translucent + dimmed (see init.qml).
