@@ -129,6 +129,8 @@ init.qml (root, one PanelWindow/screen)
       orgbridge.py   — org agenda (emacsclient)
       gcalbridge.py  — Google/Proton/KDE calendar events
       hledgerbridge.py — hledger queries
+      updatebridge.py — system updates: twice-daily check + the update run
+                        (root part = updatehelper.py via pkexec, a pty relay only)
       voicebridge.py — faster-whisper transcription (own venv)
   → IpcHandler "pill" (qs ipc call pill <cmd>)
 ```

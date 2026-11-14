@@ -51,6 +51,15 @@ ShellRoot {
     // square between the dashboard items, Enter clicks, f/c/n/w/v/b jump to a menu,
     // Escape steps back (menu -> dashboard -> closed). Same screen rule as above.
     signal expandShortcut(string screen)
+    // open the Updates page (menu 20) — from IPC (`qs ipc call pill updates`), a
+    // system-update notification card, or the resting pill's "update needs you"
+    // notice. `entry` selects a logbook entry (a run id; "" = newest). Never toggles
+    // shut: these are all "show me" requests. Same screen rule as above.
+    signal updatesShortcut(string screen, string entry)
+    property string updatesEntry: ""
+    // a restart asked for from an update notification → the pill's full-screen
+    // power confirmation on the active monitor (nothing restarts without the "yes").
+    signal updateRestartShortcut(string screen, string level)
     IpcHandler {
         target: "pill"
         function clipboard(): void { root.clipboardShortcut(""); }
@@ -64,6 +73,10 @@ ShellRoot {
         // shortcut to review/triage notifications from the keyboard (arrows to move,
         // Enter to open, i to reply, x/Delete to dismiss — see NotificationHistory.qml).
         function notifications(): void { root.notifShortcut(""); }
+        // open the system Updates page (menu 20); `updatesCheck` asks for a check now.
+        function updates(): void { root.updatesShortcut("", ""); }
+        // (via root: inside this handler `updates` is the function above, not the state id)
+        function updatesCheck(): void { root.updateCheckNow(); }
         function notificationsOn(screen: string): void { root.notifShortcut(screen); }
         // open (or toggle shut) the expanded dashboard in keyboard-nav mode — bind to
         // a KDE custom shortcut to drive the whole pill from the keyboard (arrows /
@@ -322,6 +335,80 @@ ShellRoot {
         settings: settings
         cal: calEvents
         now: sysclock.date
+    }
+    // ---- system updates (updatebridge.py: twice-daily check, verdict, the
+    //      update run + its logs), shared with the lip line, the status icon and
+    //      UpdatesMenu. Its one-shot `notify` cues become in-pill cards below. ----
+    UpdateState {
+        id: updates
+        enabled: settings.updatesEnabled
+        sources: settings.updateSources
+        dir: settings.updatesDir
+        onNotify: (e) => root.updateNotify(e)
+        // the question was answered / the run moved on → withdraw its card
+        onAskingChanged: if (!updates.asking) notifs.dropLocal("update-ask")
+    }
+    function updateCheckNow() { updates.checkNow(); }
+    // Turn a bridge notify cue into a card in the pill's own notification deck
+    // (same NotificationView as any app's): click the card → the Updates page on
+    // that entry, the round ✕ dismisses it. Dismissing only removes the card — the
+    // lip line stays until the situation changes. Each cue fires once (the bridge
+    // remembers), nothing pops under do-not-disturb / while screen-sharing, and
+    // "not worth it yet" never notifies at all.
+    function updateNotify(e) {
+        if (notifs.dnd) return;
+        const view = function() { root.updatesShortcut(root.activeScreen, e.run || ""); };
+        const o = { appName: "Updates", appIcon: "system-software-update", onClick: view,
+                    tag: "update-" + e.kind, actions: [] };
+        if (e.kind === "recommended") {
+            o.summary = e.count + (e.count === 1 ? " update is" : " updates are") + " worth installing";
+            o.body = (e.names && e.names.length ? e.names.join(", ") + (e.count > e.names.length ? " and more. " : ". ") : "")
+                + (e.restart === "reboot" ? "Needs one reboot." : e.restart === "relogin" ? "Needs a re-login." : "");
+            o.actions = [{ text: "View", invoke: view }];
+        } else if (e.kind === "required") {
+            o.critical = true;
+            o.summary = e.count + (e.count === 1 ? " security update" : " security updates");
+            o.body = (e.names || []).join(", ") + (e.count === 1 ? " has" : " have") + " a published fix. Updating today is advised.";
+            o.actions = [{ text: "View", invoke: view },
+                         { text: "Update", invoke: function() { updates.start(); view(); } }];
+        } else if (e.kind === "hold") {
+            o.critical = true;
+            o.summary = "Read before updating";
+            o.body = "Arch news: " + e.title;
+            o.actions = [{ text: "Read note", invoke: function() { Qt.openUrlExternally(e.link); } },
+                         { text: "View", invoke: view }];
+        } else if (e.kind === "ask") {
+            o.critical = true;
+            o.summary = "Update is waiting for you";
+            o.body = e.prompt.raw + "  Nothing has been changed yet.";
+            // only plain yes/no questions are answerable from the card; removals and
+            // key imports must be read in full first
+            if (e.prompt.simple)
+                o.actions = e.prompt.options.map(function(op) {
+                    return { text: op.label, invoke: function() { updates.answer(op.id); } };
+                });
+            else
+                o.actions = [{ text: "View", invoke: view }];
+        } else if (e.kind === "done") {
+            o.summary = e.updated + (e.updated === 1 ? " package updated" : " packages updated");
+            o.body = "Finished in " + updates.fmtDuration(e.seconds) + "."
+                + (e.restart === "reboot" ? " Reboot to finish." : e.restart === "relogin" ? " Log out and back in to finish."
+                   : e.restart === "pill" ? " The pill needs a restart." : " No restart needed.");
+            o.critical = e.restart === "reboot" || e.restart === "relogin";
+            o.actions = [{ text: "View log", invoke: view }];
+            if (e.restart === "reboot" || e.restart === "relogin")
+                o.actions.push({ text: e.restart === "reboot" ? "Reboot" : "Log out",
+                                 invoke: function() { root.updateRestartShortcut(root.activeScreen, e.restart); } });
+        } else if (e.kind === "failed") {
+            o.critical = true;
+            o.summary = e.pkgIndex > 0 ? ("Update stopped at " + e.pkgIndex + " of " + e.pkgTotal) : "Update did not install";
+            o.body = ("" + (e.error || "See the log for details.")).split("\n")[0];
+            o.actions = [{ text: "Open log", invoke: function() { updates.openLog(e.run); } },
+                         { text: "View", invoke: view }];
+        } else {
+            return;
+        }
+        notifs.postLocal(o);
     }
     // ---- network state (Wi-Fi native + LAN/VPN via nmcli), shared ----
     NetState {
@@ -1056,6 +1143,10 @@ ShellRoot {
             property string financeDir: ""             // the hledger finance repo (BASE_DIR override)
             property bool habitsEnabled: false         // enable the habiq habit-tracker menu (jungle)
             property string habitsDir: ""              // habiq journal dir ("" → ~/Documents/habits)
+            // ---- system updates (UpdateState / UpdatesMenu, menu 20) ----
+            property bool updatesEnabled: true         // twice-daily check + lip line + Updates page
+            property var updateSources: ["pacman", "flatpak"]   // what the Update button installs
+            property string updatesDir: ""             // logs/state dir ("" → ~/.local/state/pill/updates)
             // ---- productivity / Done page (Settings → Productivity, see DoneState) ----
             property var productivityDirs: []          // project dirs scanned for git activity
             property var productivityEmails: []        // commit-author emails counted as yours
@@ -1140,10 +1231,10 @@ ShellRoot {
             onOrgHiddenChanged: if (orgHidden) deadlines = false
             // the resting pill's under-line is present when a deadline is due/overdue
             // OR a meeting is imminent — both suppressed under the privacy toggle.
-            readonly property bool restUnderline: !orgHidden
-                && (orgAgenda.hasDue || calEvents.hasMeetingSoon)
+            readonly property bool restUnderline: (!orgHidden
+                && (orgAgenda.hasDue || calEvents.hasMeetingSoon)) || updates.asking
             property bool dash: open || launcher || focused || ctxMode
-            property int menu: 4 // 0 net, 1 vol, 2 bt, 3 batt, 5 clipboard, 6 calendar, 7 voice memo, 8 finance, 9 tetris, 10 block blast, 11 games, 12 brick breaker, 13 settings, 14 snake, 15 done, 16 emoji, 17 minesweeper, 18 chicken invaders, 19 habit tracker, 4 notif (default pane)
+            property int menu: 4 // 0 net, 1 vol, 2 bt, 3 batt, 5 clipboard, 6 calendar, 7 voice memo, 8 finance, 9 tetris, 10 block blast, 11 games, 12 brick breaker, 13 settings, 14 snake, 15 done, 16 emoji, 17 minesweeper, 18 chicken invaders, 19 habit tracker, 20 system updates, 4 notif (default pane)
             // a native folder picker (kdialog/zenity) is a normal window, so it opens
             // BENEATH this Overlay-layer surface. While one is up we make the whole
             // overlay click-through (empty mask) and hide the pill, so the dialog is
@@ -1181,6 +1272,10 @@ ShellRoot {
             readonly property int settingsHeight: 580
             readonly property int habitsWidth: 860     // habit tracker (menu 19): legend + jungle + cards
             readonly property int habitsHeight: 580
+            // the Updates page (menu 20): a logbook column + the pending list / live
+            // run beside it — the same roomy pane as Settings.
+            readonly property int updatesWidth: 860
+            readonly property int updatesHeight: 580
             // the Done work-history page (menu 15): wide enough for the headline
             // sentence + chip row. Its height tracks the DoneMenu content (clamped),
             // so switching timeframe resizes the pane — animated by the height
@@ -1233,7 +1328,7 @@ ShellRoot {
             // open + launcher pill height
             // the clipboard-history menu runs 200px taller than the other panes so more
             // history is visible; every other open menu (and the launcher) uses openHeight.
-            readonly property int openPaneHeight: (open && menu === 5) ? openHeight + 200 : (open && menu === 7) ? 440 : (open && menu === 13) ? settingsHeight : (open && menu === 15) ? doneHeight : (open && menu === 11) ? gamesHeight : (open && menu === 12) ? brickHeight : (open && menu === 14) ? snakeHeight : (open && menu === 17) ? mineHeight : (open && menu === 18) ? invadersHeight : (open && menu === 19) ? habitsHeight : (open && (menu === 9 || menu === 10)) ? tetrisHeight : (open && menu === 16) ? emojiHeight : openHeight
+            readonly property int openPaneHeight: (open && menu === 5) ? openHeight + 200 : (open && menu === 7) ? 440 : (open && menu === 13) ? settingsHeight : (open && menu === 15) ? doneHeight : (open && menu === 11) ? gamesHeight : (open && menu === 12) ? brickHeight : (open && menu === 14) ? snakeHeight : (open && menu === 17) ? mineHeight : (open && menu === 18) ? invadersHeight : (open && menu === 19) ? habitsHeight : (open && menu === 20) ? updatesHeight : (open && (menu === 9 || menu === 10)) ? tetrisHeight : (open && menu === 16) ? emojiHeight : openHeight
             // hovered dashboard geometry (its own generous, HTML-scale size — distinct
             // from the open menu's 520 so the two rows can breathe).
             readonly property int hoverWidth: 640
@@ -1740,6 +1835,29 @@ ShellRoot {
                 }
             }
 
+            // open the Updates page (menu 20). From the status icon it toggles like any
+            // other pane (StatusIcons → menuRequested); this entry point is for the
+            // "show me" callers (notification card, IPC, the resting notice), so it
+            // only ever opens. `entry` picks the logbook row (a run id; "" = newest).
+            function openUpdates(entry) {
+                root.updatesEntry = entry || "";
+                win.launcher = false;
+                win.ctxGroup = null;
+                win.trayItem = null;
+                if (win.open && win.menu === 20)
+                    win.open = false;        // reload the pane so `entry` takes effect
+                win.menu = 20;
+                win.open = true;
+            }
+            // reboot / log out to finish an update — through the same full-screen
+            // confirmation as the launcher's power row (nothing fires without "yes").
+            function requestUpdateRestart(level) {
+                const m = level === "reboot" ? "logoutAndReboot" : "logout";
+                win.requestConfirm(level === "reboot" ? "reboot" : "logout",
+                    ["gdbus", "call", "--session", "--dest", "org.kde.Shutdown", "--object-path",
+                     "/Shutdown", "--method", "org.kde.Shutdown." + m]);
+            }
+
             // open (or toggle shut) the Brick Breaker pane (menu 12) — routed from the
             // games list (see the menuLoader Connections). Mirrors openBlockBlast.
             function openBrickBreaker() {
@@ -1869,6 +1987,20 @@ ShellRoot {
                     win.openNotifications();
                 }
     
+                // same active-screen rule; opens the Updates page (menu 20) on an entry
+                function onUpdatesShortcut(screen, entry) {
+                    if (screen !== "" && Quickshell.screens.length > 1 && win.screen && screen !== win.screen.name)
+                        return ;
+
+                    win.openUpdates(entry);
+                }
+                function onUpdateRestartShortcut(screen, level) {
+                    if (screen !== "" && Quickshell.screens.length > 1 && win.screen && screen !== win.screen.name)
+                        return ;
+
+                    win.requestUpdateRestart(level);
+                }
+
                 // same active-screen rule; opens the expanded dashboard in kb-nav mode
                 function onExpandShortcut(screen) {
                     if (screen !== "" && Quickshell.screens.length > 1 && win.screen && screen !== win.screen.name)
@@ -2164,7 +2296,7 @@ ShellRoot {
                 // exactly as the old body handler did.
                 // the voice recorder leads the chains: a larger resting pill (220x36,
                 // iPhone-memo style) — voiceMorph already yields to open/launcher/ctx.
-                width: win.capShow ? (captureLoader.item ? captureLoader.item.implicitWidth + theme.pad * 2 : 520) : win.voiceMorph ? 220 : win.showBurst ? (burstLoader.item ? burstLoader.item.implicitWidth : 96) : win.launcher ? win.launcherWidth : win.ctxMode ? 520 : (win.notifMorph ? (morphStack.item ? morphStack.item.implicitWidth : 420) : (win.open ? (win.menu === 13 ? win.settingsWidth : win.menu === 15 ? win.doneWidth : win.menu === 16 ? win.emojiWidth : win.menu === 6 || win.menu === 8 ? win.calWidth : win.menu === 12 ? win.brickWidth : win.menu === 14 ? win.snakeWidth : win.menu === 17 ? win.mineWidth : win.menu === 18 ? win.invadersWidth : win.menu === 19 ? win.habitsWidth : (win.menu === 9 || win.menu === 10) ? win.tetrisWidth : 520) : (win.dash ? win.hoverWidth : Math.max(56, collapsedPill.implicitWidth + 23))))
+                width: win.capShow ? (captureLoader.item ? captureLoader.item.implicitWidth + theme.pad * 2 : 520) : win.voiceMorph ? 220 : win.showBurst ? (burstLoader.item ? burstLoader.item.implicitWidth : 96) : win.launcher ? win.launcherWidth : win.ctxMode ? 520 : (win.notifMorph ? (morphStack.item ? morphStack.item.implicitWidth : 420) : (win.open ? (win.menu === 13 ? win.settingsWidth : win.menu === 15 ? win.doneWidth : win.menu === 16 ? win.emojiWidth : win.menu === 6 || win.menu === 8 ? win.calWidth : win.menu === 12 ? win.brickWidth : win.menu === 14 ? win.snakeWidth : win.menu === 17 ? win.mineWidth : win.menu === 18 ? win.invadersWidth : win.menu === 19 ? win.habitsWidth : win.menu === 20 ? win.updatesWidth : (win.menu === 9 || win.menu === 10) ? win.tetrisWidth : 520) : (win.dash ? win.hoverWidth : Math.max(56, collapsedPill.implicitWidth + 23))))
                 // in ctx mode the pill sizes to whichever menu loader is active (app
                 // context menu or tray menu).
                 height: win.capShow ? (captureLoader.item ? captureLoader.item.implicitHeight + theme.pad * 2 : 120) : win.voiceMorph ? 36 : win.showBurst ? (burstLoader.item ? burstLoader.item.implicitHeight : 28) : (win.open || win.launcher) ? win.openPaneHeight : win.ctxMode ? Math.min(win.openHeight, ((ctxLoader.item || trayLoader.item) ? (ctxLoader.item || trayLoader.item).implicitHeight + theme.pad * 2 : 300)) : (win.notifMorph ? morphStack.implicitHeight : (win.dash ? win.hoverHeight : Math.max(win.restUnderline ? 48 : 28, collapsedPill.implicitHeight + 7)))
@@ -2279,6 +2411,23 @@ ShellRoot {
     
                 }
     
+                // ---- system-update lip: a hairline tracing the resting pill's bottom
+                // edge, wall to wall. The ONLY update signal at rest (no icon, no text):
+                // colour = verdict, and during an update it fills as the progress bar.
+                // Same geometry as the surface (so it hugs both bottom corners); shown
+                // on the resting clock pill only — the dashboard has its status icon.
+                UpdateLip {
+                    anchors.fill: surface
+                    theme: theme
+                    radius: surface.radius
+                    wing: surface.wingW
+                    mood: updates.mood
+                    progress: updates.mood === "failed" && updates.lastRun && updates.lastRun.pkgTotal > 0
+                              ? updates.lastRun.pkgIndex / updates.lastRun.pkgTotal : updates.progress
+                    opacity: (!win.dash && !win.notifMorph && !win.voiceMorph && !win.capShow
+                              && !win.showBurst && !win.pillFloating && !win.fsHide) ? 1 : 0
+                }
+
                 // clicking the hovered pill body (empty area) opens the launcher;
                 // the Row-2 status icons / app icons handle their own clicks above
                 MouseArea {
@@ -2350,6 +2499,10 @@ ShellRoot {
                     // imminent-meeting notice in the same under-line (also privacy-gated)
                     meetingMins: win.orgHidden ? -1 : calEvents.nextMeetingMins
                     onDeadlinesActivated: win.deadlines = true
+                    // an update paused on a pacman question: the gold "update needs
+                    // you" notice (click → the Updates page on that run)
+                    updateAsk: updates.asking
+                    onUpdateActivated: win.openUpdates(updates.run ? updates.run.id : "")
                 }
     
                 // focus mode: click the collapsed pill to reveal + hold the dashboard.
@@ -3152,6 +3305,7 @@ ShellRoot {
                             notifs: notifs
                             netState: netState
                             fin: finance
+                            upd: updates
                             open: win.open
                             menu: win.menu
                             // close the launcher too, else both panes stack on top of each other
@@ -3194,7 +3348,7 @@ ShellRoot {
     
                         anchors.fill: parent
                         active: win.open
-                        sourceComponent: win.menu === 0 ? cNet : win.menu === 1 ? cVol : win.menu === 2 ? cBt : win.menu === 3 ? cBatt : win.menu === 5 ? cClip : win.menu === 6 ? cCal : win.menu === 7 ? cVoice : win.menu === 8 ? cFin : win.menu === 9 ? cTetris : win.menu === 10 ? cBlockBlast : win.menu === 11 ? cGames : win.menu === 12 ? cBrickBreaker : win.menu === 13 ? cSettings : win.menu === 14 ? cSnake : win.menu === 15 ? cDone : win.menu === 16 ? cEmoji : win.menu === 17 ? cMine : win.menu === 18 ? cInvaders : win.menu === 19 ? cHabits : cNotif
+                        sourceComponent: win.menu === 0 ? cNet : win.menu === 1 ? cVol : win.menu === 2 ? cBt : win.menu === 3 ? cBatt : win.menu === 5 ? cClip : win.menu === 6 ? cCal : win.menu === 7 ? cVoice : win.menu === 8 ? cFin : win.menu === 9 ? cTetris : win.menu === 10 ? cBlockBlast : win.menu === 11 ? cGames : win.menu === 12 ? cBrickBreaker : win.menu === 13 ? cSettings : win.menu === 14 ? cSnake : win.menu === 15 ? cDone : win.menu === 16 ? cEmoji : win.menu === 17 ? cMine : win.menu === 18 ? cInvaders : win.menu === 19 ? cHabits : win.menu === 20 ? cUpdates : cNotif
                     }
                     // chevron back -> collapse panel
     
@@ -3223,6 +3377,17 @@ ShellRoot {
                         // plant buttons (calendar + finance headers) → habit tracker (19)
                         function onHabitsRequested() {
                             win.menu = 19;
+                        }
+                        // UpdatesMenu (menu 20): a source toggle persists to settings
+                        // (UpdateState restarts its watcher with the new set); a
+                        // restart goes through the full-screen power confirmation.
+                        function onSourceToggled(key, on) {
+                            const cur = (settings.updateSources || []).filter(k => k !== key);
+                            if (on) cur.push(key);
+                            settings.updateSources = cur;
+                        }
+                        function onRestartRequested(level) {
+                            win.requestUpdateRestart(level);
                         }
 
                         // GamesMenu (menu 11) row picked → hand off to that game's own
@@ -3740,6 +3905,7 @@ ShellRoot {
     Component { id: cInvaders; InvadersMenu { theme: theme; settings: settings } }
     Component { id: cSettings; SettingsMenu { theme: theme; acc: accounts; settings: settings; themeSettings: themeAdapter; picker: root.pickFolder } }
     Component { id: cDone; DoneMenu { theme: theme; done: doneState } }
+    Component { id: cUpdates; UpdatesMenu { theme: theme; upd: updates; initialId: root.updatesEntry } }
     Component { id: cEmoji; EmojiMenu { theme: theme; settings: settings } }
     Component { id: cVoice; VoiceMemoMenu { theme: theme; settings: settings; setup: voiceSetup } }
     Component { id: cNotif; NotificationHistory { theme: theme; notifs: notifs } }

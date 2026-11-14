@@ -325,6 +325,13 @@ QtObject {
     readonly property int appCell:       36
     readonly property int appIcon:       28
 
+    // ---- update lip (UpdateLip.qml): the hairline on the resting pill's bottom
+    // edge that carries the system-update state and doubles as its progress bar.
+    readonly property real lipWidth:      2          // stroke
+    readonly property real lipQuietAlpha: 0.13       // "not worth it yet" — text colour, barely there
+    readonly property real lipSoftAlpha:  0.38       // "recommended" — faint accent, no glow
+    readonly property real lipGlowAlpha:  0.22       // halo behind a glowing (required / asking) line
+
     // ---- fonts ----
     //   family = body (IBM Plex Sans) · serif = titles/clock/figures (DM Serif
     //   Display) · mono = uppercase spaced labels (IBM Plex Mono) · icon =

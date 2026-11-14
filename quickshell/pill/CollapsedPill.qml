@@ -37,10 +37,16 @@ Column {
     // urgent style, next to the deadline counts.
     property int meetingMins: -1
     readonly property bool hasMeeting: meetingMins >= 0
-    // the under-line is present whenever there's a deadline OR an imminent meeting.
-    readonly property bool hasUnderline: hasDue || hasMeeting
+    // a system update is paused on a question (UpdateState.asking): the one time
+    // the updater puts text on the resting pill — "update needs you", gold.
+    property bool updateAsk: false
+    // the under-line is present whenever there's a deadline, an imminent meeting,
+    // or an update waiting for an answer.
+    readonly property bool hasUnderline: hasDue || hasMeeting || updateAsk
     // the under-line was clicked (open the full deadlines list).
     signal deadlinesActivated()
+    // the under-line was clicked while it only carries the update notice.
+    signal updateActivated()
 
     // ---- clock / agenda design (Settings → Appearance → Clock and Agenda) ----
     // Normally the live pill follows the user's persisted pick (validated against
@@ -389,6 +395,35 @@ Column {
                 font.letterSpacing: root.stSpacing
                 font.capitalization: root.stCaps
             }
+            // ---- update notice: pacman is paused on a question. Gold, always last.
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                visible: root.updateAsk && (root.hasDue || root.hasMeeting)
+                text: "·"
+                color: root.theme.faint
+                font.family: root.stFamily
+                font.pixelSize: root.theme.fsSmall
+            }
+            MSym {
+                anchors.verticalCenter: parent.verticalCenter
+                visible: root.updateAsk
+                icon: "help"
+                size: 12
+                fill: 0
+                weight: 600
+                color: root.stMuted ? root.theme.textDim : root.theme.money
+            }
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                visible: root.updateAsk
+                text: (root.hasDue || root.hasMeeting) ? "update" : "update needs you"
+                color: root.stMuted ? root.theme.textDim : root.theme.money
+                font.family: root.stFamily
+                font.pixelSize: root.theme.fsSmall
+                font.weight: root.stWeight
+                font.letterSpacing: root.stSpacing
+                font.capitalization: root.stCaps
+            }
         }
         // click the message to open the full deadlines list. z lifts it above the
         // pill's resting focus MouseArea (CollapsedPill is stacked over it in
@@ -399,7 +434,8 @@ Column {
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
             acceptedButtons: Qt.LeftButton | Qt.RightButton
-            onClicked: root.deadlinesActivated()
+            onClicked: (root.updateAsk && !root.hasDue && !root.hasMeeting)
+                       ? root.updateActivated() : root.deadlinesActivated()
         }
     }
 

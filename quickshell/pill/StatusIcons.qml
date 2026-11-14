@@ -5,7 +5,8 @@ pragma ComponentBehavior: Bound
 // UPower charge/state (6-bar granularity + a red alert glyph when critically low),
 // and the notifications icon carries a count badge for un-cleared history.
 // menuRequested(menu) fires on click; when `open`, the icon for the current `menu`
-// is highlighted. Menu ids: 0 net, 1 vol, 2 bt, 3 batt, 5 clipboard, 4 notif. Row
+// is highlighted. Menu ids: 0 net, 1 vol, 2 bt, 3 batt, 5 clipboard, 4 notif (+ 20
+// system updates, leftmost, from UpdateState). Row
 // order is net · bt · batt · vol · clipboard · notif (volume beside clipboard, away
 // from the similar-looking network glyph). The hover highlight
 // is NOT drawn here (only the open-menu selection): each icon reports itself via
@@ -20,6 +21,7 @@ Row {
     property var notifs                  // notification state (drives the badge count)
     property var netState                // shared network state (drives the net glyph)
     property var fin                     // FinanceState (drives the evening nag glyph)
+    property var upd                     // UpdateState (drives the system-update glyph)
     property bool open: false
     property int menu: -1
     signal menuRequested(int menu)
@@ -80,6 +82,27 @@ Row {
 
     readonly property int unread: root.notifs ? root.notifs.unreadCount : 0
 
+    // system-update glyph: icon / colour / badge follow UpdateState.mood.
+    function updIcon() {
+        const m = root.upd.mood;
+        return m === "asking" ? "help" : m === "running" ? "progress_activity" : m === "failed" ? "error"
+             : m === "restart" ? "restart_alt" : m === "hold" ? "newspaper" : m === "required" ? "shield"
+             : m === "recommended" ? "deployed_code_update" : "package_2";
+    }
+    function updTint() {
+        const m = root.upd.mood, t = root.theme;
+        return (m === "asking" || m === "restart" || m === "hold") ? t.money
+             : (m === "running" || m === "required") ? t.accent
+             : m === "failed" ? t.danger
+             : m === "recommended" ? Qt.rgba(t.accent.r, t.accent.g, t.accent.b, 0.7)
+             : t.faint;
+    }
+    function updBadge() {
+        const m = root.upd.mood;
+        if (m === "required") return root.upd.counts.required || 0;
+        return 0;
+    }
+
     // keyboard nav (init.qml's dashboard handler): the icons as an ordered strip
     readonly property int iconCount: statusRep.count
     function iconAt(i) { return statusRep.itemAt(i); }
@@ -103,6 +126,12 @@ Row {
             // clicking it opens the finance menu. See FinanceState.
             if (root.fin && root.fin.nagIcon)
                 m.unshift({ ic: "savings", fill: 1, menu: 8, warn: true, badge: 0 });
+            // system updates (menu 20): leftmost of all, always present while the
+            // feature is on — a faint box when idle, tinted + badged by verdict.
+            if (root.upd && root.upd.enabled)
+                m.unshift({ ic: root.updIcon(), fill: 0,
+                            menu: 20, warn: false, badge: root.updBadge(), tint: root.updTint(),
+                            spin: root.upd.mood === "running" });
             return m;
         }
         delegate: Rectangle {
@@ -116,13 +145,20 @@ Row {
             color: selected ? root.theme.accentDim : "transparent"
             Behavior on color { ColorAnimation { duration: root.theme.animFast } }
             MSym {
+                id: statusSym
                 anchors.centerIn: parent
                 icon: modelData.ic
                 size: 21
                 fill: modelData.fill
                 color: statusItem.selected ? root.theme.accent
                      : modelData.warn ? root.theme.danger
+                     : modelData.tint !== undefined ? modelData.tint
                      : root.theme.textDim
+                RotationAnimation on rotation {
+                    from: 0; to: 360; duration: 1100; loops: Animation.Infinite
+                    running: statusItem.modelData.spin === true
+                    onRunningChanged: if (!running) statusSym.rotation = 0
+                }
             }
             // active VPN/WireGuard -> a quarter-size lock badge tucked into the
             // network glyph's bottom-right, on a knockout disc so it stays legible

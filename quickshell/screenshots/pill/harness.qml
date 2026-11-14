@@ -41,6 +41,9 @@ FloatingWindow {
         property string financeDir: "~/Documents/finance"
         property bool habitsEnabled: true
         property string habitsDir: "~/Documents/habits"
+        property bool updatesEnabled: true
+        property var updateSources: ["pacman", "flatpak"]
+        property string updatesDir: ""
         // Done page config (Settings › Productivity)
         property var productivityDirs: ["~/Documents/projects/awesome", "~/Documents/projects/teamwork", "~/work/shledger"]
         property var productivityEmails: ["you@example.com", "you@work.dev"]
@@ -137,6 +140,148 @@ FloatingWindow {
     // stand-in for HabitState (pinned 8-week habiq jungle, no bridge calls)
     MockHabits { id: mockHabits }
 
+    // ---- system updates: seed a real UpdateState (its bridge is neutered by
+    // shoot.sh, so nothing runs) into one of the designed situations ----
+    readonly property var updPkgs: [
+        { name: "openssl", old: "3.6.1-1", "new": "3.6.2-1", cls: "required", restart: "", source: "pacman", advisory: { id: "AVG-2901", severity: "High" } },
+        { name: "firefox", old: "158.0-1", "new": "158.0.2-1", cls: "required", restart: "", source: "pacman", advisory: { id: "AVG-2903", severity: "Critical" } },
+        { name: "linux", old: "7.2.14.arch1-1", "new": "7.2.16.arch1-1", cls: "recommended", restart: "reboot", source: "pacman" },
+        { name: "systemd", old: "260.1-1", "new": "260.2-1", cls: "recommended", restart: "reboot", source: "pacman" },
+        { name: "mesa", old: "1:26.2.0-1", "new": "1:26.2.1-1", cls: "recommended", restart: "relogin", source: "pacman" },
+        { name: "kwin", old: "6.7.1-1", "new": "6.7.2-1", cls: "recommended", restart: "relogin", source: "pacman" },
+        { name: "quickshell", old: "0.3.0-1", "new": "0.3.1-1", cls: "recommended", restart: "pill", source: "pacman" },
+        { name: "pipewire", old: "1:1.6.2-1", "new": "1:1.6.3-1", cls: "recommended", restart: "relogin", source: "pacman" },
+        { name: "ripgrep", old: "15.1.0-1", "new": "15.2.0-1", cls: "optional", restart: "", source: "pacman" },
+        { name: "imagemagick", old: "7.1.2.8-1", "new": "7.1.2.9-1", cls: "optional", restart: "", source: "pacman" },
+        { name: "python-rich", old: "14.2.0-1", "new": "14.3.0-1", cls: "optional", restart: "", source: "pacman" },
+        { name: "org.telegram.desktop", title: "Telegram", old: "", "new": "7.3.3", cls: "optional", restart: "", source: "flatpak" },
+        { name: "yay", old: "13.0.1-1", "new": "13.1.0-1", cls: "optional", restart: "", source: "aur" }
+    ]
+    readonly property var updPhases: [
+        { key: "sync", label: "Sync", state: "done", detail: "" },
+        { key: "resolve", label: "Resolve", state: "done", detail: "" },
+        { key: "download", label: "Download", state: "done", detail: "612.00 MiB" },
+        { key: "install", label: "Install", state: "active", detail: "18 / 45" },
+        { key: "hooks", label: "Hooks", state: "todo", detail: "" },
+        { key: "flatpak", label: "Flatpak", state: "todo", detail: "4 apps" }
+    ]
+    function updRun(status, prompt) {
+        var asking = status === "asking";
+        var ph = JSON.parse(JSON.stringify(win.updPhases));
+        if (asking) {
+            ph[1].state = "active"; ph[1].detail = "1 question";
+            ph[2].state = "todo"; ph[3].state = "todo"; ph[3].detail = "";
+        }
+        return { id: "2026-07-22_0941", dir: "/home/you/.local/state/pill/updates/2026-07-22_0941",
+            status: status, phase: asking ? "resolve" : "install", phases: ph,
+            pkgIndex: asking ? 0 : 18, pkgTotal: 45, dlDone: 45, dlTotal: 45, hookIndex: 0, hookTotal: 0,
+            current: asking ? "" : "mesa", percent: asking ? 6 : 58, prompt: prompt || null, promptN: prompt ? 1 : 0,
+            canStop: asking, startedAt: 1784698860,
+            logTail: asking ? [":: Synchronizing package databases...", ":: Starting full system upgrade..."]
+                : [":: Processing package changes...", "upgrading firefox...", "upgrading openssl...", "upgrading glib2...",
+                   "upgrading libdrm...", "upgrading llvm-libs...", "upgrading mesa..."] };
+    }
+    readonly property var updAskReplace: ({ kind: "replace", tone: "ask", label: "Replace", n: 1, simple: true,
+        title: "Swap jack2 for pipewire-jack?", raw: ":: Replace jack2 with extra/pipewire-jack? [Y/n]",
+        kv: [["Goes", "jack2 1.9.22-2"], ["Comes", "extra/pipewire-jack"], ["Used by", "ardour, carla, qpwgraph"]],
+        options: [{ id: "y", label: "Yes, replace", "default": true, danger: false },
+                  { id: "n", label: "No, keep jack2", "default": false, danger: false }] })
+    readonly property var updAskKey: ({ kind: "key", tone: "danger", label: "New key · not recognised", n: 1, simple: false,
+        title: "This key is not a known Arch packager.", checkOk: false,
+        raw: ":: Import PGP key 9A1B22C3D4E5F607, \"unknown <repo@example.org>\"? [Y/n]",
+        kv: [["Key", "unknown <repo@example.org>"], ["Key ID", "9A1B22C3D4E5F607"],
+             ["Check", "not in the installed Arch keyring"], ["Advice", "stop and verify the fingerprint yourself"]],
+        options: [{ id: "n", label: "No, stop update", "default": true, danger: false },
+                  { id: "y", label: "Yes, import anyway", "default": false, danger: true }] })
+    function updHistory(extra) {
+        var t = 1784698860;
+        var h = [
+            { kind: "check", id: "check-1", at: t - 1740, total: 12, level: "required", required: 2, recommended: 6, optional: 4, bytes: 641728512, restart: "reboot", hold: 0 },
+            { kind: "check", id: "check-2", at: t - 45000, total: 9, level: "recommended", required: 0, recommended: 5, optional: 4, bytes: 520000000, restart: "reboot", hold: 0 },
+            { kind: "check", id: "check-3", at: t - 88000, total: 4, level: "optional", required: 0, recommended: 0, optional: 4, bytes: 9000000, restart: "", hold: 0 },
+            { kind: "update", id: "2026-07-13_2240", at: t - 9 * 86400, status: "done", updated: 112, seconds: 372, restart: "reboot",
+              restartReasons: [], warnings: [], pacnew: [], error: "", errorKind: "", flatpak: 3,
+              dir: "/home/you/.local/state/pill/updates/2026-07-13_2240", phases: [], logTail: [], pkgIndex: 112, pkgTotal: 112 }
+        ];
+        return extra ? [extra].concat(h) : h;
+    }
+    function seedUpd(u, variant) {
+        u.ready = true;
+        u.checkedAt = 1784698860000 - 1740000;
+        u.nextAt = u.checkedAt + 12 * 3600000;
+        u.level = "required";
+        u.counts = { required: 2, recommended: 6, optional: 4, total: 12 };
+        u.packages = win.updPkgs;
+        u.restart = "reboot";
+        u.downloadBytes = 641728512;
+        u.daysBehind = 9;
+        u.stateDir = "/home/you/.local/state/pill/updates";
+        u.sourceRows = [
+            { key: "pacman", label: "pacman", desc: "official repos · asks for your password", icon: "deployed_code", count: 11, available: true, enabled: true, togglable: true, failed: false },
+            { key: "flatpak", label: "flatpak", desc: "apps · no password", icon: "apps", count: 1, available: true, enabled: true, togglable: true, failed: false },
+            { key: "aur", label: "aur · yay", desc: "builds from source, can ask questions · opens in a terminal", icon: "construction", count: 1, available: true, enabled: false, togglable: false, failed: false },
+            { key: "firmware", label: "firmware", desc: "fwupd not installed · appears if you add it", icon: "memory", count: 0, available: false, enabled: false, togglable: false, failed: false }
+        ];
+        u.history = win.updHistory(null);
+        if (variant === "hold")
+            u.hold = [{ title: "linux-firmware requires manual intervention", link: "https://archlinux.org/news/", at: 1784598860 }];
+        else if (variant === "running") u.run = win.updRun("running", null);
+        else if (variant === "ask") u.run = win.updRun("asking", win.updAskReplace);
+        else if (variant === "key") u.run = win.updRun("asking", win.updAskKey);
+        else if (variant === "done" || variant === "failed") {
+            var ok = variant === "done";
+            var e = { kind: "update", id: "2026-07-22_0941", at: 1784698860, status: ok ? "done" : "failed",
+                updated: ok ? 45 : 0, seconds: 252, restart: ok ? "reboot" : "",
+                restartReasons: ok ? [{ name: "linux", level: "reboot" }, { name: "systemd", level: "reboot" }, { name: "mesa", level: "relogin" }] : [],
+                warnings: ok ? ["warning: /etc/mkinitcpio.conf installed as /etc/mkinitcpio.conf.pacnew"] : [],
+                pacnew: ok ? [{ file: "/etc/mkinitcpio.conf", "new": "/etc/mkinitcpio.conf.pacnew" }] : [],
+                error: ok ? "" : "error: failed to commit transaction (conflicting files)\nfoo: /usr/lib/libfoo.so exists in filesystem",
+                errorKind: ok ? "" : "conflict", flatpak: ok ? 1 : 0,
+                dir: "/home/you/.local/state/pill/updates/2026-07-22_0941",
+                phases: win.updPhases.map(function (p) {
+                    return { key: p.key, label: p.label, detail: (ok && p.key === "install") ? "45 / 45" : p.detail,
+                             state: ok ? "done" : (p.key === "install" || p.key === "hooks" || p.key === "flatpak") ? "todo" : "done" }; }),
+                logTail: ok ? ["upgrading systemd...", "upgrading mesa...", ":: Running post-transaction hooks...", "(12/12) Updating the desktop file MIME type cache..."]
+                            : ["checking for file conflicts...", "error: failed to commit transaction (conflicting files)", "foo: /usr/lib/libfoo.so exists in filesystem", "Errors occurred, no packages were upgraded."],
+                pkgIndex: ok ? 45 : 0, pkgTotal: 45 };
+            u.history = win.updHistory(e);
+            if (ok) {
+                u.pendingRestart = { level: "reboot", reasons: e.restartReasons, run: e.id };
+                u.level = "none"; u.counts = { required: 0, recommended: 0, optional: 0, total: 0 }; u.packages = [];
+            }
+        }
+    }
+    component UpdHost: MenuHost {
+        id: uh
+        property string variant: "pending"
+        pillW: 860; pillH: 580
+        UpdateState { id: uhState; enabled: true; Component.onCompleted: win.seedUpd(uhState, uh.variant) }
+        UpdatesMenu { anchors.fill: parent; theme: theme; upd: uhState }
+    }
+    // one resting pill wearing the lip in a given mood
+    component LipPill: Item {
+        id: lp
+        property string mood: "none"
+        property real progress: 0
+        property bool ask: false
+        width: 210; height: ask ? 48 : 30
+        PillSurface {
+            id: lpSurf
+            anchors.fill: parent; theme: theme
+            radius: Math.min(theme.radiusPanel, height / 2); wing: 12
+            fillColor: theme.bgTranslucent
+        }
+        UpdateLip {
+            anchors.fill: lpSurf; theme: theme
+            radius: lpSurf.radius; wing: 12
+            mood: lp.mood; progress: lp.progress
+        }
+        CollapsedPill {
+            anchors.centerIn: parent; theme: theme
+            clock: win.clockShort; updateAsk: lp.ask
+        }
+    }
+
     // mock clock strings so the dashboard is deterministic
     readonly property string clockShort: "09:41"
     readonly property string clockDate:  "WED, 22 JUL"
@@ -214,6 +359,16 @@ FloatingWindow {
         { name: "settings-productivity", comp: cSettingsProd },
         { name: "menu-emoji",    comp: cEmoji },
         { name: "menu-emoji-search", comp: cEmojiSearch },
+        { name: "resting-updates", comp: cRestingUpdates },
+        { name: "dashboard-updates", comp: cDashUpdates },
+        { name: "notif-updates", comp: cNotifUpdates },
+        { name: "menu-updates",  comp: cUpdates },
+        { name: "menu-updates-hold", comp: cUpdatesHold },
+        { name: "menu-updates-run", comp: cUpdatesRun },
+        { name: "menu-updates-ask", comp: cUpdatesAsk },
+        { name: "menu-updates-key", comp: cUpdatesKey },
+        { name: "menu-updates-done", comp: cUpdatesDone },
+        { name: "menu-updates-failed", comp: cUpdatesFailed },
         { name: "menu-done",     comp: cDone },
         { name: "menu-done-loading", comp: cDoneLoading },
         { name: "menu-notifhistory", comp: cNotifHist },
@@ -731,6 +886,105 @@ FloatingWindow {
         EmojiMenu { id: emo; anchors.fill: parent; theme: theme; settings: mockSettings }
         Timer { running: true; interval: 60; onTriggered: emo.query = "heart" }
     } }
+    // ---- system updates (menu 20 + the resting lip + the status icon) ----
+    Component { id: cUpdates;       UpdHost { variant: "pending" } }
+    Component { id: cUpdatesHold;   UpdHost { variant: "hold" } }
+    Component { id: cUpdatesRun;    UpdHost { variant: "running" } }
+    Component { id: cUpdatesAsk;    UpdHost { variant: "ask" } }
+    Component { id: cUpdatesKey;    UpdHost { variant: "key" } }
+    Component { id: cUpdatesDone;   UpdHost { variant: "done" } }
+    Component { id: cUpdatesFailed; UpdHost { variant: "failed" } }
+    // the update cards exactly as init.qml's updateNotify builds them for
+    // Notifications.postLocal (critical = stays; non-default actions = buttons)
+    Component {
+        id: cNotifUpdates
+        Item {
+            width: 440; height: nuCol.implicitHeight + 20
+            Column {
+                id: nuCol
+                anchors.centerIn: parent
+                spacing: 10
+                Repeater {
+                    model: [
+                        { id: "1", appName: "Updates", appIcon: "system-software-update", urgency: 2,
+                          summary: "2 security updates", body: "openssl, firefox have a published fix. Updating today is advised.",
+                          image: "", hints: ({}), hasInlineReply: false, inlineReplyPlaceholder: "",
+                          actions: [{ identifier: "default", text: "Open", invoke: function() {} },
+                                    { identifier: "local-0", text: "View", invoke: function() {} },
+                                    { identifier: "local-1", text: "Update", invoke: function() {} }] },
+                        { id: "1", appName: "Updates", appIcon: "system-software-update", urgency: 2,
+                          summary: "Update is waiting for you", body: ":: Replace jack2 with extra/pipewire-jack? [Y/n]  Nothing has been changed yet.",
+                          image: "", hints: ({}), hasInlineReply: false, inlineReplyPlaceholder: "",
+                          actions: [{ identifier: "default", text: "Open", invoke: function() {} },
+                                    { identifier: "local-0", text: "Yes, replace", invoke: function() {} },
+                                    { identifier: "local-1", text: "No, keep jack2", invoke: function() {} }] },
+                        { id: "1", appName: "Updates", appIcon: "system-software-update", urgency: 1,
+                          summary: "47 updates are worth installing", body: "linux, systemd, mesa and more. Needs one reboot.",
+                          image: "", hints: ({}), hasInlineReply: false, inlineReplyPlaceholder: "",
+                          actions: [{ identifier: "default", text: "Open", invoke: function() {} },
+                                    { identifier: "local-0", text: "View", invoke: function() {} }] }
+                    ]
+                    delegate: NotificationView {
+                        required property var modelData
+                        width: 420
+                        theme: theme; notifs: notifs; notification: modelData
+                        showProgress: modelData.urgency !== 2
+                    }
+                }
+            }
+        }
+    }
+    // every lip mood on a strip of "wallpaper", so the faint ones can be judged
+    Component {
+        id: cRestingUpdates
+        Rectangle {
+            width: 760; height: 300
+            gradient: Gradient {
+                orientation: Gradient.Horizontal
+                GradientStop { position: 0; color: "#34434a" }
+                GradientStop { position: 0.55; color: "#6a5847" }
+                GradientStop { position: 1; color: "#2c2931" }
+            }
+            Grid {
+                anchors.fill: parent; anchors.margins: 0
+                columns: 3; columnSpacing: 40; rowSpacing: 50
+                leftPadding: 25
+                LipPill { mood: "none" }
+                LipPill { mood: "optional" }
+                LipPill { mood: "recommended" }
+                LipPill { mood: "required" }
+                LipPill { mood: "hold" }
+                LipPill { mood: "running"; progress: 0.38 }
+                LipPill { mood: "failed"; progress: 0.62 }
+                LipPill { mood: "asking"; ask: true }
+                LipPill { mood: "restart" }
+            }
+        }
+    }
+    // the status-icon strip in each update mood (leftmost glyph)
+    Component {
+        id: cDashUpdates
+        Rectangle {
+            width: 330; height: 330; color: theme.bg
+            Column {
+                anchors.centerIn: parent; spacing: 6
+                Repeater {
+                    model: ["optional", "recommended", "required", "hold", "running", "asking", "restart", "failed"]
+                    delegate: StatusIcons {
+                        id: si
+                        required property var modelData
+                        theme: theme; notifs: notifs; netState: netState
+                        upd: QtObject {
+                            property bool enabled: true
+                            property string mood: si.modelData
+                            property var counts: ({ required: 2, total: 12 })
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // the Done work-history page (menu 15) over the seeded MockDone
     Component { id: cDone; MenuHost { pillW: 820; pillH: 560; DoneMenu { anchors.fill: parent; theme: theme; done: mockDone } } }
     // the Done page mid-load (skeleton chapters + busy stripe)

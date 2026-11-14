@@ -927,6 +927,83 @@ Code: [[file:pill/HabitMenu.qml][=pill/HabitMenu.qml=]],
 [[file:pill/HabitField.qml][=pill/HabitField.qml=]],
 [[file:pill/habiqbridge.py][=pill/habiqbridge.py=]]
 
+** UpdatesMenu.qml + UpdateState.qml + UpdateLip.qml + updatebridge.py + updatehelper.py
+
+[[file:pill/UpdatesMenu.qml][=pill/UpdatesMenu.qml=]],
+[[file:pill/UpdateState.qml][=pill/UpdateState.qml=]],
+[[file:pill/UpdateLip.qml][=pill/UpdateLip.qml=]],
+[[file:pill/updatebridge.py][=pill/updatebridge.py=]],
+[[file:pill/updatehelper.py][=pill/updatehelper.py=]]
+
+System updates (menu 20). The user updates with =yay -Syu --repo=; the pill's job
+is to say /whether it is worth doing now/ and to make doing it easier without
+hiding anything pacman says.
+
+*Checking.* =updatebridge.py watch= is one long-lived process: it prints a JSON
+snapshot per line when anything changes, and runs a check when the last one is
+12 h old (measured from a timestamp on disk, so reloads and reboots neither skip
+nor repeat one; a failed check retries after 30 min). It never runs =pacman -Sy=
+on the real database (the partial-upgrade trap): like =checkupdates= it syncs a
+private copy under =~/.cache/pill/updates/db= through =fakeroot= with
+=--disable-sandbox= (pacman 7 otherwise tries to drop to the =alpm= user and
+fails). Sizes come from =pacman -Sup=. Flatpak, AUR (=yay/paru -Qua=) and fwupd
+are probed when present.
+
+*Judgement.* Required = the package has an Arch security advisory whose fixed
+version this update reaches (one fetch of security.archlinux.org per check,
+cached for offline). Recommended = a core-system package (kernel, systemd,
+glibc, graphics, KWin/Plasma, browser, …), or the machine is 7+ days / 100+
+packages behind. Optional = the rest; optional-only is "not worth it yet" and
+never notifies. Hold = an Arch news item newer than the last full upgrade
+(=/var/log/pacman.log=), until marked read. Restart level per package:
+reboot / re-login / pill, verified after a run by checking that the running
+kernel's module directory still exists.
+
+*At rest.* The only signal is =UpdateLip=: a hairline on the resting pill's
+bottom edge, wall to wall, drawn with PillSurface's geometry. Almost transparent
+(not worth it) → faint red (recommended) → red with a halo, breathing
+(required); gold for hold / restart pending / waiting. During an update it is
+the progress bar. The one exception to "no text" is a paused transaction: the
+under-line gains a gold "update needs you". The dashboard gets a leftmost
+status icon tinted by the same mood.
+
+*Updating.* =start= creates =<state>/<stamp>/= and launches the orchestrator in
+its own transient systemd user unit, so a pill reload — including one caused by
+this very update replacing Qt or quickshell — cannot kill the transaction. The
+orchestrator runs =pkexec python updatehelper.py= (the normal polkit dialog).
+The helper is the only root code and is deliberately dumb: a pty relay that
+writes pacman's complete lines to =pacman.log=, the current unterminated line
+to =pending=, types the content of an =answer= file into pacman, and sends
+SIGINT on =stop=. It accepts a fixed mode, never a command line. The
+unprivileged side parses the log for the phase rail and counters and turns
+=pending= into a question card.
+
+*Questions.* Replace, remove-on-conflict, new PGP key (checked against the
+installed Arch keyring; an unknown key flips the default to No), provider
+choice, corrupt download, and a generic fallback. Each card shows pacman's line
+verbatim, the facts that matter, and the answers as buttons: pacman's default is
+the filled button unless it is destructive, destructive answers are outlined,
+Terminal (hands the run over to =yay -Syu --repo=) is always there, and Stop is
+offered only before pacman starts committing. Nothing is auto-answered except
+the final "Proceed with installation?", which the Update click stands for; every
+answer is recorded in =answers.log=.
+
+*Logs.* Plain files a file manager / editor can take over: =pacman.log=,
+=flatpak.log=, =answers.log=, =run.json= (live), =summary.json=; =checks.jsonl=
+for the checks. The last 20 runs are kept.
+
+*Notifications.* The bridge emits one-shot cues (each fires once: on a rise to
+recommended / required, a new advisory, new Arch news, a question, a finished or
+failed run); =init.qml='s =updateNotify= turns them into cards through
+=Notifications.postLocal= (extended with =actions= / =critical= / =onClick= /
+=tag=). Clicking a card opens the page on that entry, the ✕ only removes the
+card. Nothing pops under DND / screen sharing.
+
+*Testing.* =quickshell/tests/test_updates.py= drives the real orchestrator +
+helper against a scripted stand-in for pacman (the helper's =fake= mode, refused
+as root). The screenshot harness seeds a real =UpdateState= (bridge neutered)
+into each designed situation.
+
 ** TetrisMenu.qml
 *** Description
 A very basic Tetris (=win.menu === 9=), opened from a tiny S-tetromino button
@@ -1404,6 +1481,8 @@ It emits =popped(n)= from =onArrived= whenever a *genuine* popup is pushed onto
 listens to cue the [[*NotificationDroplet.qml][water-droplet drop-out]].
 *** Code
 Code: [[file:pill/Notifications.qml][=pill/Notifications.qml=]]
+
+=postLocal= also takes =actions= (extra buttons), =onClick= (the body-click action), =critical= (never auto-expires) and =tag= (a card with the same tag replaces the previous one; =dropLocal(tag)= withdraws it). The system-update cards use all four.
 
 ** NotificationView.qml
 *** Description
@@ -1924,6 +2003,8 @@ as an ordered strip (=iconCount= / =iconAt(i)=) and each carries a =keyClick()=.
 *** Code
 Code: [[file:pill/StatusIcons.qml][=pill/StatusIcons.qml=]]
 
+With =upd= (UpdateState) set and enabled, a system-update glyph sits leftmost (menu 20): a faint box when idle, tinted by =mood= (faint red recommended, red shield + count badge required, gold for hold / restart / waiting, a spinning arc while running, danger on failure). It uses outline glyphs: the solid knock-out variants smear at this size.
+
 ** CollapsedPill.qml
 *** Description
 The collapsed pill's content: the =hh:mm= clock, plus the privacy indicators —
@@ -1986,6 +2067,8 @@ The screenshot harness's =clock-styles= stage renders every design in a pill siz
 this exact rule, with a keyline, to confirm each one fits.
 *** Code
 Code: [[file:pill/CollapsedPill.qml][=pill/CollapsedPill.qml=]]
+
+=updateAsk= (an update paused on a pacman question) adds a gold "update needs you" notice to the under-line, always last; it is the only text the updater ever puts on the resting pill. Clicking it when it stands alone emits =updateActivated=.
 
 ** AgendaMenu.qml
 *** Description

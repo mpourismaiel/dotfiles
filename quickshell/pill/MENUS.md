@@ -34,6 +34,7 @@ The dispatch lives in `init.qml`:
 | 17 | cMine | MinesweeperMenu.qml | Games menu (mouse-only) |
 | 18 | cInvaders | InvadersMenu.qml | Games menu (Chicken Invaders roguelike) |
 | 19 | cHabits | HabitMenu.qml | calendar/finance plant buttons · `h` jump (habiq jungle) |
+| 20 | cUpdates | UpdatesMenu.qml | status icon (system updates, leftmost) · update notification cards · `qs ipc call pill updates` · the resting "update needs you" notice |
 
 Notes:
 - **4 is the default** — the fallback branch of the dispatch ternary is `cNotif`.
@@ -53,4 +54,10 @@ Notes:
 - The habit tracker (19) is feature-gated like finance: `settings.habitsEnabled`
   (Settings → Habit Tracker) hides its openers and blocks the `h` jump when off.
   It sizes via `habitsWidth`/`habitsHeight` (860×580, like Settings).
-- The next free index is **20**.
+- The Updates page (20) is on by default (`settings.updatesEnabled`, Settings →
+  Updates); off hides its status icon, the lip line and stops the watcher. It
+  sizes via `updatesWidth`/`updatesHeight` (860×580, like Settings). It is opened
+  two ways: the status icon toggles it like any pane, while `win.openUpdates(entry)`
+  (notification cards / IPC / the resting notice) only ever opens it, on a given
+  logbook entry.
+- The next free index is **21**.

@@ -23,14 +23,15 @@ Item {
     property var picker: null              // root.pickFolder(cb) — native folder picker
     signal closeRequested()
 
-    property int page: 0                   // 0 appearance · 1 accounts · 2 org agenda · 3 finance · 4 productivity · 5 habits
+    property int page: 0                   // 0 appearance · 1 accounts · 2 org agenda · 3 finance · 4 productivity · 5 habits · 6 updates
     readonly property var pages: [
         { key: "appearance", label: "Appearance",      icon: "palette" },
         { key: "accounts",   label: "Online Accounts", icon: "account_circle" },
         { key: "org",        label: "Org Agenda",      icon: "event_note" },
         { key: "finance",    label: "Finance",         icon: "account_balance_wallet" },
         { key: "productivity", label: "Productivity",  icon: "commit" },
-        { key: "habits",     label: "Habit Tracker",   icon: "forest" }
+        { key: "habits",     label: "Habit Tracker",   icon: "forest" },
+        { key: "updates",    label: "Updates",         icon: "deployed_code_update" }
     ]
 
     // opaque backdrop so the launcher body doesn't bleed through
@@ -246,6 +247,26 @@ Item {
                 path: root.settings ? root.settings.habitsDir : ""
                 onFeatureToggled: (v) => { if (root.settings) root.settings.habitsEnabled = v; }
                 onPathEdited: (v) => { if (root.settings) root.settings.habitsDir = v; }
+            }
+
+            // System updates (UpdateState / UpdatesMenu, menu 20): on by default.
+            FeaturePage {
+                anchors.fill: parent
+                visible: root.page === 6
+                theme: root.theme
+                title: "Updates"
+                blurb: "Checks for system updates twice a day without a password (pacman, "
+                     + "flatpak, AUR, firmware) and shows the verdict as a hairline on the "
+                     + "resting pill. Updating asks for your password through the system "
+                     + "dialog; every run keeps its plain-text logs in the folder below. "
+                     + "Which sources the Update button installs is set on the Updates page."
+                enableLabel: "Check for updates"
+                pathLabel: "Log folder"
+                pathPlaceholder: "~/.local/state/pill/updates"
+                featureOn: root.settings ? root.settings.updatesEnabled : false
+                path: root.settings ? root.settings.updatesDir : ""
+                onFeatureToggled: (v) => { if (root.settings) root.settings.updatesEnabled = v; }
+                onPathEdited: (v) => { if (root.settings) root.settings.updatesDir = v; }
             }
         }
     }
